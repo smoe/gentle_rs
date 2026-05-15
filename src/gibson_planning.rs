@@ -498,6 +498,8 @@ pub fn suggest_gibson_destination_openings(
         .ok_or_else(|| EngineError {
             code: ErrorCode::NotFound,
             message: format!("Destination sequence '{}' not found", seq_id),
+
+            cause_chain: vec![],
         })?;
     let seq_len = dna.len();
     if seq_len == 0 {
@@ -934,6 +936,8 @@ pub fn preview_gibson_assembly_plan(
                 "Unsupported Gibson assembly plan schema '{}' (expected '{}')",
                 plan.schema, GIBSON_ASSEMBLY_PLAN_SCHEMA
             ),
+
+            cause_chain: vec![],
         });
     }
 
@@ -942,6 +946,8 @@ pub fn preview_gibson_assembly_plan(
         return Err(EngineError {
             code: ErrorCode::InvalidInput,
             message: "Gibson plan requires destination.seq_id".to_string(),
+
+            cause_chain: vec![],
         });
     }
     let destination = engine
@@ -951,6 +957,8 @@ pub fn preview_gibson_assembly_plan(
         .ok_or_else(|| EngineError {
             code: ErrorCode::NotFound,
             message: format!("Destination sequence '{}' not found", destination_id),
+
+            cause_chain: vec![],
         })?
         .clone();
 
@@ -1400,6 +1408,8 @@ pub fn derive_gibson_execution_plan(
         return Err(EngineError {
             code: ErrorCode::InvalidInput,
             message: format!("Gibson plan cannot be applied: {detail}"),
+
+            cause_chain: vec![],
         });
     }
 
@@ -1413,6 +1423,8 @@ pub fn derive_gibson_execution_plan(
                 "Destination sequence '{}' not found during Gibson apply",
                 preview.destination.seq_id
             ),
+
+            cause_chain: vec![],
         })?
         .clone();
     let mut oriented_inserts = Vec::with_capacity(preview.fragments.len());
@@ -1428,6 +1440,8 @@ pub fn derive_gibson_execution_plan(
                     "Insert sequence '{}' not found during Gibson apply",
                     fragment.seq_id
                 ),
+
+                cause_chain: vec![],
             })?
             .clone();
         fragment_seq_ids.push(fragment.seq_id.clone());
@@ -1444,6 +1458,8 @@ pub fn derive_gibson_execution_plan(
                 preview.fragments.len().saturating_mul(2),
                 preview.primer_suggestions.len()
             ),
+
+            cause_chain: vec![],
         });
     }
 
@@ -1460,6 +1476,8 @@ pub fn derive_gibson_execution_plan(
                     message:
                         "Multi-insert Gibson apply currently requires a defined destination opening"
                             .to_string(),
+
+                    cause_chain: vec![],
                 });
             }
             format!("{destination_seq}{concatenated_insert_seq}")
@@ -1481,7 +1499,8 @@ pub fn derive_gibson_execution_plan(
                         message:
                             "Executable Gibson preview did not retain the left terminal junction"
                                 .to_string(),
-                    }
+                    
+                        cause_chain: vec![],}
                         })?;
                 let right_terminal_overlap =
                     preview
@@ -1493,7 +1512,8 @@ pub fn derive_gibson_execution_plan(
                         message:
                             "Executable Gibson preview did not retain the right terminal junction"
                                 .to_string(),
-                    }
+                    
+                        cause_chain: vec![],}
                         })?;
                 build_defined_site_product_sequence_with_terminal_overlaps(
                     &destination_seq,
@@ -1516,7 +1536,8 @@ pub fn derive_gibson_execution_plan(
                     message: format!(
                         "Could not materialize Gibson assembled product with engineered terminal overlap: {message}"
                     ),
-                })?
+                
+                    cause_chain: vec![],})?
             } else {
                 let start =
                     preview
@@ -1527,6 +1548,8 @@ pub fn derive_gibson_execution_plan(
                             message:
                                 "Executable Gibson defined-site preview did not retain start_0based"
                                     .to_string(),
+
+                            cause_chain: vec![],
                         })?;
                 let end = preview
                     .destination
@@ -1536,7 +1559,8 @@ pub fn derive_gibson_execution_plan(
                         message:
                             "Executable Gibson defined-site preview did not retain end_0based_exclusive"
                                 .to_string(),
-                    })?;
+                    
+                        cause_chain: vec![],})?;
                 format!(
                     "{}{}{}",
                     &destination_seq[..start],
@@ -1549,6 +1573,8 @@ pub fn derive_gibson_execution_plan(
             return Err(EngineError {
                 code: ErrorCode::Unsupported,
                 message: format!("Unsupported Gibson opening mode '{other}' for apply"),
+
+                cause_chain: vec![],
             });
         }
     };
@@ -1562,6 +1588,8 @@ pub fn derive_gibson_execution_plan(
                     "Could not materialize Gibson primer '{}' as DNA sequence: {err}",
                     primer.primer_id
                 ),
+
+                cause_chain: vec![],
             })?;
         dna.set_name(match primer.side.as_str() {
             "left_insert_primer" => format!(
@@ -1642,6 +1670,8 @@ fn build_gibson_assembled_product(
         DNAsequence::from_sequence(assembled_product_seq).map_err(|err| EngineError {
             code: ErrorCode::InvalidInput,
             message: format!("Could not materialize Gibson assembled product sequence: {err}"),
+
+            cause_chain: vec![],
         })?;
     let mut features = Vec::new();
     match preview.destination.opening_mode.as_str() {
@@ -1652,7 +1682,8 @@ fn build_gibson_assembled_product(
                     message:
                         "Multi-insert Gibson feature transfer currently requires a defined destination opening"
                             .to_string(),
-                });
+                
+                    cause_chain: vec![],});
             }
             features.extend(clone_shifted_features(destination, 0));
             features.extend(clone_shifted_features(
@@ -1668,6 +1699,8 @@ fn build_gibson_assembled_product(
                     code: ErrorCode::Internal,
                     message: "Executable Gibson defined-site preview did not retain start_0based"
                         .to_string(),
+
+                    cause_chain: vec![],
                 })? as i64;
             let end = preview
                 .destination
@@ -1677,6 +1710,8 @@ fn build_gibson_assembled_product(
                     message:
                         "Executable Gibson defined-site preview did not retain end_0based_exclusive"
                             .to_string(),
+
+                    cause_chain: vec![],
                 })? as i64;
             let total_insert_len = oriented_inserts
                 .iter()
@@ -1703,6 +1738,8 @@ fn build_gibson_assembled_product(
             return Err(EngineError {
                 code: ErrorCode::Unsupported,
                 message: format!("Unsupported Gibson opening mode '{other}' for feature transfer"),
+
+                cause_chain: vec![],
             });
         }
     }
@@ -2565,6 +2602,8 @@ fn load_gibson_fragments(
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Gibson plan fragment {} requires seq_id", idx + 1),
+
+                cause_chain: vec![],
             });
         }
         let dna = engine
@@ -2574,6 +2613,8 @@ fn load_gibson_fragments(
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Insert sequence '{}' not found", seq_id),
+
+                cause_chain: vec![],
             })?
             .clone();
         let preview_fragment = GibsonPreviewInsert {

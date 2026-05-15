@@ -246,6 +246,8 @@ impl GentleEngine {
         let value = serde_json::to_value(store).map_err(|e| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not serialize RNA-read report metadata: {e}"),
+
+            cause_chain: vec![],
         })?;
         self.state
             .metadata
@@ -268,6 +270,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "report_id cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let mut out = String::with_capacity(trimmed.len());
@@ -283,6 +287,8 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: "report_id must contain at least one ASCII letter, digit, '-', '_' or '.'"
                     .to_string(),
+
+                cause_chain: vec![],
             });
         }
         Ok(out)
@@ -300,11 +306,15 @@ impl GentleEngine {
         let text = std::fs::read_to_string(path).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not read RNA-read checkpoint '{}': {e}", path),
+
+            cause_chain: vec![],
         })?;
         let mut checkpoint =
             serde_json::from_str::<RnaReadInterpretCheckpoint>(&text).map_err(|e| EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Could not parse RNA-read checkpoint '{}': {e}", path),
+
+                cause_chain: vec![],
             })?;
         if checkpoint.schema.trim().is_empty() {
             checkpoint.schema = RNA_READ_CHECKPOINT_SCHEMA.to_string();
@@ -316,6 +326,8 @@ impl GentleEngine {
                     "Unsupported RNA-read checkpoint schema '{}' in '{}'",
                     checkpoint.schema, path
                 ),
+
+                cause_chain: vec![],
             });
         }
         Ok(checkpoint)
@@ -331,10 +343,14 @@ impl GentleEngine {
                 "Could not serialize RNA-read checkpoint for '{}': {e}",
                 path
             ),
+
+            cause_chain: vec![],
         })?;
         std::fs::write(path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write RNA-read checkpoint '{}': {e}", path),
+
+            cause_chain: vec![],
         })
     }
 
@@ -524,6 +540,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("RNA-read report '{}' not found", report_id),
+
+                cause_chain: vec![],
             })
     }
 
@@ -540,10 +558,14 @@ impl GentleEngine {
                     "Could not serialize RNA-read report '{}': {e}",
                     report.report_id
                 ),
+
+                cause_chain: vec![],
             })?;
         std::fs::write(path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write RNA-read report to '{path}': {e}"),
+
+            cause_chain: vec![],
         })?;
         Ok(report)
     }
@@ -557,6 +579,8 @@ impl GentleEngine {
                 "Could not serialize RNA-read report '{}': {e}",
                 report.report_id
             ),
+
+            cause_chain: vec![],
         })?;
         if let serde_json::Value::Object(map) = &mut value {
             map.insert(
@@ -587,6 +611,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "RNA-read gene-support commands require at least one gene id".to_string(),
+
+                cause_chain: vec![],
             });
         }
         Ok(normalized)
@@ -836,6 +862,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{}' not found", report.seq_id),
+
+                cause_chain: vec![],
             })?;
         let (_base_splicing, transcript_lanes) =
             self.collect_rna_read_report_transcript_lanes(dna, &report)?;
@@ -1221,10 +1249,14 @@ impl GentleEngine {
                 "Could not serialize RNA-read gene-support summary '{}': {e}",
                 summary.report_id
             ),
+
+            cause_chain: vec![],
         })?;
         std::fs::write(path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write RNA-read gene-support summary to '{path}': {e}"),
+
+            cause_chain: vec![],
         })
     }
 
@@ -1239,10 +1271,14 @@ impl GentleEngine {
                 "Could not serialize RNA-read gene-support audit '{}': {e}",
                 audit.report_id
             ),
+
+            cause_chain: vec![],
         })?;
         std::fs::write(path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write RNA-read gene-support audit to '{path}': {e}"),
+
+            cause_chain: vec![],
         })
     }
 
@@ -1364,6 +1400,8 @@ impl GentleEngine {
         let text = std::fs::read_to_string(path).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not read RNA-read target-quality bundle '{path}': {e}"),
+
+            cause_chain: vec![],
         })?;
         if text.trim().is_empty() {
             return Ok(None);
@@ -1385,6 +1423,8 @@ impl GentleEngine {
             message: format!(
                 "Existing file '{path}' is neither a RNA-read target-quality comparison bundle nor a legacy gene-support summary JSON"
             ),
+
+            cause_chain: vec![],
         })
     }
 
@@ -1433,12 +1473,16 @@ impl GentleEngine {
             message: format!(
                 "Could not serialize RNA-read target-quality comparison bundle for '{path}': {e}"
             ),
+
+            cause_chain: vec![],
         })?;
         std::fs::write(path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!(
                 "Could not write RNA-read target-quality comparison bundle to '{path}': {e}"
             ),
+
+            cause_chain: vec![],
         })
     }
 
@@ -1724,6 +1768,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "RNA-read target-quality export requires non-empty path".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let report = self.get_rna_read_report(report_id)?;
@@ -1790,6 +1836,8 @@ impl GentleEngine {
                 "Could not write RNA-read target-quality SVG to '{}': {e}",
                 written_svg_path
             ),
+
+            cause_chain: vec![],
         })?;
         Ok(RnaReadTargetQualityExport {
             schema: RNA_READ_TARGET_QUALITY_EXPORT_SCHEMA.to_string(),
@@ -2075,6 +2123,8 @@ impl GentleEngine {
         let mut writer = BufWriter::new(File::create(path).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not create RNA-read FASTA output '{}': {e}", path),
+
+            cause_chain: vec![],
         })?);
         let explicit_record_filter = selected_record_indices
             .iter()
@@ -2150,16 +2200,22 @@ impl GentleEngine {
             writeln!(writer, ">{header}").map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not write FASTA header to '{}': {e}", path),
+
+                cause_chain: vec![],
             })?;
             writeln!(writer, "{}", hit.sequence).map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not write FASTA sequence to '{}': {e}", path),
+
+                cause_chain: vec![],
             })?;
             written += 1;
         }
         writer.flush().map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not flush FASTA output '{}': {e}", path),
+
+            cause_chain: vec![],
         })?;
         Ok(written)
     }
@@ -2721,13 +2777,16 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "RNA-read transcript catalog index requires at least one --transcript-fasta path".to_string(),
-            });
+            
+                cause_chain: vec![],});
         }
         if seed_kmer_len == 0 || seed_kmer_len > 16 {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "RNA-read transcript catalog index requires --kmer-len within 1..=16"
                     .to_string(),
+
+                cause_chain: vec![],
             });
         }
         let mut warnings = Vec::<String>::new();
@@ -2790,6 +2849,8 @@ impl GentleEngine {
                 "Could not serialize RNA-read transcript catalog index for '{}': {}",
                 output_path, e
             ),
+
+            cause_chain: vec![],
         })?;
         std::fs::write(output_path, payload).map_err(|e| EngineError {
             code: ErrorCode::Io,
@@ -2797,6 +2858,8 @@ impl GentleEngine {
                 "Could not write RNA-read transcript catalog index to '{}': {}",
                 output_path, e
             ),
+
+            cause_chain: vec![],
         })?;
         Ok(index)
     }
@@ -2820,6 +2883,8 @@ impl GentleEngine {
                 "Could not read RNA-read transcript catalog index '{}': {}",
                 path, e
             ),
+
+            cause_chain: vec![],
         })?;
         let index: RnaReadTranscriptCatalogIndex =
             serde_json::from_str(&text).map_err(|e| EngineError {
@@ -2828,6 +2893,8 @@ impl GentleEngine {
                     "Could not parse RNA-read transcript catalog index '{}': {}",
                     path, e
                 ),
+
+                cause_chain: vec![],
             })?;
         if index.schema != RNA_READ_TRANSCRIPT_CATALOG_INDEX_SCHEMA {
             return Err(EngineError {
@@ -2836,6 +2903,8 @@ impl GentleEngine {
                     "RNA-read transcript catalog index '{}' uses unsupported schema '{}' (expected '{}')",
                     path, index.schema, RNA_READ_TRANSCRIPT_CATALOG_INDEX_SCHEMA
                 ),
+
+                cause_chain: vec![],
             });
         }
         if index.seed_kmer_len != expected_kmer_len {
@@ -2845,6 +2914,8 @@ impl GentleEngine {
                     "RNA-read transcript catalog index '{}' was built with kmer_len={} but the report requires kmer_len={}",
                     path, index.seed_kmer_len, expected_kmer_len
                 ),
+
+                cause_chain: vec![],
             });
         }
         for warning in &index.warnings {
@@ -2952,6 +3023,8 @@ impl GentleEngine {
         let text = std::fs::read_to_string(path).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not read RNA-read adapter FASTA '{}': {e}", path),
+
+            cause_chain: vec![],
         })?;
         let mut signatures = Vec::<RnaReadAdapterSignature>::new();
         let mut current_header = None::<String>;
@@ -3007,6 +3080,8 @@ impl GentleEngine {
                     "RNA-read adapter FASTA '{}' did not contain any readable sequences",
                     path
                 ),
+
+                cause_chain: vec![],
             });
         }
         Ok(signatures)
@@ -3470,6 +3545,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "RNA-read concatemer inspection requires --limit >= 1".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let mut settings = settings;
@@ -3882,6 +3959,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "RNA-read alignment inspection requires --limit >= 1".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let subset_spec = Self::normalize_rna_read_alignment_inspection_subset_spec(subset_spec);
@@ -4042,6 +4121,8 @@ impl GentleEngine {
                     "RNA-read report '{}' has no retained row with record_index={}",
                     report.report_id, record_index
                 ),
+
+                cause_chain: vec![],
             })?;
         let mapping = hit.best_mapping.as_ref().ok_or_else(|| EngineError {
             code: ErrorCode::NotFound,
@@ -4050,6 +4131,8 @@ impl GentleEngine {
                 report.report_id,
                 record_index + 1
             ),
+
+            cause_chain: vec![],
         })?;
         let dna = self
             .state
@@ -4058,6 +4141,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{}' not found", report.seq_id),
+
+                cause_chain: vec![],
             })?;
         let (_splicing, transcript_lanes) =
             self.collect_rna_read_report_transcript_lanes(dna, &report)?;
@@ -4070,6 +4155,8 @@ impl GentleEngine {
                     "Could not rebuild transcript template '{}' for RNA-read report '{}'",
                     mapping.transcript_id, report.report_id
                 ),
+
+                cause_chain: vec![],
             })?;
         let template =
             Self::make_transcript_template(dna, template_lane, report.seed_filter.kmer_len);
@@ -4080,6 +4167,8 @@ impl GentleEngine {
                     "Transcript template '{}' is empty for RNA-read alignment detail",
                     mapping.transcript_id
                 ),
+
+                cause_chain: vec![],
             });
         }
         let normalized_read = hit
@@ -4112,7 +4201,8 @@ impl GentleEngine {
                 record_index + 1,
                 report.report_id
             ),
-        })?;
+        
+            cause_chain: vec![],})?;
         let (aligned_query, aligned_relation, aligned_target, _insertions, _deletions) =
             Self::format_rna_read_alignment_strings(
                 &oriented_query,
@@ -4179,6 +4269,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "RNA-read alignment TSV export requires non-empty path".to_string(),
+
+                cause_chain: vec![],
             });
         }
         if let Some(value) = limit {
@@ -4186,6 +4278,8 @@ impl GentleEngine {
                 return Err(EngineError {
                     code: ErrorCode::InvalidInput,
                     message: "RNA-read alignment TSV export requires --limit >= 1".to_string(),
+
+                    cause_chain: vec![],
                 });
             }
         }
@@ -4212,6 +4306,8 @@ impl GentleEngine {
                 "Could not create RNA-read alignment TSV export '{}': {e}",
                 path
             ),
+
+            cause_chain: vec![],
         })?;
         let mut writer = BufWriter::new(file);
         for line in Self::rna_read_alignment_tsv_metadata_lines(
@@ -4228,6 +4324,8 @@ impl GentleEngine {
                     "Could not write RNA-read alignment TSV metadata to '{}': {e}",
                     path
                 ),
+
+                cause_chain: vec![],
             })?;
         }
         writeln!(
@@ -4240,7 +4338,8 @@ impl GentleEngine {
                 "Could not write RNA-read alignment TSV header to '{}': {e}",
                 path
             ),
-        })?;
+        
+            cause_chain: vec![],})?;
         for row in &inspection.rows {
             let full_length_class = Self::rna_read_full_length_class_label(
                 row.full_length_exact,
@@ -4297,11 +4396,14 @@ impl GentleEngine {
                     "Could not write RNA-read alignment TSV row to '{}': {e}",
                     path
                 ),
-            })?;
+            
+                cause_chain: vec![],})?;
         }
         writer.flush().map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not flush RNA-read alignment TSV '{}': {e}", path),
+
+            cause_chain: vec![],
         })?;
         Ok(RnaReadAlignmentTsvExport {
             schema: RNA_READ_ALIGNMENT_TSV_EXPORT_SCHEMA.to_string(),
@@ -4474,12 +4576,16 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "RNA-read alignment dotplot export requires non-empty path".to_string(),
+
+                cause_chain: vec![],
             });
         }
         if max_points == 0 {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "RNA-read alignment dotplot export requires max_points >= 1".to_string(),
+
+                cause_chain: vec![],
             });
         }
 
@@ -4523,6 +4629,8 @@ impl GentleEngine {
                 "Could not write RNA-read alignment dotplot SVG '{}': {e}",
                 path
             ),
+
+            cause_chain: vec![],
         })?;
         Ok(RnaReadAlignmentDotplotSvgExport {
             schema: RNA_READ_ALIGNMENT_DOTPLOT_SVG_EXPORT_SCHEMA.to_string(),
@@ -4582,11 +4690,15 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "RNA-read exon-path export requires non-empty path".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let file = File::create(path).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not create RNA-read exon-path export '{}': {e}", path),
+
+            cause_chain: vec![],
         })?;
         let mut writer = BufWriter::new(file);
         for line in Self::rna_read_tsv_common_metadata_lines(
@@ -4601,6 +4713,8 @@ impl GentleEngine {
                     "Could not write RNA-read exon-path export metadata to '{}': {e}",
                     path
                 ),
+
+                cause_chain: vec![],
             })?;
         }
         writeln!(
@@ -4613,7 +4727,8 @@ impl GentleEngine {
                 "Could not write RNA-read exon-path export header to '{}': {e}",
                 path
             ),
-        })?;
+        
+            cause_chain: vec![],})?;
         let explicit_record_filter = selected_record_indices
             .iter()
             .copied()
@@ -4697,12 +4812,16 @@ impl GentleEngine {
             writeln!(writer, "{row}").map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not write RNA-read exon-path row to '{}': {e}", path),
+
+                cause_chain: vec![],
             })?;
             row_count = row_count.saturating_add(1);
         }
         writer.flush().map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not flush RNA-read exon-path export '{}': {e}", path),
+
+            cause_chain: vec![],
         })?;
         Ok(RnaReadExonPathsExport {
             schema: RNA_READ_EXON_PATHS_EXPORT_SCHEMA.to_string(),
@@ -4727,6 +4846,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "RNA-read exon-abundance export requires non-empty path".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let file = File::create(path).map_err(|e| EngineError {
@@ -4735,6 +4856,8 @@ impl GentleEngine {
                 "Could not create RNA-read exon-abundance export '{}': {e}",
                 path
             ),
+
+            cause_chain: vec![],
         })?;
         let mut writer = BufWriter::new(file);
         for line in Self::rna_read_tsv_common_metadata_lines(
@@ -4749,6 +4872,8 @@ impl GentleEngine {
                     "Could not write RNA-read exon-abundance metadata to '{}': {e}",
                     path
                 ),
+
+                cause_chain: vec![],
             })?;
         }
         writeln!(
@@ -4761,7 +4886,8 @@ impl GentleEngine {
                 "Could not write RNA-read exon-abundance header to '{}': {e}",
                 path
             ),
-        })?;
+        
+            cause_chain: vec![],})?;
         let mut exon_counts = BTreeMap::<usize, usize>::new();
         let mut transition_counts = BTreeMap::<(usize, usize), (usize, usize)>::new();
         let explicit_record_filter = selected_record_indices
@@ -4817,6 +4943,8 @@ impl GentleEngine {
             .map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not write exon-abundance row to '{}': {e}", path),
+
+                cause_chain: vec![],
             })?;
         }
         for ((from_exon, to_exon), (confirmed, total)) in &transition_counts {
@@ -4845,6 +4973,8 @@ impl GentleEngine {
                     "Could not write transition-abundance row to '{}': {e}",
                     path
                 ),
+
+                cause_chain: vec![],
             })?;
         }
         writer.flush().map_err(|e| EngineError {
@@ -4853,6 +4983,8 @@ impl GentleEngine {
                 "Could not flush RNA-read exon-abundance export '{}': {e}",
                 path
             ),
+
+            cause_chain: vec![],
         })?;
         Ok(RnaReadExonAbundanceExport {
             schema: RNA_READ_EXON_ABUNDANCE_EXPORT_SCHEMA.to_string(),
@@ -5216,6 +5348,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "RNA-read score-density SVG export requires non-empty path".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let (bins, derived_from_report_hits_only) =
@@ -5234,6 +5368,8 @@ impl GentleEngine {
         std::fs::write(path, svg).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write RNA-read score-density SVG to '{path}': {e}"),
+
+            cause_chain: vec![],
         })?;
         Ok(RnaReadScoreDensitySvgExport {
             schema: RNA_READ_SCORE_DENSITY_SVG_EXPORT_SCHEMA.to_string(),
@@ -5421,6 +5557,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "RNA-read sample sheet export requires non-empty path".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let seq_filter = seq_id_filter
@@ -5438,6 +5576,8 @@ impl GentleEngine {
                     return Err(EngineError {
                         code: ErrorCode::NotFound,
                         message: format!("RNA-read report '{}' not found", normalized),
+
+                        cause_chain: vec![],
                     });
                 };
                 out.push(report.clone());
@@ -5452,6 +5592,8 @@ impl GentleEngine {
                 code: ErrorCode::NotFound,
                 message: "No RNA-read reports matched the requested sample-sheet selection"
                     .to_string(),
+
+                cause_chain: vec![],
             });
         }
         selected.sort_by(|left, right| {
@@ -5479,6 +5621,8 @@ impl GentleEngine {
             .map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not open RNA-read sample sheet '{}': {e}", path),
+
+                cause_chain: vec![],
             })?;
         let mut writer = BufWriter::new(file);
         if !existing_nonempty {
@@ -5489,7 +5633,8 @@ impl GentleEngine {
             .map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not write sample-sheet header to '{}': {e}", path),
-            })?;
+            
+                cause_chain: vec![],})?;
         }
 
         for report in &selected {
@@ -5596,21 +5741,24 @@ impl GentleEngine {
                             "Could not serialize gene-support requested_gene_ids for report '{}': {e}",
                             report.report_id
                         ),
-                    })?,
+                    
+                        cause_chain: vec![],})?,
                     serde_json::to_string(&summary.matched_gene_ids).map_err(|e| EngineError {
                         code: ErrorCode::Internal,
                         message: format!(
                             "Could not serialize gene-support matched_gene_ids for report '{}': {e}",
                             report.report_id
                         ),
-                    })?,
+                    
+                        cause_chain: vec![],})?,
                     serde_json::to_string(&summary.missing_gene_ids).map_err(|e| EngineError {
                         code: ErrorCode::Internal,
                         message: format!(
                             "Could not serialize gene-support missing_gene_ids for report '{}': {e}",
                             report.report_id
                         ),
-                    })?,
+                    
+                        cause_chain: vec![],})?,
                     summary.complete_rule.as_str().to_string(),
                     summary.aligned_base_count,
                     summary.accepted_target_count,
@@ -5636,7 +5784,8 @@ impl GentleEngine {
                                 "Could not serialize gene-support exon rows for report '{}': {e}",
                                 report.report_id
                             ),
-                        }
+                        
+                            cause_chain: vec![],}
                     })?,
                     serde_json::to_string(&summary.all_target.exon_pair_support).map_err(
                         |e| EngineError {
@@ -5645,7 +5794,8 @@ impl GentleEngine {
                                 "Could not serialize gene-support exon-pair rows for report '{}': {e}",
                                 report.report_id
                             ),
-                        },
+                        
+                            cause_chain: vec![],},
                     )?,
                     serde_json::to_string(&summary.all_target.direct_transition_support).map_err(
                         |e| EngineError {
@@ -5654,7 +5804,8 @@ impl GentleEngine {
                                 "Could not serialize gene-support direct-transition rows for report '{}': {e}",
                                 report.report_id
                             ),
-                        },
+                        
+                            cause_chain: vec![],},
                     )?,
                 )
             };
@@ -5666,6 +5817,8 @@ impl GentleEngine {
                             "Could not serialize exon support frequencies for report '{}': {e}",
                             report.report_id
                         ),
+
+                        cause_chain: vec![],
                     }
                 })?;
             let junction_json = serde_json::to_string(&report.junction_support_frequencies)
@@ -5675,6 +5828,8 @@ impl GentleEngine {
                         "Could not serialize junction support frequencies for report '{}': {e}",
                         report.report_id
                     ),
+
+                    cause_chain: vec![],
                 })?;
             let target_gene_ids_json =
                 serde_json::to_string(&report.target_gene_ids).map_err(|e| EngineError {
@@ -5683,6 +5838,8 @@ impl GentleEngine {
                         "Could not serialize target_gene_ids for report '{}': {e}",
                         report.report_id
                     ),
+
+                    cause_chain: vec![],
                 })?;
             let origin_class_counts_json = serde_json::to_string(&report.origin_class_counts)
                 .map_err(|e| EngineError {
@@ -5691,6 +5848,8 @@ impl GentleEngine {
                         "Could not serialize origin_class_counts for report '{}': {e}",
                         report.report_id
                     ),
+
+                    cause_chain: vec![],
                 })?;
             writeln!(
                 writer,
@@ -5744,11 +5903,14 @@ impl GentleEngine {
                     "Could not write RNA-read sample sheet row to '{}': {e}",
                     path
                 ),
-            })?;
+            
+                cause_chain: vec![],})?;
         }
         writer.flush().map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not flush RNA-read sample sheet '{}': {e}", path),
+
+            cause_chain: vec![],
         })?;
         Ok(RnaReadSampleSheetExport {
             schema: RNA_READ_SAMPLE_SHEET_EXPORT_SCHEMA.to_string(),
@@ -5774,6 +5936,7 @@ impl GentleEngine {
         EngineError {
             code: ErrorCode::InvalidInput,
             message: message.into(),
+            cause_chain: vec![],
         }
     }
 
@@ -5781,6 +5944,7 @@ impl GentleEngine {
         EngineError {
             code: ErrorCode::Io,
             message: format!("Could not {action} '{}': {err}", path.display()),
+            cause_chain: vec![],
         }
     }
 
@@ -5824,6 +5988,8 @@ impl GentleEngine {
         serde_json::to_string(value).map_err(|e| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not serialize RNA-read batch {label}: {e}"),
+
+            cause_chain: vec![],
         })
     }
 
@@ -5835,6 +6001,8 @@ impl GentleEngine {
         let text = serde_json::to_string_pretty(value).map_err(|e| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not serialize RNA-read batch {label}: {e}"),
+
+            cause_chain: vec![],
         })?;
         std::fs::write(path, text)
             .map_err(|e| Self::rna_read_batch_io_error(path, "write RNA-read batch JSON", e))
@@ -5852,6 +6020,8 @@ impl GentleEngine {
         let text = std::fs::read_to_string(manifest_path).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not read RNA-read batch manifest '{manifest_path}': {e}"),
+
+            cause_chain: vec![],
         })?;
         let mut meaningful_lines = text.lines().enumerate().filter(|(_, line)| {
             let trimmed = line.trim();
@@ -7115,7 +7285,8 @@ impl GentleEngine {
                             "sample '{}' input_path '{}' does not exist",
                             manifest_row.sample_id, input_path
                         ),
-                    });
+                    
+                        cause_chain: vec![],});
                 }
                 let report_id = match manifest_row.report_id.as_deref() {
                     Some(raw) => Self::normalize_rna_read_report_id(raw)?,
@@ -7423,6 +7594,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "kmer_len must be within 1..=16".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let dna = self
@@ -7432,6 +7605,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{seq_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let splicing = self.build_splicing_expert_view(seq_id, seed_feature_id, scope)?;
         let templates = splicing
@@ -7448,6 +7623,8 @@ impl GentleEngine {
                     scope.as_str(),
                     seq_id
                 ),
+
+                cause_chain: vec![],
             });
         }
         Ok(templates)
@@ -7469,6 +7646,8 @@ impl GentleEngine {
                 code: ErrorCode::NotFound,
                 message: "No directional k-mer seeds could be generated from transcript templates"
                     .to_string(),
+
+                cause_chain: vec![],
             });
         }
         let mut seed_occurrence_counts = HashMap::<u32, usize>::new();
@@ -7997,6 +8176,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "kmer_len must be within 1..=16".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let dna = self
@@ -8006,6 +8187,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{seq_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let splicing = self.build_splicing_expert_view(seq_id, seed_feature_id, scope)?;
         let transcript_lanes = splicing.transcripts;
@@ -8022,6 +8205,8 @@ impl GentleEngine {
                     scope.as_str(),
                     seq_id
                 ),
+
+                cause_chain: vec![],
             });
         }
         let context = Self::build_rna_read_preflight_scoring_context(
@@ -8078,12 +8263,15 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: "rna-reads preflight-isoforms --optimize-parameters requires at least one --control-transcript-fasta"
                     .to_string(),
-            });
+            
+                cause_chain: vec![],});
         }
         if !(0.0..=1.0).contains(&max_control_match_probability) {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "max_control_match_probability must be within 0.0..=1.0".to_string(),
+
+                cause_chain: vec![],
             });
         }
 
@@ -8298,11 +8486,15 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "RNA seed-hash catalog export requires non-empty path".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let file = File::create(path).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not create RNA seed-hash catalog '{}': {e}", path),
+
+            cause_chain: vec![],
         })?;
         let mut writer = BufWriter::new(file);
         writeln!(
@@ -8312,7 +8504,8 @@ impl GentleEngine {
         .map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write RNA seed-hash catalog header to '{}': {e}", path),
-        })?;
+        
+            cause_chain: vec![],})?;
 
         let mut unique_hashes = HashSet::<u32>::new();
         for row in &rows {
@@ -8333,11 +8526,15 @@ impl GentleEngine {
             .map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not write RNA seed-hash row to '{}': {e}", path),
+
+                cause_chain: vec![],
             })?;
         }
         writer.flush().map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not flush RNA seed-hash catalog '{}': {e}", path),
+
+            cause_chain: vec![],
         })?;
         Ok((rows.len(), unique_hashes.len()))
     }
@@ -8439,6 +8636,8 @@ impl GentleEngine {
         let file = File::open(path).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not open FASTA input '{}': {e}", path),
+
+            cause_chain: vec![],
         })?;
         let input_bytes_total = file.metadata().map(|meta| meta.len()).unwrap_or(0);
         let source_bytes_read = Arc::new(AtomicU64::new(0));
@@ -8521,6 +8720,8 @@ impl GentleEngine {
             let bytes = reader.read_line(&mut line).map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not read FASTA input '{}': {e}", path),
+
+                cause_chain: vec![],
             })?;
             io_read_ms.set(io_read_ms.get() + read_started.elapsed().as_secs_f64() * 1000.0);
             if bytes == 0 {
@@ -8552,6 +8753,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("No FASTA records found in '{}'", path),
+
+                cause_chain: vec![],
             });
         }
         let input_bytes_processed = if input_bytes_total > 0 {
@@ -8585,6 +8788,8 @@ impl GentleEngine {
                     code: ErrorCode::Internal,
                     message: "RNA-read FASTA parsing cancelled during progress reporting"
                         .to_string(),
+
+                    cause_chain: vec![],
                 });
             }
             Ok(())
@@ -8593,6 +8798,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::Internal,
                 message: "RNA-read FASTA parsing cancelled at completion".to_string(),
+
+                cause_chain: vec![],
             });
         }
         Ok(out)
@@ -10408,6 +10615,8 @@ impl GentleEngine {
         let target_feature = features.get(seed_feature_id).ok_or_else(|| EngineError {
             code: ErrorCode::NotFound,
             message: format!("Feature id '{}' was not found in sequence", seed_feature_id),
+
+            cause_chain: vec![],
         })?;
         let target_is_reverse = feature_is_reverse(target_feature);
         let restrict_to_target_strand = scope.restrict_to_target_strand();
@@ -10449,6 +10658,8 @@ impl GentleEngine {
                 let (from, to) = feature.location.find_bounds().map_err(|e| EngineError {
                     code: ErrorCode::InvalidInput,
                     message: format!("Could not parse transcript range: {e}"),
+
+                    cause_chain: vec![],
                 })?;
                 if from >= 0 && to >= 0 {
                     exon_ranges.push((from as usize, to as usize));
@@ -11450,6 +11661,8 @@ impl GentleEngine {
                     "Transcript feature {} for RNA-read alignment detail is no longer available",
                     mapping.transcript_feature_id
                 ),
+
+                cause_chain: vec![],
             })?;
         let template =
             Self::make_transcript_template(dna, template_lane, report.seed_filter.kmer_len);
@@ -11460,6 +11673,8 @@ impl GentleEngine {
                     "Transcript template '{}' is empty for RNA-read alignment detail",
                     mapping.transcript_id
                 ),
+
+                cause_chain: vec![],
             });
         }
         let normalized_read = hit
@@ -11491,6 +11706,8 @@ impl GentleEngine {
                 "Could not reconstruct RNA-read alignment detail for record_index {}",
                 hit.record_index
             ),
+
+            cause_chain: vec![],
         })?;
         Ok(Self::build_alignment_display_from_computed(
             &oriented_query,
@@ -11515,6 +11732,8 @@ impl GentleEngine {
                     "RNA-read report '{}' does not contain record_index {}",
                     report.report_id, record_index
                 ),
+
+                cause_chain: vec![],
             })?;
         let mapping = hit.best_mapping.as_ref().ok_or_else(|| EngineError {
             code: ErrorCode::NotFound,
@@ -11522,6 +11741,8 @@ impl GentleEngine {
                 "RNA-read report '{}' record_index {} has no best_mapping",
                 report.report_id, record_index
             ),
+
+            cause_chain: vec![],
         })?;
         let dna = self
             .state
@@ -11530,6 +11751,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{}' not found", report.seq_id),
+
+                cause_chain: vec![],
             })?;
         let (_splicing, transcript_lanes) =
             self.collect_rna_read_report_transcript_lanes(dna, &report)?;
@@ -11561,6 +11784,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{}' not found", report.seq_id),
+
+                cause_chain: vec![],
             })?;
         let (_splicing, transcript_lanes) =
             self.collect_rna_read_report_transcript_lanes(dna, &report)?;
@@ -11582,6 +11807,8 @@ impl GentleEngine {
                         "RNA-read report '{}' does not contain record_index {}",
                         report.report_id, record_index
                     ),
+
+                    cause_chain: vec![],
                 })?;
             let Some(mapping) = hit.best_mapping.as_ref() else {
                 skipped_records.push(RnaReadAlignmentDisplayBatchSkippedRecord {
@@ -11871,6 +12098,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::Internal,
                 message: "RNA-read alignment phase cancelled before start".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let align_config = align_config_override.unwrap_or_else(|| report.align_config.clone());
@@ -11878,12 +12107,16 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "align_band_width_bp must be > 0".to_string(),
+
+                cause_chain: vec![],
             });
         }
         if !(0.0..=1.0).contains(&align_config.min_identity_fraction) {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "align_min_identity_fraction must be within 0.0..=1.0".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let dna = self
@@ -11893,6 +12126,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{}' not found", report.seq_id),
+
+                cause_chain: vec![],
             })?;
         let (splicing, transcript_lanes) =
             self.collect_rna_read_report_transcript_lanes(dna, &report)?;
@@ -11909,6 +12144,8 @@ impl GentleEngine {
                     report.scope.as_str(),
                     report.seq_id
                 ),
+
+                cause_chain: vec![],
             });
         }
         let transcript_template_lengths = templates
@@ -11929,6 +12166,8 @@ impl GentleEngine {
                 code: ErrorCode::NotFound,
                 message: "No directional k-mer seeds could be generated from transcript templates"
                     .to_string(),
+
+                cause_chain: vec![],
             });
         }
         let seed_catalog_rows =
@@ -12050,6 +12289,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::Internal,
                 message: "RNA-read alignment phase cancelled during progress reporting".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let mut last_progress_emit_at = Instant::now();
@@ -12058,6 +12299,8 @@ impl GentleEngine {
                 return Err(EngineError {
                     code: ErrorCode::Internal,
                     message: "RNA-read alignment phase cancelled during processing".to_string(),
+
+                    cause_chain: vec![],
                 });
             }
             let Some(hit) = report.hits.get_mut(idx) else {
@@ -12319,6 +12562,8 @@ impl GentleEngine {
                         code: ErrorCode::Internal,
                         message: "RNA-read alignment phase cancelled during progress reporting"
                             .to_string(),
+
+                        cause_chain: vec![],
                     });
                 }
                 cumulative_progress_emit_ms += emit_started.elapsed().as_secs_f64() * 1000.0;
@@ -12494,6 +12739,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::Internal,
                 message: "RNA-read alignment phase cancelled at completion".to_string(),
+
+                cause_chain: vec![],
             });
         }
         Ok(report)
@@ -12829,6 +13076,8 @@ impl GentleEngine {
                     "Profile '{}' is not implemented yet in phase 1",
                     profile.as_str()
                 ),
+
+                cause_chain: vec![],
             });
         }
         if !matches!(input_format, RnaReadInputFormat::Fasta) {
@@ -12838,6 +13087,8 @@ impl GentleEngine {
                     "Input format '{}' is not supported yet in phase 1",
                     input_format.as_str()
                 ),
+
+                cause_chain: vec![],
             });
         }
         if input_path.trim().to_ascii_lowercase().ends_with(".sra") {
@@ -12845,24 +13096,32 @@ impl GentleEngine {
                 code: ErrorCode::Unsupported,
                 message: "Direct .sra input is not supported; convert externally to FASTA first"
                     .to_string(),
+
+                cause_chain: vec![],
             });
         }
         if seed_filter.kmer_len == 0 || seed_filter.kmer_len > 16 {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "kmer_len must be within 1..=16".to_string(),
+
+                cause_chain: vec![],
             });
         }
         if !(0.0..=1.0).contains(&seed_filter.min_seed_hit_fraction) {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "min_seed_hit_fraction must be within 0.0..=1.0".to_string(),
+
+                cause_chain: vec![],
             });
         }
         if !(0.0..=1.0).contains(&seed_filter.min_weighted_seed_hit_fraction) {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "min_weighted_seed_hit_fraction must be within 0.0..=1.0".to_string(),
+
+                cause_chain: vec![],
             });
         }
         if !seed_filter.max_median_transcript_gap.is_finite()
@@ -12871,18 +13130,24 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "max_median_transcript_gap must be >= 1.0".to_string(),
+
+                cause_chain: vec![],
             });
         }
         if !(0.0..=1.0).contains(&seed_filter.min_chain_consistency_fraction) {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "min_chain_consistency_fraction must be within 0.0..=1.0".to_string(),
+
+                cause_chain: vec![],
             });
         }
         if !(0.0..=1.0).contains(&seed_filter.min_transition_support_fraction) {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "min_transition_support_fraction must be within 0.0..=1.0".to_string(),
+
+                cause_chain: vec![],
             });
         }
 
@@ -12893,6 +13158,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{seq_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let splicing = self.build_splicing_expert_view(seq_id, seed_feature_id, scope)?;
         let target_feature_strand = splicing.strand.clone();
@@ -12961,6 +13228,8 @@ impl GentleEngine {
                     scope.as_str(),
                     seq_id
                 ),
+
+                cause_chain: vec![],
             });
         }
         let transcript_template_lengths = templates
@@ -12981,6 +13250,8 @@ impl GentleEngine {
                 code: ErrorCode::NotFound,
                 message: "No directional k-mer seeds could be generated from transcript templates"
                     .to_string(),
+
+                cause_chain: vec![],
             });
         }
         let seed_catalog_rows =
@@ -13021,6 +13292,8 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: "resume_from_checkpoint=true requires checkpoint_path to be set"
                     .to_string(),
+
+                cause_chain: vec![],
             });
         }
         let checkpoint_every_reads = options.checkpoint_every_reads.max(1);
@@ -13029,6 +13302,8 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: "resume_from_checkpoint=true requires checkpoint_path to be set"
                     .to_string(),
+
+                cause_chain: vec![],
             })?;
             let checkpoint = Self::read_rna_read_interpret_checkpoint(path)?;
             if checkpoint.seq_id != seq_id
@@ -13050,6 +13325,8 @@ impl GentleEngine {
                         "RNA-read checkpoint '{}' does not match requested interpret parameters",
                         path
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             Some(checkpoint)
@@ -13079,6 +13356,8 @@ impl GentleEngine {
                         "Checkpoint report_id '{}' does not match requested report_id '{}'",
                         checkpoint_report_id, report_id
                     ),
+
+                    cause_chain: vec![],
                 });
             }
         }
@@ -13316,6 +13595,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::Internal,
                 message: "RNA-read interpretation cancelled before FASTA scan started".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let mut last_progress_emit_at = Instant::now();
@@ -13323,6 +13604,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::Internal,
                 message: "RNA-read interpretation cancelled before processing started".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let alignment_enabled = !matches!(profile, RnaReadInterpretationProfile::NanoporeCdnaV1)
@@ -13333,6 +13616,8 @@ impl GentleEngine {
                     return Err(EngineError {
                         code: ErrorCode::Internal,
                         message: "RNA-read interpretation cancelled during FASTA scan".to_string(),
+
+                        cause_chain: vec![],
                     });
                 }
                 input_bytes_processed =
@@ -13367,6 +13652,8 @@ impl GentleEngine {
                             code: ErrorCode::Internal,
                             message: "RNA-read interpretation cancelled during seed scanning"
                                 .to_string(),
+
+                            cause_chain: vec![],
                         });
                     }
                     let (tested, matched, matched_bits, matched_observations) =
@@ -13525,6 +13812,8 @@ impl GentleEngine {
                             code: ErrorCode::Internal,
                             message: "RNA-read interpretation cancelled before alignment"
                                 .to_string(),
+
+                            cause_chain: vec![],
                         });
                     }
                     Self::align_read_to_templates(
@@ -13696,6 +13985,8 @@ impl GentleEngine {
                             code: ErrorCode::Internal,
                             message: "RNA-read interpretation cancelled during progress reporting"
                                 .to_string(),
+
+                            cause_chain: vec![],
                         });
                     }
                     cumulative_progress_emit_ms += emit_started.elapsed().as_secs_f64() * 1000.0;
@@ -13851,6 +14142,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::Internal,
                 message: "RNA-read interpretation cancelled at completion".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let _final_emit_ms = final_emit_started.elapsed().as_secs_f64() * 1000.0;

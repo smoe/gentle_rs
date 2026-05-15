@@ -531,6 +531,8 @@ impl GentleEngine {
                 .ok_or_else(|| EngineError {
                     code: ErrorCode::NotFound,
                     message: format!("Sequence '{}' not found", seq_id),
+
+                    cause_chain: vec![],
                 })?;
             self.derive_promoter_window_records(
                 dna,
@@ -549,6 +551,8 @@ impl GentleEngine {
                     "No transcript-derived promoter windows matched the requested filters on '{}'",
                     seq_id
                 ),
+
+                cause_chain: vec![],
             });
         }
         let dna = self
@@ -558,6 +562,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{}' not found", seq_id),
+
+                cause_chain: vec![],
             })?;
         let existing = dna
             .features()
@@ -627,6 +633,8 @@ impl GentleEngine {
         let dna = self.state.sequences.get(input).ok_or_else(|| EngineError {
             code: ErrorCode::NotFound,
             message: format!("Sequence '{}' not found", input),
+
+            cause_chain: vec![],
         })?;
         let transcript_windows = self.derive_promoter_window_records(
             dna,
@@ -643,6 +651,8 @@ impl GentleEngine {
                     "No transcript-derived promoter windows matched the requested filters on '{}'",
                     input
                 ),
+
+                cause_chain: vec![],
             });
         }
         let collapsed_windows =
@@ -739,12 +749,16 @@ impl GentleEngine {
                 "Could not serialize alternative-promoter comparison report '{}' for '{}': {e}",
                 report.seq_id, path
             ),
+
+            cause_chain: vec![],
         })?;
         std::fs::write(path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!(
                 "Could not write alternative-promoter comparison report to '{path}': {e}"
             ),
+
+            cause_chain: vec![],
         })
     }
 
@@ -1221,6 +1235,8 @@ impl GentleEngine {
         let dna = self.state.sequences.get(input).ok_or_else(|| EngineError {
             code: ErrorCode::NotFound,
             message: format!("Sequence '{}' not found", input),
+
+            cause_chain: vec![],
         })?;
         let transcript_windows = self.derive_promoter_window_records(
             dna,
@@ -1284,6 +1300,8 @@ impl GentleEngine {
                     "No promoter candidates could be derived from transcript TSS or promoter annotations on '{}'",
                     input
                 ),
+
+                cause_chain: vec![],
             });
         }
 
@@ -1945,6 +1963,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{}' not found", input),
+
+                cause_chain: vec![],
             });
         }
         let mut seen_ids = BTreeSet::new();
@@ -2034,6 +2054,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::NotFound,
                 message: "No variant/variation feature is available on this sequence".to_string(),
+
+                cause_chain: vec![],
             });
         }
         if let Some(query) = variant_label_or_id
@@ -2055,6 +2077,8 @@ impl GentleEngine {
                         "No variant/variation feature on this sequence matches '{}'",
                         query
                     ),
+
+                    cause_chain: vec![],
                 });
             }
         }
@@ -2074,6 +2098,8 @@ impl GentleEngine {
         candidates.into_iter().next().ok_or_else(|| EngineError {
             code: ErrorCode::NotFound,
             message: "No variant/variation feature is available on this sequence".to_string(),
+
+            cause_chain: vec![],
         })
     }
 
@@ -2285,6 +2311,8 @@ impl GentleEngine {
         let dna = self.state.sequences.get(input).ok_or_else(|| EngineError {
             code: ErrorCode::NotFound,
             message: format!("Sequence '{}' not found", input),
+
+            cause_chain: vec![],
         })?;
         let (variant_feature_id, variant_feature) =
             Self::select_variant_feature(dna, variant_label_or_id)?;
@@ -2292,6 +2320,8 @@ impl GentleEngine {
             Self::feature_span_bounds(variant_feature).ok_or_else(|| EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Selected variant feature has no usable coordinates".to_string(),
+
+                cause_chain: vec![],
             })?;
         let variant_label = Self::feature_display_label(variant_feature, variant_feature_id);
         let promoter_windows = self.derive_promoter_window_records(
@@ -2506,10 +2536,14 @@ impl GentleEngine {
                 "Could not serialize variant-promoter context report '{}' for '{}': {e}",
                 report.seq_id, path
             ),
+
+            cause_chain: vec![],
         })?;
         std::fs::write(path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write variant-promoter context report to '{path}': {e}"),
+
+            cause_chain: vec![],
         })
     }
 
@@ -2527,6 +2561,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "max_candidates must be >= 1".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let context = self.summarize_variant_promoter_context(
@@ -2622,6 +2658,8 @@ impl GentleEngine {
                     "No promoter-reporter fragment candidates could be derived for '{}'",
                     input
                 ),
+
+                cause_chain: vec![],
             });
         }
         candidates.sort_by(|left, right| {
@@ -2663,6 +2701,8 @@ impl GentleEngine {
                 "No promoter-reporter fragment candidates could be derived for '{}'",
                 input
             ),
+
+            cause_chain: vec![],
         })?;
         Ok(PromoterReporterCandidateSet {
             schema: PROMOTER_REPORTER_CANDIDATES_SCHEMA.to_string(),
@@ -2696,10 +2736,14 @@ impl GentleEngine {
                 "Could not serialize promoter-reporter candidates '{}' for '{}': {e}",
                 report.seq_id, path
             ),
+
+            cause_chain: vec![],
         })?;
         std::fs::write(path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write promoter-reporter candidate report to '{path}': {e}"),
+
+            cause_chain: vec![],
         })
     }
 
@@ -2709,6 +2753,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Selected variant feature has no alternate allele (vcf_alt)".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let alts = trimmed
@@ -2723,6 +2769,8 @@ impl GentleEngine {
                     "MaterializeVariantAllele currently supports only single alternate alleles; observed '{}'",
                     raw_alt
                 ),
+
+                cause_chain: vec![],
             });
         }
         let alt = alts[0].to_ascii_uppercase();
@@ -2733,6 +2781,8 @@ impl GentleEngine {
                     "MaterializeVariantAllele currently supports only SNVs; alternate allele '{}' is not one base",
                     alt
                 ),
+
+                cause_chain: vec![],
             });
         }
         Ok(alt)
@@ -2748,6 +2798,8 @@ impl GentleEngine {
         let dna = self.state.sequences.get(input).ok_or_else(|| EngineError {
             code: ErrorCode::NotFound,
             message: format!("Sequence '{}' not found", input),
+
+            cause_chain: vec![],
         })?;
         let (variant_feature_id, variant_feature) =
             Self::select_variant_feature(dna, variant_label_or_id)?;
@@ -2755,6 +2807,8 @@ impl GentleEngine {
             Self::feature_span_bounds(variant_feature).ok_or_else(|| EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Selected variant feature has no usable coordinates".to_string(),
+
+                cause_chain: vec![],
             })?;
         if variant_end_0based_exclusive.saturating_sub(variant_start_0based) != 1 {
             return Err(EngineError {
@@ -2762,6 +2816,8 @@ impl GentleEngine {
                 message:
                     "MaterializeVariantAllele currently supports only single-nucleotide variants"
                         .to_string(),
+
+                cause_chain: vec![],
             });
         }
         let reference = Self::feature_qualifier_text(variant_feature, "vcf_ref")
@@ -2772,7 +2828,8 @@ impl GentleEngine {
                 message:
                     "Selected variant feature does not carry a single-base reference allele (vcf_ref)"
                         .to_string(),
-            })?;
+            
+                cause_chain: vec![],})?;
         let alternate_raw =
             Self::feature_qualifier_text(variant_feature, "vcf_alt").ok_or_else(|| {
                 EngineError {
@@ -2780,6 +2837,8 @@ impl GentleEngine {
                     message:
                         "Selected variant feature does not carry an alternate allele (vcf_alt)"
                             .to_string(),
+
+                    cause_chain: vec![],
                 }
             })?;
         let alternate = Self::parse_single_base_alternate_allele(&alternate_raw)?;
@@ -2790,6 +2849,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Selected variant position falls outside the sequence".to_string(),
+
+                cause_chain: vec![],
             })? as char;
         let reference_base = reference.chars().next().unwrap_or('N');
         if !current_base.eq_ignore_ascii_case(&reference_base) {
@@ -2801,6 +2862,8 @@ impl GentleEngine {
                     variant_start_0based.saturating_add(1),
                     reference_base
                 ),
+
+                cause_chain: vec![],
             });
         }
         let materialized_base = match allele {

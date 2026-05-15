@@ -401,6 +401,8 @@ impl MainAreaDna {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "No engine attached".to_string(),
+
+                cause_chain: vec![],
             });
         };
         let report = engine

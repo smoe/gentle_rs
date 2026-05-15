@@ -132,6 +132,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "dbSNP rs_id cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let numeric = trimmed
@@ -148,6 +150,8 @@ impl GentleEngine {
                     "Invalid dbSNP rs_id '{}' (expected digits or an rs-prefixed identifier such as rs9923231)",
                     raw
                 ),
+
+                cause_chain: vec![],
             });
         }
         Ok((format!("rs{numeric}"), numeric.to_string()))
@@ -275,6 +279,8 @@ impl GentleEngine {
                     "Could not read dbSNP source file '{}' for rs{}: {e}",
                     path, refsnp_id
                 ),
+
+                cause_chain: vec![],
             })?
         } else {
             let client = reqwest::blocking::Client::builder()
@@ -283,6 +289,8 @@ impl GentleEngine {
                 .map_err(|e| EngineError {
                     code: ErrorCode::Io,
                     message: format!("Could not create dbSNP HTTP client: {e}"),
+
+                    cause_chain: vec![],
                 })?;
             let response = client.get(&source_url).send().map_err(|e| EngineError {
                 code: ErrorCode::Io,
@@ -290,6 +298,8 @@ impl GentleEngine {
                     "Could not fetch dbSNP refSNP '{}' from '{}': {e}",
                     refsnp_id, source_url
                 ),
+
+                cause_chain: vec![],
             })?;
             if !response.status().is_success() {
                 let status = response.status();
@@ -307,6 +317,8 @@ impl GentleEngine {
                 return Err(EngineError {
                     code: ErrorCode::NotFound,
                     message: detail,
+
+                    cause_chain: vec![],
                 });
             }
             response.text().map_err(|e| EngineError {
@@ -315,6 +327,8 @@ impl GentleEngine {
                     "Could not read dbSNP response body for rs{}: {e}",
                     refsnp_id
                 ),
+
+                cause_chain: vec![],
             })?
         };
         Ok((source_url, text))
@@ -331,6 +345,8 @@ impl GentleEngine {
                     "Could not parse dbSNP response JSON for rs{}: {e}",
                     refsnp_id
                 ),
+
+                cause_chain: vec![],
             })?;
         if let Some(error_text) = document
             .get("error")
@@ -348,6 +364,8 @@ impl GentleEngine {
                     "dbSNP refSNP '{}' returned error: {}",
                     refsnp_id, error_text
                 ),
+
+                cause_chain: vec![],
             });
         }
         Ok(document)
@@ -377,6 +395,8 @@ impl GentleEngine {
                     "dbSNP record '{}' does not include any primary genomic placements",
                     resolved_rs_id
                 ),
+
+                cause_chain: vec![],
             })?;
         let mut available_assemblies = std::collections::BTreeSet::new();
         let mut available_families = std::collections::BTreeSet::new();
@@ -480,6 +500,8 @@ impl GentleEngine {
                         "dbSNP record '{}' does not include chromosome-position allele coordinates",
                         resolved_rs_id
                     ),
+
+                    cause_chain: vec![],
                 })?;
             let chromosome = if spdi_seq_id.trim().is_empty() {
                 placement_seq_id.clone()
@@ -533,6 +555,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::NotFound,
                 message: detail,
+
+                cause_chain: vec![],
             });
         };
         let gene_symbols = Self::dbsnp_collect_gene_symbols(document);
@@ -582,6 +606,8 @@ impl GentleEngine {
                     "dbSNP record '{}' did not expose a usable 1-based genomic position",
                     resolved_rs_id
                 ),
+
+                cause_chain: vec![],
             })?;
         Ok(DbsnpResolvedPlacement {
             rs_id: resolved_rs_id,
@@ -810,7 +836,8 @@ impl GentleEngine {
             message:
                 "Could not resolve TF motif for feature (missing tf_id/label resolvable in motif registry)"
                     .to_string(),
-        }))
+        
+            cause_chain: vec![],}))
     }
 
     pub(super) fn build_tfbs_expert_view(
@@ -825,6 +852,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{seq_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let feature = dna.features().get(feature_id).ok_or_else(|| EngineError {
             code: ErrorCode::NotFound,
@@ -832,6 +861,8 @@ impl GentleEngine {
                 "Feature id '{}' was not found in sequence '{}'",
                 feature_id, seq_id
             ),
+
+            cause_chain: vec![],
         })?;
         if !Self::is_tfbs_feature(feature) {
             return Err(EngineError {
@@ -840,16 +871,22 @@ impl GentleEngine {
                     "Feature '{}' in '{}' is not a TFBS/protein-bind feature",
                     feature_id, seq_id
                 ),
+
+                cause_chain: vec![],
             });
         }
         let (from, _to) = feature.location.find_bounds().map_err(|e| EngineError {
             code: ErrorCode::InvalidInput,
             message: format!("Could not read TFBS feature range: {e}"),
+
+            cause_chain: vec![],
         })?;
         if from < 0 {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "TFBS feature has negative range bounds".to_string(),
+
+                cause_chain: vec![],
             });
         }
 
@@ -858,6 +895,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Resolved motif '{tf_id}' has empty matrix"),
+
+                cause_chain: vec![],
             });
         }
         let motif_length = matrix_counts.len();
@@ -871,6 +910,8 @@ impl GentleEngine {
                 end,
                 feature_id
             ),
+
+            cause_chain: vec![],
         })?;
         let is_reverse = feature_is_reverse(feature);
         if is_reverse {
@@ -973,6 +1014,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Restriction-site cut_pos_1based must be >= 1".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let dna = self
@@ -982,6 +1025,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{seq_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let enzyme_filter = enzyme
             .map(str::trim)
@@ -1019,6 +1064,8 @@ impl GentleEngine {
                     "No restriction-site match found for cut position {} in '{}'",
                     cut_pos_1based, seq_id
                 ),
+
+                cause_chain: vec![],
             });
         }
         if candidates.len() > 1 {
@@ -1028,6 +1075,8 @@ impl GentleEngine {
                     "Restriction-site target is ambiguous for cut position {} in '{}'; provide enzyme and/or recognition start/end",
                     cut_pos_1based, seq_id
                 ),
+
+                cause_chain: vec![],
             });
         }
         let (key, mut names) = candidates.into_iter().next().unwrap_or_default();
@@ -1077,6 +1126,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{seq_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let start_1based = key.from().max(0) as usize + 1;
         let end_1based = key.to().max(0) as usize;
@@ -1328,6 +1379,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "projection_id cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let mut out = String::with_capacity(trimmed.len());
@@ -1345,7 +1398,8 @@ impl GentleEngine {
                 message:
                     "projection_id must contain at least one ASCII letter, digit, '.', '-', '_' or '@'"
                         .to_string(),
-            });
+            
+                cause_chain: vec![],});
         }
         Ok(normalized)
     }
@@ -1384,6 +1438,8 @@ impl GentleEngine {
         let value = serde_json::to_value(store).map_err(|e| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not serialize Ensembl gene entry metadata: {e}"),
+
+            cause_chain: vec![],
         })?;
         self.state
             .metadata
@@ -1400,6 +1456,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Ensembl gene entry_id cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         entry.entry_id = normalized.clone();
@@ -1463,6 +1521,8 @@ impl GentleEngine {
                 "Ensembl gene entry '{}' not found in project metadata",
                 entry_id.trim()
             ),
+
+            cause_chain: vec![],
         })
     }
 
@@ -1525,6 +1585,8 @@ impl GentleEngine {
         let value = serde_json::to_value(store).map_err(|e| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not serialize Ensembl protein entry metadata: {e}"),
+
+            cause_chain: vec![],
         })?;
         self.state
             .metadata
@@ -1541,6 +1603,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Ensembl protein entry_id cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         entry.entry_id = normalized.clone();
@@ -1603,6 +1667,8 @@ impl GentleEngine {
                 "Ensembl protein entry '{}' not found in project metadata",
                 entry_id.trim()
             ),
+
+            cause_chain: vec![],
         })
     }
 
@@ -1671,6 +1737,8 @@ impl GentleEngine {
         let value = serde_json::to_value(store).map_err(|e| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not serialize UniProt entry metadata: {e}"),
+
+            cause_chain: vec![],
         })?;
         self.state
             .metadata
@@ -1701,6 +1769,8 @@ impl GentleEngine {
         let value = serde_json::to_value(store).map_err(|e| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not serialize UniProt projection metadata: {e}"),
+
+            cause_chain: vec![],
         })?;
         self.state
             .metadata
@@ -1717,6 +1787,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "UniProt entry_id cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         entry.entry_id = normalized.clone();
@@ -1773,6 +1845,8 @@ impl GentleEngine {
                 "UniProt entry '{}' not found in project metadata",
                 entry_id.trim()
             ),
+
+            cause_chain: vec![],
         })
     }
 
@@ -1813,6 +1887,8 @@ impl GentleEngine {
                     "UniProt genome projection '{}' was not found",
                     projection_id
                 ),
+
+                cause_chain: vec![],
             })
     }
 
@@ -1874,6 +1950,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{seq_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let features = dna.features();
         let source_sequence_upper = dna.get_forward_string().to_ascii_uppercase().into_bytes();
@@ -1913,6 +1991,8 @@ impl GentleEngine {
                 "Projected transcript '{}' was not found as a derivable transcript in sequence '{}'",
                 transcript_projection.transcript_id, seq_id
             ),
+
+            cause_chain: vec![],
         })
     }
 
@@ -2140,6 +2220,8 @@ impl GentleEngine {
                         "Ensembl protein entry '{}' not found in project metadata",
                         entry_id
                     ),
+
+                    cause_chain: vec![],
                 });
         }
         let mut candidates = store
@@ -2178,6 +2260,8 @@ impl GentleEngine {
                         .collect::<Vec<_>>()
                         .join(", ")
                 ),
+
+                cause_chain: vec![],
             })
         }
     }
@@ -3375,12 +3459,16 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{}' not found", projection.seq_id),
+
+                cause_chain: vec![],
             })?;
         let feature_query = feature_query.trim();
         if feature_query.is_empty() {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Protein feature query cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let transcript_filter = transcript_filter
@@ -3585,6 +3673,8 @@ impl GentleEngine {
                     "No mapped UniProt feature matched query '{}' in projection '{}'{}; {}",
                     feature_query, projection.projection_id, transcript_hint, suffix
                 ),
+
+                cause_chain: vec![],
             });
         }
 
@@ -3625,6 +3715,8 @@ impl GentleEngine {
                     "Could not read Ensembl {label} fixture '{}' for '{query}': {e}",
                     path
                 ),
+
+                cause_chain: vec![],
             });
         }
         let client = reqwest::blocking::Client::builder()
@@ -3633,10 +3725,14 @@ impl GentleEngine {
             .map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not create Ensembl HTTP client: {e}"),
+
+                cause_chain: vec![],
             })?;
         let response = client.get(url).send().map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not fetch Ensembl {label} for '{query}': {e}"),
+
+            cause_chain: vec![],
         })?;
         if !response.status().is_success() {
             let status = response.status();
@@ -3654,11 +3750,15 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::NotFound,
                 message: detail,
+
+                cause_chain: vec![],
             });
         }
         response.text().map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not read Ensembl {label} response for '{query}': {e}"),
+
+            cause_chain: vec![],
         })
     }
 
@@ -3672,11 +3772,15 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Ensembl gene query cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let resolved_query = resolve_ensembl_gene_query(query).map_err(|e| EngineError {
             code: ErrorCode::InvalidInput,
             message: e,
+
+            cause_chain: vec![],
         })?;
         let base_url = Self::ensembl_rest_base_url();
         let (lookup_url, lookup_label) = match resolved_query.kind {
@@ -3697,7 +3801,8 @@ impl GentleEngine {
                             "Ensembl gene symbol query '{}' requires --species (for example homo_sapiens)",
                             query
                         ),
-                    })?;
+                    
+                        cause_chain: vec![],})?;
                 (
                     format!(
                         "{base_url}/lookup/symbol/{species}/{}?content-type=application/json;expand=1",
@@ -3712,6 +3817,8 @@ impl GentleEngine {
             crate::ensembl_gene::parse_gene_lookup_json(&lookup_json).map_err(|e| EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Could not parse Ensembl gene lookup for '{query}': {e}"),
+
+                cause_chain: vec![],
             })?;
         let sequence_url = format!(
             "{base_url}/sequence/id/{}?content-type=application/json;type=genomic",
@@ -3730,6 +3837,8 @@ impl GentleEngine {
         .map_err(|e| EngineError {
             code: ErrorCode::InvalidInput,
             message: format!("Could not assemble Ensembl gene entry for '{query}': {e}"),
+
+            cause_chain: vec![],
         })
     }
 
@@ -3739,6 +3848,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Ensembl region {label} cannot be empty"),
+
+                cause_chain: vec![],
             });
         }
         if trimmed
@@ -3750,6 +3861,8 @@ impl GentleEngine {
                 message: format!(
                     "Ensembl region {label} '{trimmed}' contains unsupported URL path characters"
                 ),
+
+                cause_chain: vec![],
             });
         }
         Ok(trimmed.to_string())
@@ -3766,6 +3879,8 @@ impl GentleEngine {
                 message: format!(
                     "Ensembl region strand '{other}' is not supported (expected '+' or '-')"
                 ),
+
+                cause_chain: vec![],
             }),
         }
     }
@@ -3784,6 +3899,8 @@ impl GentleEngine {
                 message: format!(
                     "Ensembl region requires 1-based bounds with end >= start (got {start_1based}..{end_1based})"
                 ),
+
+                cause_chain: vec![],
             });
         }
         let species = Self::validate_ensembl_region_path_token("species", species)?;
@@ -3814,6 +3931,8 @@ impl GentleEngine {
                 message: format!(
                     "Could not parse Ensembl region sequence for '{query_label}': {e}"
                 ),
+
+                cause_chain: vec![],
             })?;
         let sequence = payload.sequence.to_ascii_uppercase();
         Ok(EnsemblRegionSequenceEntry {
@@ -3860,6 +3979,8 @@ impl GentleEngine {
                 "Could not construct DNA sequence for Ensembl region {}:{}-{}: {e}",
                 entry.chromosome, entry.start_1based, entry.end_1based
             ),
+
+            cause_chain: vec![],
         })?;
         dna.set_name(format!(
             "{} {}:{}-{} ({})",
@@ -3980,11 +4101,15 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Ensembl protein query cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let resolved_query = resolve_ensembl_query(query).map_err(|e| EngineError {
             code: ErrorCode::InvalidInput,
             message: e,
+
+            cause_chain: vec![],
         })?;
         let base_url = Self::ensembl_rest_base_url();
 
@@ -4004,6 +4129,8 @@ impl GentleEngine {
                         message: format!(
                             "Could not parse Ensembl protein lookup for '{query}': {e}"
                         ),
+
+                        cause_chain: vec![],
                     })?;
                 (
                     Some(lookup_url),
@@ -4029,6 +4156,8 @@ impl GentleEngine {
         .map_err(|e| EngineError {
             code: ErrorCode::InvalidInput,
             message: format!("Could not parse Ensembl transcript lookup for '{query}': {e}"),
+
+            cause_chain: vec![],
         })?;
         let protein_id = transcript_lookup
             .translation_id
@@ -4039,6 +4168,8 @@ impl GentleEngine {
                     "Transcript '{}' from Ensembl query '{}' has no translated protein stable ID",
                     transcript_lookup.transcript_id, query
                 ),
+
+                cause_chain: vec![],
             })?;
 
         let sequence_source_url = format!(
@@ -4067,6 +4198,8 @@ impl GentleEngine {
         .map_err(|e| EngineError {
             code: ErrorCode::InvalidInput,
             message: format!("Could not assemble Ensembl protein entry for '{query}': {e}"),
+
+            cause_chain: vec![],
         })
     }
 
@@ -4371,6 +4504,8 @@ impl GentleEngine {
                 "Could not construct DNA sequence for Ensembl gene entry '{}': {e}",
                 entry.entry_id
             ),
+
+            cause_chain: vec![],
         })?;
         dna.set_name(
             entry
@@ -4471,6 +4606,8 @@ impl GentleEngine {
                 "Could not construct protein sequence for Ensembl protein entry '{}': {e}",
                 entry.entry_id
             ),
+
+            cause_chain: vec![],
         })?;
         protein.set_name(
             entry
@@ -4569,6 +4706,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "UniProt query cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let query_url = query.replace(' ', "%20");
@@ -4579,10 +4718,14 @@ impl GentleEngine {
             .map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not create UniProt HTTP client: {e}"),
+
+                cause_chain: vec![],
             })?;
         let response = client.get(&url).send().map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not fetch UniProt entry '{query}': {e}"),
+
+            cause_chain: vec![],
         })?;
         if !response.status().is_success() {
             let status = response.status();
@@ -4600,11 +4743,15 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::NotFound,
                 message: detail,
+
+                cause_chain: vec![],
             });
         }
         let text = response.text().map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not read UniProt response body for '{query}': {e}"),
+
+            cause_chain: vec![],
         })?;
         Ok((url, text))
     }
@@ -4615,6 +4762,8 @@ impl GentleEngine {
         let accession = validate_genbank_accession(accession).map_err(|e| EngineError {
             code: ErrorCode::InvalidInput,
             message: e,
+
+            cause_chain: vec![],
         })?;
         let source_url = build_genbank_efetch_url(&accession, "gbwithparts");
         if let Some(path) = source_url.strip_prefix("file://") {
@@ -4624,6 +4773,8 @@ impl GentleEngine {
                     "Could not read GenBank source file '{}' for accession '{}': {e}",
                     path, accession
                 ),
+
+                cause_chain: vec![],
             })?;
             return Ok((source_url, text));
         }
@@ -4633,6 +4784,8 @@ impl GentleEngine {
             .map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not create GenBank HTTP client: {e}"),
+
+                cause_chain: vec![],
             })?;
         let response = client.get(&source_url).send().map_err(|e| EngineError {
             code: ErrorCode::Io,
@@ -4640,6 +4793,8 @@ impl GentleEngine {
                 "Could not fetch GenBank accession '{}' from '{}': {e}",
                 accession, source_url
             ),
+
+            cause_chain: vec![],
         })?;
         if !response.status().is_success() {
             let status = response.status();
@@ -4657,6 +4812,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::NotFound,
                 message: detail,
+
+                cause_chain: vec![],
             });
         }
         let text = response.text().map_err(|e| EngineError {
@@ -4665,6 +4822,8 @@ impl GentleEngine {
                 "Could not read GenBank response body for accession '{}': {e}",
                 accession
             ),
+
+            cause_chain: vec![],
         })?;
         Ok((source_url, text))
     }
@@ -4679,6 +4838,8 @@ impl GentleEngine {
             EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Could not parse SWISS-PROT text: {e}"),
+
+                cause_chain: vec![],
             }
         })
     }
@@ -4709,6 +4870,8 @@ impl GentleEngine {
                 "Could not construct protein sequence for UniProt entry '{}': {e}",
                 entry.entry_id
             ),
+
+            cause_chain: vec![],
         })?;
         protein.set_name(
             entry
@@ -4871,6 +5034,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{}' not found", seq_id),
+
+                cause_chain: vec![],
             })?;
         let entry = self.get_uniprot_entry(entry_id)?;
         let mut warnings: Vec<String> = vec![];
@@ -5246,6 +5411,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Protein residue coordinates are 1-based; start must be >= 1.".to_string(),
+
+                cause_chain: vec![],
             });
         }
         if residue_end_1based < residue_start_1based {
@@ -5254,6 +5421,8 @@ impl GentleEngine {
                 message: format!(
                     "Protein residue end {residue_end_1based} is before start {residue_start_1based}."
                 ),
+
+                cause_chain: vec![],
             });
         }
         let seq = self
@@ -5263,6 +5432,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{seq_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let transcript_filter = transcript_filter
             .map(str::trim)
@@ -5447,6 +5618,8 @@ impl GentleEngine {
                     "No protein residue genomic coordinates were resolved for sequence '{seq_id}'{} over residues {}..{}. {}",
                     transcript_hint, residue_start_1based, residue_end_1based, suffix
                 ),
+
+                cause_chain: vec![],
             });
         }
 
@@ -5898,6 +6071,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{seq_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let features = dna.features();
         let source_sequence_upper = dna.get_forward_string().to_ascii_uppercase().into_bytes();
@@ -5914,6 +6089,8 @@ impl GentleEngine {
                     "Ensembl protein entry '{}' belongs to transcript '{}' rather than '{}'",
                     entry.entry_id, entry.transcript_id, filter
                 ),
+
+                cause_chain: vec![],
             });
         }
 
@@ -6037,6 +6214,8 @@ impl GentleEngine {
                     "Ensembl protein entry '{}' transcript '{}' was not found as a derivable transcript in sequence '{}'",
                     entry.entry_id, entry.transcript_id, seq_id
                 ),
+
+                cause_chain: vec![],
             });
         }
 
@@ -6272,6 +6451,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{seq_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let features = dna.features();
         let source_sequence_upper = dna.get_forward_string().to_ascii_uppercase().into_bytes();
@@ -6692,6 +6873,8 @@ impl GentleEngine {
                     "Sequence '{}' has no transcript/protein expert rows{}",
                     seq_id, descriptor
                 ),
+
+                cause_chain: vec![],
             });
         }
 
@@ -6761,6 +6944,8 @@ impl GentleEngine {
                     "UniProt projection '{}' belongs to '{}' rather than '{}'",
                     projection_id, projection.seq_id, seq_id
                 ),
+
+                cause_chain: vec![],
             });
         }
         let entry = self.get_uniprot_entry(&projection.entry_id)?;
@@ -6817,11 +7002,15 @@ impl GentleEngine {
         let text = std::fs::read_to_string(path).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not read isoform panel file '{path}': {e}"),
+
+            cause_chain: vec![],
         })?;
         let mut resource =
             serde_json::from_str::<IsoformPanelResource>(&text).map_err(|e| EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Could not parse isoform panel JSON in '{path}': {e}"),
+
+                cause_chain: vec![],
             })?;
         if resource.schema.trim().is_empty() {
             resource.schema = ISOFORM_PANEL_RESOURCE_SCHEMA.to_string();
@@ -6833,6 +7022,8 @@ impl GentleEngine {
                     "Unsupported isoform-panel schema '{}' in '{}'; expected '{}'",
                     resource.schema, path, ISOFORM_PANEL_RESOURCE_SCHEMA
                 ),
+
+                cause_chain: vec![],
             });
         }
         if let Some(override_id) = panel_id_override.map(str::trim).filter(|v| !v.is_empty()) {
@@ -6843,6 +7034,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Isoform panel file '{}' has empty panel_id", path),
+
+                cause_chain: vec![],
             });
         }
         resource.gene_symbol = resource.gene_symbol.trim().to_string();
@@ -6850,6 +7043,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Isoform panel file '{}' has empty gene_symbol", path),
+
+                cause_chain: vec![],
             });
         }
         Self::normalize_isoform_panel_curation(&mut resource.curation);
@@ -6857,6 +7052,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Isoform panel file '{}' has no isoforms", path),
+
+                cause_chain: vec![],
             });
         }
         Self::trim_isoform_panel_optional_text(&mut resource.assembly);
@@ -6907,6 +7104,8 @@ impl GentleEngine {
                         resource.panel_id,
                         idx + 1
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             isoform.label = isoform
@@ -6944,6 +7143,8 @@ impl GentleEngine {
                             domain.start_aa,
                             domain.end_aa
                         ),
+
+                        cause_chain: vec![],
                     });
                 }
                 domain.color_hex = domain
@@ -7062,6 +7263,8 @@ impl GentleEngine {
         let color_hex_re = Regex::new(r"^#[0-9A-Fa-f]{6}$").map_err(|e| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not compile isoform color-hex regex: {e}"),
+
+            cause_chain: vec![],
         })?;
 
         let mut issues: Vec<IsoformPanelValidationIssue> = vec![];
@@ -7534,6 +7737,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{seq_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let features = dna.features();
 
@@ -7583,6 +7788,8 @@ impl GentleEngine {
                 let (from, to) = feature.location.find_bounds().map_err(|e| EngineError {
                     code: ErrorCode::InvalidInput,
                     message: format!("Could not parse transcript range: {e}"),
+
+                    cause_chain: vec![],
                 })?;
                 if from >= 0 && to >= 0 {
                     exon_ranges.push((from as usize, to as usize));
@@ -7637,6 +7844,8 @@ impl GentleEngine {
                 return Err(EngineError {
                     code: ErrorCode::NotFound,
                     message,
+
+                    cause_chain: vec![],
                 });
             }
             warnings.push(message);
@@ -7651,6 +7860,8 @@ impl GentleEngine {
                 return Err(EngineError {
                     code: ErrorCode::InvalidInput,
                     message,
+
+                    cause_chain: vec![],
                 });
             }
             warnings.push(message);
@@ -7734,6 +7945,8 @@ impl GentleEngine {
                     return Err(EngineError {
                         code: ErrorCode::NotFound,
                         message,
+
+                        cause_chain: vec![],
                     });
                 }
                 warnings.push(message.clone());
@@ -7842,6 +8055,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Expression TSV is missing required '{name}' column"),
+
+                cause_chain: vec![],
             })
     }
 
@@ -7857,10 +8072,14 @@ impl GentleEngine {
             .map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not open isoform expression TSV '{path}': {e}"),
+
+                cause_chain: vec![],
             })?;
         let headers = reader.headers().map_err(|e| EngineError {
             code: ErrorCode::InvalidInput,
             message: format!("Could not read isoform expression TSV header from '{path}': {e}"),
+
+            cause_chain: vec![],
         })?;
         let isoform_idx = Self::isoform_expression_required_column(headers, "isoform_id")?;
         let sample_idx = Self::isoform_expression_required_column(headers, "sample_label")?;
@@ -7883,6 +8102,8 @@ impl GentleEngine {
                     "Could not read isoform expression TSV record {} from '{path}': {e}",
                     record_idx + 2
                 ),
+
+                cause_chain: vec![],
             })?;
             let isoform_id = record.get(isoform_idx).unwrap_or("").trim().to_string();
             let sample_label = record.get(sample_idx).unwrap_or("").trim().to_string();
@@ -7894,6 +8115,8 @@ impl GentleEngine {
                         "Expression TSV record {} has an empty isoform_id",
                         record_idx + 2
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             if sample_label.is_empty() {
@@ -7903,6 +8126,8 @@ impl GentleEngine {
                         "Expression TSV record {} has an empty sample_label",
                         record_idx + 2
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             if !seen_pairs.insert((isoform_id.clone(), sample_label.clone())) {
@@ -7911,6 +8136,8 @@ impl GentleEngine {
                     message: format!(
                         "Expression TSV contains duplicate value for isoform_id='{isoform_id}' sample_label='{sample_label}'"
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             let value = raw_value.parse::<f64>().map_err(|e| EngineError {
@@ -7920,6 +8147,8 @@ impl GentleEngine {
                     record_idx + 2,
                     raw_value
                 ),
+
+                cause_chain: vec![],
             })?;
             if !value.is_finite() || value < 0.0 {
                 return Err(EngineError {
@@ -7928,6 +8157,8 @@ impl GentleEngine {
                         "Expression TSV record {} value must be finite and non-negative",
                         record_idx + 2
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             if !known_isoforms.contains(&isoform_id) {
@@ -8400,6 +8631,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{seq_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let features = dna.features();
         let target_feature = features.get(feature_id).ok_or_else(|| EngineError {
@@ -8408,6 +8641,8 @@ impl GentleEngine {
                 "Feature id '{}' was not found in sequence '{}'",
                 feature_id, seq_id
             ),
+
+            cause_chain: vec![],
         })?;
         if !Self::is_splicing_seed_feature(target_feature) {
             return Err(EngineError {
@@ -8416,6 +8651,8 @@ impl GentleEngine {
                     "Feature '{}' in '{}' is not an mRNA/transcript/ncRNA/misc_RNA/exon/gene/CDS feature and cannot seed a splicing view",
                     feature_id, seq_id
                 ),
+
+                cause_chain: vec![],
             });
         }
         let target_group = Self::splicing_group_label(target_feature, feature_id);
@@ -8440,6 +8677,8 @@ impl GentleEngine {
                 .map_err(|e| EngineError {
                     code: ErrorCode::InvalidInput,
                     message: format!("Could not parse target feature range: {e}"),
+
+                    cause_chain: vec![],
                 })?;
             if from >= 0 && to >= 0 {
                 roi_ranges_0based.push((from as usize, to as usize));
@@ -8496,6 +8735,8 @@ impl GentleEngine {
                 let (from, to) = feature.location.find_bounds().map_err(|e| EngineError {
                     code: ErrorCode::InvalidInput,
                     message: format!("Could not parse transcript range: {e}"),
+
+                    cause_chain: vec![],
                 })?;
                 if from >= 0 && to >= 0 {
                     exon_ranges.push((from as usize, to as usize));
@@ -8534,6 +8775,8 @@ impl GentleEngine {
                     "No transcript-like RNA features found for splicing group '{}' in '{}'",
                     target_group, seq_id
                 ),
+
+                cause_chain: vec![],
             });
         }
 
@@ -9306,7 +9549,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::NotFound,
                 message: "No ATtRACT runtime snapshot is active yet. Run `resources sync-attract ATtRACT.zip` first.".to_string(),
-            });
+            
+                cause_chain: vec![],});
         }
         let view = self.build_splicing_expert_view(seq_id, feature_id, settings.scope)?;
         let dna = self
@@ -9316,6 +9560,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{seq_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let requested_organism = settings
             .requested_organism
@@ -9642,13 +9888,15 @@ impl GentleEngine {
                             "Protein comparison external source '{}' is not implemented yet",
                             source.as_str()
                         ),
-                    }),
+                    
+                        cause_chain: vec![],}),
                     _ => Err(EngineError {
                         code: ErrorCode::InvalidInput,
                         message:
                             "Protein comparison external_source and external_entry_id must either both be set or both be omitted"
                                 .to_string(),
-                    }),
+                    
+                        cause_chain: vec![],}),
                 }
             }
             FeatureExpertTarget::UniprotProjection {
@@ -9671,6 +9919,8 @@ impl GentleEngine {
         std::fs::write(path, svg).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write feature-expert SVG to '{path}': {e}"),
+
+            cause_chain: vec![],
         })?;
         Ok(view)
     }
@@ -9691,6 +9941,8 @@ impl GentleEngine {
                 code: ErrorCode::Internal,
                 message: "Unexpected expert-view payload while rendering isoform architecture SVG"
                     .to_string(),
+
+                cause_chain: vec![],
             })?,
         };
         if let Some(expression_tsv_path) = expression_tsv_path
@@ -9704,6 +9956,8 @@ impl GentleEngine {
         std::fs::write(path, svg).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write isoform architecture SVG to '{path}': {e}"),
+
+            cause_chain: vec![],
         })?;
         Ok(view)
     }

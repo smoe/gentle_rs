@@ -6755,9 +6755,7 @@ impl MainAreaDna {
                                 "Promoter design workspace for feature n-{feature_id} on '{seq_id}'"
                             )
                         })
-                        .unwrap_or_else(|| {
-                            format!("Promoter design workspace on '{seq_id}'")
-                        }),
+                        .unwrap_or_else(|| format!("Promoter design workspace on '{seq_id}'")),
                 ));
             }
         }

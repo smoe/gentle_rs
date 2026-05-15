@@ -32,7 +32,9 @@ impl GENtleApp {
         keys
     }
 
-    pub(super) fn protein_feature_filter_from_dialog(&self) -> gentle_protocol::ProteinFeatureFilter {
+    pub(super) fn protein_feature_filter_from_dialog(
+        &self,
+    ) -> gentle_protocol::ProteinFeatureFilter {
         gentle_protocol::ProteinFeatureFilter {
             include_feature_keys: Self::parse_protein_feature_key_list(
                 &self.protein_feature_key_include,
@@ -137,7 +139,9 @@ impl GENtleApp {
         });
     }
 
-    pub(super) fn sort_uniprot_entries_recent(mut rows: Vec<UniprotEntrySummary>) -> Vec<UniprotEntrySummary> {
+    pub(super) fn sort_uniprot_entries_recent(
+        mut rows: Vec<UniprotEntrySummary>,
+    ) -> Vec<UniprotEntrySummary> {
         rows.sort_by(|left, right| {
             right
                 .imported_at_unix_ms
@@ -147,7 +151,10 @@ impl GENtleApp {
         rows
     }
 
-    pub(super) fn recent_uniprot_entries_for_dialog(&self, limit: usize) -> Vec<UniprotEntrySummary> {
+    pub(super) fn recent_uniprot_entries_for_dialog(
+        &self,
+        limit: usize,
+    ) -> Vec<UniprotEntrySummary> {
         let rows = self.engine.read().unwrap().list_uniprot_entries();
         let mut rows = Self::sort_uniprot_entries_recent(rows);
         let cap = limit.max(1);
@@ -429,7 +436,11 @@ impl GENtleApp {
         }
     }
 
-    pub(super) fn open_uniprot_projection_expert_from_dialog(&mut self, seq_id: &str, projection_id: &str) {
+    pub(super) fn open_uniprot_projection_expert_from_dialog(
+        &mut self,
+        seq_id: &str,
+        projection_id: &str,
+    ) {
         let seq_id = seq_id.trim();
         let projection_id = projection_id.trim();
         if seq_id.is_empty() {
@@ -770,7 +781,10 @@ impl GENtleApp {
         }
     }
 
-    pub(super) fn default_uniprot_projection_svg_file_name(seq_id: &str, projection_id: &str) -> String {
+    pub(super) fn default_uniprot_projection_svg_file_name(
+        seq_id: &str,
+        projection_id: &str,
+    ) -> String {
         let stem = Self::sanitize_file_stem(
             &format!("{}_{}", seq_id.trim(), projection_id.trim()),
             "uniprot_projection",
@@ -805,7 +819,11 @@ impl GENtleApp {
         format!("{stem}.protein_compare.svg")
     }
 
-    pub(super) fn export_uniprot_projection_svg_from_dialog(&mut self, seq_id: &str, projection_id: &str) {
+    pub(super) fn export_uniprot_projection_svg_from_dialog(
+        &mut self,
+        seq_id: &str,
+        projection_id: &str,
+    ) {
         let seq_id = seq_id.trim();
         let projection_id = projection_id.trim();
         if seq_id.is_empty() || projection_id.is_empty() {
@@ -1008,7 +1026,9 @@ impl GENtleApp {
         }
     }
 
-    pub(super) fn reverse_translation_speed_mark_label(mark: Option<TranslationSpeedMark>) -> &'static str {
+    pub(super) fn reverse_translation_speed_mark_label(
+        mark: Option<TranslationSpeedMark>,
+    ) -> &'static str {
         match mark {
             None => "Auto",
             Some(TranslationSpeedMark::Fast) => "Fast",

@@ -4734,6 +4734,8 @@ Error: `{err}`"
             .map_err(|_| EngineError {
                 code: ErrorCode::Internal,
                 message: "Engine lock poisoned".to_string(),
+
+                cause_chain: vec![],
             })
             .and_then(|mut engine| engine.undo_last_operation());
         match outcome {
@@ -4758,6 +4760,8 @@ Error: `{err}`"
             .map_err(|_| EngineError {
                 code: ErrorCode::Internal,
                 message: "Engine lock poisoned".to_string(),
+
+                cause_chain: vec![],
             })
             .and_then(|mut engine| engine.redo_last_operation());
         match outcome {
@@ -10150,6 +10154,8 @@ Error: `{err}`"
                         done = Some(Err(EngineError {
                             code: ErrorCode::Io,
                             message: "dbSNP fetch worker disconnected".to_string(),
+
+                            cause_chain: vec![],
                         }));
                         break;
                     }
@@ -10947,6 +10953,8 @@ Error: `{err}`"
                             Err(EngineError {
                                 code: ErrorCode::Internal,
                                 message: "Genome preparation worker disconnected".to_string(),
+
+                                cause_chain: vec![],
                             }),
                         ));
                         break;
@@ -11319,6 +11327,8 @@ Error: `{err}`"
                             Err(EngineError {
                                 code: ErrorCode::Internal,
                                 message: "Genome track import worker disconnected".to_string(),
+
+                                cause_chain: vec![],
                             }),
                         ));
                         break;
@@ -11831,6 +11841,8 @@ Error: `{err}`"
                             break Err(EngineError {
                                 code: ErrorCode::Io,
                                 message: "BLAST worker disconnected".to_string(),
+
+                                cause_chain: vec![],
                             });
                         }
                     }
@@ -31970,6 +31982,8 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
             result: Err(EngineError {
                 code: ErrorCode::Internal,
                 message: "stale".to_string(),
+
+                cause_chain: vec![],
             }),
         })
         .unwrap();
@@ -31978,6 +31992,8 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
             result: Err(EngineError {
                 code: ErrorCode::Internal,
                 message: "actual".to_string(),
+
+                cause_chain: vec![],
             }),
         })
         .unwrap();
@@ -32018,6 +32034,8 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
             result: Err(EngineError {
                 code: ErrorCode::Internal,
                 message: "worker interrupted".to_string(),
+
+                cause_chain: vec![],
             }),
         })
         .expect("send prepare done");
@@ -32054,6 +32072,8 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
             result: Err(EngineError {
                 code: ErrorCode::Io,
                 message: "Genome preparation cancelled for 'toy_genome'".to_string(),
+
+                cause_chain: vec![],
             }),
         })
         .expect("send prepare done");
@@ -32090,7 +32110,8 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
             result: Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Prepared genome 'Caenorhabditis elegans WBcel235 Ensembl 115' is inconsistent: annotation gene index '/tmp/genes.json' references contigs missing from prepared sequence '/tmp/sequence.fa'".to_string(),
-            }),
+            
+                cause_chain: vec![],}),
         })
         .expect("send prepare failure");
 

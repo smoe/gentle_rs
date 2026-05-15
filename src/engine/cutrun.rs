@@ -925,6 +925,8 @@ fn file_size_bytes(path: &Path) -> Result<u64, EngineError> {
         .map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not inspect '{}': {e}", path.display()),
+
+            cause_chain: vec![],
         })
 }
 
@@ -935,6 +937,8 @@ fn checksum_sha1(path: &Path) -> Result<String, EngineError> {
             "Could not open '{}' to compute checksum: {e}",
             path.display()
         ),
+
+        cause_chain: vec![],
     })?;
     let mut hasher = Sha1::new();
     let mut buffer = [0u8; 16 * 1024];
@@ -945,6 +949,8 @@ fn checksum_sha1(path: &Path) -> Result<String, EngineError> {
                 "Could not read '{}' while computing checksum: {e}",
                 path.display()
             ),
+
+            cause_chain: vec![],
         })?;
         if read == 0 {
             break;
@@ -966,6 +972,8 @@ impl GentleEngine {
         .map_err(|e| EngineError {
             code: ErrorCode::InvalidInput,
             message: e,
+
+            cause_chain: vec![],
         })?;
         Ok(catalog)
     }
@@ -1010,6 +1018,8 @@ impl GentleEngine {
             catalog.resolve_entry(dataset_id).map_err(|e| EngineError {
                 code: ErrorCode::InvalidInput,
                 message: e,
+
+                cause_chain: vec![],
             })?;
         let effective_cache_dir = catalog.cache_dir_for_entry(entry, cache_dir);
         let install_dir = effective_cache_dir.join(sanitize_for_path(&resolved_dataset_id));
@@ -1019,12 +1029,16 @@ impl GentleEngine {
                 "Could not create CUT&RUN install directory '{}': {e}",
                 install_dir.display()
             ),
+
+            cause_chain: vec![],
         })?;
         let mut activity_tracker =
             match CutRunPrepareActivityTracker::start(&install_dir, &resolved_dataset_id).map_err(
                 |message| EngineError {
                     code: ErrorCode::Io,
                     message,
+
+                    cause_chain: vec![],
                 },
             )? {
                 CutRunPrepareActivityStart::Acquired(tracker) => tracker,
@@ -1078,6 +1092,8 @@ impl GentleEngine {
                     "CUT&RUN dataset '{}' does not declare any prepared peaks, signal, or raw-read assets",
                     resolved_dataset_id
                 ),
+
+                cause_chain: vec![],
             });
         }
         let prepared_status = (|| -> Result<CutRunDatasetStatus, EngineError> {
@@ -1206,6 +1222,8 @@ impl GentleEngine {
                 message:
                     "ProjectCutRunDataset requires at least one of include_peaks/include_signal"
                         .to_string(),
+
+                cause_chain: vec![],
             });
         }
         let catalog = Self::open_cutrun_catalog(catalog_path)?;
@@ -1213,6 +1231,8 @@ impl GentleEngine {
             catalog.resolve_entry(dataset_id).map_err(|e| EngineError {
                 code: ErrorCode::InvalidInput,
                 message: e,
+
+                cause_chain: vec![],
             })?;
         let status =
             self.cutrun_dataset_status_from_catalog(&catalog, &resolved_dataset_id, cache_dir)?;
@@ -1232,6 +1252,8 @@ impl GentleEngine {
                     seq_id,
                     anchor.genome_id
                 ),
+
+                cause_chain: vec![],
             });
         }
 
@@ -1261,6 +1283,8 @@ impl GentleEngine {
                 .ok_or_else(|| EngineError {
                     code: ErrorCode::NotFound,
                     message: format!("Sequence '{}' was not found", seq_id),
+
+                    cause_chain: vec![],
                 })?;
 
             if include_peaks {
@@ -1319,6 +1343,8 @@ impl GentleEngine {
                     "No prepared CUT&RUN peaks/signal assets were available to project for '{}'",
                     resolved_dataset_id
                 ),
+
+                cause_chain: vec![],
             });
         }
         Ok(report)
@@ -1334,6 +1360,8 @@ impl GentleEngine {
             catalog.resolve_entry(dataset_id).map_err(|e| EngineError {
                 code: ErrorCode::InvalidInput,
                 message: e,
+
+                cause_chain: vec![],
             })?;
         let effective_cache_dir = catalog.cache_dir_for_entry(entry, cache_dir);
         let install_dir = effective_cache_dir.join(sanitize_for_path(&resolved_dataset_id));
@@ -1345,6 +1373,8 @@ impl GentleEngine {
         .map_err(|message| EngineError {
             code: ErrorCode::Io,
             message,
+
+            cause_chain: vec![],
         })?;
         let manifest = if manifest_path.exists() {
             Some(self.read_cutrun_prepared_manifest(&manifest_path)?)
@@ -1491,6 +1521,8 @@ impl GentleEngine {
                 "Could not serialize CUT&RUN prepared manifest '{}': {e}",
                 path.display()
             ),
+
+            cause_chain: vec![],
         })?;
         fs::write(path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
@@ -1498,6 +1530,8 @@ impl GentleEngine {
                 "Could not write CUT&RUN prepared manifest '{}': {e}",
                 path.display()
             ),
+
+            cause_chain: vec![],
         })
     }
 
@@ -1511,6 +1545,8 @@ impl GentleEngine {
                 "Could not read CUT&RUN prepared manifest '{}': {e}",
                 path.display()
             ),
+
+            cause_chain: vec![],
         })?;
         let manifest =
             serde_json::from_str::<CutRunPreparedManifest>(&text).map_err(|e| EngineError {
@@ -1519,6 +1555,8 @@ impl GentleEngine {
                     "Could not parse CUT&RUN prepared manifest '{}': {e}",
                     path.display()
                 ),
+
+                cause_chain: vec![],
             })?;
         if manifest.schema != CUTRUN_PREPARED_MANIFEST_SCHEMA {
             return Err(EngineError {
@@ -1528,6 +1566,8 @@ impl GentleEngine {
                     manifest.schema,
                     path.display()
                 ),
+
+                cause_chain: vec![],
             });
         }
         Ok(manifest)
@@ -1566,10 +1606,14 @@ impl GentleEngine {
             let client = Client::builder().build().map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not build HTTP client for CUT&RUN prepare: {e}"),
+
+                cause_chain: vec![],
             })?;
             let mut response = client.get(source).send().map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not download CUT&RUN asset '{}': {e}", source),
+
+                cause_chain: vec![],
             })?;
             if !response.status().is_success() {
                 return Err(EngineError {
@@ -1579,6 +1623,8 @@ impl GentleEngine {
                         source,
                         response.status()
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             let total = response.content_length();
@@ -1591,6 +1637,8 @@ impl GentleEngine {
                     "Could not create CUT&RUN asset destination '{}': {e}",
                     destination.display()
                 ),
+
+                cause_chain: vec![],
             })?;
             let mut buffer = [0u8; 64 * 1024];
             let mut bytes_done = 0u64;
@@ -1598,6 +1646,8 @@ impl GentleEngine {
                 let read = response.read(&mut buffer).map_err(|e| EngineError {
                     code: ErrorCode::Io,
                     message: format!("Could not read downloaded CUT&RUN asset '{}': {e}", source),
+
+                    cause_chain: vec![],
                 })?;
                 if read == 0 {
                     break;
@@ -1609,6 +1659,8 @@ impl GentleEngine {
                         source,
                         destination.display()
                     ),
+
+                    cause_chain: vec![],
                 })?;
                 bytes_done = bytes_done.saturating_add(read as u64);
                 if let Some(tracker) = activity_tracker.as_deref_mut() {
@@ -1627,6 +1679,8 @@ impl GentleEngine {
                     source,
                     destination.display()
                 ),
+
+                cause_chain: vec![],
             })?;
         } else {
             let resolved_source = resolved_local_source_path(entry_base_dir, source);
@@ -1637,6 +1691,8 @@ impl GentleEngine {
                         "CUT&RUN asset source '{}' does not exist as a file",
                         resolved_source.display()
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             let total = resolved_source.metadata().ok().map(|meta| meta.len());
@@ -1649,6 +1705,8 @@ impl GentleEngine {
                     "Could not open CUT&RUN asset source '{}': {e}",
                     resolved_source.display()
                 ),
+
+                cause_chain: vec![],
             })?;
             let mut output = File::create(&destination).map_err(|e| EngineError {
                 code: ErrorCode::Io,
@@ -1656,6 +1714,8 @@ impl GentleEngine {
                     "Could not create CUT&RUN asset destination '{}': {e}",
                     destination.display()
                 ),
+
+                cause_chain: vec![],
             })?;
             let mut buffer = [0u8; 64 * 1024];
             let mut bytes_done = 0u64;
@@ -1666,6 +1726,8 @@ impl GentleEngine {
                         "Could not read CUT&RUN asset source '{}': {e}",
                         resolved_source.display()
                     ),
+
+                    cause_chain: vec![],
                 })?;
                 if read == 0 {
                     break;
@@ -1677,6 +1739,8 @@ impl GentleEngine {
                         resolved_source.display(),
                         destination.display()
                     ),
+
+                    cause_chain: vec![],
                 })?;
                 bytes_done = bytes_done.saturating_add(read as u64);
                 if let Some(tracker) = activity_tracker.as_deref_mut() {
@@ -1695,6 +1759,8 @@ impl GentleEngine {
                     resolved_source.display(),
                     destination.display()
                 ),
+
+                cause_chain: vec![],
             })?;
         }
         Ok(CutRunPreparedAssetManifest {
@@ -1742,6 +1808,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "CUT&RUN report_id cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let mut out = String::with_capacity(trimmed.len());
@@ -1757,7 +1825,8 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: "CUT&RUN report_id must contain at least one ASCII letter, digit, '-', '_' or '.'"
                     .to_string(),
-            });
+            
+                cause_chain: vec![],});
         }
         Ok(out)
     }
@@ -1794,6 +1863,8 @@ impl GentleEngine {
         let value = serde_json::to_value(store).map_err(|e| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not serialize CUT&RUN read-report metadata: {e}"),
+
+            cause_chain: vec![],
         })?;
         self.state
             .metadata
@@ -1861,6 +1932,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("CUT&RUN read report '{}' not found", report_id),
+
+                cause_chain: vec![],
             })
     }
 
@@ -1910,6 +1983,8 @@ impl GentleEngine {
         let file = File::open(path).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not open CUT&RUN FASTQ input '{}': {e}", path),
+
+            cause_chain: vec![],
         })?;
         let lower = path.to_ascii_lowercase();
         let mut reader: Box<dyn BufRead> = if lower.ends_with(".gz") {
@@ -1927,6 +2002,8 @@ impl GentleEngine {
             if reader.read_line(&mut header).map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not read CUT&RUN FASTQ input '{}': {e}", path),
+
+                cause_chain: vec![],
             })? == 0
             {
                 break;
@@ -1937,6 +2014,8 @@ impl GentleEngine {
             if reader.read_line(&mut sequence).map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not read CUT&RUN FASTQ sequence line '{}': {e}", path),
+
+                cause_chain: vec![],
             })? == 0
                 || reader.read_line(&mut plus).map_err(|e| EngineError {
                     code: ErrorCode::Io,
@@ -1944,15 +2023,21 @@ impl GentleEngine {
                         "Could not read CUT&RUN FASTQ separator line '{}': {e}",
                         path
                     ),
+
+                    cause_chain: vec![],
                 })? == 0
                 || reader.read_line(&mut qualities).map_err(|e| EngineError {
                     code: ErrorCode::Io,
                     message: format!("Could not read CUT&RUN FASTQ quality line '{}': {e}", path),
+
+                    cause_chain: vec![],
                 })? == 0
             {
                 return Err(EngineError {
                     code: ErrorCode::InvalidInput,
                     message: format!("CUT&RUN FASTQ input '{}' ended mid-record", path),
+
+                    cause_chain: vec![],
                 });
             }
             if !header.starts_with('@') {
@@ -1962,6 +2047,8 @@ impl GentleEngine {
                         "CUT&RUN FASTQ input '{}' has a record without '@' header",
                         path
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             if !plus.starts_with('+') {
@@ -1971,6 +2058,8 @@ impl GentleEngine {
                         "CUT&RUN FASTQ input '{}' has a record without '+' separator",
                         path
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             let record_index = out.len();
@@ -1987,6 +2076,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("No FASTQ records found in '{}'", path),
+
+                cause_chain: vec![],
             });
         }
         Ok(out)
@@ -2036,6 +2127,8 @@ impl GentleEngine {
                 "Could not infer CUT&RUN input format from '{}' (expected .fa/.fasta/.fq/.fastq with optional .gz)",
                 path
             ),
+
+            cause_chain: vec![],
         })
     }
 
@@ -2071,6 +2164,8 @@ impl GentleEngine {
                 message:
                     "CUT&RUN interpret accepts either explicit input paths or dataset_id, not both"
                         .to_string(),
+
+                cause_chain: vec![],
             });
         }
         if let Some(dataset_id) = trimmed_dataset {
@@ -2081,7 +2176,8 @@ impl GentleEngine {
                     "CUT&RUN dataset '{}' has not been prepared yet; run prepare before dataset-backed interpret",
                     status.dataset_id
                 ),
-            })?;
+            
+                cause_chain: vec![],})?;
             let r1 = manifest
                 .reads_r1
                 .as_ref()
@@ -2092,6 +2188,8 @@ impl GentleEngine {
                         "Prepared CUT&RUN dataset '{}' does not contain reads_r1",
                         status.dataset_id
                     ),
+
+                    cause_chain: vec![],
                 })?;
             let resolved_layout = status.read_layout;
             let r2 = match resolved_layout {
@@ -2107,7 +2205,8 @@ impl GentleEngine {
                                 "Prepared CUT&RUN dataset '{}' is paired-end but does not contain reads_r2",
                                 status.dataset_id
                             ),
-                        })?,
+                        
+                            cause_chain: vec![],})?,
                 ),
             };
             let resolved_format = Self::infer_cutrun_input_format_from_path(&r1)?;
@@ -2120,6 +2219,8 @@ impl GentleEngine {
                             "Prepared CUT&RUN dataset '{}' uses mismatched raw-read formats between R1 and R2",
                             status.dataset_id
                         ),
+
+                        cause_chain: vec![],
                     });
                 }
             }
@@ -2137,6 +2238,8 @@ impl GentleEngine {
         let r1 = trimmed_r1.ok_or_else(|| EngineError {
             code: ErrorCode::InvalidInput,
             message: "CUT&RUN interpret requires INPUT_R1 or --dataset".to_string(),
+
+            cause_chain: vec![],
         })?;
         Ok((
             r1.to_string(),
@@ -2225,7 +2328,8 @@ impl GentleEngine {
                     "Could not list chromosome lengths for genome '{}' while preparing CUT&RUN ROI window: {}",
                     genome_id, e
                 ),
-            })?;
+            
+                cause_chain: vec![],})?;
         let normalized = Self::normalize_chromosome_alias(chromosome);
         records
             .into_iter()
@@ -2240,6 +2344,8 @@ impl GentleEngine {
                     "Chromosome '{}' is not available in prepared genome '{}'",
                     chromosome, genome_id
                 ),
+
+                cause_chain: vec![],
             })
     }
 
@@ -2256,6 +2362,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{}' not found", seq_id),
+
+                cause_chain: vec![],
             })?;
         let roi_sequence = Self::normalize_cutrun_input_sequence(dna.forward_bytes());
         let (catalog, _) = Self::open_reference_genome_catalog(anchor.catalog_path.as_deref())?;
@@ -2281,6 +2389,8 @@ impl GentleEngine {
             .map_err(|e| EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Could not load CUT&RUN ROI window for '{}': {}", seq_id, e),
+
+                cause_chain: vec![],
             })?;
         let forward_window_bytes = Self::normalize_cutrun_input_sequence(forward_window.as_bytes());
         let anchor_offset_start = anchor.start_1based.saturating_sub(window_start_1based);
@@ -2292,6 +2402,8 @@ impl GentleEngine {
                     "CUT&RUN ROI window for '{}' does not cover the anchored sequence span",
                     seq_id
                 ),
+
+                cause_chain: vec![],
             });
         }
         let forward_anchor = &forward_window_bytes[anchor_offset_start..anchor_offset_end];
@@ -2753,10 +2865,14 @@ impl GentleEngine {
                 "Could not serialize CUT&RUN report snapshot '{}': {e}",
                 path
             ),
+
+            cause_chain: vec![],
         })?;
         fs::write(path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write CUT&RUN report snapshot '{}': {e}", path),
+
+            cause_chain: vec![],
         })
     }
 
@@ -2807,6 +2923,8 @@ impl GentleEngine {
                         code: ErrorCode::InvalidInput,
                         message: "CUT&RUN single-end interpretation does not accept input_r2_path"
                             .to_string(),
+
+                        cause_chain: vec![],
                     });
                 }
             }
@@ -2821,6 +2939,8 @@ impl GentleEngine {
                         code: ErrorCode::InvalidInput,
                         message: "CUT&RUN paired-end interpretation requires input_r2_path"
                             .to_string(),
+
+                        cause_chain: vec![],
                     });
                 }
             }
@@ -2829,12 +2949,16 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "CUT&RUN seed_filter.kmer_len must be >= 1".to_string(),
+
+                cause_chain: vec![],
             });
         }
         if !(0.0..=1.0).contains(&align_config.min_identity_fraction) {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "CUT&RUN min_identity_fraction must be within 0.0..=1.0".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let report_id = match report_id {
@@ -3375,6 +3499,8 @@ impl GentleEngine {
             reader.read_line(&mut line).map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not read CUT&RUN peaks '{}': {e}", path),
+
+                cause_chain: vec![],
             })? > 0
         } {
             line_no += 1;
@@ -3473,6 +3599,8 @@ impl GentleEngine {
             reader.read_line(&mut line).map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not read CUT&RUN signal '{}': {e}", path),
+
+                cause_chain: vec![],
             })? > 0
         } {
             line_no += 1;
@@ -3597,6 +3725,8 @@ impl GentleEngine {
                     "CUT&RUN read report '{}' belongs to '{}' rather than '{}'",
                     report.report_id, report.seq_id, seq_id
                 ),
+
+                cause_chain: vec![],
             });
         }
         if !Self::chromosomes_match(&report.chromosome, &anchor.chromosome) {
@@ -3777,6 +3907,8 @@ impl GentleEngine {
                     "Could not extract CUT&RUN support window {}..{}",
                     window_start_0based, window_end_0based_exclusive
                 ),
+
+                cause_chain: vec![],
             })?;
         let inside_hits = self.scan_tfbs_hits(
             SequenceScanTarget::InlineSequence {
@@ -3811,6 +3943,8 @@ impl GentleEngine {
                         "Could not extract CUT&RUN neighbor window {}..{}",
                         neighbor_start_0based, neighbor_end_0based_exclusive
                     ),
+
+                    cause_chain: vec![],
                 })?;
             let neighbor_hits = self.scan_tfbs_hits(
                 SequenceScanTarget::InlineSequence {
@@ -3909,6 +4043,8 @@ impl GentleEngine {
                 "Could not serialize CUT&RUN regulatory-support report '{}' for '{}': {e}",
                 report.seq_id, path
             ),
+
+            cause_chain: vec![],
         })?;
         fs::write(path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
@@ -3916,6 +4052,8 @@ impl GentleEngine {
                 "Could not write CUT&RUN regulatory-support report to '{}': {e}",
                 path
             ),
+
+            cause_chain: vec![],
         })
     }
 
@@ -3934,6 +4072,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "InspectCutRunRegulatorySupport requires non-empty seq_id".to_string(),
+
+                cause_chain: vec![],
             });
         }
         if dataset_ids.is_empty() && read_report_ids.is_empty() {
@@ -3942,7 +4082,8 @@ impl GentleEngine {
                 message:
                     "InspectCutRunRegulatorySupport requires at least one dataset or read-report source"
                         .to_string(),
-            });
+            
+                cause_chain: vec![],});
         }
 
         let dna = self
@@ -3952,6 +4093,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{}' not found", seq_id),
+
+                cause_chain: vec![],
             })?;
         let anchor = self.latest_genome_anchor_for_seq(seq_id)?;
         let (span_start_0based, span_end_0based_exclusive) = Self::validate_sequence_scan_span(
@@ -4246,6 +4389,8 @@ impl GentleEngine {
                             "Could not extract CUT&RUN support window '{}' from '{}'",
                             support_window.window_id, seq_id
                         ),
+
+                        cause_chain: vec![],
                     })?
                     .get_forward_string();
                 resolved_target_motif_consensus
@@ -4402,6 +4547,8 @@ impl GentleEngine {
         fs::write(path, lines.join("\n")).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write CUT&RUN coverage export to '{}': {e}", path),
+
+            cause_chain: vec![],
         })?;
         Ok(CutRunReadCoverageExport {
             schema: CUTRUN_READ_COVERAGE_EXPORT_SCHEMA.to_string(),

@@ -59,11 +59,17 @@ fn cli_error_boundary_emits_engine_error_payload() {
         payload["message"].as_str(),
         Some("CLI adapter command failed")
     );
+    let cause_chain = payload["cause_chain"]
+        .as_array()
+        .expect("cause_chain array")
+        .iter()
+        .map(|value| value.as_str().expect("cause string"))
+        .collect::<Vec<_>>();
     assert!(
-        !payload["cause_chain"]
-            .as_array()
-            .expect("cause_chain array")
-            .is_empty()
+        cause_chain
+            .iter()
+            .any(|cause| cause.contains("definitely-not-a-command")),
+        "CLI cause chain must preserve the failed command: {cause_chain:#?}"
     );
 }
 
@@ -106,10 +112,22 @@ fn mcp_tool_error_boundary_embeds_engine_error_payload() {
     let _error: EngineError =
         serde_json::from_value(payload.clone()).expect("EngineError-shaped MCP error");
     assert_eq!(payload["code"].as_str(), Some("NotFound"));
+    let cause_chain = payload["cause_chain"]
+        .as_array()
+        .expect("cause_chain array")
+        .iter()
+        .map(|value| value.as_str().expect("cause string"))
+        .collect::<Vec<_>>();
     assert!(
-        !payload["cause_chain"]
-            .as_array()
-            .expect("cause_chain array")
-            .is_empty()
+        cause_chain
+            .iter()
+            .any(|cause| *cause == "MCP adapter boundary"),
+        "MCP cause chain must include adapter boundary: {cause_chain:#?}"
+    );
+    assert!(
+        cause_chain
+            .iter()
+            .any(|cause| cause.contains("Unknown MCP tool 'unknown_tool'")),
+        "MCP cause chain must preserve inner tool failure: {cause_chain:#?}"
     );
 }

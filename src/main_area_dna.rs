@@ -28837,6 +28837,8 @@ impl MainAreaDna {
             Err(_) => Err(EngineError {
                 code: ErrorCode::Internal,
                 message: "Engine lock poisoned while inspecting ATtRACT evidence".to_string(),
+
+                cause_chain: vec![],
             }),
         }
         .map_err(|e| e.message)?;
@@ -29737,6 +29739,8 @@ impl MainAreaDna {
                 Err(_) => Err(EngineError {
                     code: ErrorCode::Internal,
                     message: "Engine lock poisoned while running primer design".to_string(),
+
+                    cause_chain: vec![],
                 }),
             };
             let _ = tx.send(PrimerDesignTaskMessage::Done(outcome));
@@ -29792,6 +29796,8 @@ impl MainAreaDna {
                     code: ErrorCode::Internal,
                     message: "Engine lock poisoned while running queued PCR primer design"
                         .to_string(),
+
+                    cause_chain: vec![],
                 }),
             };
             let _ = tx.send(PrimerDesignTaskMessage::Done(outcome));
@@ -29823,6 +29829,8 @@ impl MainAreaDna {
                                 code: ErrorCode::Internal,
                                 message: "Primer-design worker disconnected unexpectedly"
                                     .to_string(),
+
+                                cause_chain: vec![],
                             }));
                             break;
                         }
@@ -29862,6 +29870,8 @@ impl MainAreaDna {
                     done = Some(Err(EngineError {
                         code: ErrorCode::Internal,
                         message: "Primer-design channel lock poisoned".to_string(),
+
+                        cause_chain: vec![],
                     }));
                 }
             }
@@ -30147,6 +30157,8 @@ impl MainAreaDna {
                 Err(_) => Err(EngineError {
                     code: ErrorCode::Internal,
                     message: "Engine lock poisoned while running TFBS work".to_string(),
+
+                    cause_chain: vec![],
                 }),
             };
             let _ = tx.send(TfbsTaskMessage::Done(outcome));
@@ -30247,6 +30259,8 @@ impl MainAreaDna {
                                 done = Some(Err(EngineError {
                                     code: ErrorCode::Internal,
                                     message: "TFBS worker disconnected unexpectedly".to_string(),
+
+                                    cause_chain: vec![],
                                 }));
                                 break;
                             }
@@ -30266,6 +30280,8 @@ impl MainAreaDna {
                     done = Some(Err(EngineError {
                         code: ErrorCode::Internal,
                         message: "TFBS progress channel lock poisoned".to_string(),
+
+                        cause_chain: vec![],
                     }));
                 }
             }

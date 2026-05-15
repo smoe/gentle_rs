@@ -2894,6 +2894,8 @@ impl MainAreaDna {
             Err(_) => Err(EngineError {
                 code: ErrorCode::Internal,
                 message: "Engine lock poisoned while preparing RNA seed-hash preview".to_string(),
+
+                cause_chain: vec![],
             }),
         };
         match preview {
@@ -4344,6 +4346,8 @@ impl MainAreaDna {
             Err(_) => Err(EngineError {
                 code: ErrorCode::Internal,
                 message: "Engine lock poisoned while exporting seed-hash catalog".to_string(),
+
+                cause_chain: vec![],
             }),
         };
         match export_result {
@@ -4810,6 +4814,8 @@ impl MainAreaDna {
                             code: ErrorCode::Internal,
                             message: "Engine lock poisoned while preparing RNA-read interpretation"
                                 .to_string(),
+
+                            cause_chain: vec![],
                         }),
                     };
                     let _ = tx.send(RnaReadTaskMessage::Done(outcome));
@@ -4859,6 +4865,8 @@ impl MainAreaDna {
                             code: ErrorCode::Internal,
                             message: "Engine lock poisoned while preparing RNA-read alignment"
                                 .to_string(),
+
+                            cause_chain: vec![],
                         }),
                     };
                     let _ = tx.send(RnaReadTaskMessage::Done(outcome));
@@ -4893,11 +4901,15 @@ impl MainAreaDna {
                 return Err(EngineError {
                     code: ErrorCode::Internal,
                     message: "No engine attached while finalizing RNA-read task".to_string(),
+
+                    cause_chain: vec![],
                 });
             };
             let mut guard = engine.write().map_err(|_| EngineError {
                 code: ErrorCode::Internal,
                 message: "Engine lock poisoned while finalizing RNA-read task".to_string(),
+
+                cause_chain: vec![],
             })?;
             match outcome {
                 RnaReadTaskOutcome::Interpret(report) => guard.commit_rna_read_report(report),
@@ -4984,6 +4996,8 @@ impl MainAreaDna {
                                     code: ErrorCode::Internal,
                                     message: "RNA-read worker disconnected unexpectedly"
                                         .to_string(),
+
+                                    cause_chain: vec![],
                                 }));
                                 break;
                             }
@@ -4997,6 +5011,8 @@ impl MainAreaDna {
                     done = Some(Err(EngineError {
                         code: ErrorCode::Internal,
                         message: "RNA-read progress channel lock poisoned".to_string(),
+
+                        cause_chain: vec![],
                     }));
                 }
             }

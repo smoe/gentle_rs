@@ -613,6 +613,7 @@ fn read_acquisition_io_error(path: &Path, action: &str, error: std::io::Error) -
     EngineError {
         code: ErrorCode::Io,
         message: format!("Could not {action} '{}': {error}", path.display()),
+        cause_chain: vec![],
     }
 }
 
@@ -620,6 +621,7 @@ fn read_acquisition_invalid_input(message: impl Into<String>) -> EngineError {
     EngineError {
         code: ErrorCode::InvalidInput,
         message: message.into(),
+        cause_chain: vec![],
     }
 }
 
@@ -658,6 +660,8 @@ fn parse_read_acquisition_manifest(
     let text = fs::read_to_string(manifest_path).map_err(|e| EngineError {
         code: ErrorCode::Io,
         message: format!("Could not read read-acquisition manifest '{manifest_path}': {e}"),
+
+        cause_chain: vec![],
     })?;
     let mut meaningful_lines = text.lines().enumerate().filter(|(_, line)| {
         let trimmed = line.trim();
@@ -901,10 +905,14 @@ fn join_read_acquisition_log_copy(
         .map_err(|_| EngineError {
             code: ErrorCode::Io,
             message: "Read-acquisition log-copy worker panicked".to_string(),
+
+            cause_chain: vec![],
         })?
         .map_err(|message| EngineError {
             code: ErrorCode::Io,
             message,
+
+            cause_chain: vec![],
         })
 }
 
@@ -992,6 +1000,8 @@ fn run_read_acquisition_command(
     let mut child = command_builder.spawn().map_err(|e| EngineError {
         code: ErrorCode::Io,
         message: format!("Could not run SRA Toolkit command for phase '{phase}': {command}: {e}"),
+
+        cause_chain: vec![],
     })?;
     let stdout_handle = child
         .stdout
@@ -1012,6 +1022,8 @@ fn run_read_acquisition_command(
             break Err(EngineError {
                 code: ErrorCode::Io,
                 message: format!("Read acquisition cancelled during phase '{phase}'"),
+
+                cause_chain: vec![],
             });
         }
         if last_monitor.elapsed()
@@ -1035,6 +1047,8 @@ fn run_read_acquisition_command(
                         message: format!(
                             "Read acquisition cancelled by progress callback during phase '{phase}'"
                         ),
+
+                        cause_chain: vec![],
                     });
                 }
                 Err(error) => {
@@ -1046,6 +1060,8 @@ fn run_read_acquisition_command(
         match child.try_wait().map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not poll SRA Toolkit command '{command}': {e}"),
+
+            cause_chain: vec![],
         })? {
             Some(status) => break Ok(status),
             None => std::thread::sleep(std::time::Duration::from_millis(100)),
@@ -1074,6 +1090,8 @@ fn run_read_acquisition_command(
                 status.code(),
                 stderr_log_path.display()
             ),
+
+            cause_chain: vec![],
         });
     }
     Ok(provenance)
@@ -1114,6 +1132,8 @@ fn ensure_sra_at_expected_path(sra_dir: &Path, accession: &str) -> Result<PathBu
                 accession,
                 sra_dir.display()
             ),
+
+            cause_chain: vec![],
         });
     };
     fs::copy(&found, &expected).map_err(|e| {
@@ -1400,6 +1420,8 @@ impl GentleEngine {
         .map_err(|message| EngineError {
             code: ErrorCode::Io,
             message,
+
+            cause_chain: vec![],
         })?;
         let final_paths = match row.analysis_format {
             ReadAcquisitionAnalysisFormat::Fastq => {
@@ -1482,6 +1504,8 @@ impl GentleEngine {
                 EngineError {
                     code: ErrorCode::Io,
                     message,
+
+                    cause_chain: vec![],
                 }
             })? {
                 ReadAcquisitionActivityStart::Acquired(tracker) => tracker,
@@ -1578,6 +1602,8 @@ impl GentleEngine {
                             "fasterq-dump did not create expected FASTQ output '{}'",
                             path.display()
                         ),
+
+                        cause_chain: vec![],
                     });
                 }
             }
@@ -1676,6 +1702,8 @@ impl GentleEngine {
                 Err(EngineError {
                     code: error.code,
                     message: failed.error.clone().unwrap_or(error.message),
+
+                    cause_chain: vec![],
                 })
             }
         }
@@ -1808,6 +1836,8 @@ impl GentleEngine {
         .map_err(|message| EngineError {
             code: ErrorCode::Io,
             message,
+
+            cause_chain: vec![],
         })?;
         let mut report = self.read_acquisition_inspect(accession, cache_dir, work_dir)?;
         if status

@@ -291,6 +291,8 @@ impl GentleEngine {
             return std::fs::read_to_string(path).map_err(|e| EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Could not read JASPAR metadata file '{path}': {e}"),
+
+                cause_chain: vec![],
             });
         }
         if path_or_url.starts_with("http://") || path_or_url.starts_with("https://") {
@@ -300,11 +302,13 @@ impl GentleEngine {
                     message: format!(
                         "Could not fetch JASPAR metadata URL '{path_or_url}': networking backend panicked"
                     ),
-                })?
+                
+                    cause_chain: vec![],})?
                 .map_err(|e| EngineError {
                     code: ErrorCode::InvalidInput,
                     message: format!("Could not fetch JASPAR metadata URL '{path_or_url}': {e}"),
-                })?;
+                
+                    cause_chain: vec![],})?;
             if !response.status().is_success() {
                 return Err(EngineError {
                     code: ErrorCode::InvalidInput,
@@ -312,16 +316,22 @@ impl GentleEngine {
                         "Could not fetch JASPAR metadata URL '{path_or_url}': HTTP {}",
                         response.status()
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             return response.text().map_err(|e| EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Could not read JASPAR metadata response '{path_or_url}': {e}"),
+
+                cause_chain: vec![],
             });
         }
         std::fs::read_to_string(path_or_url).map_err(|e| EngineError {
             code: ErrorCode::InvalidInput,
             message: format!("Could not read JASPAR metadata file '{path_or_url}': {e}"),
+
+            cause_chain: vec![],
         })
     }
 
@@ -449,6 +459,8 @@ impl GentleEngine {
         let value = serde_json::from_str::<Value>(&text).map_err(|e| EngineError {
             code: ErrorCode::InvalidInput,
             message: format!("Could not parse JASPAR metadata response for '{motif_id}': {e}"),
+
+            cause_chain: vec![],
         })?;
         Ok(Self::parse_jaspar_remote_metadata_value(&value, &url))
     }
@@ -542,6 +554,8 @@ impl GentleEngine {
                             "JASPAR entry '{}' was not found in the local motif registry",
                             token
                         ),
+
+                        cause_chain: vec![],
                     })?;
                 if !seen_ids.insert(motif_definition.id.clone()) {
                     continue;
@@ -698,12 +712,16 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "InspectJasparEntry requires non-empty motif".to_string(),
+
+                cause_chain: vec![],
             });
         }
         if random_sequence_length_bp == 0 {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "InspectJasparEntry requires random_sequence_length_bp >= 1".to_string(),
+
+                cause_chain: vec![],
             });
         }
 
@@ -714,6 +732,8 @@ impl GentleEngine {
                     "JASPAR entry '{}' was not found in the local motif registry",
                     motif
                 ),
+
+                cause_chain: vec![],
             })?;
         let (llr_matrix, true_log_odds_matrix) =
             Self::prepare_scoring_matrices(&motif_definition.matrix_counts);
@@ -725,6 +745,8 @@ impl GentleEngine {
                     "JASPAR entry '{}' has no usable scoring columns",
                     motif_definition.id
                 ),
+
+                cause_chain: vec![],
             });
         }
         if random_sequence_length_bp < motif_length_bp {
@@ -734,6 +756,8 @@ impl GentleEngine {
                     "InspectJasparEntry requires random_sequence_length_bp ({}) >= motif length ({}) for '{}'",
                     random_sequence_length_bp, motif_length_bp, motif_definition.id
                 ),
+
+                cause_chain: vec![],
             });
         }
 
@@ -897,6 +921,8 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: "SummarizeJasparEntries requires random_sequence_length_bp >= 1"
                     .to_string(),
+
+                cause_chain: vec![],
             });
         }
 
@@ -910,7 +936,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "SummarizeJasparEntries requires at least one motif or a non-empty local JASPAR registry".to_string(),
-            });
+            
+                cause_chain: vec![],});
         }
 
         let random_background =
@@ -927,6 +954,8 @@ impl GentleEngine {
                     "JASPAR entry '{}' was not found in the local motif registry",
                     token
                 ),
+
+                cause_chain: vec![],
             })?;
             if !seen_ids.insert(motif.id.clone()) {
                 continue;
@@ -938,6 +967,8 @@ impl GentleEngine {
                 return Err(EngineError {
                     code: ErrorCode::Internal,
                     message: format!("JASPAR entry '{}' has no usable scoring columns", motif.id),
+
+                    cause_chain: vec![],
                 });
             }
             if random_background.len() < llr_matrix.len() {
@@ -949,6 +980,8 @@ impl GentleEngine {
                         llr_matrix.len(),
                         motif.id
                     ),
+
+                    cause_chain: vec![],
                 });
             }
 
