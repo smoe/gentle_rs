@@ -9,6 +9,7 @@ use crate::engine_shell::{ShellCommand, execute_shell_command};
 use crate::enzymes::active_restriction_enzymes;
 use crate::methylation_sites::MethylationMode;
 use crate::resource_sync;
+use gentle_protocol::{EngineError, ErrorCode};
 use mlua::prelude::*;
 use mlua::{Error, Value};
 use mlua::{IntoLuaMulti, Lua, MultiValue, Result as LuaResult};
@@ -50,6 +51,16 @@ impl LuaInterface {
 
     fn err(s: &str) -> Error {
         Error::RuntimeError(s.to_string())
+    }
+
+    fn engine_err(source: EngineError) -> Error {
+        Self::adapter_err(source.code, "Lua adapter command failed", source)
+    }
+
+    fn adapter_err(code: ErrorCode, message: &str, source: impl std::fmt::Display) -> Error {
+        let error = EngineError::new(code, message).with_cause(source);
+        let payload = serde_json::to_string(&error).unwrap_or_else(|_| error.to_string());
+        Error::RuntimeError(payload)
     }
 
     fn sync_report_from_shell_output(
@@ -253,7 +264,7 @@ impl LuaInterface {
             .as_deref()
             .map(str::trim)
             .filter(|v| !v.is_empty());
-        GentleEngine::list_reference_genomes(catalog_path).map_err(|e| Self::err(&e.to_string()))
+        GentleEngine::list_reference_genomes(catalog_path).map_err(Self::engine_err)
     }
 
     fn list_reference_catalog_entries(
@@ -265,8 +276,7 @@ impl LuaInterface {
             .map(str::trim)
             .filter(|v| !v.is_empty());
         let filter = filter.as_deref().map(str::trim).filter(|v| !v.is_empty());
-        GentleEngine::list_reference_catalog_entries(catalog_path, filter)
-            .map_err(|e| Self::err(&e.to_string()))
+        GentleEngine::list_reference_catalog_entries(catalog_path, filter).map_err(Self::engine_err)
     }
 
     fn list_helper_catalog_entries(
@@ -278,8 +288,7 @@ impl LuaInterface {
             .map(str::trim)
             .filter(|v| !v.is_empty());
         let filter = filter.as_deref().map(str::trim).filter(|v| !v.is_empty());
-        GentleEngine::list_helper_catalog_entries(catalog_path, filter)
-            .map_err(|e| Self::err(&e.to_string()))
+        GentleEngine::list_helper_catalog_entries(catalog_path, filter).map_err(Self::engine_err)
     }
 
     fn list_helper_semantics_vocabulary(
@@ -292,7 +301,7 @@ impl LuaInterface {
             .filter(|v| !v.is_empty());
         let filter = filter.as_deref().map(str::trim).filter(|v| !v.is_empty());
         GentleEngine::list_helper_semantics_vocabulary_terms(vocabulary_path, filter)
-            .map_err(|e| Self::err(&e.to_string()))
+            .map_err(Self::engine_err)
     }
 
     fn list_host_profile_catalog_entries(
@@ -305,7 +314,7 @@ impl LuaInterface {
             .filter(|v| !v.is_empty());
         let filter = filter.as_deref().map(str::trim).filter(|v| !v.is_empty());
         GentleEngine::list_host_profile_catalog_entries(catalog_path, filter)
-            .map_err(|e| Self::err(&e.to_string()))
+            .map_err(Self::engine_err)
     }
 
     fn list_ensembl_installable_genomes(
@@ -531,8 +540,7 @@ impl LuaInterface {
             .as_deref()
             .map(str::trim)
             .filter(|v| !v.is_empty());
-        GentleEngine::export_dna_ladders(&output_json, name_filter)
-            .map_err(|e| Self::err(&e.to_string()))
+        GentleEngine::export_dna_ladders(&output_json, name_filter).map_err(Self::engine_err)
     }
 
     fn inspect_rna_ladders(
@@ -553,8 +561,7 @@ impl LuaInterface {
             .as_deref()
             .map(str::trim)
             .filter(|v| !v.is_empty());
-        GentleEngine::export_rna_ladders(&output_json, name_filter)
-            .map_err(|e| Self::err(&e.to_string()))
+        GentleEngine::export_rna_ladders(&output_json, name_filter).map_err(Self::engine_err)
     }
 
     fn is_reference_genome_prepared(
@@ -573,7 +580,7 @@ impl LuaInterface {
                 .map(str::trim)
                 .filter(|v| !v.is_empty()),
         )
-        .map_err(|e| Self::err(&e.to_string()))
+        .map_err(Self::engine_err)
     }
 
     fn list_reference_genome_genes(
@@ -592,7 +599,7 @@ impl LuaInterface {
                 .map(str::trim)
                 .filter(|v| !v.is_empty()),
         )
-        .map_err(|e| Self::err(&e.to_string()))
+        .map_err(Self::engine_err)
     }
 
     fn blast_reference_genome(
@@ -640,7 +647,7 @@ impl LuaInterface {
                 .map(str::trim)
                 .filter(|v| !v.is_empty()),
         )
-        .map_err(|e| Self::err(&e.to_string()))
+        .map_err(Self::engine_err)
     }
 
     fn blast_helper_genome(
@@ -688,7 +695,7 @@ impl LuaInterface {
                 .map(str::trim)
                 .filter(|v| !v.is_empty()),
         )
-        .map_err(|e| Self::err(&e.to_string()))
+        .map_err(Self::engine_err)
     }
 
     // fn restriction_enzyme_digest(seq: DNAsequence, enzymes: String) -> LuaResult<Vec<DNAsequence>> {
@@ -735,8 +742,7 @@ impl LuaInterface {
         self.lua.globals().set(
             "load_project",
             self.lua.create_function(|lua, filename: String| {
-                let state = ProjectState::load_from_path(&filename)
-                    .map_err(|e| Self::err(&e.to_string()))?;
+                let state = ProjectState::load_from_path(&filename).map_err(Self::engine_err)?;
                 lua.to_value(&state)
             })?,
         )?;
@@ -748,9 +754,7 @@ impl LuaInterface {
                     let state: ProjectState = lua
                         .from_value(state)
                         .map_err(|e| Self::err(&format!("Invalid project value: {e}")))?;
-                    state
-                        .save_to_path(&filename)
-                        .map_err(|e| Self::err(&e.to_string()))?;
+                    state.save_to_path(&filename).map_err(Self::engine_err)?;
                     Ok(true)
                 })?,
         )?;
@@ -1183,7 +1187,7 @@ impl LuaInterface {
                         .map_err(|e| Self::err(&format!("Invalid project value: {e}")))?;
                     let op: Operation = Self::parse_or_decode(lua, op)?;
                     let mut engine = GentleEngine::from_state(state);
-                    let result = engine.apply(op).map_err(|e| Self::err(&e.to_string()))?;
+                    let result = engine.apply(op).map_err(Self::engine_err)?;
                     #[derive(Serialize)]
                     struct Response {
                         state: ProjectState,
@@ -1208,7 +1212,7 @@ impl LuaInterface {
                     let engine = GentleEngine::from_state(state);
                     let view = engine
                         .inspect_feature_expert(&seq_id, &target)
-                        .map_err(|e| Self::err(&e.to_string()))?;
+                        .map_err(Self::engine_err)?;
                     lua.to_value(&view)
                 })?,
         )?;
@@ -1228,7 +1232,7 @@ impl LuaInterface {
                             target,
                             path,
                         })
-                        .map_err(|e| Self::err(&e.to_string()))?;
+                        .map_err(Self::engine_err)?;
                     #[derive(Serialize)]
                     struct Response {
                         state: ProjectState,
@@ -1841,7 +1845,7 @@ impl LuaInterface {
                     let mut engine = GentleEngine::from_state(state);
                     let results = engine
                         .apply_workflow(workflow)
-                        .map_err(|e| Self::err(&e.to_string()))?;
+                        .map_err(Self::engine_err)?;
                     #[derive(Serialize)]
                     struct Response {
                         state: ProjectState,

@@ -178,7 +178,9 @@ impl GENtleApp {
         (containers_height, arrangements_height, realized_split)
     }
 
-    pub(super) fn infer_lineage_analysis_kind_from_row(row: &LineageRow) -> Option<LineageAnalysisKind> {
+    pub(super) fn infer_lineage_analysis_kind_from_row(
+        row: &LineageRow,
+    ) -> Option<LineageAnalysisKind> {
         if let Some(kind) = row.analysis_kind {
             return Some(kind);
         }
@@ -4168,5 +4170,4 @@ impl GENtleApp {
             self.open_pool_window(&representative, pool_members);
         }
     }
-
 }

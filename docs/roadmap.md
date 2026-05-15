@@ -51,12 +51,6 @@ Release cut line:
 
 Post-release scope:
 
-- New operations adopt the three-level parity model: engine and reachability
-  parity from PR #1; first-class surfacing decisions land per adapter and may
-  be staged.
-- The parity matrix tests reachability, not surfacing; surfacing decisions are
-  recorded per row with a one-line justification.
-
 ## Next Session Priorities
 
 1. Keep the TP73 evidence-viewer proof workflow green and offline-safe while
@@ -129,6 +123,11 @@ stack-safe helper splits, protocol snapshots, and targeted parity tests; defer
 broad crate surgery that is not tied to the selected release story. Phase 2
 has not started; the `gentle-engine` crate scaffold has been removed and will
 be re-introduced when the first execution-side module is ready to move.
+- New operations adopt the three-level parity model: engine and reachability
+  parity from the parity matrix in [`gui_cli_mcp_parity.md`](gui_cli_mcp_parity.md);
+  first-class surfacing decisions land per adapter and may be staged.
+- The parity matrix tests reachability, not surfacing; surfacing decisions are
+  recorded per row with a one-line justification.
 - Inline/stateless operand follow-up order from
   [`inline_operand_audit.md`](inline_operand_audit.md): `RenderSequenceSvg`,
   `RenderRnaStructureSvg`, `RenderTfbsScoreTrackCorrelationSvg`,

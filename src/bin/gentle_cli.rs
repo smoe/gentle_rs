@@ -1026,8 +1026,9 @@ fn main() {
 }
 
 fn cli_error_payload(message: &str) -> String {
-    let error = EngineError::new(classify_cli_error(message), "CLI adapter command failed");
-    serde_json::to_string(&error.portable_payload(vec![message.to_string()]))
+    let error = EngineError::new(classify_cli_error(message), "CLI adapter command failed")
+        .with_cause(message);
+    serde_json::to_string(&error.portable_payload(vec![]))
         .unwrap_or_else(|_| message.to_string())
 }
 

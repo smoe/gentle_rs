@@ -1014,6 +1014,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "SummarizeTfbsScoreTracks requires at least one motif".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let effective_motifs = Self::expand_tf_query_tokens(motifs)?;
@@ -1452,6 +1454,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "SummarizeTfbsTrackSimilarity requires non-empty anchor_motif".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let (anchor_tf_id, anchor_tf_name_resolved, _anchor_consensus, _anchor_matrix_counts) =
@@ -1477,6 +1481,8 @@ impl GentleEngine {
                 message:
                     "SummarizeTfbsTrackSimilarity requires at least one candidate motif or ALL"
                         .to_string(),
+
+                cause_chain: vec![],
             });
         }
 
@@ -1569,6 +1575,8 @@ impl GentleEngine {
                     "Could not recover anchor motif '{}' from score-track summary",
                     anchor_tf_id
                 ),
+
+                cause_chain: vec![],
             })?;
 
         let mut rows = base_report
@@ -1830,11 +1838,15 @@ impl GentleEngine {
                 "Could not serialize TFBS score-track report '{}' for '{}': {e}",
                 report.seq_id, path
             ),
+
+            cause_chain: vec![],
         })?;
         Self::ensure_output_parent_dir(path)?;
         std::fs::write(path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write TFBS score-track report to '{path}': {e}"),
+
+            cause_chain: vec![],
         })
     }
 
@@ -1915,6 +1927,8 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: "SummarizeMultiGenePromoterTfbs requires at least one gene query"
                     .to_string(),
+
+                cause_chain: vec![],
             });
         }
         if motifs.is_empty() {
@@ -1922,6 +1936,8 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: "SummarizeMultiGenePromoterTfbs requires at least one TF motif query"
                     .to_string(),
+
+                cause_chain: vec![],
             });
         }
 
@@ -1968,6 +1984,8 @@ impl GentleEngine {
                         genome_id,
                         e
                     ),
+
+                    cause_chain: vec![],
                 })?;
             let oriented_sequence =
                 Self::promoter_aligned_sequence(&promoter_sequence, Some(strand));
@@ -1984,6 +2002,8 @@ impl GentleEngine {
                     "Could not place TSS for gene '{}' into promoter-oriented coordinates",
                     Self::genome_gene_display_label(&resolved.selected_gene)
                 ),
+
+                cause_chain: vec![],
             })?;
             let desired_promoter_length =
                 upstream_bp.saturating_add(downstream_bp).saturating_add(1);

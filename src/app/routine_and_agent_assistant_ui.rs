@@ -211,7 +211,10 @@ impl GENtleApp {
         Ok(resolved)
     }
 
-    pub(super) fn selected_agent_runtime_base_url(&self, system: &AgentSystemSpec) -> Option<String> {
+    pub(super) fn selected_agent_runtime_base_url(
+        &self,
+        system: &AgentSystemSpec,
+    ) -> Option<String> {
         if !matches!(
             system.transport,
             AgentSystemTransport::NativeOpenai | AgentSystemTransport::NativeOpenaiCompat
@@ -436,7 +439,11 @@ impl GENtleApp {
         Ok(Some(parsed))
     }
 
-    pub(super) fn start_agent_model_discovery_task(&mut self, system: &AgentSystemSpec, force: bool) {
+    pub(super) fn start_agent_model_discovery_task(
+        &mut self,
+        system: &AgentSystemSpec,
+        force: bool,
+    ) {
         if !matches!(
             system.transport,
             AgentSystemTransport::NativeOpenai | AgentSystemTransport::NativeOpenaiCompat
@@ -3408,7 +3415,10 @@ impl GENtleApp {
         })
     }
 
-    pub(super) fn persist_routine_decision_trace_store_to_state(&mut self, store: RoutineDecisionTraceStore) {
+    pub(super) fn persist_routine_decision_trace_store_to_state(
+        &mut self,
+        store: RoutineDecisionTraceStore,
+    ) {
         let normalized = Self::normalize_routine_decision_trace_store_for_gui(store);
         let Ok(value) = serde_json::to_value(&normalized) else {
             return;
@@ -3705,7 +3715,9 @@ impl GENtleApp {
             .cloned()
     }
 
-    pub(super) fn routine_assistant_input_port_ids(routine: &CloningRoutineCatalogRow) -> Vec<String> {
+    pub(super) fn routine_assistant_input_port_ids(
+        routine: &CloningRoutineCatalogRow,
+    ) -> Vec<String> {
         routine
             .input_ports
             .iter()
@@ -3719,7 +3731,9 @@ impl GENtleApp {
             .collect::<Vec<_>>()
     }
 
-    pub(super) fn routine_assistant_sequence_port_ids(routine: &CloningRoutineCatalogRow) -> Vec<String> {
+    pub(super) fn routine_assistant_sequence_port_ids(
+        routine: &CloningRoutineCatalogRow,
+    ) -> Vec<String> {
         routine
             .input_ports
             .iter()

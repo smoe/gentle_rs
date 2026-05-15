@@ -11,6 +11,8 @@ impl GentleEngine {
         let file = File::open(path).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not open RepeatMasker file '{}': {e}", path),
+
+            cause_chain: vec![],
         })?;
         if path.to_ascii_lowercase().ends_with(".gz") {
             Ok(Box::new(BufReader::new(MultiGzDecoder::new(file))))
@@ -209,12 +211,16 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "QueryRepeatAnnotations requires non-empty genome_id".to_string(),
+
+                cause_chain: vec![],
             });
         }
         if rmsk_path.trim().is_empty() {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "QueryRepeatAnnotations requires non-empty rmsk_path".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let reader = Self::open_rmsk_reader(rmsk_path)?;
@@ -229,6 +235,8 @@ impl GentleEngine {
             let line = line.map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not read RepeatMasker line {line_number}: {e}"),
+
+                cause_chain: vec![],
             })?;
             match Self::parse_ucsc_rmsk_record(genome_id, &line, line_number) {
                 Ok(Some(row)) => {
@@ -383,12 +391,16 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "QueryRepeatOverlaps requires non-empty seq_id".to_string(),
+
+                cause_chain: vec![],
             });
         }
         if rmsk_index_path.trim().is_empty() {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "QueryRepeatOverlaps requires non-empty rmsk_index_path".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let dna = self
@@ -398,6 +410,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{seq_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let sequence_length = dna.len();
         let start = start_0based.unwrap_or(0).min(sequence_length);
@@ -411,6 +425,8 @@ impl GentleEngine {
                     "QueryRepeatOverlaps requires end >= start (got {}..{})",
                     start, end
                 ),
+
+                cause_chain: vec![],
             });
         }
         let anchor = self.sequence_genome_anchor_summary(seq_id)?;
@@ -419,6 +435,8 @@ impl GentleEngine {
                 EngineError {
                     code: ErrorCode::InvalidInput,
                     message: e,
+
+                    cause_chain: vec![],
                 }
             })?;
         let projection_anchor = Self::rmsk_projection_anchor_from_sequence(&anchor);
@@ -598,6 +616,8 @@ impl GentleEngine {
                 EngineError {
                     code: ErrorCode::InvalidInput,
                     message: e,
+
+                    cause_chain: vec![],
                 }
             })?;
         let overlaps = crate::ucsc_rmsk::project_index_overlaps_to_anchor(
@@ -623,6 +643,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{seq_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let mut removed_existing_count = 0usize;
         if clear_existing {
@@ -1140,6 +1162,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "SummarizeWindowCohortTfbs requires at least one motif".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let effective_catalog_path =

@@ -1185,8 +1185,9 @@ fn jsonrpc_response(id: Value, result: Value) -> Value {
 }
 
 fn jsonrpc_error(id: Option<Value>, code: i64, message: &str, data: Option<Value>) -> Value {
-    let engine_error = mcp_engine_error(jsonrpc_error_code_to_engine_error_code(code), message);
-    let portable_error = engine_error.portable_payload(vec![message.to_string()]);
+    let engine_error = mcp_engine_error(jsonrpc_error_code_to_engine_error_code(code), message)
+        .with_cause(message);
+    let portable_error = engine_error.portable_payload(vec![]);
     let mut data_value = data.unwrap_or_else(|| json!({}));
     if let Some(obj) = data_value.as_object_mut() {
         obj.insert("engine_error".to_string(), json!(engine_error.clone()));
@@ -1310,7 +1311,11 @@ fn mcp_engine_error(code: ErrorCode, message: &str) -> EngineError {
 }
 
 fn mcp_engine_error_payload(code: ErrorCode, message: &str, cause_chain: Vec<String>) -> Value {
-    mcp_engine_error(code, message).portable_payload(cause_chain)
+    let mut error = mcp_engine_error(code, message).with_cause("MCP adapter boundary");
+    for cause in cause_chain {
+        error = error.with_cause(cause);
+    }
+    error.portable_payload(vec![])
 }
 
 fn jsonrpc_error_code_to_engine_error_code(code: i64) -> ErrorCode {

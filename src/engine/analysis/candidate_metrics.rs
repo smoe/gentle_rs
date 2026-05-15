@@ -58,6 +58,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Candidate page limit must be >= 1".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let set_name = Self::normalize_candidate_set_name(set_name)?;
@@ -69,6 +71,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Candidate set '{}' not found", set_name),
+
+                cause_chain: vec![],
             })?;
         let total = set.candidates.len();
         let clamped_offset = offset.min(total);
@@ -91,6 +95,8 @@ impl GentleEngine {
         let set = store.sets.get(&set_name).ok_or_else(|| EngineError {
             code: ErrorCode::NotFound,
             message: format!("Candidate set '{}' not found", set_name),
+
+            cause_chain: vec![],
         })?;
         let mut counts: HashMap<String, usize> = HashMap::new();
         for candidate in &set.candidates {
@@ -410,6 +416,8 @@ impl GentleEngine {
             .map_err(|e| EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Invalid {option_name} regex '{}': {}", trimmed, e),
+
+                cause_chain: vec![],
             })
     }
 
@@ -640,6 +648,8 @@ impl GentleEngine {
                     let value = raw.parse::<f64>().map_err(|e| EngineError {
                         code: ErrorCode::InvalidInput,
                         message: format!("Invalid numeric literal '{}': {}", raw, e),
+
+                        cause_chain: vec![],
                     })?;
                     tokens.push(ExpressionToken::Number(value));
                 }
@@ -657,6 +667,8 @@ impl GentleEngine {
                     return Err(EngineError {
                         code: ErrorCode::InvalidInput,
                         message: format!("Unsupported character '{}' in expression", b as char),
+
+                        cause_chain: vec![],
                     });
                 }
             }
@@ -665,6 +677,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Expression is empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         Ok(tokens)
@@ -677,6 +691,8 @@ impl GentleEngine {
             .map_err(|e| EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Invalid score expression: {e}"),
+
+                cause_chain: vec![],
             })
     }
 
@@ -697,6 +713,8 @@ impl GentleEngine {
                     .ok_or_else(|| EngineError {
                         code: ErrorCode::InvalidInput,
                         message: format!("Expression references unknown metric '{}'", name),
+
+                        cause_chain: vec![],
                     })
             }
             MetricExpr::UnaryMinus(inner) => Ok(-Self::evaluate_metric_expression(inner, metrics)?),
@@ -712,6 +730,8 @@ impl GentleEngine {
                             return Err(EngineError {
                                 code: ErrorCode::InvalidInput,
                                 message: "Expression division by zero".to_string(),
+
+                                cause_chain: vec![],
                             });
                         }
                         lhs / rhs
@@ -723,6 +743,8 @@ impl GentleEngine {
                     Err(EngineError {
                         code: ErrorCode::InvalidInput,
                         message: "Expression produced a non-finite value".to_string(),
+
+                        cause_chain: vec![],
                     })
                 }
             }
@@ -734,6 +756,8 @@ impl GentleEngine {
                             return Err(EngineError {
                                 code: ErrorCode::InvalidInput,
                                 message: "Function abs() expects exactly 1 argument".to_string(),
+
+                                cause_chain: vec![],
                             });
                         }
                         Self::evaluate_metric_expression(&args[0], metrics)?.abs()
@@ -743,6 +767,8 @@ impl GentleEngine {
                             return Err(EngineError {
                                 code: ErrorCode::InvalidInput,
                                 message: "Function sqrt() expects exactly 1 argument".to_string(),
+
+                                cause_chain: vec![],
                             });
                         }
                         let x = Self::evaluate_metric_expression(&args[0], metrics)?;
@@ -750,6 +776,8 @@ impl GentleEngine {
                             return Err(EngineError {
                                 code: ErrorCode::InvalidInput,
                                 message: "Function sqrt() requires non-negative input".to_string(),
+
+                                cause_chain: vec![],
                             });
                         }
                         x.sqrt()
@@ -759,6 +787,8 @@ impl GentleEngine {
                             return Err(EngineError {
                                 code: ErrorCode::InvalidInput,
                                 message: "Function log() expects exactly 1 argument".to_string(),
+
+                                cause_chain: vec![],
                             });
                         }
                         let x = Self::evaluate_metric_expression(&args[0], metrics)?;
@@ -766,6 +796,8 @@ impl GentleEngine {
                             return Err(EngineError {
                                 code: ErrorCode::InvalidInput,
                                 message: "Function log() requires positive input".to_string(),
+
+                                cause_chain: vec![],
                             });
                         }
                         x.ln()
@@ -775,6 +807,8 @@ impl GentleEngine {
                             return Err(EngineError {
                                 code: ErrorCode::InvalidInput,
                                 message: "Function exp() expects exactly 1 argument".to_string(),
+
+                                cause_chain: vec![],
                             });
                         }
                         Self::evaluate_metric_expression(&args[0], metrics)?.exp()
@@ -784,6 +818,8 @@ impl GentleEngine {
                             return Err(EngineError {
                                 code: ErrorCode::InvalidInput,
                                 message: "Function min() expects exactly 2 arguments".to_string(),
+
+                                cause_chain: vec![],
                             });
                         }
                         let a = Self::evaluate_metric_expression(&args[0], metrics)?;
@@ -795,6 +831,8 @@ impl GentleEngine {
                             return Err(EngineError {
                                 code: ErrorCode::InvalidInput,
                                 message: "Function max() expects exactly 2 arguments".to_string(),
+
+                                cause_chain: vec![],
                             });
                         }
                         let a = Self::evaluate_metric_expression(&args[0], metrics)?;
@@ -806,6 +844,8 @@ impl GentleEngine {
                             return Err(EngineError {
                                 code: ErrorCode::InvalidInput,
                                 message: "Function pow() expects exactly 2 arguments".to_string(),
+
+                                cause_chain: vec![],
                             });
                         }
                         let a = Self::evaluate_metric_expression(&args[0], metrics)?;
@@ -817,6 +857,8 @@ impl GentleEngine {
                             return Err(EngineError {
                                 code: ErrorCode::InvalidInput,
                                 message: "Function clamp() expects exactly 3 arguments".to_string(),
+
+                                cause_chain: vec![],
                             });
                         }
                         let x = Self::evaluate_metric_expression(&args[0], metrics)?;
@@ -826,6 +868,8 @@ impl GentleEngine {
                             return Err(EngineError {
                                 code: ErrorCode::InvalidInput,
                                 message: "Function clamp() requires lo <= hi".to_string(),
+
+                                cause_chain: vec![],
                             });
                         }
                         x.max(lo).min(hi)
@@ -834,6 +878,8 @@ impl GentleEngine {
                         return Err(EngineError {
                             code: ErrorCode::InvalidInput,
                             message: format!("Unknown expression function '{}'", name),
+
+                            cause_chain: vec![],
                         });
                     }
                 };
@@ -843,6 +889,8 @@ impl GentleEngine {
                     Err(EngineError {
                         code: ErrorCode::InvalidInput,
                         message: format!("Function '{}' produced a non-finite value", name),
+
+                        cause_chain: vec![],
                     })
                 }
             }

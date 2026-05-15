@@ -28,12 +28,13 @@ Goal:
 `capability_registry` is the shared discovery surface projected by CLI, MCP,
 JavaScript, and Lua adapters. Each row has a stable `name`, glossary-sourced
 `description` where applicable, JSON-schema `input_schema`/`output_schema`,
-`mutating` (`false`, `true`, or `external`), adapter projection list, and
-optional `inline_operand_ok`.
+`mutating` (`false`, `true`, or `external`), per-adapter surfacing
+(`prominent`, `shell_passthrough`, or `not_applicable`), required
+not-applicable justifications, and optional `inline_operand_ok`.
 
 Adapter error payloads that cross machine boundaries use the shared
-`EngineError` shape (`code`, `message`) and include a serialized
-`cause_chain` array when an adapter wraps a lower-level string error.
+`EngineError` shape (`code`, `message`, optional `cause_chain`) so adapters can
+preserve lower-level string failures without changing their transport.
 
 ## Protocol-first workflow examples
 

@@ -204,6 +204,8 @@ impl GentleEngine {
                 "No built-in rack profile can fit {slot_count} occupied positions (max supported: {})",
                 RackProfileKind::Plate384.capacity()
             ),
+
+            cause_chain: vec![],
         })
     }
 
@@ -215,6 +217,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Custom rack profiles require rows >= 1 and columns >= 1".to_string(),
+
+                cause_chain: vec![],
             });
         }
         Ok(())
@@ -232,6 +236,8 @@ impl GentleEngine {
                     "Rack slot index {index} is outside available rack capacity {}",
                     available.len()
                 ),
+
+                cause_chain: vec![],
             });
         }
         Ok(available[index].clone())
@@ -254,6 +260,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Invalid rack row label '{label}'"),
+
+                cause_chain: vec![],
             });
         }
         let mut value = 0usize;
@@ -264,6 +272,8 @@ impl GentleEngine {
                 .ok_or_else(|| EngineError {
                     code: ErrorCode::InvalidInput,
                     message: format!("Rack row label '{}' is too large", label),
+
+                    cause_chain: vec![],
                 })?;
         }
         Ok(value.saturating_sub(1))
@@ -275,6 +285,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Rack coordinate cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let mut letters = String::new();
@@ -288,6 +300,8 @@ impl GentleEngine {
                 return Err(EngineError {
                     code: ErrorCode::InvalidInput,
                     message: format!("Invalid rack coordinate '{coordinate}'"),
+
+                    cause_chain: vec![],
                 });
             }
         }
@@ -295,17 +309,23 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Invalid rack coordinate '{coordinate}'"),
+
+                cause_chain: vec![],
             });
         }
         let row = Self::rack_row_index_from_label(&letters)?;
         let column = digits.parse::<usize>().map_err(|e| EngineError {
             code: ErrorCode::InvalidInput,
             message: format!("Invalid rack coordinate '{coordinate}': {e}"),
+
+            cause_chain: vec![],
         })?;
         if column == 0 {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Invalid rack coordinate '{coordinate}'"),
+
+                cause_chain: vec![],
             });
         }
         Ok((row, column - 1))
@@ -323,6 +343,8 @@ impl GentleEngine {
                     "Rack position ({}, {}) is outside profile {}x{}",
                     row, column, profile.rows, profile.columns
                 ),
+
+                cause_chain: vec![],
             });
         }
         Ok(format!(
@@ -362,6 +384,8 @@ impl GentleEngine {
                         "Blocked rack coordinate '{}' is outside profile {}x{}",
                         trimmed, profile.rows, profile.columns
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             let canonical = Self::rack_coordinate_from_row_column(profile, row, column)?;
@@ -423,6 +447,8 @@ impl GentleEngine {
                     "Rack coordinate '{}' is outside profile {}x{}",
                     coordinate, profile.rows, profile.columns
                 ),
+
+                cause_chain: vec![],
             });
         }
         let coordinate = Self::rack_coordinate_from_row_column(profile, row, column)?;
@@ -436,6 +462,8 @@ impl GentleEngine {
                     "Rack coordinate '{}' is blocked or unavailable in profile {}x{}",
                     coordinate, profile.rows, profile.columns
                 ),
+
+                cause_chain: vec![],
             })
     }
 
@@ -466,6 +494,8 @@ impl GentleEngine {
                     profile.columns,
                     available.len()
                 ),
+
+                cause_chain: vec![],
             });
         }
         for (idx, entry) in entries.iter_mut().enumerate() {
@@ -488,6 +518,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Rack '{rack_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let mut placements = self
             .sorted_rack_placements(&existing_rack)?
@@ -505,6 +537,8 @@ impl GentleEngine {
                     placements.len(),
                     available_capacity
                 ),
+
+                cause_chain: vec![],
             });
         }
         Self::reflow_rack_placements(&new_profile, &mut placements)?;
@@ -516,6 +550,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Rack '{rack_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         rack.profile = new_profile;
         rack.placements = placements;
@@ -534,6 +570,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Arrangement '{arrangement_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let mut payload = vec![];
         if let Some((left, right)) = Self::arrangement_ladder_pair(arrangement) {
@@ -587,6 +625,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "CreateArrangementSerial requires at least one container id".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let mut lane_container_ids: Vec<ContainerId> = vec![];
@@ -600,6 +640,8 @@ impl GentleEngine {
                 return Err(EngineError {
                     code: ErrorCode::NotFound,
                     message: format!("Container '{trimmed}' not found"),
+
+                    cause_chain: vec![],
                 });
             }
             if seen.insert(trimmed.to_string()) {
@@ -611,6 +653,8 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: "CreateArrangementSerial requires at least one non-empty container id"
                     .to_string(),
+
+                cause_chain: vec![],
             });
         }
         let arrangement_id = arrangement_id
@@ -626,6 +670,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Arrangement '{arrangement_id}' already exists"),
+
+                cause_chain: vec![],
             });
         }
         let arrangement = Arrangement {
@@ -681,6 +727,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "arrangement_id cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let arrangement = self
@@ -692,6 +740,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Arrangement '{arrangement_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let payload = self.arrangement_rack_payload(arrangement_id)?;
         let profile_kind = match profile {
@@ -705,6 +755,8 @@ impl GentleEngine {
                             arrangement_id,
                             payload.len()
                         ),
+
+                        cause_chain: vec![],
                     });
                 }
                 profile
@@ -719,6 +771,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Rack '{rack_id}' already exists"),
+
+                cause_chain: vec![],
             });
         }
         let profile_snapshot = RackProfileSnapshot::from_kind(profile_kind);
@@ -780,6 +834,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "arrangement_id and rack_id must be non-empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let payload = self.arrangement_rack_payload(arrangement_id)?;
@@ -791,6 +847,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Rack '{rack_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         if rack
             .placements
@@ -803,6 +861,8 @@ impl GentleEngine {
                     "Rack '{}' already contains arrangement '{}'",
                     rack_id, arrangement_id
                 ),
+
+                cause_chain: vec![],
             });
         }
         let start_index = rack.placements.len();
@@ -818,6 +878,8 @@ impl GentleEngine {
                     payload.len(),
                     available_capacity.saturating_sub(start_index)
                 ),
+
+                cause_chain: vec![],
             });
         }
         for (offset, (occupant, role_label)) in payload.into_iter().enumerate() {
@@ -861,6 +923,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Rack '{rack_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let from_index = Self::rack_index_from_coordinate(&rack.profile, from_coordinate)?;
         let to_index = Self::rack_index_from_coordinate(&rack.profile, to_coordinate)?;
@@ -874,6 +938,8 @@ impl GentleEngine {
                     "Rack '{}' has no occupied position at '{}'",
                     rack_id, from_coordinate
                 ),
+
+                cause_chain: vec![],
             })?;
         if move_block {
             let arrangement_id = ordered[from_pos].1.arrangement_id.clone();
@@ -918,7 +984,8 @@ impl GentleEngine {
                         "Sample moves must target an occupied coordinate within arrangement block '{}'",
                         arrangement_id
                     ),
-                })?;
+                
+                    cause_chain: vec![],})?;
             let block_positions = ordered
                 .iter()
                 .enumerate()
@@ -939,6 +1006,8 @@ impl GentleEngine {
                         "Sample moves must stay within arrangement block '{}'",
                         arrangement_id
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             let mut block_entries = ordered[block_start..=block_end]
@@ -1059,6 +1128,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Rack sample move requires at least one source coordinate".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let requested_coordinates = from_coordinates
@@ -1071,6 +1142,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Rack sample move requires non-empty source coordinates".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let rack = self
@@ -1082,6 +1155,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Rack '{rack_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let ordered = self.sorted_rack_placements(&rack)?;
         let selected = ordered
@@ -1110,6 +1185,8 @@ impl GentleEngine {
                     rack_id,
                     missing.join(", ")
                 ),
+
+                cause_chain: vec![],
             });
         }
         let arrangement_id = selected
@@ -1121,6 +1198,8 @@ impl GentleEngine {
                     "Rack '{}' does not contain requested sample coordinates",
                     rack_id
                 ),
+
+                cause_chain: vec![],
             })?;
         if selected
             .iter()
@@ -1130,6 +1209,8 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: "Multi-sample rack moves must stay within one arrangement block"
                     .to_string(),
+
+                cause_chain: vec![],
             });
         }
         let to_index = Self::rack_index_from_coordinate(&rack.profile, to_coordinate)?;
@@ -1142,7 +1223,8 @@ impl GentleEngine {
                     "Multi-sample moves must target an occupied coordinate within arrangement block '{}'",
                     arrangement_id
                 ),
-            })?;
+            
+                cause_chain: vec![],})?;
         let block_positions = ordered
             .iter()
             .enumerate()
@@ -1163,6 +1245,8 @@ impl GentleEngine {
                     "Rack '{}' does not contain requested sample coordinates",
                     rack_id
                 ),
+
+                cause_chain: vec![],
             })?;
         let block_start = *block_positions.first().unwrap_or(&from_pos);
         let block_end = *block_positions.last().unwrap_or(&from_pos);
@@ -1173,6 +1257,8 @@ impl GentleEngine {
                     "Multi-sample moves must stay within arrangement block '{}'",
                     arrangement_id
                 ),
+
+                cause_chain: vec![],
             });
         }
         let mut block_entries = ordered[block_start..=block_end]
@@ -1239,6 +1325,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Rack block move requires at least one arrangement id".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let rack = self
@@ -1250,6 +1338,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Rack '{rack_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let to_index = Self::rack_index_from_coordinate(&rack.profile, to_coordinate)?;
         let ordered = self.sorted_rack_placements(&rack)?;
@@ -1262,6 +1352,8 @@ impl GentleEngine {
                     "Rack '{}' does not contain any of the requested arrangement blocks",
                     rack_id
                 ),
+
+                cause_chain: vec![],
             });
         }
         let selected_id_set = selected_arrangement_ids
@@ -1309,6 +1401,8 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: "Use SetRackProfileCustom for custom row/column rack dimensions"
                     .to_string(),
+
+                cause_chain: vec![],
             });
         }
         let existing_rack = self
@@ -1320,6 +1414,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Rack '{rack_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let mut new_profile = RackProfileSnapshot::from_kind(profile);
         new_profile.fill_direction = existing_rack.profile.fill_direction;
@@ -1347,6 +1443,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Rack '{rack_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let mut new_profile = RackProfileSnapshot::custom(rows, columns);
         new_profile.fill_direction = existing_rack.profile.fill_direction;
@@ -1374,6 +1472,8 @@ impl GentleEngine {
                             profile.rows,
                             profile.columns
                         ),
+
+                        cause_chain: vec![],
                     });
                 }
                 let mut blocked = Vec::new();
@@ -1428,6 +1528,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Rack '{rack_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let mut new_profile = existing_rack.profile.clone();
         new_profile.fill_direction = match template {
@@ -1455,6 +1557,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Rack '{rack_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let mut new_profile = existing_rack.profile.clone();
         new_profile.fill_direction = fill_direction;
@@ -1480,6 +1584,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Rack '{rack_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let mut new_profile = existing_rack.profile.clone();
         new_profile.blocked_coordinates = Self::normalized_blocked_coordinates_for_profile(
@@ -1737,6 +1843,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Rack '{rack_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let arrangement_filter = arrangement_id
             .map(str::trim)
@@ -1758,6 +1866,8 @@ impl GentleEngine {
                     "Rack '{}' has no placements matching the requested arrangement scope",
                     rack_id
                 ),
+
+                cause_chain: vec![],
             });
         }
         let layout = match preset {
@@ -1899,6 +2009,8 @@ impl GentleEngine {
         fs::write(path, svg).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write rack labels SVG '{}': {e}", path),
+
+            cause_chain: vec![],
         })?;
         Ok(count)
     }
@@ -1919,6 +2031,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Rack '{rack_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let spec = Self::rack_physical_template_spec(template, &rack.profile);
         let rows = self.scoped_rack_entries(rack, arrangement_id)?;
@@ -1929,6 +2043,8 @@ impl GentleEngine {
                     "Rack '{}' has no placements matching the requested arrangement scope",
                     rack_id
                 ),
+
+                cause_chain: vec![],
             });
         }
 
@@ -2114,6 +2230,8 @@ impl GentleEngine {
         fs::write(path, svg).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write rack carrier labels SVG '{}': {e}", path),
+
+            cause_chain: vec![],
         })?;
         Ok((arrangement_summaries.len() + 1, spec))
     }
@@ -2808,12 +2926,16 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Rack '{rack_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let spec = Self::rack_physical_template_spec(template, &rack.profile);
         let svg = self.export_rack_physical_svg_string(rack, &spec)?;
         fs::write(path, svg).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write rack fabrication SVG '{}': {e}", path),
+
+            cause_chain: vec![],
         })?;
         Ok(spec)
     }
@@ -2832,12 +2954,16 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Rack '{rack_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let spec = Self::rack_physical_template_spec(template, &rack.profile);
         let svg = self.export_rack_isometric_svg_string(rack, &spec)?;
         fs::write(path, svg).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write rack isometric SVG '{}': {e}", path),
+
+            cause_chain: vec![],
         })?;
         Ok(spec)
     }
@@ -2856,6 +2982,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Rack '{rack_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let spec = Self::rack_physical_template_spec(template, &rack.profile);
         let blocked = rack
@@ -2904,6 +3032,8 @@ impl GentleEngine {
         fs::write(path, scad).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write rack OpenSCAD '{}': {e}", path),
+
+            cause_chain: vec![],
         })?;
         Ok(spec)
     }
@@ -2922,6 +3052,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Rack '{rack_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let spec = Self::rack_physical_template_spec(template, &rack.profile);
         let placements = self.sorted_rack_placements(rack)?;
@@ -3042,10 +3174,14 @@ impl GentleEngine {
         let payload_text = serde_json::to_string_pretty(&payload).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not serialize rack simulation JSON '{}': {e}", path),
+
+            cause_chain: vec![],
         })?;
         fs::write(path, payload_text).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write rack simulation JSON '{}': {e}", path),
+
+            cause_chain: vec![],
         })?;
         Ok(spec)
     }
@@ -3060,6 +3196,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "arrangement_id cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let arrangement = self
@@ -3070,6 +3208,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Arrangement '{arrangement_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         if arrangement.mode != ArrangementMode::Serial {
             return Err(EngineError {
@@ -3078,6 +3218,8 @@ impl GentleEngine {
                     "Arrangement '{}' is mode '{:?}', only serial arrangements can update gel ladders",
                     arrangement_id, arrangement.mode
                 ),
+
+                cause_chain: vec![],
             });
         }
         let normalized = Self::normalize_serial_gel_ladders_owned(ladders);
@@ -3095,6 +3237,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "container_id cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let container = self
@@ -3105,6 +3249,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Container '{container_id}' not found"),
+
+                cause_chain: vec![],
             })?;
         let changed = container.declared_contents_exclusive != exclusive;
         container.declared_contents_exclusive = exclusive;
@@ -3191,6 +3337,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequence '{seq_id}' not found for singleton container creation"),
+
+                cause_chain: vec![],
             });
         }
         let name = self
@@ -3209,6 +3357,8 @@ impl GentleEngine {
         .ok_or_else(|| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not create singleton container for sequence '{seq_id}'"),
+
+            cause_chain: vec![],
         })
     }
 

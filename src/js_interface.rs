@@ -12,6 +12,7 @@ use crate::{
     resource_sync,
 };
 use deno_core::*;
+use gentle_protocol::{EngineError, ErrorCode};
 use serde::Serialize;
 use std::borrow::Cow;
 
@@ -21,6 +22,24 @@ struct JsAnyhow(deno_core::anyhow::Error);
 impl From<deno_core::anyhow::Error> for JsAnyhow {
     fn from(value: deno_core::anyhow::Error) -> Self {
         Self(value)
+    }
+}
+
+impl From<EngineError> for JsAnyhow {
+    fn from(value: EngineError) -> Self {
+        Self::from_adapter_cause(value.code, "JS adapter command failed", value)
+    }
+}
+
+impl JsAnyhow {
+    fn from_adapter_cause(
+        code: ErrorCode,
+        message: &str,
+        source: impl std::fmt::Display,
+    ) -> Self {
+        let error = EngineError::new(code, message).with_cause(source);
+        let payload = serde_json::to_string(&error).unwrap_or_else(|_| error.to_string());
+        deno_core::anyhow::anyhow!(payload).into()
     }
 }
 
@@ -419,15 +438,13 @@ fn write_gb(#[serde] seq: DNAsequence, #[string] path: &str) -> Result<(), JsAny
 #[op2]
 #[serde]
 fn load_project(#[string] path: &str) -> Result<ProjectState, JsAnyhow> {
-    let state = ProjectState::load_from_path(path).map_err(deno_core::anyhow::Error::from)?;
+    let state = ProjectState::load_from_path(path).map_err(JsAnyhow::from)?;
     Ok(state)
 }
 
 #[op2]
 fn save_project(#[serde] state: ProjectState, #[string] path: &str) -> Result<(), JsAnyhow> {
-    state
-        .save_to_path(path)
-        .map_err(deno_core::anyhow::Error::from)?;
+    state.save_to_path(path).map_err(JsAnyhow::from)?;
     Ok(())
 }
 
@@ -470,9 +487,7 @@ fn export_dna_ladders(
     #[string] path: &str,
     #[string] name_filter: &str,
 ) -> Result<crate::engine::DnaLadderExportReport, JsAnyhow> {
-    GentleEngine::export_dna_ladders(path, empty_to_none(name_filter))
-        .map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))
-        .map_err(Into::into)
+    GentleEngine::export_dna_ladders(path, empty_to_none(name_filter)).map_err(JsAnyhow::from)
 }
 
 #[op2]
@@ -481,17 +496,13 @@ fn export_rna_ladders(
     #[string] path: &str,
     #[string] name_filter: &str,
 ) -> Result<crate::engine::RnaLadderExportReport, JsAnyhow> {
-    GentleEngine::export_rna_ladders(path, empty_to_none(name_filter))
-        .map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))
-        .map_err(Into::into)
+    GentleEngine::export_rna_ladders(path, empty_to_none(name_filter)).map_err(JsAnyhow::from)
 }
 
 #[op2]
 #[serde]
 fn list_reference_genomes(#[string] catalog_path: &str) -> Result<Vec<String>, JsAnyhow> {
-    GentleEngine::list_reference_genomes(empty_to_none(catalog_path))
-        .map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))
-        .map_err(Into::into)
+    GentleEngine::list_reference_genomes(empty_to_none(catalog_path)).map_err(JsAnyhow::from)
 }
 
 #[op2]
@@ -501,8 +512,7 @@ fn list_reference_catalog_entries(
     #[string] filter: &str,
 ) -> Result<Vec<crate::genomes::GenomeCatalogListEntry>, JsAnyhow> {
     GentleEngine::list_reference_catalog_entries(empty_to_none(catalog_path), empty_to_none(filter))
-        .map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))
-        .map_err(Into::into)
+        .map_err(JsAnyhow::from)
 }
 
 #[op2]
@@ -512,8 +522,7 @@ fn list_helper_catalog_entries(
     #[string] filter: &str,
 ) -> Result<Vec<crate::genomes::GenomeCatalogListEntry>, JsAnyhow> {
     GentleEngine::list_helper_catalog_entries(empty_to_none(catalog_path), empty_to_none(filter))
-        .map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))
-        .map_err(Into::into)
+        .map_err(JsAnyhow::from)
 }
 
 #[op2]
@@ -526,8 +535,7 @@ fn list_helper_semantics_vocabulary(
         empty_to_none(vocabulary_path),
         empty_to_none(filter),
     )
-    .map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))
-    .map_err(Into::into)
+    .map_err(JsAnyhow::from)
 }
 
 #[op2]
@@ -540,8 +548,7 @@ fn list_host_profile_catalog_entries(
         empty_to_none(catalog_path),
         empty_to_none(filter),
     )
-    .map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))
-    .map_err(Into::into)
+    .map_err(JsAnyhow::from)
 }
 
 #[op2]
@@ -554,8 +561,7 @@ fn list_ensembl_installable_genomes(
         empty_to_none(collection),
         empty_to_none(filter),
     )
-    .map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))
-    .map_err(Into::into)
+    .map_err(JsAnyhow::from)
 }
 
 #[op2]
@@ -672,7 +678,7 @@ fn is_reference_genome_prepared(
         genome_id,
         empty_to_none(cache_dir),
     )
-    .map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))?;
+    .map_err(JsAnyhow::from)?;
     Ok(GenomePreparedResponse { prepared })
 }
 
@@ -688,8 +694,7 @@ fn list_reference_genome_genes(
         genome_id,
         empty_to_none(cache_dir),
     )
-    .map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))
-    .map_err(Into::into)
+    .map_err(JsAnyhow::from)
 }
 
 #[op2]
@@ -711,8 +716,7 @@ fn blast_reference_genome(
         Some(&request),
         empty_to_none(cache_dir),
     )
-    .map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))
-    .map_err(Into::into)
+    .map_err(JsAnyhow::from)
 }
 
 #[op2]
@@ -734,8 +738,7 @@ fn blast_helper_genome(
         empty_to_none(catalog_path),
         empty_to_none(cache_dir),
     )
-    .map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))
-    .map_err(Into::into)
+    .map_err(JsAnyhow::from)
 }
 
 #[op2]
@@ -753,7 +756,7 @@ fn apply_operation_impl(
 ) -> Result<OperationApplyResponse, JsAnyhow> {
     let op: Operation = serde_json::from_str(op_json).map_err(deno_core::anyhow::Error::from)?;
     let mut engine = GentleEngine::from_state(state);
-    let result = engine.apply(op).map_err(deno_core::anyhow::Error::from)?;
+    let result = engine.apply(op).map_err(JsAnyhow::from)?;
     Ok(OperationApplyResponse {
         state: engine.state().clone(),
         result,
@@ -769,9 +772,7 @@ fn apply_workflow(
     let workflow: Workflow =
         serde_json::from_str(workflow_json).map_err(deno_core::anyhow::Error::from)?;
     let mut engine = GentleEngine::from_state(state);
-    let results = engine
-        .apply_workflow(workflow)
-        .map_err(deno_core::anyhow::Error::from)?;
+    let results = engine.apply_workflow(workflow).map_err(JsAnyhow::from)?;
     Ok(WorkflowApplyResponse {
         state: engine.state().clone(),
         results,
@@ -790,7 +791,7 @@ fn inspect_feature_expert(
     let engine = GentleEngine::from_state(state);
     let view = engine
         .inspect_feature_expert(seq_id, &target)
-        .map_err(deno_core::anyhow::Error::from)?;
+        .map_err(JsAnyhow::from)?;
     serde_json::to_value(view)
         .map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))
         .map_err(Into::into)

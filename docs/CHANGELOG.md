@@ -12,6 +12,13 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-05-15
+
+- Regenerated the GUI/CLI/MCP parity matrix from `CapabilityDescriptor`
+  surfacing metadata and added a freshness guard plus regeneration script.
+- Replaced binary capability adapter exposure with per-adapter surfacing states
+  and added `EngineError.cause_chain` preservation across adapter boundaries.
+
 ## 2026-05-14
 
 - Made `AlignSequences` accept inline ASCII `SequenceScanTarget` operands for

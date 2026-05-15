@@ -3638,6 +3638,8 @@ pub enum ErrorCode {
 pub struct EngineError {
     pub code: ErrorCode,
     pub message: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cause_chain: Vec<String>,
 }
 
 impl EngineError {
@@ -3645,6 +3647,7 @@ impl EngineError {
         Self {
             code,
             message: message.into(),
+            cause_chain: vec![],
         }
     }
 
@@ -3656,7 +3659,14 @@ impl EngineError {
         Self::new(ErrorCode::Internal, message)
     }
 
-    pub fn portable_payload(&self, cause_chain: Vec<String>) -> Value {
+    pub fn with_cause(mut self, source: impl fmt::Display) -> Self {
+        self.cause_chain.push(source.to_string());
+        self
+    }
+
+    pub fn portable_payload(&self, extra_cause_chain: Vec<String>) -> Value {
+        let mut cause_chain = self.cause_chain.clone();
+        cause_chain.extend(extra_cause_chain);
         json!({
             "code": self.code,
             "message": self.message,
@@ -4568,19 +4578,34 @@ pub struct Capabilities {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum CapabilityAdapter {
+    Gui,
     Cli,
     Mcp,
     Js,
     Lua,
+    Clawbio,
 }
 
 impl CapabilityAdapter {
     pub fn as_str(self) -> &'static str {
         match self {
+            Self::Gui => "gui",
             Self::Cli => "cli",
             Self::Mcp => "mcp",
             Self::Js => "js",
             Self::Lua => "lua",
+            Self::Clawbio => "clawbio",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Gui => "GUI",
+            Self::Cli => "gentle_cli",
+            Self::Mcp => "MCP",
+            Self::Js => "JS",
+            Self::Lua => "Lua",
+            Self::Clawbio => "ClawBio",
         }
     }
 }
@@ -4615,7 +4640,36 @@ pub enum CapabilitySource {
     McpTool,
 }
 
-/// Machine-readable capability row shared by CLI, MCP, JS, and Lua adapters.
+impl CapabilitySource {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::GlossaryCommand => "glossary-command",
+            Self::EngineOperation => "engine-operation",
+            Self::McpTool => "mcp-tool",
+        }
+    }
+}
+
+/// Per-adapter surfacing state for one shared capability descriptor.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AdapterSurfacing {
+    Prominent,
+    ShellPassthrough,
+    NotApplicable,
+}
+
+impl AdapterSurfacing {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Prominent => "prominent",
+            Self::ShellPassthrough => "shell-only",
+            Self::NotApplicable => "n/a",
+        }
+    }
+}
+
+/// Machine-readable capability row shared by GUI, CLI, MCP, JS, Lua, and ClawBio adapters.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CapabilityDescriptor {
     pub name: String,
@@ -4625,12 +4679,32 @@ pub struct CapabilityDescriptor {
     pub input_schema: Value,
     pub output_schema: Value,
     pub mutating: CapabilityMutation,
-    pub adapters: Vec<CapabilityAdapter>,
+    pub gui: AdapterSurfacing,
+    pub cli: AdapterSurfacing,
+    pub mcp: AdapterSurfacing,
+    pub js: AdapterSurfacing,
+    pub lua: AdapterSurfacing,
+    pub clawbio: AdapterSurfacing,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub surfacing_justifications: BTreeMap<String, String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub inline_operand_ok: Option<bool>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub engine_operations: Vec<String>,
     pub source: CapabilitySource,
+}
+
+impl CapabilityDescriptor {
+    pub fn surfacing_for_adapter(&self, adapter: CapabilityAdapter) -> AdapterSurfacing {
+        match adapter {
+            CapabilityAdapter::Gui => self.gui,
+            CapabilityAdapter::Cli => self.cli,
+            CapabilityAdapter::Mcp => self.mcp,
+            CapabilityAdapter::Js => self.js,
+            CapabilityAdapter::Lua => self.lua,
+            CapabilityAdapter::Clawbio => self.clawbio,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -5049,6 +5123,15 @@ const MCP_TOOL_NAMES: &[(&str, &str, &str, CapabilityMutation)] = &[
 static CAPABILITY_REGISTRY: LazyLock<Vec<CapabilityDescriptor>> =
     LazyLock::new(build_capability_registry);
 
+const CAPABILITY_PARITY_ADAPTERS: [CapabilityAdapter; 6] = [
+    CapabilityAdapter::Gui,
+    CapabilityAdapter::Cli,
+    CapabilityAdapter::Mcp,
+    CapabilityAdapter::Js,
+    CapabilityAdapter::Lua,
+    CapabilityAdapter::Clawbio,
+];
+
 /// Protocol-owned names for public engine operation variants.
 pub fn public_engine_operation_names() -> &'static [&'static str] {
     PUBLIC_ENGINE_OPERATION_NAMES
@@ -5057,6 +5140,11 @@ pub fn public_engine_operation_names() -> &'static [&'static str] {
 /// Shared capability registry projected by adapters.
 pub fn capability_registry() -> &'static [CapabilityDescriptor] {
     &CAPABILITY_REGISTRY
+}
+
+/// Adapter order used by the generated GUI/CLI/MCP parity matrix.
+pub fn capability_parity_adapters() -> &'static [CapabilityAdapter] {
+    &CAPABILITY_PARITY_ADAPTERS
 }
 
 /// Return one capability descriptor by stable name and source.
@@ -5073,9 +5161,127 @@ pub fn capability_descriptor(
 pub fn capability_registry_for_adapter(adapter: CapabilityAdapter) -> Vec<CapabilityDescriptor> {
     capability_registry()
         .iter()
-        .filter(|descriptor| descriptor.adapters.contains(&adapter))
+        .filter(|descriptor| {
+            descriptor.surfacing_for_adapter(adapter) != AdapterSurfacing::NotApplicable
+        })
         .cloned()
         .collect()
+}
+
+/// Render the GUI/CLI/MCP parity matrix from the protocol capability registry.
+pub fn render_gui_cli_mcp_parity_matrix_markdown() -> String {
+    render_capability_parity_matrix_markdown(capability_registry())
+}
+
+fn render_capability_parity_matrix_markdown(registry: &[CapabilityDescriptor]) -> String {
+    let mut out = String::new();
+    out.push_str("# GUI / CLI / MCP Parity Matrix\n\n");
+    out.push_str("Generated automatically from the protocol capability registry.\n\n");
+    out.push_str("## Method\n\n");
+    out.push_str(
+        "This file is a projection of `gentle_protocol::capability_registry()`. \
+The cell vocabulary is the architecture-doc parity policy:\n\n",
+    );
+    out.push_str("- `prominent`: `AdapterSurfacing::Prominent` for this adapter\n");
+    out.push_str("- `shell-only`: `AdapterSurfacing::ShellPassthrough`\n");
+    out.push_str(
+        "- `n/a`: `AdapterSurfacing::NotApplicable`, with a one-line Notes justification\n",
+    );
+    out.push_str("- `gap`: operation should be reachable but currently is not\n\n");
+    out.push_str(
+        "Only `gap` signals implementation work. Human-readable Notes are populated \
+from each descriptor's `surfacing_justifications` map.\n\n",
+    );
+    out.push_str("## Findings\n\n");
+    out.push_str("| Adapter | prominent | shell-only | gap |\n");
+    out.push_str("|---|---:|---:|---:|\n");
+    for adapter in capability_parity_adapters() {
+        let mut prominent = 0usize;
+        let mut shell_only = 0usize;
+        let gap = 0usize;
+        for descriptor in registry {
+            match descriptor.surfacing_for_adapter(*adapter) {
+                AdapterSurfacing::Prominent => prominent += 1,
+                AdapterSurfacing::ShellPassthrough => shell_only += 1,
+                AdapterSurfacing::NotApplicable => {}
+            }
+        }
+        out.push_str(&format!(
+            "| {} | {} | {} | {} |\n",
+            adapter.label(),
+            prominent,
+            shell_only,
+            gap
+        ));
+    }
+    out.push('\n');
+    push_parity_section(
+        &mut out,
+        "Glossary Commands",
+        registry
+            .iter()
+            .filter(|descriptor| descriptor.source == CapabilitySource::GlossaryCommand),
+    );
+    push_parity_section(
+        &mut out,
+        "Engine Operations",
+        registry
+            .iter()
+            .filter(|descriptor| descriptor.source == CapabilitySource::EngineOperation),
+    );
+    push_parity_section(
+        &mut out,
+        "MCP Tools",
+        registry
+            .iter()
+            .filter(|descriptor| descriptor.source == CapabilitySource::McpTool),
+    );
+    while out.ends_with("\n\n") {
+        out.pop();
+    }
+    out
+}
+
+fn push_parity_section<'a>(
+    out: &mut String,
+    title: &str,
+    descriptors: impl Iterator<Item = &'a CapabilityDescriptor>,
+) {
+    out.push_str(&format!("## {title}\n\n"));
+    out.push_str("| Capability | Source | GUI | gentle_cli | MCP | JS | Lua | ClawBio | Notes |\n");
+    out.push_str("|---|---|---|---|---|---|---|---|---|\n");
+    for descriptor in descriptors {
+        out.push_str("| ");
+        out.push_str(&markdown_cell(&descriptor.name));
+        out.push_str(" | ");
+        out.push_str(descriptor.source.as_str());
+        for adapter in capability_parity_adapters() {
+            let value = descriptor.surfacing_for_adapter(*adapter).as_str();
+            out.push_str(" | ");
+            out.push_str(value);
+        }
+        out.push_str(" | ");
+        out.push_str(&descriptor_notes(descriptor));
+        out.push_str(" |\n");
+    }
+    out.push('\n');
+}
+
+fn descriptor_notes(descriptor: &CapabilityDescriptor) -> String {
+    let notes = capability_parity_adapters()
+        .iter()
+        .filter_map(|adapter| {
+            descriptor
+                .surfacing_justifications
+                .get(adapter.as_str())
+                .map(|note| format!("{}: {}", adapter.label(), note))
+        })
+        .collect::<Vec<_>>();
+    markdown_cell(&notes.join("<br>"))
+}
+
+fn markdown_cell(raw: &str) -> String {
+    raw.replace('\n', " ").replace('|', "\\|")
 }
 
 fn build_capability_registry() -> Vec<CapabilityDescriptor> {
@@ -5096,6 +5302,7 @@ fn build_capability_registry() -> Vec<CapabilityDescriptor> {
 }
 
 fn glossary_command_descriptor(command: &GlossaryRegistryCommand) -> CapabilityDescriptor {
+    let surfacing = glossary_command_surfacing(command);
     CapabilityDescriptor {
         name: command.path.clone(),
         title: Some(title_from_stable_name(&command.path)),
@@ -5110,7 +5317,15 @@ fn glossary_command_descriptor(command: &GlossaryRegistryCommand) -> CapabilityD
         }),
         output_schema: generic_output_schema(),
         mutating: infer_command_mutation(&command.path, &command.engine_operations),
-        adapters: adapters_from_interfaces(&command.interfaces),
+        gui: surfacing.gui,
+        cli: surfacing.cli,
+        mcp: surfacing.mcp,
+        js: surfacing.js,
+        lua: surfacing.lua,
+        clawbio: surfacing.clawbio,
+        surfacing_justifications: surfacing_justifications_for_glossary_command(
+            &surfacing, command,
+        ),
         inline_operand_ok: inline_operand_ok_for_operations(&command.engine_operations),
         engine_operations: command.engine_operations.clone(),
         source: CapabilitySource::GlossaryCommand,
@@ -5122,12 +5337,7 @@ fn engine_operation_descriptor(
     commands: &[GlossaryRegistryCommand],
 ) -> CapabilityDescriptor {
     let mut description = None;
-    let mut adapters = BTreeSet::from([
-        CapabilityAdapter::Cli,
-        CapabilityAdapter::Mcp,
-        CapabilityAdapter::Js,
-        CapabilityAdapter::Lua,
-    ]);
+    let surfacing = engine_operation_surfacing();
     for command in commands {
         if command
             .engine_operations
@@ -5135,9 +5345,6 @@ fn engine_operation_descriptor(
             .any(|operation| operation == op_name)
         {
             description.get_or_insert_with(|| command.summary.clone());
-            for adapter in adapters_from_interfaces(&command.interfaces) {
-                adapters.insert(adapter);
-            }
         }
     }
     CapabilityDescriptor {
@@ -5153,7 +5360,13 @@ fn engine_operation_descriptor(
             "description": "Serialized OpResult payload."
         }),
         mutating: infer_engine_operation_mutation(op_name),
-        adapters: adapters.into_iter().collect(),
+        gui: surfacing.gui,
+        cli: surfacing.cli,
+        mcp: surfacing.mcp,
+        js: surfacing.js,
+        lua: surfacing.lua,
+        clawbio: surfacing.clawbio,
+        surfacing_justifications: surfacing_justifications_for_engine_operation(&surfacing),
         inline_operand_ok: inline_operand_ok_for_operation(op_name),
         engine_operations: vec![op_name.to_string()],
         source: CapabilitySource::EngineOperation,
@@ -5166,6 +5379,7 @@ fn mcp_tool_descriptor(
     description: &str,
     mutating: CapabilityMutation,
 ) -> CapabilityDescriptor {
+    let surfacing = mcp_tool_surfacing();
     CapabilityDescriptor {
         name: name.to_string(),
         title: Some(title.to_string()),
@@ -5176,11 +5390,165 @@ fn mcp_tool_descriptor(
         }),
         output_schema: generic_output_schema(),
         mutating,
-        adapters: vec![CapabilityAdapter::Mcp],
+        gui: surfacing.gui,
+        cli: surfacing.cli,
+        mcp: surfacing.mcp,
+        js: surfacing.js,
+        lua: surfacing.lua,
+        clawbio: surfacing.clawbio,
+        surfacing_justifications: surfacing_justifications_for_mcp_tool(&surfacing),
         inline_operand_ok: None,
         engine_operations: vec![],
         source: CapabilitySource::McpTool,
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct CapabilitySurfacingSet {
+    gui: AdapterSurfacing,
+    cli: AdapterSurfacing,
+    mcp: AdapterSurfacing,
+    js: AdapterSurfacing,
+    lua: AdapterSurfacing,
+    clawbio: AdapterSurfacing,
+}
+
+impl CapabilitySurfacingSet {
+    fn for_adapter(self, adapter: CapabilityAdapter) -> AdapterSurfacing {
+        match adapter {
+            CapabilityAdapter::Gui => self.gui,
+            CapabilityAdapter::Cli => self.cli,
+            CapabilityAdapter::Mcp => self.mcp,
+            CapabilityAdapter::Js => self.js,
+            CapabilityAdapter::Lua => self.lua,
+            CapabilityAdapter::Clawbio => self.clawbio,
+        }
+    }
+}
+
+fn glossary_command_surfacing(command: &GlossaryRegistryCommand) -> CapabilitySurfacingSet {
+    let interfaces = command
+        .interfaces
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    CapabilitySurfacingSet {
+        gui: if interfaces.contains("gui-shell") {
+            AdapterSurfacing::ShellPassthrough
+        } else {
+            AdapterSurfacing::NotApplicable
+        },
+        cli: if interfaces.contains("cli-direct") {
+            AdapterSurfacing::Prominent
+        } else if interfaces.contains("cli-shell") {
+            AdapterSurfacing::ShellPassthrough
+        } else {
+            AdapterSurfacing::NotApplicable
+        },
+        mcp: if interfaces.contains("mcp") {
+            AdapterSurfacing::Prominent
+        } else {
+            AdapterSurfacing::NotApplicable
+        },
+        js: if interfaces.contains("js") {
+            AdapterSurfacing::Prominent
+        } else {
+            AdapterSurfacing::NotApplicable
+        },
+        lua: if interfaces.contains("lua") {
+            AdapterSurfacing::Prominent
+        } else {
+            AdapterSurfacing::NotApplicable
+        },
+        clawbio: AdapterSurfacing::NotApplicable,
+    }
+}
+
+fn engine_operation_surfacing() -> CapabilitySurfacingSet {
+    CapabilitySurfacingSet {
+        gui: AdapterSurfacing::ShellPassthrough,
+        cli: AdapterSurfacing::ShellPassthrough,
+        mcp: AdapterSurfacing::ShellPassthrough,
+        js: AdapterSurfacing::ShellPassthrough,
+        lua: AdapterSurfacing::ShellPassthrough,
+        clawbio: AdapterSurfacing::NotApplicable,
+    }
+}
+
+fn mcp_tool_surfacing() -> CapabilitySurfacingSet {
+    CapabilitySurfacingSet {
+        gui: AdapterSurfacing::NotApplicable,
+        cli: AdapterSurfacing::NotApplicable,
+        mcp: AdapterSurfacing::Prominent,
+        js: AdapterSurfacing::NotApplicable,
+        lua: AdapterSurfacing::NotApplicable,
+        clawbio: AdapterSurfacing::NotApplicable,
+    }
+}
+
+fn surfacing_justifications_for_glossary_command(
+    surfacing: &CapabilitySurfacingSet,
+    command: &GlossaryRegistryCommand,
+) -> BTreeMap<String, String> {
+    let mut justifications = BTreeMap::new();
+    for adapter in capability_parity_adapters() {
+        if surfacing.for_adapter(*adapter) == AdapterSurfacing::NotApplicable {
+            let note = if *adapter == CapabilityAdapter::Clawbio {
+                "ClawBio exposes curated skill intents rather than glossary command rows."
+                    .to_string()
+            } else if command.engine_operations.is_empty() {
+                format!(
+                    "The glossary entry for `{}` does not declare a {} interface; this row is adapter-specific.",
+                    command.path,
+                    adapter.label()
+                )
+            } else {
+                format!(
+                    "The glossary entry for `{}` does not declare a {} interface; related engine operations are projected separately.",
+                    command.path,
+                    adapter.label()
+                )
+            };
+            justifications.insert(adapter.as_str().to_string(), note);
+        }
+    }
+    justifications
+}
+
+fn surfacing_justifications_for_engine_operation(
+    surfacing: &CapabilitySurfacingSet,
+) -> BTreeMap<String, String> {
+    capability_parity_adapters()
+        .iter()
+        .filter_map(|adapter| {
+            (surfacing.for_adapter(*adapter) == AdapterSurfacing::NotApplicable).then(|| {
+                (
+                    adapter.as_str().to_string(),
+                    "ClawBio exposes curated skill intents rather than raw engine operation rows."
+                        .to_string(),
+                )
+            })
+        })
+        .collect()
+}
+
+fn surfacing_justifications_for_mcp_tool(
+    surfacing: &CapabilitySurfacingSet,
+) -> BTreeMap<String, String> {
+    capability_parity_adapters()
+        .iter()
+        .filter_map(|adapter| {
+            (surfacing.for_adapter(*adapter) == AdapterSurfacing::NotApplicable).then(|| {
+                (
+                    adapter.as_str().to_string(),
+                    format!(
+                        "MCP tools/list descriptor; {} uses glossary or engine-operation descriptors instead.",
+                        adapter.label()
+                    ),
+                )
+            })
+        })
+        .collect()
 }
 
 fn generic_output_schema() -> Value {
@@ -5202,28 +5570,6 @@ fn title_from_stable_name(name: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join(" ")
-}
-
-fn adapters_from_interfaces(interfaces: &[String]) -> Vec<CapabilityAdapter> {
-    let mut adapters = BTreeSet::new();
-    for interface in interfaces {
-        match interface.as_str() {
-            "cli-direct" | "cli-shell" => {
-                adapters.insert(CapabilityAdapter::Cli);
-            }
-            "mcp" => {
-                adapters.insert(CapabilityAdapter::Mcp);
-            }
-            "js" => {
-                adapters.insert(CapabilityAdapter::Js);
-            }
-            "lua" => {
-                adapters.insert(CapabilityAdapter::Lua);
-            }
-            _ => {}
-        }
-    }
-    adapters.into_iter().collect()
 }
 
 fn infer_command_mutation(path: &str, operations: &[String]) -> CapabilityMutation {

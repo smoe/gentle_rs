@@ -137,9 +137,7 @@ impl MainAreaDna {
         ))
     }
 
-    pub(super) fn variant_followup_embedded_window_id(
-        ui: &VariantFollowupUiState,
-    ) -> egui::Id {
+    pub(super) fn variant_followup_embedded_window_id(ui: &VariantFollowupUiState) -> egui::Id {
         egui::Id::new(format!(
             "variant_followup_window_embedded_{}_{}",
             ui.source_seq_id,
@@ -4539,8 +4537,10 @@ impl MainAreaDna {
         if source_seq_id.is_empty() {
             return;
         }
-        let viewport_id =
-            Self::variant_followup_viewport_id(source_seq_id, self.variant_followup_ui.source_feature_id);
+        let viewport_id = Self::variant_followup_viewport_id(
+            source_seq_id,
+            self.variant_followup_ui.source_feature_id,
+        );
         self.log_promoter_design_status(
             "focus requested",
             self.variant_followup_window_pending_initial_render,

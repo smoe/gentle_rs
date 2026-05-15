@@ -8,7 +8,11 @@
 use super::*;
 
 impl GENtleApp {
-    pub(super) fn render_host_profile_record_panel(ui: &mut Ui, profile: &HostProfileRecord, heading: &str) {
+    pub(super) fn render_host_profile_record_panel(
+        ui: &mut Ui,
+        profile: &HostProfileRecord,
+        heading: &str,
+    ) {
         ui.separator();
         ui.heading(heading);
         ui.monospace(format!("profile id: {}", profile.profile_id));
@@ -159,7 +163,11 @@ impl GENtleApp {
         parts.join(" | ")
     }
 
-    pub(super) fn choose_genome_from_catalog(ui: &mut Ui, genome_id: &mut String, names: &[String]) -> bool {
+    pub(super) fn choose_genome_from_catalog(
+        ui: &mut Ui,
+        genome_id: &mut String,
+        names: &[String],
+    ) -> bool {
         let mut changed = false;
         let selected_text = if names.iter().any(|name| name == genome_id) {
             genome_id.clone()
@@ -209,7 +217,10 @@ impl GENtleApp {
         catalog.list_chromosome_lengths(genome_id, cache_dir.as_deref())
     }
 
-    pub(super) fn render_chromosome_length_lines(ui: &mut Ui, chromosomes: &[GenomeChromosomeRecord]) {
+    pub(super) fn render_chromosome_length_lines(
+        ui: &mut Ui,
+        chromosomes: &[GenomeChromosomeRecord],
+    ) {
         if chromosomes.is_empty() {
             ui.small("No chromosomes/contigs found in FASTA index.");
             return;
@@ -331,7 +342,9 @@ impl GENtleApp {
         )
     }
 
-    pub(super) fn format_prepared_cache_hover_text(inspection: &PreparedGenomeInspection) -> String {
+    pub(super) fn format_prepared_cache_hover_text(
+        inspection: &PreparedGenomeInspection,
+    ) -> String {
         if inspection.cached_contig_count == 0 {
             return "No cached contig summary available from the FASTA index.".to_string();
         }
@@ -352,7 +365,9 @@ impl GENtleApp {
         )
     }
 
-    pub(super) fn prepare_step_summary(&self) -> Option<(String, usize, usize, f32, Option<Duration>)> {
+    pub(super) fn prepare_step_summary(
+        &self,
+    ) -> Option<(String, usize, usize, f32, Option<Duration>)> {
         let total_steps = self.genome_prepare_steps.len();
         if total_steps == 0 {
             return None;
@@ -395,7 +410,9 @@ impl GENtleApp {
         ))
     }
 
-    pub(super) fn prepare_step_state_status_label(status: PrepareGenomeUiStepStatus) -> &'static str {
+    pub(super) fn prepare_step_state_status_label(
+        status: PrepareGenomeUiStepStatus,
+    ) -> &'static str {
         match status {
             PrepareGenomeUiStepStatus::Pending => "pending",
             PrepareGenomeUiStepStatus::Running => "running",
@@ -1131,7 +1148,10 @@ impl GENtleApp {
         }
     }
 
-    pub(super) fn render_pending_ensembl_installable_genomes_dialog(&mut self, ctx: &egui::Context) {
+    pub(super) fn render_pending_ensembl_installable_genomes_dialog(
+        &mut self,
+        ctx: &egui::Context,
+    ) {
         let Some(mut dialog) = self.pending_ensembl_installable_genomes.clone() else {
             return;
         };

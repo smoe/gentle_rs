@@ -91,6 +91,8 @@ impl GentleEngine {
         let value = serde_json::to_value(store).map_err(|e| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not serialize sequencing-trace metadata: {e}"),
+
+            cause_chain: vec![],
         })?;
         self.state
             .metadata
@@ -113,6 +115,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "trace_id cannot be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let mut out = String::with_capacity(trimmed.len());
@@ -128,6 +132,8 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: "trace_id must contain at least one ASCII letter, digit, '-', '_' or '.'"
                     .to_string(),
+
+                cause_chain: vec![],
             });
         }
         Ok(out)
@@ -168,6 +174,8 @@ impl GentleEngine {
                         "Associated sequence '{}' for sequencing trace import was not found",
                         seq_id
                     ),
+
+                    cause_chain: vec![],
                 });
             }
         }
@@ -267,6 +275,8 @@ impl GentleEngine {
             .ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!("Sequencing trace '{}' not found", trace_id),
+
+                cause_chain: vec![],
             })
     }
 
@@ -362,11 +372,15 @@ fn parse_sequencing_trace_file(path: &str) -> Result<ParsedSequencingTrace, Engi
     let bytes = std::fs::read(path).map_err(|e| EngineError {
         code: ErrorCode::Io,
         message: format!("Could not read sequencing trace '{path}': {e}"),
+
+        cause_chain: vec![],
     })?;
     if bytes.is_empty() {
         return Err(EngineError {
             code: ErrorCode::InvalidInput,
             message: format!("Sequencing trace '{path}' is empty"),
+
+            cause_chain: vec![],
         });
     }
     match detect_sequencing_trace_format(&bytes)? {
@@ -386,6 +400,8 @@ fn detect_sequencing_trace_format(bytes: &[u8]) -> Result<SequencingTraceFormat,
         code: ErrorCode::InvalidInput,
         message: "Unsupported sequencing trace format (expected ABIF/AB1 or SCF magic bytes)"
             .to_string(),
+
+        cause_chain: vec![],
     })
 }
 
@@ -397,13 +413,16 @@ fn parse_abi_trace(path: &str, bytes: &[u8]) -> Result<ParsedSequencingTrace, En
             message: format!(
                 "ABIF trace '{path}' lacks PBAS1/PBAS2 called bases and is not a supported sequencing trace"
             ),
-        }
+        
+            cause_chain: vec![],}
     })?;
     let called_bases = decode_abif_text(called_entry, bytes)?;
     if called_bases.trim().is_empty() {
         return Err(EngineError {
             code: ErrorCode::InvalidInput,
             message: format!("ABIF trace '{path}' contains an empty PBAS called-base string"),
+
+            cause_chain: vec![],
         });
     }
     let confidence_values = find_preferred_abif_entry(&entries, "PCON", &[2, 1])
@@ -553,12 +572,16 @@ fn parse_abif_directory(bytes: &[u8]) -> Result<Vec<AbifDirectoryEntry>, EngineE
         return Err(EngineError {
             code: ErrorCode::InvalidInput,
             message: "ABIF trace is too small to contain a root directory".to_string(),
+
+            cause_chain: vec![],
         });
     }
     if &bytes[..4] != b"ABIF" {
         return Err(EngineError {
             code: ErrorCode::InvalidInput,
             message: "ABIF trace does not start with the 'ABIF' magic bytes".to_string(),
+
+            cause_chain: vec![],
         });
     }
     let root = parse_abif_directory_entry(bytes, 6)?;
@@ -575,6 +598,8 @@ fn parse_abif_directory(bytes: &[u8]) -> Result<Vec<AbifDirectoryEntry>, EngineE
                 "ABIF directory entry size {} is smaller than the 28-byte minimum",
                 elem_size
             ),
+
+            cause_chain: vec![],
         });
     }
     let mut entries = Vec::with_capacity(root.element_count as usize);
@@ -584,6 +609,8 @@ fn parse_abif_directory(bytes: &[u8]) -> Result<Vec<AbifDirectoryEntry>, EngineE
             .ok_or_else(|| EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "ABIF directory offset overflow".to_string(),
+
+                cause_chain: vec![],
             })?;
         entries.push(parse_abif_directory_entry(bytes, offset)?);
     }
@@ -737,6 +764,8 @@ fn decode_abif_trace_points(
                         entry.tag_number,
                         raw.len()
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             Ok(raw
@@ -754,6 +783,8 @@ fn decode_abif_trace_points(
                         entry.tag_number,
                         raw.len()
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             Ok(raw
@@ -767,6 +798,8 @@ fn decode_abif_trace_points(
                 "ABIF trace tag '{}{}' uses unsupported element size {}",
                 entry.tag_name, entry.tag_number, other
             ),
+
+            cause_chain: vec![],
         }),
     }
 }
@@ -788,6 +821,8 @@ fn decode_abif_peak_locations(
                         entry.tag_number,
                         raw.len()
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             Ok(raw
@@ -805,6 +840,8 @@ fn decode_abif_peak_locations(
                         entry.tag_number,
                         raw.len()
                     ),
+
+                    cause_chain: vec![],
                 });
             }
             Ok(raw
@@ -818,6 +855,8 @@ fn decode_abif_peak_locations(
                 "ABIF peak-location tag '{}{}' uses unsupported element size {}",
                 entry.tag_name, entry.tag_number, other
             ),
+
+            cause_chain: vec![],
         }),
     }
 }
@@ -846,12 +885,16 @@ fn parse_scf_header(bytes: &[u8]) -> Result<ScfHeader, EngineError> {
         return Err(EngineError {
             code: ErrorCode::InvalidInput,
             message: "SCF trace is too small to contain a 128-byte header".to_string(),
+
+            cause_chain: vec![],
         });
     }
     if &bytes[..4] != b".scf" {
         return Err(EngineError {
             code: ErrorCode::InvalidInput,
             message: "SCF trace does not start with the '.scf' magic bytes".to_string(),
+
+            cause_chain: vec![],
         });
     }
     let header = ScfHeader {
@@ -876,6 +919,8 @@ fn parse_scf_header(bytes: &[u8]) -> Result<ScfHeader, EngineError> {
                 "SCF trace uses unsupported sample_size {} (expected 1 or 2)",
                 header.sample_size
             ),
+
+            cause_chain: vec![],
         });
     }
     Ok(header)
@@ -1025,6 +1070,8 @@ fn parse_scf_trace_channels(
             .ok_or_else(|| EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "SCF v3 trace block length overflow".to_string(),
+
+                cause_chain: vec![],
             })?;
         for (idx, label) in channel_labels.iter().enumerate() {
             let start = idx * block_len;
@@ -1076,6 +1123,8 @@ fn read_scf_sample_value(raw: &[u8], sample_size: usize) -> Result<u32, EngineEr
                 return Err(EngineError {
                     code: ErrorCode::InvalidInput,
                     message: format!("SCF sample expected 2 bytes, found {}", raw.len()),
+
+                    cause_chain: vec![],
                 });
             }
             Ok(u16::from_be_bytes([raw[0], raw[1]]) as u32)
@@ -1083,6 +1132,8 @@ fn read_scf_sample_value(raw: &[u8], sample_size: usize) -> Result<u32, EngineEr
         other => Err(EngineError {
             code: ErrorCode::InvalidInput,
             message: format!("Unsupported SCF sample size {}", other),
+
+            cause_chain: vec![],
         }),
     }
 }
@@ -1130,6 +1181,8 @@ fn scf_sample_section_len(header: &ScfHeader) -> Result<usize, EngineError> {
         .ok_or_else(|| EngineError {
             code: ErrorCode::InvalidInput,
             message: "SCF sample section length overflow".to_string(),
+
+            cause_chain: vec![],
         })
 }
 
@@ -1139,11 +1192,15 @@ fn scf_base_section_len(header: &ScfHeader) -> Result<usize, EngineError> {
         bases.checked_mul(12).ok_or_else(|| EngineError {
             code: ErrorCode::InvalidInput,
             message: "SCF v3 base section length overflow".to_string(),
+
+            cause_chain: vec![],
         })
     } else {
         bases.checked_mul(12).ok_or_else(|| EngineError {
             code: ErrorCode::InvalidInput,
             message: "SCF base section length overflow".to_string(),
+
+            cause_chain: vec![],
         })
     }
 }
@@ -1193,6 +1250,8 @@ fn slice_range<'a>(
                 end,
                 bytes.len()
             ),
+
+            cause_chain: vec![],
         });
     }
     Ok(&bytes[start..end])

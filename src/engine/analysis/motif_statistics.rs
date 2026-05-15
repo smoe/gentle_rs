@@ -84,6 +84,7 @@ impl GentleEngine {
         EngineError {
             code: ErrorCode::Internal,
             message: format!("TFBS scoring cancelled during {context}"),
+            cause_chain: vec![],
         }
     }
 

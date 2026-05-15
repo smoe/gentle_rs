@@ -38,16 +38,22 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Microarray track manifest path must not be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let file = File::open(path).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not open microarray track manifest '{path}': {e}"),
+
+            cause_chain: vec![],
         })?;
         let mut manifest: MicroarrayTrackManifest = serde_json::from_reader(BufReader::new(file))
             .map_err(|e| EngineError {
             code: ErrorCode::InvalidInput,
             message: format!("Could not parse microarray track manifest '{path}': {e}"),
+
+            cause_chain: vec![],
         })?;
         if manifest.schema.trim() != MICROARRAY_TRACK_MANIFEST_SCHEMA {
             return Err(EngineError {
@@ -58,6 +64,8 @@ impl GentleEngine {
                     manifest.schema.trim(),
                     MICROARRAY_TRACK_MANIFEST_SCHEMA
                 ),
+
+                cause_chain: vec![],
             });
         }
         manifest.dataset = manifest.dataset.trim().to_string();
@@ -290,6 +298,8 @@ impl GentleEngine {
             reader.read_line(&mut line).map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not read genome projection map '{projection_path}': {e}"),
+
+                cause_chain: vec![],
             })? > 0
         } {
             line_no += 1;
@@ -318,6 +328,8 @@ impl GentleEngine {
                     "Genome projection map '{}' line {} skipped: {}",
                     projection_path, line_no, err
                 ),
+
+                cause_chain: vec![],
             })?;
             if Self::genome_build_tokens_match(&block.source_genome_id, source_genome_id)
                 && Self::genome_build_tokens_match(&block.target_genome_id, target_genome_id)
@@ -332,6 +344,8 @@ impl GentleEngine {
                     "Genome projection map '{}' contains no blocks for {} -> {}",
                     projection_path, source_genome_id, target_genome_id
                 ),
+
+                cause_chain: vec![],
             });
         }
         Ok(blocks)
@@ -399,6 +413,8 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: "ProjectGenomeInterval requires a valid 1-based inclusive interval"
                     .to_string(),
+
+                cause_chain: vec![],
             });
         }
         let blocks = Self::load_genome_coordinate_projection_blocks(
@@ -459,6 +475,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "ProjectMicroarrayTrack level must not be empty".to_string(),
+
+                cause_chain: vec![],
             });
         }
         let available = manifest
@@ -471,6 +489,8 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!("Microarray track manifest has no '{}' contrast TSVs", level),
+
+                cause_chain: vec![],
             });
         }
 
@@ -517,6 +537,8 @@ impl GentleEngine {
                     level,
                     missing.join(", ")
                 ),
+
+                cause_chain: vec![],
             });
         }
         Ok(out)
@@ -980,6 +1002,8 @@ impl GentleEngine {
                             .join(", ")
                     }
                 ),
+
+                cause_chain: vec![],
             });
         }
         let level = if level.trim().is_empty() {
@@ -994,6 +1018,8 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: "ProjectMicroarrayTrack max_features must be greater than zero"
                     .to_string(),
+
+                cause_chain: vec![],
             });
         }
         if let Some(min_abs_logfc) = min_abs_logfc {
@@ -1001,6 +1027,8 @@ impl GentleEngine {
                 return Err(EngineError {
                     code: ErrorCode::InvalidInput,
                     message: "ProjectMicroarrayTrack min_abs_logfc must be >= 0".to_string(),
+
+                    cause_chain: vec![],
                 });
             }
         }
@@ -1009,6 +1037,8 @@ impl GentleEngine {
                 return Err(EngineError {
                     code: ErrorCode::InvalidInput,
                     message: "ProjectMicroarrayTrack max_adj_p must be within 0..=1".to_string(),
+
+                    cause_chain: vec![],
                 });
             }
         }
@@ -1058,6 +1088,8 @@ impl GentleEngine {
                 reader.read_line(&mut line).map_err(|e| EngineError {
                     code: ErrorCode::Io,
                     message: format!("Could not read microarray track TSV '{tsv_path}': {e}"),
+
+                    cause_chain: vec![],
                 })? > 0
             } {
                 line_no += 1;
