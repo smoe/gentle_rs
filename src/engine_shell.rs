@@ -2369,6 +2369,18 @@ pub enum ShellCommand {
         selected_record_indices: Vec<usize>,
         subset_spec: Option<String>,
     },
+    RnaReadsExportIsoformTriageTsv {
+        report_id: String,
+        path: String,
+        selection: RnaReadHitSelection,
+        limit: Option<usize>,
+        selected_record_indices: Vec<usize>,
+        subset_spec: Option<String>,
+        min_identity_fraction: Option<f64>,
+        min_query_coverage_fraction: Option<f64>,
+        min_confirmed_transition_fraction: Option<f64>,
+        max_secondary_mappings: Option<usize>,
+    },
     RnaReadsExportAlignmentDotplotSvg {
         report_id: String,
         path: String,
@@ -10279,6 +10291,40 @@ impl ShellCommand {
                     .unwrap_or_else(|| "all".to_string()),
                 selected_record_indices.len(),
                 subset_spec.as_deref().unwrap_or("none")
+            ),
+            Self::RnaReadsExportIsoformTriageTsv {
+                report_id,
+                path,
+                selection,
+                limit,
+                selected_record_indices,
+                subset_spec,
+                min_identity_fraction,
+                min_query_coverage_fraction,
+                min_confirmed_transition_fraction,
+                max_secondary_mappings,
+            } => format!(
+                "export RNA-read isoform triage TSV from '{}' to '{}' (selection={}, limit={}, selected_record_indices={}, subset_spec={}, min_identity={}, min_query_coverage={}, min_confirmed_transition_fraction={}, max_secondary_mappings={})",
+                report_id,
+                path,
+                selection.as_str(),
+                limit
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "all".to_string()),
+                selected_record_indices.len(),
+                subset_spec.as_deref().unwrap_or("none"),
+                min_identity_fraction
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "report-default".to_string()),
+                min_query_coverage_fraction
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "0.8".to_string()),
+                min_confirmed_transition_fraction
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "0.8".to_string()),
+                max_secondary_mappings
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "0".to_string())
             ),
             Self::RnaReadsExportAlignmentDotplotSvg {
                 report_id,
@@ -31458,6 +31504,51 @@ fn execute_rna_reads_command(
                 }),
             })
         }
+        ShellCommand::RnaReadsExportIsoformTriageTsv {
+            report_id,
+            path,
+            selection,
+            limit,
+            selected_record_indices,
+            subset_spec,
+            min_identity_fraction,
+            min_query_coverage_fraction,
+            min_confirmed_transition_fraction,
+            max_secondary_mappings,
+        } => {
+            let export = engine
+                .export_rna_read_isoform_triage_tsv(
+                    report_id,
+                    path,
+                    *selection,
+                    *limit,
+                    selected_record_indices,
+                    subset_spec.as_deref(),
+                    *min_identity_fraction,
+                    *min_query_coverage_fraction,
+                    *min_confirmed_transition_fraction,
+                    *max_secondary_mappings,
+                )
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": export.schema,
+                    "report_id": export.report_id,
+                    "path": export.path,
+                    "selection": export.selection.as_str(),
+                    "selected_record_indices": selected_record_indices,
+                    "subset_spec": subset_spec,
+                    "row_count": export.row_count,
+                    "limit": export.limit,
+                    "min_identity_fraction": export.min_identity_fraction,
+                    "min_query_coverage_fraction": export.min_query_coverage_fraction,
+                    "min_confirmed_transition_fraction": export.min_confirmed_transition_fraction,
+                    "max_secondary_mappings": export.max_secondary_mappings,
+                    "bin_counts": export.bin_counts,
+                }),
+            })
+        }
         ShellCommand::RnaReadsExportAlignmentDotplotSvg {
             report_id,
             path,
@@ -32608,6 +32699,7 @@ fn execute_shell_command_with_options_dispatch(
             | ShellCommand::RnaReadsExportExonAbundanceTsv { .. }
             | ShellCommand::RnaReadsExportScoreDensitySvg { .. }
             | ShellCommand::RnaReadsExportAlignmentsTsv { .. }
+            | ShellCommand::RnaReadsExportIsoformTriageTsv { .. }
             | ShellCommand::RnaReadsExportAlignmentDotplotSvg { .. }
     ) {
         return execute_rna_reads_command(engine, command, options);
@@ -34110,6 +34202,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::RnaReadsExportExonAbundanceTsv { .. }
         | ShellCommand::RnaReadsExportScoreDensitySvg { .. }
         | ShellCommand::RnaReadsExportAlignmentsTsv { .. }
+        | ShellCommand::RnaReadsExportIsoformTriageTsv { .. }
         | ShellCommand::RnaReadsExportAlignmentDotplotSvg { .. } => {
             execute_rna_reads_command(engine, command, options)?
         }

@@ -707,6 +707,7 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
   - `rna-reads export-abundance-tsv`
   - `rna-reads export-score-density-svg`
   - `rna-reads export-alignments-tsv`
+  - `rna-reads export-isoform-triage-tsv`
   - `rna-reads export-alignment-dotplot-svg`
   backed by `InterpretRnaReads`, `AlignRnaReadReport`,
   `RunRnaReadBatchMap`, `PreflightRnaReadIsoforms`,
@@ -716,7 +717,8 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
   `ExportRnaReadHitsFasta`, `ExportRnaReadSampleSheet`,
   `ExportRnaReadTargetQuality`,
   `ExportRnaReadExonPathsTsv`, `ExportRnaReadExonAbundanceTsv`, `ExportRnaReadScoreDensitySvg`,
-  `ExportRnaReadAlignmentsTsv`, and `ExportRnaReadAlignmentDotplotSvg`, plus
+  `ExportRnaReadAlignmentsTsv`, `ExportRnaReadIsoformTriageTsv`, and
+  `ExportRnaReadAlignmentDotplotSvg`, plus
   the shared engine alignment-display helper used by the GUI `Show alignment`
   pane.
   Input supports FASTA plus gzipped FASTA (`.fa/.fasta` and `.fa.gz/.fasta.gz`).
@@ -848,6 +850,9 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
       `*_compare.svg` instead of overwriting it.
   - `export-alignments-tsv`: non-mutating ranked alignment-row TSV export for
     downstream table-based triage.
+  - `export-isoform-triage-tsv`: non-mutating conservative read-level
+    classification into known-isoform, ambiguous, gene-supported, and
+    off-target/bad-seed bins; it does not call novel isoforms.
   - `export-alignment-dotplot-svg`: non-mutating dotplot-like scatter export
     (coverage vs identity, score-colored points) for aligned report hits.
 - `gentle_js`: baseline support via `apply_operation` for the same operation
@@ -2198,6 +2203,7 @@ Shared shell command:
     - `rna-reads export-abundance-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
     - `rna-reads export-score-density-svg REPORT_ID OUTPUT.svg [--scale linear|log] [--variant all_scored|composite_seed_gate]`
     - `rna-reads export-alignments-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--limit N] [--record-indices i,j,k] [--subset-spec TEXT]`
+    - `rna-reads export-isoform-triage-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--limit N] [--record-indices i,j,k] [--subset-spec TEXT] [--min-identity F] [--min-query-coverage F] [--min-confirmed-transition-fraction F] [--max-secondary-mappings N]`
     - `rna-reads export-alignment-dotplot-svg REPORT_ID OUTPUT.svg [--selection all|seed_passed|aligned] [--max-points N]`
     - `rna-reads show-alignments` returns
       `gentle.rna_read_alignment_display_batch.v1` with final
@@ -2351,6 +2357,10 @@ Shared shell command:
     - `rna-reads export-paths-tsv` and `rna-reads export-abundance-tsv` now
       accept the same `--record-indices` exact-subset override plus optional
       `--subset-spec` provenance.
+    - `rna-reads export-isoform-triage-tsv` writes a conservative read-level
+      TSV with bins `known_isoform_confirmed`, `known_isoform_ambiguous`,
+      `gene_supported_no_isoform_call`, and `off_target_or_bad_seed`; recurrent
+      unresolved patterns are left for a later aggregate novelty workflow.
     - `rna-reads export-alignment-dotplot-svg` emits a dotplot-style alignment
       scatter (coverage vs identity) with score-based point coloring.
     - `rna-reads export-hits-fasta` headers include seed metrics and exon-path

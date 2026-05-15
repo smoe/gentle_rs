@@ -2097,7 +2097,9 @@ fn build_sequence_scan_target_from_alignment_state(
         (Some(_), Some(_)) => Err(format!(
             "{context} accepts either SEQ_ID or inline sequence text, not both"
         )),
-        (None, None) => Err(format!("{context} requires either SEQ_ID or inline sequence text")),
+        (None, None) => Err(format!(
+            "{context} requires either SEQ_ID or inline sequence text"
+        )),
     }
 }
 
@@ -8542,7 +8544,7 @@ pub(super) fn parse_cutrun_command(tokens: &[String]) -> Result<ShellCommand, St
 pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "rna-reads requires a subcommand: preflight-isoforms, interpret, batch-map, align-report, list-reports, show-report, show-alignment, summarize-gene-support, inspect-gene-support, inspect-alignments, inspect-concatemers, build-transcript-index, materialize-hits, export-report, export-hits-fasta, export-sample-sheet, export-target-quality, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-alignment-dotplot-svg"
+            "rna-reads requires a subcommand: preflight-isoforms, interpret, batch-map, align-report, list-reports, show-report, show-alignment, summarize-gene-support, inspect-gene-support, inspect-alignments, inspect-concatemers, build-transcript-index, materialize-hits, export-report, export-hits-fasta, export-sample-sheet, export-target-quality, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-isoform-triage-tsv, export-alignment-dotplot-svg"
                 .to_string(),
         );
     }
@@ -10976,6 +10978,139 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                 subset_spec,
             })
         }
+        "export-isoform-triage-tsv" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "rna-reads export-isoform-triage-tsv requires REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--limit N] [--record-indices i,j,k] [--subset-spec TEXT] [--min-identity F] [--min-query-coverage F] [--min-confirmed-transition-fraction F] [--max-secondary-mappings N]"
+                        .to_string(),
+                );
+            }
+            let report_id = tokens[2].clone();
+            let path = tokens[3].clone();
+            let mut selection = RnaReadHitSelection::Aligned;
+            let mut limit: Option<usize> = None;
+            let mut selected_record_indices: Vec<usize> = vec![];
+            let mut subset_spec: Option<String> = None;
+            let mut min_identity_fraction: Option<f64> = None;
+            let mut min_query_coverage_fraction: Option<f64> = None;
+            let mut min_confirmed_transition_fraction: Option<f64> = None;
+            let mut max_secondary_mappings: Option<usize> = None;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--selection" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--selection",
+                            "rna-reads export-isoform-triage-tsv",
+                        )?;
+                        selection = parse_rna_read_hit_selection(&raw)?;
+                    }
+                    "--limit" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--limit",
+                            "rna-reads export-isoform-triage-tsv",
+                        )?;
+                        limit = Some(raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --limit value '{raw}' for rna-reads export-isoform-triage-tsv: {e}"
+                            )
+                        })?);
+                    }
+                    "--record-indices" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--record-indices",
+                            "rna-reads export-isoform-triage-tsv",
+                        )?;
+                        selected_record_indices = parse_rna_read_record_indices(&raw)?;
+                    }
+                    "--subset-spec" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--subset-spec",
+                            "rna-reads export-isoform-triage-tsv",
+                        )?;
+                        subset_spec = Some(raw);
+                    }
+                    "--min-identity" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-identity",
+                            "rna-reads export-isoform-triage-tsv",
+                        )?;
+                        min_identity_fraction = Some(raw.parse::<f64>().map_err(|e| {
+                            format!(
+                                "Invalid --min-identity value '{raw}' for rna-reads export-isoform-triage-tsv: {e}"
+                            )
+                        })?);
+                    }
+                    "--min-query-coverage" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-query-coverage",
+                            "rna-reads export-isoform-triage-tsv",
+                        )?;
+                        min_query_coverage_fraction = Some(raw.parse::<f64>().map_err(|e| {
+                            format!(
+                                "Invalid --min-query-coverage value '{raw}' for rna-reads export-isoform-triage-tsv: {e}"
+                            )
+                        })?);
+                    }
+                    "--min-confirmed-transition-fraction" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-confirmed-transition-fraction",
+                            "rna-reads export-isoform-triage-tsv",
+                        )?;
+                        min_confirmed_transition_fraction =
+                            Some(raw.parse::<f64>().map_err(|e| {
+                                format!(
+                                    "Invalid --min-confirmed-transition-fraction value '{raw}' for rna-reads export-isoform-triage-tsv: {e}"
+                                )
+                            })?);
+                    }
+                    "--max-secondary-mappings" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-secondary-mappings",
+                            "rna-reads export-isoform-triage-tsv",
+                        )?;
+                        max_secondary_mappings = Some(raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --max-secondary-mappings value '{raw}' for rna-reads export-isoform-triage-tsv: {e}"
+                            )
+                        })?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for rna-reads export-isoform-triage-tsv"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::RnaReadsExportIsoformTriageTsv {
+                report_id,
+                path,
+                selection,
+                limit,
+                selected_record_indices,
+                subset_spec,
+                min_identity_fraction,
+                min_query_coverage_fraction,
+                min_confirmed_transition_fraction,
+                max_secondary_mappings,
+            })
+        }
         "export-alignment-dotplot-svg" => {
             if tokens.len() < 4 {
                 return Err(
@@ -11027,7 +11162,7 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
             })
         }
         other => Err(format!(
-            "Unknown rna-reads subcommand '{other}' (expected preflight-isoforms, interpret, batch-map, align-report, list-reports, show-report, show-alignment, show-alignments, summarize-gene-support, inspect-gene-support, inspect-alignments, inspect-concatemers, build-transcript-index, materialize-hits, export-report, export-hits-fasta, export-sample-sheet, export-target-quality, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-alignment-dotplot-svg)"
+            "Unknown rna-reads subcommand '{other}' (expected preflight-isoforms, interpret, batch-map, align-report, list-reports, show-report, show-alignment, show-alignments, summarize-gene-support, inspect-gene-support, inspect-alignments, inspect-concatemers, build-transcript-index, materialize-hits, export-report, export-hits-fasta, export-sample-sheet, export-target-quality, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-isoform-triage-tsv, export-alignment-dotplot-svg)"
         )),
     }
 }

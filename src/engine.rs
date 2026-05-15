@@ -441,6 +441,8 @@ const RNA_READ_TARGET_QUALITY_EXPORT_SCHEMA: &str = "gentle.rna_read_target_qual
 const RNA_READ_SCORE_DENSITY_SVG_EXPORT_SCHEMA: &str =
     "gentle.rna_read_score_density_svg_export.v1";
 const RNA_READ_ALIGNMENT_TSV_EXPORT_SCHEMA: &str = "gentle.rna_read_alignment_tsv_export.v1";
+const RNA_READ_ISOFORM_TRIAGE_TSV_EXPORT_SCHEMA: &str =
+    "gentle.rna_read_isoform_triage_tsv_export.v1";
 const RNA_READ_ALIGNMENT_DOTPLOT_SVG_EXPORT_SCHEMA: &str =
     "gentle.rna_read_alignment_dotplot_svg_export.v1";
 const RNA_READ_ALIGNMENT_INSPECTION_SCHEMA: &str = "gentle.rna_read_alignment_inspection.v1";
@@ -4248,6 +4250,26 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         subset_spec: Option<String>,
     },
+    ExportRnaReadIsoformTriageTsv {
+        report_id: String,
+        path: String,
+        #[serde(default)]
+        selection: RnaReadHitSelection,
+        #[serde(default)]
+        limit: Option<usize>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        selected_record_indices: Vec<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        subset_spec: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        min_identity_fraction: Option<f64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        min_query_coverage_fraction: Option<f64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        min_confirmed_transition_fraction: Option<f64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_secondary_mappings: Option<usize>,
+    },
     ExportRnaReadAlignmentDotplotSvg {
         report_id: String,
         path: String,
@@ -7671,6 +7693,7 @@ impl GentleEngine {
                 | Operation::ExportRnaReadExonAbundanceTsv { .. }
                 | Operation::ExportRnaReadScoreDensitySvg { .. }
                 | Operation::ExportRnaReadAlignmentsTsv { .. }
+                | Operation::ExportRnaReadIsoformTriageTsv { .. }
                 | Operation::ExportRnaReadAlignmentDotplotSvg { .. }
                 | Operation::ListSequencingConfirmationReports { .. }
                 | Operation::ShowSequencingConfirmationReport { .. }

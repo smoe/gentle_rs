@@ -4882,6 +4882,7 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "ShowRnaReadReport",
     "SummarizeRnaReadGeneSupport",
     "InspectRnaReadGeneSupport",
+    "ExportRnaReadIsoformTriageTsv",
     "RunRnaReadBatchMap",
     "SummarizeTfbsRegion",
     "SummarizeTfbsScoreTracks",
@@ -7309,6 +7310,46 @@ pub struct RnaReadAlignmentTsvExport {
     pub row_count: usize,
     pub aligned_count: usize,
     pub limit: Option<usize>,
+}
+
+/// Conservative per-read isoform triage bins for aligned RNA-read reports.
+#[derive(
+    Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Default,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum RnaReadIsoformTriageBin {
+    KnownIsoformConfirmed,
+    KnownIsoformAmbiguous,
+    GeneSupportedNoIsoformCall,
+    #[default]
+    OffTargetOrBadSeed,
+}
+
+impl RnaReadIsoformTriageBin {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::KnownIsoformConfirmed => "known_isoform_confirmed",
+            Self::KnownIsoformAmbiguous => "known_isoform_ambiguous",
+            Self::GeneSupportedNoIsoformCall => "gene_supported_no_isoform_call",
+            Self::OffTargetOrBadSeed => "off_target_or_bad_seed",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadIsoformTriageTsvExport {
+    pub schema: String,
+    pub path: String,
+    pub report_id: String,
+    pub selection: RnaReadHitSelection,
+    pub row_count: usize,
+    pub limit: Option<usize>,
+    pub min_identity_fraction: f64,
+    pub min_query_coverage_fraction: f64,
+    pub min_confirmed_transition_fraction: f64,
+    pub max_secondary_mappings: usize,
+    pub bin_counts: BTreeMap<String, usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

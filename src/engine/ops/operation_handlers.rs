@@ -24672,6 +24672,44 @@ impl GentleEngine {
                     selected_record_indices.len()
                 ));
                 }
+                Operation::ExportRnaReadIsoformTriageTsv {
+                    report_id,
+                    path,
+                    selection,
+                    limit,
+                    selected_record_indices,
+                    subset_spec,
+                    min_identity_fraction,
+                    min_query_coverage_fraction,
+                    min_confirmed_transition_fraction,
+                    max_secondary_mappings,
+                } => {
+                    let export = self.export_rna_read_isoform_triage_tsv(
+                        &report_id,
+                        &path,
+                        selection,
+                        limit,
+                        &selected_record_indices,
+                        subset_spec.as_deref(),
+                        min_identity_fraction,
+                        min_query_coverage_fraction,
+                        min_confirmed_transition_fraction,
+                        max_secondary_mappings,
+                    )?;
+                    let limit_text = export
+                        .limit
+                        .map(|value| value.to_string())
+                        .unwrap_or_else(|| "all".to_string());
+                    result.messages.push(format!(
+                    "Exported RNA-read isoform triage TSV '{}' to '{}' (selection={}, rows={}, limit={}, selected_record_indices={})",
+                    export.report_id,
+                    export.path,
+                    export.selection.as_str(),
+                    export.row_count,
+                    limit_text,
+                    selected_record_indices.len()
+                ));
+                }
                 Operation::ExportRnaReadAlignmentDotplotSvg {
                     report_id,
                     path,

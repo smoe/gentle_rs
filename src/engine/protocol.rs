@@ -80,6 +80,7 @@ pub use gentle_protocol::{
     RnaReadInterpretationReportSummary, RnaReadIsoformPreflightControlSummary,
     RnaReadIsoformPreflightReport, RnaReadIsoformPreflightScore,
     RnaReadIsoformPreflightThresholdRecommendation, RnaReadIsoformSupportRow,
+    RnaReadIsoformTriageBin, RnaReadIsoformTriageTsvExport,
     RnaReadJunctionSupportFrequency, RnaReadMappedIsoformSupportRow,
     RnaReadMappedSupportExonAttribution, RnaReadMappedSupportJunctionAttribution,
     RnaReadMappingHit, RnaReadOriginCandidateContribution, RnaReadOriginClass, RnaReadOriginMode,

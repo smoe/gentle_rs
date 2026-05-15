@@ -22991,6 +22991,35 @@ fn parse_rna_reads_commands() {
             && subset_spec.as_deref() == Some("filtered_tp53")
     ));
 
+    let export_isoform_triage_tsv = parse_shell_line(
+        "rna-reads export-isoform-triage-tsv tp73_reads isoform_triage.tsv --selection seed_passed --limit 200 --record-indices 7,8 --subset-spec filtered_tp53 --min-identity 0.92 --min-query-coverage 0.80 --min-confirmed-transition-fraction 0.75 --max-secondary-mappings 1",
+    )
+    .expect("parse rna-reads export-isoform-triage-tsv");
+    assert!(matches!(
+        export_isoform_triage_tsv,
+        ShellCommand::RnaReadsExportIsoformTriageTsv {
+            report_id,
+            path,
+            selection,
+            limit,
+            selected_record_indices,
+            subset_spec,
+            min_identity_fraction,
+            min_query_coverage_fraction,
+            min_confirmed_transition_fraction,
+            max_secondary_mappings
+        } if report_id == "tp73_reads"
+            && path == "isoform_triage.tsv"
+            && selection == RnaReadHitSelection::SeedPassed
+            && limit == Some(200)
+            && selected_record_indices == vec![7, 8]
+            && subset_spec.as_deref() == Some("filtered_tp53")
+            && min_identity_fraction == Some(0.92)
+            && min_query_coverage_fraction == Some(0.80)
+            && min_confirmed_transition_fraction == Some(0.75)
+            && max_secondary_mappings == Some(1)
+    ));
+
     let export_alignment_dotplot = parse_shell_line(
         "rna-reads export-alignment-dotplot-svg tp73_reads alignment_dotplot.svg --selection aligned --max-points 500",
     )
@@ -24406,6 +24435,59 @@ fn execute_rna_reads_commands_store_and_export_reports() {
     assert!(
         alignments_text.contains("subset_spec=filter=selected only | sort=score | search=tp53")
     );
+
+    let exported_isoform_triage_tsv = fasta_dir.path().join("isoform_triage.tsv");
+    let export_isoform_triage_result = execute_shell_command(
+        &mut engine,
+        &ShellCommand::RnaReadsExportIsoformTriageTsv {
+            report_id: "rna_reads_test".to_string(),
+            path: exported_isoform_triage_tsv.display().to_string(),
+            selection: RnaReadHitSelection::Aligned,
+            limit: Some(50),
+            selected_record_indices: vec![0],
+            subset_spec: Some("filter=selected only | sort=score | search=tp53".to_string()),
+            min_identity_fraction: Some(0.70),
+            min_query_coverage_fraction: Some(0.50),
+            min_confirmed_transition_fraction: Some(0.50),
+            max_secondary_mappings: Some(1),
+        },
+    )
+    .expect("export rna-read isoform triage tsv");
+    assert_eq!(
+        export_isoform_triage_result.output["selection"].as_str(),
+        Some("aligned")
+    );
+    assert_eq!(
+        export_isoform_triage_result.output["selected_record_indices"]
+            .as_array()
+            .map(|values| values.len()),
+        Some(1)
+    );
+    assert_eq!(
+        export_isoform_triage_result.output["row_count"].as_u64(),
+        Some(1)
+    );
+    assert_eq!(
+        export_isoform_triage_result.output["bin_counts"]
+            .as_object()
+            .map(|counts| counts.values().filter_map(|value| value.as_u64()).sum()),
+        Some(1)
+    );
+    let isoform_triage_text =
+        fs::read_to_string(exported_isoform_triage_tsv).expect("read isoform triage tsv");
+    assert!(isoform_triage_text.contains("triage_bin"));
+    assert!(
+        [
+            "known_isoform_confirmed",
+            "known_isoform_ambiguous",
+            "gene_supported_no_isoform_call",
+            "off_target_or_bad_seed",
+        ]
+        .iter()
+        .any(|label| isoform_triage_text.contains(label))
+    );
+    assert!(isoform_triage_text.contains("not novel-isoform calls"));
+    assert!(isoform_triage_text.contains("selected_record_indices=0"));
 
     let exported_alignment_dotplot_svg = fasta_dir.path().join("alignment_dotplot.svg");
     let export_alignment_dotplot_result = execute_shell_command(

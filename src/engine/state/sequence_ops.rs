@@ -1353,6 +1353,7 @@ impl GentleEngine {
         | Operation::ExportRnaReadExonAbundanceTsv { path, .. }
         | Operation::ExportRnaReadScoreDensitySvg { path, .. }
         | Operation::ExportRnaReadAlignmentsTsv { path, .. }
+        | Operation::ExportRnaReadIsoformTriageTsv { path, .. }
         | Operation::ExportRnaReadAlignmentDotplotSvg { path, .. }
         | Operation::RenderTfbsScoreTracksSvg { path, .. }
         | Operation::RenderProtocolCartoonSvg { path, .. }
@@ -1453,6 +1454,7 @@ impl GentleEngine {
             | Operation::ExportRnaReadExonAbundanceTsv { path, .. }
             | Operation::ExportRnaReadScoreDensitySvg { path, .. }
             | Operation::ExportRnaReadAlignmentsTsv { path, .. }
+            | Operation::ExportRnaReadIsoformTriageTsv { path, .. }
             | Operation::ExportRnaReadAlignmentDotplotSvg { path, .. } => {
                 push(path);
             }

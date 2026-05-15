@@ -3945,6 +3945,20 @@
       {
          "aliases": [],
          "engine_operations": [
+            "ExportRnaReadIsoformTriageTsv"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads export-isoform-triage-tsv",
+         "summary": "Export conservative known-isoform triage bins for RNA-read rows to TSV.",
+         "usage": "rna-reads export-isoform-triage-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--limit N] [--record-indices i,j,k] [--subset-spec TEXT] [--min-identity F] [--min-query-coverage F] [--min-confirmed-transition-fraction F] [--max-secondary-mappings N]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
             "ExportRnaReadAlignmentDotplotSvg"
          ],
          "interfaces": [
