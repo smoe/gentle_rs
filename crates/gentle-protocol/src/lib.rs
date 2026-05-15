@@ -5523,7 +5523,9 @@ fn glossary_command_surfacing(command: &GlossaryRegistryCommand) -> CapabilitySu
         .collect::<BTreeSet<_>>();
     let missing = |adapter| missing_glossary_command_surfacing(command, adapter);
     CapabilitySurfacingSet {
-        gui: if interfaces.contains("gui-shell") {
+        gui: if interfaces.contains("gui-menu") {
+            AdapterSurfacing::Prominent
+        } else if interfaces.contains("gui-shell") {
             AdapterSurfacing::ShellPassthrough
         } else {
             missing(CapabilityAdapter::Gui)

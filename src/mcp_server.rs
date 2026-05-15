@@ -377,7 +377,7 @@ fn tool_list() -> Value {
                     },
                     "interface": {
                         "type": "string",
-                        "description": "Optional interface filter (all|cli-direct|cli-shell|gui-shell|js|lua|mcp)."
+                        "description": "Optional interface filter (all|cli-direct|cli-shell|gui-shell|gui-menu|js|lua|mcp)."
                     },
                     "topic": {
                         "description": "Optional help topic (string path or array of path tokens).",

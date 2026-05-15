@@ -47,6 +47,8 @@ mod help_docs;
 #[path = "app/window_registry.rs"]
 mod window_registry;
 
+pub use window_registry::{GuiProminentGlossaryEntry, gui_prominent_glossary_entries};
+
 #[path = "app/jaspar_expert.rs"]
 mod jaspar_expert;
 
@@ -23041,8 +23043,8 @@ mod tests {
         ROUTINE_DECISION_TRACE_STORE_SCHEMA, ROUTINE_DECISION_TRACES_METADATA_KEY, RackDragState,
         RetryCleanupAuditActionFilter, RetrySnapshotKindFilter, RetrySnapshotPendingCleanupAction,
         RoutineAssistantStage, TutorialProjectOpenOutcome, TutorialProjectTask,
-        TutorialProjectTaskMessage, TutorialProjectTaskProgress, preferred_local_agent_system_id,
-        preferred_openai_agent_system_id,
+        TutorialProjectTaskMessage, TutorialProjectTaskProgress, gui_prominent_glossary_entries,
+        preferred_local_agent_system_id, preferred_openai_agent_system_id,
     };
     use crate::{
         agent_bridge::{AgentSystemSpec, AgentSystemTransport},
@@ -27518,6 +27520,32 @@ mod tests {
                 "missing command palette entry for {}",
                 target.as_str()
             );
+        }
+    }
+
+    #[test]
+    fn command_palette_includes_gui_prominent_glossary_entries() {
+        let app = GENtleApp::default();
+        let entries = app.collect_command_palette_entries();
+
+        for gui_entry in gui_prominent_glossary_entries() {
+            assert!(
+                entries
+                    .iter()
+                    .any(|entry| entry.title == gui_entry.palette_title),
+                "missing command palette entry `{}` for GUI-prominent glossary command `{}`",
+                gui_entry.palette_title,
+                gui_entry.glossary_path
+            );
+            if let Some(target) = gui_entry.ui_intent_target {
+                assert_eq!(target.discoverability_title(), gui_entry.palette_title);
+                assert!(
+                    gui_entry.menu_path.starts_with(target.menu_path()),
+                    "GUI-prominent glossary command `{}` should keep its menu path aligned with UI intent target `{}`",
+                    gui_entry.glossary_path,
+                    target.as_str()
+                );
+            }
         }
     }
 
@@ -32110,8 +32138,8 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
             result: Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "Prepared genome 'Caenorhabditis elegans WBcel235 Ensembl 115' is inconsistent: annotation gene index '/tmp/genes.json' references contigs missing from prepared sequence '/tmp/sequence.fa'".to_string(),
-            
-                cause_chain: vec![],}),
+                cause_chain: vec![],
+            }),
         })
         .expect("send prepare failure");
 

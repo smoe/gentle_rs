@@ -2377,6 +2377,7 @@ Supported commands:
 - Use the `Interface` selector in that view to filter commands by language/access path:
   - `All`
   - `GUI shell`
+  - `GUI menu`
   - `CLI shell`
   - `CLI direct`
   - `JS`

@@ -2643,8 +2643,11 @@ external coding agent runtime, see:
   - `--format text` renders human-readable help
   - `--format json` renders machine-readable help catalog/topic payload
   - `--format markdown` renders documentation-ready markdown
-  - `--interface` accepts: `all|cli-direct|cli-shell|gui-shell|js|lua|mcp`
+  - `--interface` accepts:
+    `all|cli-direct|cli-shell|gui-shell|gui-menu|js|lua|mcp`
     (`mcp` currently aliases to shared shell command docs)
+  - glossary `interfaces` use `gui-shell` for GUI shell reachability and
+    `gui-menu` for first-class GUI menu or command-palette surfacing.
 - shared-shell isoform panel routes:
   - `panels import-isoform SEQ_ID PANEL_PATH [--panel-id ID] [--strict]`
   - `panels inspect-isoform SEQ_ID PANEL_ID`

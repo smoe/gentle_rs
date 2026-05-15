@@ -17,11 +17,11 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 
 | Adapter | prominent | shell-only | gap |
 |---|---:|---:|---:|
-| GUI | 0 | 547 | 25 |
-| gentle_cli | 314 | 233 | 25 |
-| MCP | 41 | 205 | 187 |
-| JS | 39 | 205 | 180 |
-| Lua | 38 | 205 | 181 |
+| GUI | 20 | 529 | 25 |
+| gentle_cli | 315 | 234 | 25 |
+| MCP | 41 | 206 | 188 |
+| JS | 39 | 206 | 181 |
+| Lua | 38 | 206 | 182 |
 | ClawBio | 0 | 0 | 0 |
 
 ## Glossary Commands
@@ -32,10 +32,10 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | capabilities | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Local CLI/GUI command, not an engine route.<br>JS: Local CLI/GUI command, not an engine route.<br>Lua: Local CLI/GUI command, not an engine route.<br>ClawBio: Local CLI/GUI command, not an engine route. |
 | state-summary | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Local CLI/GUI command, not an engine route.<br>JS: Local CLI/GUI command, not an engine route.<br>Lua: Local CLI/GUI command, not an engine route.<br>ClawBio: Local CLI/GUI command, not an engine route. |
 | history status | glossary-command | shell-only | shell-only | n/a | n/a | n/a | n/a | MCP: Local CLI/GUI command, not an engine route.<br>JS: Local CLI/GUI command, not an engine route.<br>Lua: Local CLI/GUI command, not an engine route.<br>ClawBio: Local CLI/GUI command, not an engine route. |
-| history undo | glossary-command | shell-only | shell-only | n/a | n/a | n/a | n/a | MCP: Local CLI/GUI command, not an engine route.<br>JS: Local CLI/GUI command, not an engine route.<br>Lua: Local CLI/GUI command, not an engine route.<br>ClawBio: Local CLI/GUI command, not an engine route. |
-| history redo | glossary-command | shell-only | shell-only | n/a | n/a | n/a | n/a | MCP: Local CLI/GUI command, not an engine route.<br>JS: Local CLI/GUI command, not an engine route.<br>Lua: Local CLI/GUI command, not an engine route.<br>ClawBio: Local CLI/GUI command, not an engine route. |
-| load-project | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Local CLI/GUI command, not an engine route.<br>JS: Local CLI/GUI command, not an engine route.<br>Lua: Local CLI/GUI command, not an engine route.<br>ClawBio: Local CLI/GUI command, not an engine route. |
-| save-project | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Local CLI/GUI command, not an engine route.<br>JS: Local CLI/GUI command, not an engine route.<br>Lua: Local CLI/GUI command, not an engine route.<br>ClawBio: Local CLI/GUI command, not an engine route. |
+| history undo | glossary-command | prominent | shell-only | n/a | n/a | n/a | n/a | MCP: Local CLI/GUI command, not an engine route.<br>JS: Local CLI/GUI command, not an engine route.<br>Lua: Local CLI/GUI command, not an engine route.<br>ClawBio: Local CLI/GUI command, not an engine route. |
+| history redo | glossary-command | prominent | shell-only | n/a | n/a | n/a | n/a | MCP: Local CLI/GUI command, not an engine route.<br>JS: Local CLI/GUI command, not an engine route.<br>Lua: Local CLI/GUI command, not an engine route.<br>ClawBio: Local CLI/GUI command, not an engine route. |
+| load-project | glossary-command | prominent | prominent | n/a | n/a | n/a | n/a | MCP: Local CLI/GUI command, not an engine route.<br>JS: Local CLI/GUI command, not an engine route.<br>Lua: Local CLI/GUI command, not an engine route.<br>ClawBio: Local CLI/GUI command, not an engine route. |
+| save-project | glossary-command | prominent | prominent | n/a | n/a | n/a | n/a | MCP: Local CLI/GUI command, not an engine route.<br>JS: Local CLI/GUI command, not an engine route.<br>Lua: Local CLI/GUI command, not an engine route.<br>ClawBio: Local CLI/GUI command, not an engine route. |
 | screenshot-window | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Local CLI/GUI command, not an engine route.<br>JS: Local CLI/GUI command, not an engine route.<br>Lua: Local CLI/GUI command, not an engine route.<br>ClawBio: Local CLI/GUI command, not an engine route. |
 | render-svg | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | render-dotplot-svg | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
@@ -54,8 +54,8 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | protocol-cartoon template-validate | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | protocol-cartoon render-with-bindings | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | protocol-cartoon template-export | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
-| gibson preview | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Local CLI/GUI command, not an engine route.<br>JS: Local CLI/GUI command, not an engine route.<br>Lua: Local CLI/GUI command, not an engine route.<br>ClawBio: Local CLI/GUI command, not an engine route. |
-| gibson apply | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| gibson preview | glossary-command | prominent | prominent | n/a | n/a | n/a | n/a | MCP: Local CLI/GUI command, not an engine route.<br>JS: Local CLI/GUI command, not an engine route.<br>Lua: Local CLI/GUI command, not an engine route.<br>ClawBio: Local CLI/GUI command, not an engine route. |
+| gibson apply | glossary-command | prominent | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | cache inspect | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Local CLI/GUI command, not an engine route.<br>JS: Local CLI/GUI command, not an engine route.<br>Lua: Local CLI/GUI command, not an engine route.<br>ClawBio: Local CLI/GUI command, not an engine route. |
 | cache clear | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Local CLI/GUI command, not an engine route.<br>JS: Local CLI/GUI command, not an engine route.<br>Lua: Local CLI/GUI command, not an engine route.<br>ClawBio: Local CLI/GUI command, not an engine route. |
 | render-pool-gel-svg | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
@@ -168,7 +168,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | genomes update-ensembl-specs | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Local CLI/GUI command, not an engine route.<br>JS: Local CLI/GUI command, not an engine route.<br>Lua: Local CLI/GUI command, not an engine route.<br>ClawBio: Local CLI/GUI command, not an engine route. |
 | genomes status | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Local CLI/GUI command, not an engine route.<br>JS: Local CLI/GUI command, not an engine route.<br>Lua: Local CLI/GUI command, not an engine route.<br>ClawBio: Local CLI/GUI command, not an engine route. |
 | genomes genes | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Local CLI/GUI command, not an engine route.<br>JS: Local CLI/GUI command, not an engine route.<br>Lua: Local CLI/GUI command, not an engine route.<br>ClawBio: Local CLI/GUI command, not an engine route. |
-| genomes prepare | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| genomes prepare | glossary-command | prominent | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | genomes remove-prepared | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Local CLI/GUI command, not an engine route.<br>JS: Local CLI/GUI command, not an engine route.<br>Lua: Local CLI/GUI command, not an engine route.<br>ClawBio: Local CLI/GUI command, not an engine route. |
 | genomes remove-catalog-entry | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Local CLI/GUI command, not an engine route.<br>JS: Local CLI/GUI command, not an engine route.<br>Lua: Local CLI/GUI command, not an engine route.<br>ClawBio: Local CLI/GUI command, not an engine route. |
 | genomes blast | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Local CLI/GUI command, not an engine route.<br>JS: Local CLI/GUI command, not an engine route.<br>Lua: Local CLI/GUI command, not an engine route.<br>ClawBio: Local CLI/GUI command, not an engine route. |
@@ -176,9 +176,9 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | genomes blast-status | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Local CLI/GUI command, not an engine route.<br>JS: Local CLI/GUI command, not an engine route.<br>Lua: Local CLI/GUI command, not an engine route.<br>ClawBio: Local CLI/GUI command, not an engine route. |
 | genomes blast-cancel | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Local CLI/GUI command, not an engine route.<br>JS: Local CLI/GUI command, not an engine route.<br>Lua: Local CLI/GUI command, not an engine route.<br>ClawBio: Local CLI/GUI command, not an engine route. |
 | genomes blast-list | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Local CLI/GUI command, not an engine route.<br>JS: Local CLI/GUI command, not an engine route.<br>Lua: Local CLI/GUI command, not an engine route.<br>ClawBio: Local CLI/GUI command, not an engine route. |
-| genomes blast-track | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
-| genomes extract-region | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
-| genomes extract-gene | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| genomes blast-track | glossary-command | prominent | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| genomes extract-region | glossary-command | prominent | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| genomes extract-gene | glossary-command | prominent | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | genomes extract-promoter | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | genomes extend-anchor | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | genomes verify-anchor | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
@@ -193,7 +193,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | helpers update-ensembl-specs | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Local CLI/GUI command, not an engine route.<br>JS: Local CLI/GUI command, not an engine route.<br>Lua: Local CLI/GUI command, not an engine route.<br>ClawBio: Local CLI/GUI command, not an engine route. |
 | helpers status | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Local CLI/GUI command, not an engine route.<br>JS: Local CLI/GUI command, not an engine route.<br>Lua: Local CLI/GUI command, not an engine route.<br>ClawBio: Local CLI/GUI command, not an engine route. |
 | helpers genes | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Local CLI/GUI command, not an engine route.<br>JS: Local CLI/GUI command, not an engine route.<br>Lua: Local CLI/GUI command, not an engine route.<br>ClawBio: Local CLI/GUI command, not an engine route. |
-| helpers prepare | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| helpers prepare | glossary-command | prominent | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | helpers remove-prepared | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Local CLI/GUI command, not an engine route.<br>JS: Local CLI/GUI command, not an engine route.<br>Lua: Local CLI/GUI command, not an engine route.<br>ClawBio: Local CLI/GUI command, not an engine route. |
 | helpers remove-catalog-entry | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Local CLI/GUI command, not an engine route.<br>JS: Local CLI/GUI command, not an engine route.<br>Lua: Local CLI/GUI command, not an engine route.<br>ClawBio: Local CLI/GUI command, not an engine route. |
 | helpers blast | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Local CLI/GUI command, not an engine route.<br>JS: Local CLI/GUI command, not an engine route.<br>Lua: Local CLI/GUI command, not an engine route.<br>ClawBio: Local CLI/GUI command, not an engine route. |
@@ -201,9 +201,9 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | helpers blast-status | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Local CLI/GUI command, not an engine route.<br>JS: Local CLI/GUI command, not an engine route.<br>Lua: Local CLI/GUI command, not an engine route.<br>ClawBio: Local CLI/GUI command, not an engine route. |
 | helpers blast-cancel | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Local CLI/GUI command, not an engine route.<br>JS: Local CLI/GUI command, not an engine route.<br>Lua: Local CLI/GUI command, not an engine route.<br>ClawBio: Local CLI/GUI command, not an engine route. |
 | helpers blast-list | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Local CLI/GUI command, not an engine route.<br>JS: Local CLI/GUI command, not an engine route.<br>Lua: Local CLI/GUI command, not an engine route.<br>ClawBio: Local CLI/GUI command, not an engine route. |
-| helpers blast-track | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
-| helpers extract-region | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
-| helpers extract-gene | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| helpers blast-track | glossary-command | prominent | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| helpers extract-region | glossary-command | prominent | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| helpers extract-gene | glossary-command | prominent | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | helpers extract-promoter | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | helpers extend-anchor | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | helpers verify-anchor | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
@@ -216,9 +216,9 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | cutrun show-read-report | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | cutrun export-coverage | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | cutrun inspect-regulatory-support | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
-| tracks import-bed | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
-| tracks import-bigwig | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
-| tracks import-vcf | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| tracks import-bed | glossary-command | prominent | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| tracks import-bigwig | glossary-command | prominent | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| tracks import-vcf | glossary-command | prominent | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | arrays inspect-microarray-track | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Local CLI/GUI command, not an engine route.<br>JS: Local CLI/GUI command, not an engine route.<br>Lua: Local CLI/GUI command, not an engine route.<br>ClawBio: Local CLI/GUI command, not an engine route. |
 | arrays project-microarray-track | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | tracks tracked list | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Local CLI/GUI command, not an engine route.<br>JS: Local CLI/GUI command, not an engine route.<br>Lua: Local CLI/GUI command, not an engine route.<br>ClawBio: Local CLI/GUI command, not an engine route. |
@@ -237,8 +237,8 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | guides oligos-show | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Local CLI/GUI command, not an engine route.<br>JS: Local CLI/GUI command, not an engine route.<br>Lua: Local CLI/GUI command, not an engine route.<br>ClawBio: Local CLI/GUI command, not an engine route. |
 | guides oligos-export | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | guides protocol-export | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
-| primers design | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
-| primers design-qpcr | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| primers design | glossary-command | prominent | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| primers design-qpcr | glossary-command | prominent | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | primers test-cdna-pcr | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | primers test-cdna-qpcr | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | primers test-cdna-qpcr-fasta | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
@@ -280,7 +280,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | seq-trace import | glossary-command | shell-only | shell-only | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | seq-trace list | glossary-command | shell-only | shell-only | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | seq-trace show | glossary-command | shell-only | shell-only | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
-| seq-confirm run | glossary-command | shell-only | shell-only | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| seq-confirm run | glossary-command | prominent | shell-only | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | seq-confirm list-reports | glossary-command | shell-only | shell-only | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | seq-confirm show-report | glossary-command | shell-only | shell-only | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | seq-confirm export-report | glossary-command | shell-only | shell-only | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
@@ -321,6 +321,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | rna-reads export-abundance-tsv | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | rna-reads export-score-density-svg | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | rna-reads export-alignments-tsv | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| rna-reads export-isoform-triage-tsv | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | rna-reads export-alignment-dotplot-svg | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | candidates list | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Local CLI/GUI command, not an engine route.<br>JS: Local CLI/GUI command, not an engine route.<br>Lua: Local CLI/GUI command, not an engine route.<br>ClawBio: Local CLI/GUI command, not an engine route. |
 | candidates delete | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
@@ -587,6 +588,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | ShowRnaReadReport | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | SummarizeRnaReadGeneSupport | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | InspectRnaReadGeneSupport | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
+| ExportRnaReadIsoformTriageTsv | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | RunRnaReadBatchMap | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | SummarizeTfbsRegion | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | SummarizeTfbsScoreTracks | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
@@ -1145,6 +1147,9 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | rna-reads export-alignments-tsv | glossary-command | MCP | ExportRnaReadAlignmentsTsv |
 | rna-reads export-alignments-tsv | glossary-command | JS | ExportRnaReadAlignmentsTsv |
 | rna-reads export-alignments-tsv | glossary-command | Lua | ExportRnaReadAlignmentsTsv |
+| rna-reads export-isoform-triage-tsv | glossary-command | MCP | ExportRnaReadIsoformTriageTsv |
+| rna-reads export-isoform-triage-tsv | glossary-command | JS | ExportRnaReadIsoformTriageTsv |
+| rna-reads export-isoform-triage-tsv | glossary-command | Lua | ExportRnaReadIsoformTriageTsv |
 | rna-reads export-alignment-dotplot-svg | glossary-command | MCP | ExportRnaReadAlignmentDotplotSvg |
 | rna-reads export-alignment-dotplot-svg | glossary-command | JS | ExportRnaReadAlignmentDotplotSvg |
 | rna-reads export-alignment-dotplot-svg | glossary-command | Lua | ExportRnaReadAlignmentDotplotSvg |

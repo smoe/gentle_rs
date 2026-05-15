@@ -4,6 +4,142 @@
 //! one place so the main app file can focus more on menu/dialog orchestration.
 
 use super::*;
+use crate::engine_shell::UiIntentTarget;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GuiProminentGlossaryEntry {
+    pub glossary_path: &'static str,
+    pub menu_path: &'static str,
+    pub palette_title: &'static str,
+    pub ui_intent_target: Option<UiIntentTarget>,
+}
+
+const GUI_PROMINENT_GLOSSARY_ENTRIES: &[GuiProminentGlossaryEntry] = &[
+    GuiProminentGlossaryEntry {
+        glossary_path: "load-project",
+        menu_path: "File > Open Project...",
+        palette_title: "Open Project",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "save-project",
+        menu_path: "File > Save Project...",
+        palette_title: "Save Project",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "history undo",
+        menu_path: "Edit > Undo",
+        palette_title: "Undo Last Operation",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "history redo",
+        menu_path: "Edit > Redo",
+        palette_title: "Redo Last Operation",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "gibson preview",
+        menu_path: "Patterns > Gibson...",
+        palette_title: "Gibson",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "gibson apply",
+        menu_path: "Patterns > Gibson...",
+        palette_title: "Gibson",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "genomes prepare",
+        menu_path: "Genome > Prepare Reference Genome...",
+        palette_title: "Prepare Reference Genome",
+        ui_intent_target: Some(UiIntentTarget::PrepareReferenceGenome),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "genomes extract-region",
+        menu_path: "Genome > Retrieve Genomic Sequence...",
+        palette_title: "Retrieve Genomic Sequence",
+        ui_intent_target: Some(UiIntentTarget::RetrieveGenomeSequence),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "genomes extract-gene",
+        menu_path: "Genome > Retrieve Genomic Sequence...",
+        palette_title: "Retrieve Genomic Sequence",
+        ui_intent_target: Some(UiIntentTarget::RetrieveGenomeSequence),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "genomes blast-track",
+        menu_path: "Genome > BLAST Genome Sequence...",
+        palette_title: "BLAST Genome Sequence",
+        ui_intent_target: Some(UiIntentTarget::BlastGenomeSequence),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "helpers prepare",
+        menu_path: "Genome > Prepare Helper Genome...",
+        palette_title: "Prepare Helper Genome",
+        ui_intent_target: Some(UiIntentTarget::PrepareHelperGenome),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "helpers extract-region",
+        menu_path: "Genome > Retrieve Helper Sequence...",
+        palette_title: "Retrieve Helper Sequence",
+        ui_intent_target: Some(UiIntentTarget::RetrieveHelperSequence),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "helpers extract-gene",
+        menu_path: "Genome > Retrieve Helper Sequence...",
+        palette_title: "Retrieve Helper Sequence",
+        ui_intent_target: Some(UiIntentTarget::RetrieveHelperSequence),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "helpers blast-track",
+        menu_path: "Genome > BLAST Helper Sequence...",
+        palette_title: "BLAST Helper Sequence",
+        ui_intent_target: Some(UiIntentTarget::BlastHelperSequence),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "tracks import-bed",
+        menu_path: "Genome > Import Genome Track...",
+        palette_title: "Import Genome Track",
+        ui_intent_target: Some(UiIntentTarget::ImportGenomeTrack),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "tracks import-bigwig",
+        menu_path: "Genome > Import Genome Track...",
+        palette_title: "Import Genome Track",
+        ui_intent_target: Some(UiIntentTarget::ImportGenomeTrack),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "tracks import-vcf",
+        menu_path: "Genome > Import Genome Track...",
+        palette_title: "Import Genome Track",
+        ui_intent_target: Some(UiIntentTarget::ImportGenomeTrack),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "primers design",
+        menu_path: "Patterns > PCR Designer...",
+        palette_title: "PCR Designer",
+        ui_intent_target: Some(UiIntentTarget::PcrDesign),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "primers design-qpcr",
+        menu_path: "Patterns > PCR Designer...",
+        palette_title: "PCR Designer",
+        ui_intent_target: Some(UiIntentTarget::PcrDesign),
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "seq-confirm run",
+        menu_path: "Patterns > Sequencing Confirmation...",
+        palette_title: "Sequencing Confirmation",
+        ui_intent_target: Some(UiIntentTarget::SequencingConfirmation),
+    },
+];
+
+pub fn gui_prominent_glossary_entries() -> &'static [GuiProminentGlossaryEntry] {
+    GUI_PROMINENT_GLOSSARY_ENTRIES
+}
 
 #[derive(Clone)]
 pub(super) struct OpenWindowEntry {
