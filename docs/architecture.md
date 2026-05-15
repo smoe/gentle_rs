@@ -37,6 +37,33 @@ The long-term requirement is strict behavioral parity:
 - This document does not describe any current protocol that could be used
   to change the human genome or that of animals or plants.
 
+Adapter parity policy — three levels:
+
+- Engine capability parity (strict):
+  - Every operation is part of one engine-owned set.
+  - Adapters do not own additional operations.
+- Reachability parity (strict):
+  - Every operation is invokable from every adapter via the shared shell
+    pass-through: GUI Shell window, `gentle_cli shell '<command>'`, MCP
+    shell-like routes, and JS/Lua shell wrappers.
+  - No operation is reachable from one adapter and not another.
+- First-class surfacing (per-adapter):
+  - Each adapter independently chooses which operations get prominent
+    affordances, such as menu items, named CLI subcommands, MCP `tools/list`
+    entries, or ClawBio skill operations.
+  - This is allowed to differ by design and reflects the adapter's UX nature:
+    GUI surfaces operations whose value is inspecting reasoning, lineage, and
+    decisions, plus tactile workflow steps a user wants to drive
+    interactively.
+  - CLI/MCP surfaces workflow-preparation operations, batch/parameter-sweep
+    operations, and one-off operations an agent typically reaches for.
+  - ClawBio surfaces a curated agent-friendly skill set, deliberately narrower
+    than CLI/MCP.
+  - JS/Lua surfaces scripting-natural operations; coverage depth tracks the
+    feature gate.
+- A row that is "not first-class" on a surface is not a parity gap.
+- A row that is "not reachable" on a surface is a parity gap.
+
 Wet-lab semantic rule (target model):
 
 - A main DNA window represents a wet-lab container (tube/vial), not a single
