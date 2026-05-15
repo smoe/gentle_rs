@@ -2,6 +2,17 @@
   "schema": "gentle.tutorial_source.v2",
   "id": "contribute_to_gentle_development",
   "title": "Contribute to GENtle development",
+  "catalog": {
+    "order": 31,
+    "path": "docs/tutorial/generated/chapters/08_contribute_to_gentle_development.md",
+    "type": "executable_chapter",
+    "status": "generated+checked/human-pending",
+    "source": "generated_from_tutorial_sources",
+    "audiences": [
+      "contributors"
+    ],
+    "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation."
+  },
   "generated_chapter": {
     "order": 8,
     "example_id": "contribute_gentle_development_baseline",

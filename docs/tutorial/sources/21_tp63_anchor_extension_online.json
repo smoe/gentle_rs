@@ -2,6 +2,19 @@
   "schema": "gentle.tutorial_source.v2",
   "id": "tp63_anchor_extension_online",
   "title": "Retrieve TP63 and extend the displayed region by +/-2 kb (online)",
+  "catalog": {
+    "order": 34,
+    "path": "docs/tutorial/generated/chapters/11_tp63_anchor_extension_online.md",
+    "type": "executable_chapter",
+    "status": "generated+checked/human-pending",
+    "source": "generated_from_tutorial_sources",
+    "audiences": [
+      "online_workflows",
+      "genome_catalog_targeting",
+      "contributors"
+    ],
+    "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation. Requires explicit online setup for full execution."
+  },
   "generated_chapter": {
     "order": 11,
     "example_id": "tp63_extend_anchor_online",

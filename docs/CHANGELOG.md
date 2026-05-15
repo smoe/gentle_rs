@@ -31,6 +31,12 @@ Maintenance rule:
   `EngineError` payloads.
 - Added a short in-tree agent development loop with `scripts/dev-gentle-cli`,
   `gentle_cli doctor --agent`, and a dedicated `docs/agent_dev_loop.md`.
+- Hardened MCP capability discovery so `tools/list` carries glossary-backed
+  descriptions, input/output schema metadata, mutating/external safety flags,
+  and a documented exclusion ledger for shell commands without dedicated tools.
+- Added generated tutorial chapters that still need explicit human functional
+  confirmation to the tutorial catalog and Help -> Tutorials picker with the
+  `generated+checked/human-pending` status.
 
 ## 2026-05-13
 

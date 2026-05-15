@@ -2,6 +2,19 @@
   "schema": "gentle.tutorial_source.v2",
   "id": "guides_filter_and_generate_oligos",
   "title": "Guide practical filtering and oligo generation",
+  "catalog": {
+    "order": 28,
+    "path": "docs/tutorial/generated/chapters/05_guides_filter_and_generate_oligos.md",
+    "type": "executable_chapter",
+    "status": "generated+checked/human-pending",
+    "source": "generated_from_tutorial_sources",
+    "audiences": [
+      "cloning_planning",
+      "cli_first",
+      "contributors"
+    ],
+    "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation."
+  },
   "generated_chapter": {
     "order": 5,
     "example_id": "guides_filter_and_generate_oligos",

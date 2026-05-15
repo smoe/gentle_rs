@@ -1,6 +1,7 @@
 # GENtle Roadmap
 
-Last session: 2026-05-13 - TP73 evidence-viewer release aim selected
+Last session: 2026-05-14 - MCP capability-surface hardening prepared; TP73
+evidence-viewer release aim remains active
 
 Purpose: fast session orientation. This file answers "what next?" and should be
 readable in under two minutes. Completed work belongs in
@@ -25,6 +26,10 @@ Release story: GENtle can open the public GRCh38.p14 TP73 locus and let a user
 inspect exons, introns, repeats, array/evidence tracks, CUT&RUN-style BED
 intervals, TFBS/regulatory annotations, and coordinate-build provenance in the
 DNA viewer.
+
+Smoke status: manual GUI smoke for the TP73 evidence-viewer runbook is still
+pending in this worktree. Keep the release-facing notes short until that smoke
+path has passed locally.
 
 Proof path:
 
@@ -61,8 +66,8 @@ Post-release scope:
    feature-detail views; avoid adding broader biology conclusions.
 4. Keep private grant material out of the GENtle source tree; only general,
    reusable GENtle improvements should return here.
-5. Prepare concise release notes around the TP73 viewer story once the smoke
-   path has passed locally.
+5. After the smoke path passes locally, prepare concise release notes around
+   the TP73 viewer story as the next concrete release-facing artifact.
 
 Current non-goals:
 
@@ -98,6 +103,12 @@ For ClawBio/OpenClaw specifically, keep new integration work centered on
 descriptor/runtime parity (`INTENTS.json`, `mode=intents`, examples, and
 trigger-keyword drift checks) plus explicit scope/presentation contracts rather
 than adding more biology-specific wrapper modes.
+
+MCP follow-up: the typed `tools/list` surface is curated rather than a
+one-command/one-tool mirror. Keep `docs/agent_interface.md` as the exclusion
+ledger for shell commands without dedicated MCP tools, and promote a command to
+a route-specific MCP tool only when its JSON input/output schema and
+mutating/external safety semantics are stable.
 
 ## Phase B: Cloning Routine Standardization
 

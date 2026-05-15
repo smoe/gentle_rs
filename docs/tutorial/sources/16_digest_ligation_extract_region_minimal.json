@@ -2,6 +2,19 @@
   "schema": "gentle.tutorial_source.v2",
   "id": "digest_ligation_extract_region_minimal",
   "title": "Digest -> Ligation -> ExtractRegion minimal slice",
+  "catalog": {
+    "order": 29,
+    "path": "docs/tutorial/generated/chapters/06_digest_ligation_extract_region_minimal.md",
+    "type": "executable_chapter",
+    "status": "generated+checked/human-pending",
+    "source": "generated_from_tutorial_sources",
+    "audiences": [
+      "cloning_planning",
+      "cli_first",
+      "contributors"
+    ],
+    "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation."
+  },
   "generated_chapter": {
     "order": 6,
     "example_id": "digest_ligation_extract_region_minimal",

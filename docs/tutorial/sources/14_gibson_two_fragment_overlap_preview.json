@@ -2,6 +2,19 @@
   "schema": "gentle.tutorial_source.v2",
   "id": "gibson_two_fragment_overlap_preview",
   "title": "Gibson two-fragment overlap planning baseline",
+  "catalog": {
+    "order": 27,
+    "path": "docs/tutorial/generated/chapters/04_gibson_two_fragment_overlap_preview.md",
+    "type": "executable_chapter",
+    "status": "generated+checked/human-pending",
+    "source": "generated_from_tutorial_sources",
+    "audiences": [
+      "cloning_planning",
+      "gui_first",
+      "contributors"
+    ],
+    "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation."
+  },
   "generated_chapter": {
     "order": 4,
     "example_id": "gibson_two_fragment_overlap_preview",

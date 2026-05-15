@@ -2,6 +2,19 @@
   "schema": "gentle.tutorial_source.v2",
   "id": "prepare_reference_genome_online",
   "title": "Prepare a reference genome cache (online)",
+  "catalog": {
+    "order": 32,
+    "path": "docs/tutorial/generated/chapters/09_prepare_reference_genome_online.md",
+    "type": "executable_chapter",
+    "status": "generated+checked/human-pending",
+    "source": "generated_from_tutorial_sources",
+    "audiences": [
+      "online_workflows",
+      "genome_catalog_targeting",
+      "contributors"
+    ],
+    "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation. Requires explicit online setup for full execution."
+  },
   "generated_chapter": {
     "order": 9,
     "example_id": "prepare_reference_genome_online",

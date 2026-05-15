@@ -2,6 +2,19 @@
   "schema": "gentle.tutorial_source.v2",
   "id": "load_branch_reverse_complement_pgex_fasta",
   "title": "Load FASTA, branch, and reverse-complement",
+  "catalog": {
+    "order": 24,
+    "path": "docs/tutorial/generated/chapters/01_load_branch_reverse_complement_pgex_fasta.md",
+    "type": "executable_chapter",
+    "status": "generated+checked/human-pending",
+    "source": "generated_from_tutorial_sources",
+    "audiences": [
+      "new_users",
+      "cli_first",
+      "contributors"
+    ],
+    "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation."
+  },
   "generated_chapter": {
     "order": 1,
     "example_id": "load_branch_reverse_complement_pgex_fasta",
