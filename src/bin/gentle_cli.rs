@@ -475,7 +475,7 @@ fn usage_text() -> String {
         "Usage:\n  \
   gentle_cli --help\n  \
   gentle_cli --version\n  \
-  gentle_cli help [COMMAND ...] [--format text|json|markdown] [--interface all|cli-direct|cli-shell|gui-shell|js|lua|mcp]\n  \
+  gentle_cli help [COMMAND ...] [--format text|json|markdown] [--interface all|cli-direct|cli-shell|gui-shell|gui-menu|js|lua|mcp]\n  \
   gentle_cli [--state PATH|--project PATH] [--progress|--progress-stderr|--progress-stdout] COMMAND ...\n\n  \
   gentle_cli [--state PATH|--project PATH] capabilities\n  \
   gentle_cli [--state PATH|--project PATH] doctor --agent\n  \
@@ -1028,8 +1028,7 @@ fn main() {
 fn cli_error_payload(message: &str) -> String {
     let error = EngineError::new(classify_cli_error(message), "CLI adapter command failed")
         .with_cause(message);
-    serde_json::to_string(&error.portable_payload(vec![]))
-        .unwrap_or_else(|_| message.to_string())
+    serde_json::to_string(&error.portable_payload(vec![])).unwrap_or_else(|_| message.to_string())
 }
 
 fn classify_cli_error(message: &str) -> ErrorCode {

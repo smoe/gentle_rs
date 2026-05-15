@@ -13,7 +13,7 @@
          ],
          "path": "help",
          "summary": "Show full command help catalog or help for one command path.",
-         "usage": "help [COMMAND ...] [--format text|json|markdown] [--interface all|cli-direct|cli-shell|gui-shell|js|lua]"
+         "usage": "help [COMMAND ...] [--format text|json|markdown] [--interface all|cli-direct|cli-shell|gui-shell|gui-menu|js|lua|mcp]"
       },
       {
          "aliases": [],
@@ -55,7 +55,8 @@
          "engine_operations": [],
          "interfaces": [
             "cli-shell",
-            "gui-shell"
+            "gui-shell",
+            "gui-menu"
          ],
          "path": "history undo",
          "summary": "Undo the most recent operation-level state transition.",
@@ -66,7 +67,8 @@
          "engine_operations": [],
          "interfaces": [
             "cli-shell",
-            "gui-shell"
+            "gui-shell",
+            "gui-menu"
          ],
          "path": "history redo",
          "summary": "Redo the most recently undone operation-level state transition.",
@@ -80,6 +82,7 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
+            "gui-menu",
             "cli-direct"
          ],
          "path": "load-project",
@@ -94,6 +97,7 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
+            "gui-menu",
             "cli-direct"
          ],
          "path": "save-project",
@@ -354,6 +358,7 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
+            "gui-menu",
             "cli-direct"
          ],
          "path": "gibson preview",
@@ -368,6 +373,7 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
+            "gui-menu",
             "cli-direct"
          ],
          "path": "gibson apply",
@@ -1858,6 +1864,7 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
+            "gui-menu",
             "cli-direct"
          ],
          "path": "genomes prepare",
@@ -1956,6 +1963,7 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
+            "gui-menu",
             "cli-direct"
          ],
          "path": "genomes blast-track",
@@ -1970,6 +1978,7 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
+            "gui-menu",
             "cli-direct"
          ],
          "path": "genomes extract-region",
@@ -1984,6 +1993,7 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
+            "gui-menu",
             "cli-direct"
          ],
          "path": "genomes extract-gene",
@@ -2173,6 +2183,7 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
+            "gui-menu",
             "cli-direct"
          ],
          "path": "helpers prepare",
@@ -2271,6 +2282,7 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
+            "gui-menu",
             "cli-direct"
          ],
          "path": "helpers blast-track",
@@ -2285,6 +2297,7 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
+            "gui-menu",
             "cli-direct"
          ],
          "path": "helpers extract-region",
@@ -2299,6 +2312,7 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
+            "gui-menu",
             "cli-direct"
          ],
          "path": "helpers extract-gene",
@@ -2481,6 +2495,7 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
+            "gui-menu",
             "cli-direct"
          ],
          "path": "tracks import-bed",
@@ -2495,6 +2510,7 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
+            "gui-menu",
             "cli-direct"
          ],
          "path": "tracks import-bigwig",
@@ -2509,6 +2525,7 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
+            "gui-menu",
             "cli-direct"
          ],
          "path": "tracks import-vcf",
@@ -2759,6 +2776,7 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
+            "gui-menu",
             "cli-direct"
          ],
          "path": "primers design",
@@ -2773,6 +2791,7 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
+            "gui-menu",
             "cli-direct"
          ],
          "path": "primers design-qpcr",
@@ -3343,7 +3362,8 @@
          ],
          "interfaces": [
             "cli-shell",
-            "gui-shell"
+            "gui-shell",
+            "gui-menu"
          ],
          "path": "seq-confirm run",
          "summary": "Run called-read and/or trace-aware construct confirmation against the expected sequence, optionally with baseline context for intended-edit classification.",
@@ -5420,6 +5440,7 @@
       "cli-direct",
       "cli-shell",
       "gui-shell",
+      "gui-menu",
       "js",
       "lua"
    ],

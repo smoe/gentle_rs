@@ -1,4 +1,4 @@
-use gentle::engine::GentleEngine;
+use gentle::{app::gui_prominent_glossary_entries, engine::GentleEngine};
 use gentle_protocol::{
     AdapterSurfacing, CapabilityAdapter, CapabilityDescriptor, CapabilitySource,
     capability_parity_adapters, capability_registry,
@@ -39,7 +39,9 @@ fn expected_surfacing(command: &GlossaryCommand, adapter: CapabilityAdapter) -> 
         .collect::<BTreeSet<_>>();
     match adapter {
         CapabilityAdapter::Gui => {
-            if interfaces.contains("gui-shell") {
+            if interfaces.contains("gui-menu") {
+                AdapterSurfacing::Prominent
+            } else if interfaces.contains("gui-shell") {
                 AdapterSurfacing::ShellPassthrough
             } else if command.engine_operations.is_empty() {
                 AdapterSurfacing::NotApplicable
@@ -301,6 +303,10 @@ fn prominent_projections_match_user_facing_listings() {
     let mcp_tools = mcp_tool_names();
     let mcp_command_paths = mcp_tool_command_paths();
     let clawbio_intents = clawbio_intent_ids();
+    let gui_prominent_paths = gui_prominent_glossary_entries()
+        .iter()
+        .map(|entry| entry.glossary_path)
+        .collect::<BTreeSet<_>>();
 
     for descriptor in capability_registry() {
         for adapter in capability_parity_adapters() {
@@ -338,9 +344,43 @@ fn prominent_projections_match_user_facing_listings() {
                         descriptor.name
                     );
                 }
-                CapabilityAdapter::Gui | CapabilityAdapter::Js | CapabilityAdapter::Lua => {}
+                CapabilityAdapter::Gui => {
+                    assert_eq!(
+                        descriptor.source,
+                        CapabilitySource::GlossaryCommand,
+                        "prominent GUI projection `{}` must come from a GUI glossary command",
+                        descriptor.name
+                    );
+                    assert!(
+                        gui_prominent_paths.contains(descriptor.name.as_str()),
+                        "prominent GUI glossary command `{}` is absent from the GUI menu/palette oracle",
+                        descriptor.name
+                    );
+                }
+                CapabilityAdapter::Js | CapabilityAdapter::Lua => {}
             }
         }
+    }
+
+    for entry in gui_prominent_glossary_entries() {
+        let descriptor = capability_registry()
+            .iter()
+            .find(|descriptor| {
+                descriptor.source == CapabilitySource::GlossaryCommand
+                    && descriptor.name == entry.glossary_path
+            })
+            .unwrap_or_else(|| {
+                panic!(
+                    "GUI menu/palette oracle references missing glossary command `{}`",
+                    entry.glossary_path
+                )
+            });
+        assert_eq!(
+            descriptor.surfacing_for_adapter(CapabilityAdapter::Gui),
+            AdapterSurfacing::Prominent,
+            "GUI oracle command `{}` must project as GUI prominent",
+            entry.glossary_path
+        );
     }
 }
 

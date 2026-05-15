@@ -83,12 +83,19 @@ fn normalize_interface_filter(raw: Option<&str>) -> Result<Option<String>, Strin
         // MCP currently reuses the shared shell command surface.
         return Ok(Some("cli-shell".to_string()));
     }
-    let valid = ["cli-direct", "cli-shell", "gui-shell", "js", "lua"];
+    let valid = [
+        "cli-direct",
+        "cli-shell",
+        "gui-shell",
+        "gui-menu",
+        "js",
+        "lua",
+    ];
     if valid.contains(&normalized.as_str()) {
         Ok(Some(normalized))
     } else {
         Err(format!(
-            "Unsupported --interface '{}' (expected all|cli-direct|cli-shell|gui-shell|js|lua|mcp)",
+            "Unsupported --interface '{}' (expected all|cli-direct|cli-shell|gui-shell|gui-menu|js|lua|mcp)",
             raw
         ))
     }
@@ -254,7 +261,7 @@ pub fn shell_help_text(interface_filter: Option<&str>) -> Result<String, String>
     out.push_str(
         "Use `help COMMAND ...` for command-specific help.\n\
 Use `help [--format json|markdown]` to export machine-readable docs.\n\
-Use `--interface` to filter (`all|cli-direct|cli-shell|gui-shell|js|lua|mcp`).",
+Use `--interface` to filter (`all|cli-direct|cli-shell|gui-shell|gui-menu|js|lua|mcp`).",
     );
     Ok(out)
 }

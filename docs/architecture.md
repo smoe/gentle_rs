@@ -412,8 +412,8 @@ Discoverability rule:
 - Command discoverability and documentation should be glossary-driven:
   - shell command help is generated from `docs/glossary.json` (single source of truth)
   - the help viewer should support interface/language filtering (GUI shell,
-    CLI shell, CLI direct, JS, Lua, MCP, or all) to avoid duplicated manuals
-    while keeping context-specific views.
+    GUI menu, CLI shell, CLI direct, JS, Lua, MCP, or all) to avoid duplicated
+    manuals while keeping context-specific views.
 - Menu information architecture should separate sequence ingress from reference
   lifecycle:
   - `File` may include sequence ingress/start actions (for example local open,
