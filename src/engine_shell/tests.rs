@@ -22271,6 +22271,12 @@ fn parse_dotplot_and_flex_commands() {
         }
         other => panic!("expected inline AlignCompute, got {other:?}"),
     }
+
+    let align_usage = parse_shell_line("align compute")
+        .expect_err("missing align operands should surface current inline usage");
+    assert!(align_usage.contains("--query-sequence-text"));
+    assert!(align_usage.contains("--query-range"));
+    assert!(align_usage.contains("--target-id-hint"));
 }
 
 #[test]
