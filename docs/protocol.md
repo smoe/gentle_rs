@@ -6819,6 +6819,10 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
       - refreshed mapped support rows
         (`exon_support_frequencies`, `junction_support_frequencies`,
         `mapped_isoform_support_rows`)
+      - `mapped_isoform_support_rows[]` also carries optional
+        `dominant_triage_bin` and `triage_bin_counts` fields so adapters can
+        show conservative categorical isoform-read support while still
+        accepting older reports that lack those fields
       - mapped exon/junction support is derived from aligned transcript-template
         offsets first and falls back to coarse genomic-span overlap only for
         legacy mappings that do not carry template offsets

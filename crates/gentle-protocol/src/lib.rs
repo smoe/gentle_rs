@@ -6192,6 +6192,10 @@ pub struct RnaReadMappedIsoformSupportRow {
     pub best_alignment_score: isize,
     #[serde(default)]
     pub secondary_mapping_total: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dominant_triage_bin: Option<RnaReadIsoformTriageBin>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub triage_bin_counts: BTreeMap<String, usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -8614,7 +8618,7 @@ mod dotplot_and_concatemer_setting_tests {
     use super::{
         DotplotMode, DotplotOverlayAnchorExonRef, DotplotOverlayResolvedAnchorSeries,
         DotplotOverlayXAxisMode, DotplotQuerySeries, DotplotView, RestrictionSiteExpertView,
-        RnaReadConcatemerInspectionSettings,
+        RnaReadConcatemerInspectionSettings, RnaReadMappedIsoformSupportRow,
     };
 
     #[test]
@@ -8753,6 +8757,25 @@ mod dotplot_and_concatemer_setting_tests {
                 "data/ncrna.fa.gz".to_string()
             ]
         );
+    }
+
+    #[test]
+    fn mapped_isoform_support_row_accepts_legacy_json_without_triage_fields() {
+        let row: RnaReadMappedIsoformSupportRow = serde_json::from_str(
+            r#"{
+                "transcript_feature_id": 7,
+                "transcript_id": "TX1",
+                "transcript_label": "isoform 1",
+                "strand": "+",
+                "aligned_read_count": 3
+            }"#,
+        )
+        .expect("legacy mapped isoform row should deserialize");
+
+        assert_eq!(row.transcript_id, "TX1");
+        assert_eq!(row.aligned_read_count, 3);
+        assert!(row.dominant_triage_bin.is_none());
+        assert!(row.triage_bin_counts.is_empty());
     }
 
     #[test]

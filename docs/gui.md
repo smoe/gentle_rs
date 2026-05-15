@@ -788,6 +788,15 @@ Feature tree grouping:
     `Open RNA-read Mapping Workspace...`
   - saved reports drive score density, thresholded cDNA support, mapped cDNA
     support, read-effects inspection, and report-driven review
+  - `Isoform read support` is an IsoVis-inspired categorical overlay for saved
+    RNA-read reports: each mapped isoform row shows a conservative triage chip,
+    stacked read-bin bar, aligned/MSA counts, mean identity/coverage,
+    secondary-mapping count, and `Audit` / `Export...` controls for the exact
+    contributing reads. The bins are inspection labels, not expression values
+    or novel-isoform calls. Full IsoVis-style GTF/GFF/BED stack import,
+    drag-reorder, zoom-to-coordinate controls, PNG/PDF export, and live
+    Ensembl/InterPro GUI querying remain outside this V1 unless covered by
+    other GENtle tools.
   - the dedicated `RNA-read Mapping` workspace now stays open if you close the
     parent DNA sequence window that originally spawned it
 - The Splicing Expert now also includes an `ATtRACT / RBP evidence` section:

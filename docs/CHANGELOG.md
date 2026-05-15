@@ -23,6 +23,9 @@ Maintenance rule:
 - Added conservative RNA-read isoform triage TSV export for known-isoform,
   ambiguous, gene-supported/no-call, and off-target/bad-seed read bins without
   calling novel isoforms.
+- Added Splicing Expert isoform read-support inspection using saved RNA-read
+  mapped-isoform triage counts, with audit/export links back to contributing
+  aligned reads.
 
 ## 2026-05-14
 

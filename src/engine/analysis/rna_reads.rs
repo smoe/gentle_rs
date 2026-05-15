@@ -4439,50 +4439,52 @@ impl GentleEngine {
     ) -> Result<RnaReadIsoformTriageTsvExport, EngineError> {
         let path = path.trim();
         if path.is_empty() {
-            return Err(EngineError {
-                code: ErrorCode::InvalidInput,
-                message: "RNA-read isoform triage TSV export requires non-empty path".to_string(),
-            });
+            return Err(EngineError::invalid_input(
+                "RNA-read isoform triage TSV export requires non-empty path",
+            ));
         }
         if let Some(value) = limit {
             if value == 0 {
-                return Err(EngineError {
-                    code: ErrorCode::InvalidInput,
-                    message: "RNA-read isoform triage TSV export requires --limit >= 1"
-                        .to_string(),
-                });
+                return Err(EngineError::invalid_input(
+                    "RNA-read isoform triage TSV export requires --limit >= 1",
+                ));
             }
         }
         let report = self.get_rna_read_report(report_id)?;
+        let defaults = Self::default_rna_read_isoform_triage_thresholds(
+            report.align_config.min_identity_fraction,
+        );
         let thresholds = RnaReadIsoformTriageThresholds {
             min_identity_fraction: Self::validate_optional_fraction(
                 min_identity_fraction,
                 "--min-identity",
             )?
-            .unwrap_or(report.align_config.min_identity_fraction),
+            .unwrap_or(defaults.min_identity_fraction),
             min_query_coverage_fraction: Self::validate_optional_fraction(
                 min_query_coverage_fraction,
                 "--min-query-coverage",
             )?
-            .unwrap_or(0.80),
+            .unwrap_or(defaults.min_query_coverage_fraction),
             min_confirmed_transition_fraction: Self::validate_optional_fraction(
                 min_confirmed_transition_fraction,
                 "--min-confirmed-transition-fraction",
             )?
-            .unwrap_or(0.80),
-            max_secondary_mappings: max_secondary_mappings.unwrap_or(0),
+            .unwrap_or(defaults.min_confirmed_transition_fraction),
+            max_secondary_mappings: max_secondary_mappings
+                .unwrap_or(defaults.max_secondary_mappings),
         };
         let explicit_record_filter = selected_record_indices
             .iter()
             .copied()
             .collect::<HashSet<_>>();
-        let file = File::create(path).map_err(|e| EngineError {
-            code: ErrorCode::Io,
-            message: format!(
-                "Could not create RNA-read isoform triage TSV export '{}': {e}",
-                path
-            ),
-        })?;
+        let file = File::create(path)
+            .map_err(|e| {
+                EngineError::new(
+                    ErrorCode::Io,
+                    format!("Could not create RNA-read isoform triage TSV export '{}'", path),
+                )
+                .with_cause(e)
+            })?;
         let mut writer = BufWriter::new(file);
         for line in Self::rna_read_isoform_triage_tsv_metadata_lines(
             &report,
@@ -4492,24 +4494,31 @@ impl GentleEngine {
             subset_spec,
             thresholds,
         ) {
-            writeln!(writer, "{line}").map_err(|e| EngineError {
-                code: ErrorCode::Io,
-                message: format!(
-                    "Could not write RNA-read isoform triage TSV metadata to '{}': {e}",
-                    path
-                ),
-            })?;
+            writeln!(writer, "{line}")
+                .map_err(|e| {
+                    EngineError::new(
+                        ErrorCode::Io,
+                        format!(
+                            "Could not write RNA-read isoform triage TSV metadata to '{}'",
+                            path
+                        ),
+                    )
+                    .with_cause(e)
+                })?;
         }
         writeln!(
             writer,
             "report_id\tseq_id\trecord_index\theader_id\ttriage_bin\ttriage_reason\tread_length_bp\tpassed_seed_filter\torigin_class\tphase1_primary_transcript_id\tseed_chain_transcript_id\texon_path_transcript_id\tbest_transcript_id\tbest_transcript_label\tbest_strand\talignment_effect\tidentity_fraction\tquery_coverage_fraction\tsecondary_mapping_count\texon_path\texon_transitions_confirmed\texon_transitions_total\tconfirmed_transition_fraction\tseed_hit_fraction\tweighted_seed_hit_fraction\tmsa_eligible"
         )
-        .map_err(|e| EngineError {
-            code: ErrorCode::Io,
-            message: format!(
-                "Could not write RNA-read isoform triage TSV header to '{}': {e}",
-                path
-            ),
+        .map_err(|e| {
+            EngineError::new(
+                ErrorCode::Io,
+                format!(
+                    "Could not write RNA-read isoform triage TSV header to '{}'",
+                    path
+                ),
+            )
+            .with_cause(e)
         })?;
         let mut row_count = 0usize;
         let mut bin_counts = BTreeMap::<String, usize>::new();
@@ -4581,21 +4590,21 @@ impl GentleEngine {
                 hit.weighted_seed_hit_fraction,
                 hit.msa_eligible,
             )
-            .map_err(|e| EngineError {
-                code: ErrorCode::Io,
-                message: format!(
-                    "Could not write RNA-read isoform triage TSV row to '{}': {e}",
-                    path
-                ),
+            .map_err(|e| {
+                EngineError::new(
+                    ErrorCode::Io,
+                    format!("Could not write RNA-read isoform triage TSV row to '{}'", path),
+                )
+                .with_cause(e)
             })?;
             row_count = row_count.saturating_add(1);
         }
-        writer.flush().map_err(|e| EngineError {
-            code: ErrorCode::Io,
-            message: format!(
-                "Could not flush RNA-read isoform triage TSV '{}': {e}",
-                path
-            ),
+        writer.flush().map_err(|e| {
+            EngineError::new(
+                ErrorCode::Io,
+                format!("Could not flush RNA-read isoform triage TSV '{}'", path),
+            )
+            .with_cause(e)
         })?;
         Ok(RnaReadIsoformTriageTsvExport {
             schema: RNA_READ_ISOFORM_TRIAGE_TSV_EXPORT_SCHEMA.to_string(),
@@ -4618,10 +4627,9 @@ impl GentleEngine {
     ) -> Result<Option<f64>, EngineError> {
         match value {
             Some(value) if value.is_finite() && (0.0..=1.0).contains(&value) => Ok(Some(value)),
-            Some(value) => Err(EngineError {
-                code: ErrorCode::InvalidInput,
-                message: format!("{flag} must be a finite fraction between 0 and 1 (got {value})"),
-            }),
+            Some(value) => Err(EngineError::invalid_input(format!(
+                "{flag} must be a finite fraction between 0 and 1 (got {value})"
+            ))),
             None => Ok(None),
         }
     }
@@ -4634,9 +4642,18 @@ impl GentleEngine {
         }
     }
 
-    fn rna_read_isoform_transcript_signals(
-        hit: &RnaReadInterpretationHit,
-    ) -> BTreeSet<String> {
+    fn default_rna_read_isoform_triage_thresholds(
+        min_identity_fraction: f64,
+    ) -> RnaReadIsoformTriageThresholds {
+        RnaReadIsoformTriageThresholds {
+            min_identity_fraction,
+            min_query_coverage_fraction: 0.80,
+            min_confirmed_transition_fraction: 0.80,
+            max_secondary_mappings: 0,
+        }
+    }
+
+    fn rna_read_isoform_transcript_signals(hit: &RnaReadInterpretationHit) -> BTreeSet<String> {
         [
             Self::primary_phase1_transcript_id(hit),
             hit.seed_chain_transcript_id.as_str(),
@@ -11224,7 +11241,9 @@ impl GentleEngine {
 
     pub(super) fn collect_mapped_isoform_support_rows(
         hits: &[RnaReadInterpretationHit],
+        min_identity_fraction: f64,
     ) -> Vec<RnaReadMappedIsoformSupportRow> {
+        let thresholds = Self::default_rna_read_isoform_triage_thresholds(min_identity_fraction);
         #[derive(Default)]
         struct Accumulator {
             transcript_feature_id: usize,
@@ -11237,6 +11256,7 @@ impl GentleEngine {
             query_coverage_sum: f64,
             best_alignment_score: isize,
             secondary_mapping_total: usize,
+            triage_bin_counts: BTreeMap<String, usize>,
         }
 
         let mut accumulators = BTreeMap::<String, Accumulator>::new();
@@ -11264,12 +11284,18 @@ impl GentleEngine {
             row.secondary_mapping_total = row
                 .secondary_mapping_total
                 .saturating_add(hit.secondary_mappings.len());
+            let triage = Self::classify_rna_read_isoform_triage_hit(hit, thresholds);
+            *row.triage_bin_counts
+                .entry(triage.0.as_str().to_string())
+                .or_default() += 1;
         }
 
         let mut rows = accumulators
             .into_values()
             .map(|row| {
                 let denom = row.aligned_read_count.max(1) as f64;
+                let dominant_triage_bin =
+                    Self::dominant_rna_read_isoform_triage_bin(&row.triage_bin_counts);
                 RnaReadMappedIsoformSupportRow {
                     transcript_feature_id: row.transcript_feature_id,
                     transcript_id: row.transcript_id,
@@ -11285,6 +11311,8 @@ impl GentleEngine {
                         row.best_alignment_score
                     },
                     secondary_mapping_total: row.secondary_mapping_total,
+                    dominant_triage_bin,
+                    triage_bin_counts: row.triage_bin_counts,
                 }
             })
             .collect::<Vec<_>>();
@@ -11313,6 +11341,27 @@ impl GentleEngine {
                 .then_with(|| left.transcript_id.cmp(&right.transcript_id))
         });
         rows
+    }
+
+    fn dominant_rna_read_isoform_triage_bin(
+        counts: &BTreeMap<String, usize>,
+    ) -> Option<RnaReadIsoformTriageBin> {
+        let mut best = None::<(RnaReadIsoformTriageBin, usize)>;
+        for bin in [
+            RnaReadIsoformTriageBin::KnownIsoformConfirmed,
+            RnaReadIsoformTriageBin::KnownIsoformAmbiguous,
+            RnaReadIsoformTriageBin::GeneSupportedNoIsoformCall,
+            RnaReadIsoformTriageBin::OffTargetOrBadSeed,
+        ] {
+            let count = counts.get(bin.as_str()).copied().unwrap_or_default();
+            if count == 0 {
+                continue;
+            }
+            if best.map_or(true, |(_best_bin, best_count)| count > best_count) {
+                best = Some((bin, count));
+            }
+        }
+        best.map(|(bin, _count)| bin)
     }
 
     pub(super) fn transition_gate_passes(
@@ -12866,8 +12915,10 @@ impl GentleEngine {
                         &support_junction_counts,
                         support_aligned_reads,
                     );
-                let mapped_isoform_support_rows =
-                    Self::collect_mapped_isoform_support_rows(&report.hits);
+                let mapped_isoform_support_rows = Self::collect_mapped_isoform_support_rows(
+                    &report.hits,
+                    align_config.min_identity_fraction,
+                );
                 if !on_progress(OperationProgress::RnaReadInterpret(
                     RnaReadInterpretProgress {
                         seq_id: report.seq_id.clone(),
@@ -13003,8 +13054,10 @@ impl GentleEngine {
         report.transition_support_rows = transition_support_rows.clone();
         report.isoform_support_rows =
             Self::collect_isoform_support_rows(&isoform_support_accumulators);
-        report.mapped_isoform_support_rows =
-            Self::collect_mapped_isoform_support_rows(&report.hits);
+        report.mapped_isoform_support_rows = Self::collect_mapped_isoform_support_rows(
+            &report.hits,
+            report.align_config.min_identity_fraction,
+        );
         report.origin_class_counts = origin_class_counts.clone();
         report
             .warnings
@@ -13049,7 +13102,10 @@ impl GentleEngine {
             reads_processed,
             cumulative_read_bases_processed,
         );
-        let mapped_isoform_support_rows = Self::collect_mapped_isoform_support_rows(&report.hits);
+        let mapped_isoform_support_rows = Self::collect_mapped_isoform_support_rows(
+            &report.hits,
+            report.align_config.min_identity_fraction,
+        );
         if !on_progress(OperationProgress::RnaReadInterpret(
             RnaReadInterpretProgress {
                 seq_id: report.seq_id.clone(),
@@ -14447,7 +14503,8 @@ impl GentleEngine {
                 &support_junction_counts,
                 support_aligned_reads,
             );
-        let mapped_isoform_support_rows = Self::collect_mapped_isoform_support_rows(&hits);
+        let mapped_isoform_support_rows =
+            Self::collect_mapped_isoform_support_rows(&hits, align_config.min_identity_fraction);
         let (mean_len, median_len, p95_len) = Self::summarize_read_lengths(
             &read_length_counts_all,
             reads_total,
@@ -14727,10 +14784,8 @@ mod tests {
         hit.exon_transitions_total = 3;
         hit.best_mapping = Some(test_mapping("TP73-201"));
 
-        let (bin, reason) = GentleEngine::classify_rna_read_isoform_triage_hit(
-            &hit,
-            triage_thresholds(),
-        );
+        let (bin, reason) =
+            GentleEngine::classify_rna_read_isoform_triage_hit(&hit, triage_thresholds());
 
         assert_eq!(bin, RnaReadIsoformTriageBin::KnownIsoformConfirmed);
         assert!(reason.contains("gates agree"));
@@ -14746,10 +14801,8 @@ mod tests {
         hit.exon_transitions_total = 3;
         hit.best_mapping = Some(test_mapping("TP73-201"));
 
-        let (bin, reason) = GentleEngine::classify_rna_read_isoform_triage_hit(
-            &hit,
-            triage_thresholds(),
-        );
+        let (bin, reason) =
+            GentleEngine::classify_rna_read_isoform_triage_hit(&hit, triage_thresholds());
 
         assert_eq!(bin, RnaReadIsoformTriageBin::KnownIsoformAmbiguous);
         assert!(reason.contains("not unique"));
@@ -14760,13 +14813,70 @@ mod tests {
         let mut hit = test_rna_read_hit(0, 0.95, true);
         hit.origin_class = RnaReadOriginClass::TargetPartialLocalBlock;
 
-        let (bin, reason) = GentleEngine::classify_rna_read_isoform_triage_hit(
-            &hit,
-            triage_thresholds(),
-        );
+        let (bin, reason) =
+            GentleEngine::classify_rna_read_isoform_triage_hit(&hit, triage_thresholds());
 
         assert_eq!(bin, RnaReadIsoformTriageBin::GeneSupportedNoIsoformCall);
         assert!(reason.contains("no phase-2 transcript alignment"));
+    }
+
+    #[test]
+    fn mapped_isoform_support_rows_accumulate_triage_bins_with_priority() {
+        let mut confirmed = test_rna_read_hit(0, 0.95, true);
+        confirmed.origin_class = RnaReadOriginClass::TargetCoherent;
+        confirmed.seed_chain_transcript_id = "TP73-201".to_string();
+        confirmed.exon_path_transcript_id = "TP73-201".to_string();
+        confirmed.exon_transitions_confirmed = 3;
+        confirmed.exon_transitions_total = 3;
+        confirmed.best_mapping = Some(test_mapping("TP73-201"));
+
+        let mut ambiguous = test_rna_read_hit(1, 0.95, true);
+        ambiguous.origin_class = RnaReadOriginClass::TargetCoherent;
+        ambiguous.seed_chain_transcript_id = "TP73-201".to_string();
+        ambiguous.exon_path_transcript_id = "TP73-202".to_string();
+        ambiguous.exon_transitions_confirmed = 3;
+        ambiguous.exon_transitions_total = 3;
+        ambiguous.best_mapping = Some(test_mapping("TP73-201"));
+
+        let mut off_target = test_rna_read_hit(2, 0.95, true);
+        off_target.origin_class = RnaReadOriginClass::BackgroundLikely;
+        off_target.best_mapping = Some(test_mapping("TP73-202"));
+
+        let rows = GentleEngine::collect_mapped_isoform_support_rows(
+            &[confirmed, ambiguous, off_target],
+            0.90,
+        );
+
+        let tp73_201 = rows
+            .iter()
+            .find(|row| row.transcript_id == "TP73-201")
+            .expect("TP73-201 row");
+        assert_eq!(tp73_201.aligned_read_count, 2);
+        assert_eq!(
+            tp73_201
+                .triage_bin_counts
+                .get(RnaReadIsoformTriageBin::KnownIsoformConfirmed.as_str()),
+            Some(&1)
+        );
+        assert_eq!(
+            tp73_201
+                .triage_bin_counts
+                .get(RnaReadIsoformTriageBin::KnownIsoformAmbiguous.as_str()),
+            Some(&1)
+        );
+        assert_eq!(
+            tp73_201.dominant_triage_bin,
+            Some(RnaReadIsoformTriageBin::KnownIsoformConfirmed)
+        );
+
+        let tp73_202 = rows
+            .iter()
+            .find(|row| row.transcript_id == "TP73-202")
+            .expect("TP73-202 row");
+        assert_eq!(
+            tp73_202.dominant_triage_bin,
+            Some(RnaReadIsoformTriageBin::OffTargetOrBadSeed)
+        );
     }
 
     fn feed_retention_trackers(
