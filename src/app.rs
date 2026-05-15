@@ -2639,6 +2639,20 @@ impl GENtleApp {
         egui::Id::new(("hosted_help_window", Self::help_viewport_id()))
     }
 
+    fn hosted_routine_assistant_window_id() -> egui::Id {
+        egui::Id::new((
+            "hosted_routine_assistant_window",
+            Self::routine_assistant_viewport_id(),
+        ))
+    }
+
+    fn hosted_agent_assistant_window_id() -> egui::Id {
+        egui::Id::new((
+            "hosted_agent_assistant_window",
+            Self::agent_assistant_viewport_id(),
+        ))
+    }
+
     fn unsaved_changes_dialog_id() -> egui::Id {
         egui::Id::new("unsaved_changes_dialog")
     }
@@ -29768,7 +29782,7 @@ mod tests {
     }
 
     #[test]
-    fn embedded_window_layer_id_for_root_and_configuration_use_hosted_window_ids() {
+    fn embedded_window_layer_id_for_root_configuration_and_assistants_use_hosted_window_ids() {
         let app = GENtleApp::default();
         assert_eq!(
             app.embedded_window_layer_id_for_viewport(egui::ViewportId::ROOT),
@@ -29782,6 +29796,20 @@ mod tests {
             Some(egui::LayerId::new(
                 egui::Order::Middle,
                 GENtleApp::hosted_configuration_window_id(),
+            ))
+        );
+        assert_eq!(
+            app.embedded_window_layer_id_for_viewport(GENtleApp::routine_assistant_viewport_id()),
+            Some(egui::LayerId::new(
+                egui::Order::Middle,
+                GENtleApp::hosted_routine_assistant_window_id(),
+            ))
+        );
+        assert_eq!(
+            app.embedded_window_layer_id_for_viewport(GENtleApp::agent_assistant_viewport_id()),
+            Some(egui::LayerId::new(
+                egui::Order::Middle,
+                GENtleApp::hosted_agent_assistant_window_id(),
             ))
         );
     }
