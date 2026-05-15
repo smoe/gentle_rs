@@ -6617,7 +6617,7 @@ pub(super) fn parse_align_command(tokens: &[String]) -> Result<ShellCommand, Str
         "compute" => {
             if tokens.len() < 3 {
                 return Err(
-                    "align compute requires QUERY_SEQ_ID TARGET_SEQ_ID or --query-sequence-text DNA --target-sequence-text DNA [--query-start N] [--query-end N] [--target-start N] [--target-end N] [--mode global|local] [--match N] [--mismatch N] [--gap-open N] [--gap-extend N]"
+                    "align compute requires QUERY_SEQ_ID TARGET_SEQ_ID or --query-sequence-text DNA --target-sequence-text DNA [--query-id-hint TEXT] [--target-id-hint TEXT] [--query-range START..END|--query-start N --query-end N] [--target-range START..END|--target-start N --target-end N] [--mode global|local] [--match N] [--mismatch N] [--gap-open N] [--gap-extend N]"
                         .to_string(),
                 );
             }
