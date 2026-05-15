@@ -61,6 +61,14 @@ struct RnaReadFullLengthClassification {
     full_length_strict: bool,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct RnaReadIsoformTriageThresholds {
+    min_identity_fraction: f64,
+    min_query_coverage_fraction: f64,
+    min_confirmed_transition_fraction: f64,
+    max_secondary_mappings: usize,
+}
+
 #[derive(Debug, Clone)]
 struct RnaReadGeneSupportContext {
     group_label: String,
@@ -4416,6 +4424,311 @@ impl GentleEngine {
         })
     }
 
+    pub fn export_rna_read_isoform_triage_tsv(
+        &self,
+        report_id: &str,
+        path: &str,
+        selection: RnaReadHitSelection,
+        limit: Option<usize>,
+        selected_record_indices: &[usize],
+        subset_spec: Option<&str>,
+        min_identity_fraction: Option<f64>,
+        min_query_coverage_fraction: Option<f64>,
+        min_confirmed_transition_fraction: Option<f64>,
+        max_secondary_mappings: Option<usize>,
+    ) -> Result<RnaReadIsoformTriageTsvExport, EngineError> {
+        let path = path.trim();
+        if path.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "RNA-read isoform triage TSV export requires non-empty path".to_string(),
+            });
+        }
+        if let Some(value) = limit {
+            if value == 0 {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: "RNA-read isoform triage TSV export requires --limit >= 1"
+                        .to_string(),
+                });
+            }
+        }
+        let report = self.get_rna_read_report(report_id)?;
+        let thresholds = RnaReadIsoformTriageThresholds {
+            min_identity_fraction: Self::validate_optional_fraction(
+                min_identity_fraction,
+                "--min-identity",
+            )?
+            .unwrap_or(report.align_config.min_identity_fraction),
+            min_query_coverage_fraction: Self::validate_optional_fraction(
+                min_query_coverage_fraction,
+                "--min-query-coverage",
+            )?
+            .unwrap_or(0.80),
+            min_confirmed_transition_fraction: Self::validate_optional_fraction(
+                min_confirmed_transition_fraction,
+                "--min-confirmed-transition-fraction",
+            )?
+            .unwrap_or(0.80),
+            max_secondary_mappings: max_secondary_mappings.unwrap_or(0),
+        };
+        let explicit_record_filter = selected_record_indices
+            .iter()
+            .copied()
+            .collect::<HashSet<_>>();
+        let file = File::create(path).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not create RNA-read isoform triage TSV export '{}': {e}",
+                path
+            ),
+        })?;
+        let mut writer = BufWriter::new(file);
+        for line in Self::rna_read_isoform_triage_tsv_metadata_lines(
+            &report,
+            selection,
+            limit,
+            selected_record_indices,
+            subset_spec,
+            thresholds,
+        ) {
+            writeln!(writer, "{line}").map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not write RNA-read isoform triage TSV metadata to '{}': {e}",
+                    path
+                ),
+            })?;
+        }
+        writeln!(
+            writer,
+            "report_id\tseq_id\trecord_index\theader_id\ttriage_bin\ttriage_reason\tread_length_bp\tpassed_seed_filter\torigin_class\tphase1_primary_transcript_id\tseed_chain_transcript_id\texon_path_transcript_id\tbest_transcript_id\tbest_transcript_label\tbest_strand\talignment_effect\tidentity_fraction\tquery_coverage_fraction\tsecondary_mapping_count\texon_path\texon_transitions_confirmed\texon_transitions_total\tconfirmed_transition_fraction\tseed_hit_fraction\tweighted_seed_hit_fraction\tmsa_eligible"
+        )
+        .map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not write RNA-read isoform triage TSV header to '{}': {e}",
+                path
+            ),
+        })?;
+        let mut row_count = 0usize;
+        let mut bin_counts = BTreeMap::<String, usize>::new();
+        for hit in &report.hits {
+            if !Self::include_rna_read_hit_by_selection_and_indices(
+                hit,
+                selection,
+                &explicit_record_filter,
+            ) {
+                continue;
+            }
+            if let Some(value) = limit {
+                if row_count >= value {
+                    break;
+                }
+            }
+            let triage = Self::classify_rna_read_isoform_triage_hit(hit, thresholds);
+            *bin_counts.entry(triage.0.as_str().to_string()).or_default() += 1;
+            let primary_transcript_id = Self::primary_phase1_transcript_id(hit);
+            let transition_fraction = Self::rna_read_confirmed_transition_fraction(hit);
+            let (best_transcript_id, best_transcript_label, best_strand, alignment_effect) =
+                if let Some(mapping) = hit.best_mapping.as_ref() {
+                    (
+                        mapping.transcript_id.as_str(),
+                        mapping.transcript_label.as_str(),
+                        mapping.strand.as_str(),
+                        Self::alignment_effect_for_hit(hit, mapping).as_str(),
+                    )
+                } else {
+                    ("", "", "", "none")
+                };
+            let (identity, query_coverage, secondary_mapping_count) =
+                if let Some(mapping) = hit.best_mapping.as_ref() {
+                    (
+                        format!("{:.6}", mapping.identity_fraction),
+                        format!("{:.6}", mapping.query_coverage_fraction),
+                        hit.secondary_mappings.len().to_string(),
+                    )
+                } else {
+                    (String::new(), String::new(), String::new())
+                };
+            writeln!(
+                writer,
+                "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{:.6}\t{}",
+                Self::sanitize_tsv_cell(&report.report_id),
+                Self::sanitize_tsv_cell(&report.seq_id),
+                hit.record_index,
+                Self::sanitize_tsv_cell(&hit.header_id),
+                triage.0.as_str(),
+                Self::sanitize_tsv_cell(&triage.1),
+                hit.read_length_bp,
+                hit.passed_seed_filter,
+                hit.origin_class.as_str(),
+                Self::sanitize_tsv_cell(primary_transcript_id),
+                Self::sanitize_tsv_cell(&hit.seed_chain_transcript_id),
+                Self::sanitize_tsv_cell(&hit.exon_path_transcript_id),
+                Self::sanitize_tsv_cell(best_transcript_id),
+                Self::sanitize_tsv_cell(best_transcript_label),
+                Self::sanitize_tsv_cell(best_strand),
+                alignment_effect,
+                identity,
+                query_coverage,
+                secondary_mapping_count,
+                Self::sanitize_tsv_cell(&hit.exon_path),
+                hit.exon_transitions_confirmed,
+                hit.exon_transitions_total,
+                transition_fraction,
+                hit.seed_hit_fraction,
+                hit.weighted_seed_hit_fraction,
+                hit.msa_eligible,
+            )
+            .map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not write RNA-read isoform triage TSV row to '{}': {e}",
+                    path
+                ),
+            })?;
+            row_count = row_count.saturating_add(1);
+        }
+        writer.flush().map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not flush RNA-read isoform triage TSV '{}': {e}",
+                path
+            ),
+        })?;
+        Ok(RnaReadIsoformTriageTsvExport {
+            schema: RNA_READ_ISOFORM_TRIAGE_TSV_EXPORT_SCHEMA.to_string(),
+            path: path.to_string(),
+            report_id: report.report_id,
+            selection,
+            row_count,
+            limit,
+            min_identity_fraction: thresholds.min_identity_fraction,
+            min_query_coverage_fraction: thresholds.min_query_coverage_fraction,
+            min_confirmed_transition_fraction: thresholds.min_confirmed_transition_fraction,
+            max_secondary_mappings: thresholds.max_secondary_mappings,
+            bin_counts,
+        })
+    }
+
+    fn validate_optional_fraction(
+        value: Option<f64>,
+        flag: &str,
+    ) -> Result<Option<f64>, EngineError> {
+        match value {
+            Some(value) if value.is_finite() && (0.0..=1.0).contains(&value) => Ok(Some(value)),
+            Some(value) => Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("{flag} must be a finite fraction between 0 and 1 (got {value})"),
+            }),
+            None => Ok(None),
+        }
+    }
+
+    fn rna_read_confirmed_transition_fraction(hit: &RnaReadInterpretationHit) -> f64 {
+        if hit.exon_transitions_total == 0 {
+            1.0
+        } else {
+            hit.exon_transitions_confirmed as f64 / hit.exon_transitions_total as f64
+        }
+    }
+
+    fn rna_read_isoform_transcript_signals(
+        hit: &RnaReadInterpretationHit,
+    ) -> BTreeSet<String> {
+        [
+            Self::primary_phase1_transcript_id(hit),
+            hit.seed_chain_transcript_id.as_str(),
+            hit.exon_path_transcript_id.as_str(),
+        ]
+        .into_iter()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .collect()
+    }
+
+    fn classify_rna_read_isoform_triage_hit(
+        hit: &RnaReadInterpretationHit,
+        thresholds: RnaReadIsoformTriageThresholds,
+    ) -> (RnaReadIsoformTriageBin, String) {
+        if !hit.passed_seed_filter {
+            return (
+                RnaReadIsoformTriageBin::OffTargetOrBadSeed,
+                "seed filter failed".to_string(),
+            );
+        }
+        if matches!(
+            hit.origin_class,
+            RnaReadOriginClass::RoiReverseStrandLocalBlock
+                | RnaReadOriginClass::TpFamilyAmbiguous
+                | RnaReadOriginClass::BackgroundLikely
+        ) {
+            return (
+                RnaReadIsoformTriageBin::OffTargetOrBadSeed,
+                format!("origin_class={}", hit.origin_class.as_str()),
+            );
+        }
+        let Some(mapping) = hit.best_mapping.as_ref() else {
+            return (
+                RnaReadIsoformTriageBin::GeneSupportedNoIsoformCall,
+                "seed-supported read has no phase-2 transcript alignment".to_string(),
+            );
+        };
+        let transition_fraction = Self::rna_read_confirmed_transition_fraction(hit);
+        let transcript_signals = Self::rna_read_isoform_transcript_signals(hit);
+        let all_transcript_signals_match = !transcript_signals.is_empty()
+            && transcript_signals
+                .iter()
+                .all(|transcript_id| transcript_id == &mapping.transcript_id);
+        let has_conflicting_transcript_signal = transcript_signals
+            .iter()
+            .any(|transcript_id| transcript_id != &mapping.transcript_id);
+        let secondary_mapping_count = hit.secondary_mappings.len();
+        let alignment_effect = Self::alignment_effect_for_hit(hit, mapping);
+
+        if all_transcript_signals_match
+            && mapping.identity_fraction >= thresholds.min_identity_fraction
+            && mapping.query_coverage_fraction >= thresholds.min_query_coverage_fraction
+            && transition_fraction >= thresholds.min_confirmed_transition_fraction
+            && secondary_mapping_count <= thresholds.max_secondary_mappings
+            && hit.origin_class == RnaReadOriginClass::TargetCoherent
+        {
+            return (
+                RnaReadIsoformTriageBin::KnownIsoformConfirmed,
+                "phase-1 transcript, phase-2 alignment, seed, transition, and ambiguity gates agree"
+                    .to_string(),
+            );
+        }
+
+        if has_conflicting_transcript_signal
+            || secondary_mapping_count > thresholds.max_secondary_mappings
+            || alignment_effect == RnaReadAlignmentEffect::ReassignedTranscript
+        {
+            return (
+                RnaReadIsoformTriageBin::KnownIsoformAmbiguous,
+                format!(
+                    "known-transcript evidence is not unique (signals={}, secondary_mappings={}, alignment_effect={})",
+                    transcript_signals.into_iter().collect::<Vec<_>>().join(","),
+                    secondary_mapping_count,
+                    alignment_effect.as_str()
+                ),
+            );
+        }
+
+        (
+            RnaReadIsoformTriageBin::GeneSupportedNoIsoformCall,
+            format!(
+                "gene-supported read does not satisfy isoform-confirmation gates (identity={:.3}, query_coverage={:.3}, transition_fraction={:.3}, origin_class={})",
+                mapping.identity_fraction,
+                mapping.query_coverage_fraction,
+                transition_fraction,
+                hit.origin_class.as_str()
+            ),
+        )
+    }
+
     pub(super) fn alignment_scatter_color_hex(
         score: isize,
         min_score: isize,
@@ -5540,6 +5853,46 @@ impl GentleEngine {
             "# align_config: min_identity_fraction={:.2} max_secondary_mappings={}",
             report.align_config.min_identity_fraction, report.align_config.max_secondary_mappings,
         ));
+        lines
+    }
+
+    fn rna_read_isoform_triage_tsv_metadata_lines(
+        report: &RnaReadInterpretationReport,
+        selection: RnaReadHitSelection,
+        limit: Option<usize>,
+        selected_record_indices: &[usize],
+        subset_spec: Option<&str>,
+        thresholds: RnaReadIsoformTriageThresholds,
+    ) -> Vec<String> {
+        let limit_text = limit
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "all".to_string());
+        let mut lines = Self::rna_read_tsv_common_metadata_lines(
+            report,
+            selection,
+            selected_record_indices,
+            subset_spec,
+        );
+        lines[0] = format!(
+            "# report_id={} seq_id={} selection={} selected_record_indices={} subset_spec={} limit={}",
+            Self::sanitize_tsv_cell(&report.report_id),
+            Self::sanitize_tsv_cell(&report.seq_id),
+            selection.as_str(),
+            Self::format_selected_record_indices_for_metadata(selected_record_indices),
+            Self::format_subset_spec_for_metadata(subset_spec),
+            limit_text,
+        );
+        lines.push(format!(
+            "# isoform_triage_thresholds: min_identity_fraction={:.3} min_query_coverage_fraction={:.3} min_confirmed_transition_fraction={:.3} max_secondary_mappings={}",
+            thresholds.min_identity_fraction,
+            thresholds.min_query_coverage_fraction,
+            thresholds.min_confirmed_transition_fraction,
+            thresholds.max_secondary_mappings,
+        ));
+        lines.push(
+            "# isoform_triage: v1 bins are conservative read-triage labels, not novel-isoform calls or expression values"
+                .to_string(),
+        );
         lines
     }
 
@@ -14332,6 +14685,88 @@ mod tests {
             passed_seed_filter,
             ..RnaReadInterpretationHit::default()
         }
+    }
+
+    fn test_mapping(transcript_id: &str) -> RnaReadMappingHit {
+        RnaReadMappingHit {
+            transcript_feature_id: 7,
+            transcript_id: transcript_id.to_string(),
+            transcript_label: transcript_id.to_string(),
+            strand: "+".to_string(),
+            query_start_0based: 0,
+            query_end_0based_exclusive: 100,
+            target_start_1based: 1,
+            target_end_1based: 100,
+            target_start_offset_0based: 0,
+            target_end_offset_0based_exclusive: 100,
+            matches: 98,
+            mismatches: 2,
+            score: 96,
+            identity_fraction: 0.98,
+            query_coverage_fraction: 0.95,
+            ..RnaReadMappingHit::default()
+        }
+    }
+
+    fn triage_thresholds() -> RnaReadIsoformTriageThresholds {
+        RnaReadIsoformTriageThresholds {
+            min_identity_fraction: 0.90,
+            min_query_coverage_fraction: 0.80,
+            min_confirmed_transition_fraction: 0.75,
+            max_secondary_mappings: 0,
+        }
+    }
+
+    #[test]
+    fn classify_isoform_triage_confirmed_requires_consistent_transcript_evidence() {
+        let mut hit = test_rna_read_hit(0, 0.95, true);
+        hit.origin_class = RnaReadOriginClass::TargetCoherent;
+        hit.seed_chain_transcript_id = "TP73-201".to_string();
+        hit.exon_path_transcript_id = "TP73-201".to_string();
+        hit.exon_transitions_confirmed = 3;
+        hit.exon_transitions_total = 3;
+        hit.best_mapping = Some(test_mapping("TP73-201"));
+
+        let (bin, reason) = GentleEngine::classify_rna_read_isoform_triage_hit(
+            &hit,
+            triage_thresholds(),
+        );
+
+        assert_eq!(bin, RnaReadIsoformTriageBin::KnownIsoformConfirmed);
+        assert!(reason.contains("gates agree"));
+    }
+
+    #[test]
+    fn classify_isoform_triage_conflicting_known_transcripts_as_ambiguous() {
+        let mut hit = test_rna_read_hit(0, 0.95, true);
+        hit.origin_class = RnaReadOriginClass::TargetCoherent;
+        hit.seed_chain_transcript_id = "TP73-201".to_string();
+        hit.exon_path_transcript_id = "TP73-202".to_string();
+        hit.exon_transitions_confirmed = 3;
+        hit.exon_transitions_total = 3;
+        hit.best_mapping = Some(test_mapping("TP73-201"));
+
+        let (bin, reason) = GentleEngine::classify_rna_read_isoform_triage_hit(
+            &hit,
+            triage_thresholds(),
+        );
+
+        assert_eq!(bin, RnaReadIsoformTriageBin::KnownIsoformAmbiguous);
+        assert!(reason.contains("not unique"));
+    }
+
+    #[test]
+    fn classify_isoform_triage_avoids_novel_label_for_unmapped_gene_supported_read() {
+        let mut hit = test_rna_read_hit(0, 0.95, true);
+        hit.origin_class = RnaReadOriginClass::TargetPartialLocalBlock;
+
+        let (bin, reason) = GentleEngine::classify_rna_read_isoform_triage_hit(
+            &hit,
+            triage_thresholds(),
+        );
+
+        assert_eq!(bin, RnaReadIsoformTriageBin::GeneSupportedNoIsoformCall);
+        assert!(reason.contains("no phase-2 transcript alignment"));
     }
 
     fn feed_retention_trackers(

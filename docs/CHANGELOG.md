@@ -20,6 +20,9 @@ Maintenance rule:
   and added `EngineError.cause_chain` preservation across adapter boundaries.
 - Made engine-backed missing adapter routes render as parity gaps unless a
   curated not-applicable override supplies a real justification.
+- Added conservative RNA-read isoform triage TSV export for known-isoform,
+  ambiguous, gene-supported/no-call, and off-target/bad-seed read bins without
+  calling novel isoforms.
 
 ## 2026-05-14
 

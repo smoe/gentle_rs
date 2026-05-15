@@ -2139,6 +2139,7 @@ Current draft operations:
 - `ExportRnaReadExonAbundanceTsv { report_id, path, selection, selected_record_indices?, subset_spec? }`
 - `ExportRnaReadScoreDensitySvg { report_id, path, scale, variant }`
 - `ExportRnaReadAlignmentsTsv { report_id, path, selection, limit?, selected_record_indices?, subset_spec? }`
+- `ExportRnaReadIsoformTriageTsv { report_id, path, selection, limit?, selected_record_indices?, subset_spec?, min_identity_fraction?, min_query_coverage_fraction?, min_confirmed_transition_fraction?, max_secondary_mappings? }`
 - `ExportRnaReadAlignmentDotplotSvg { report_id, path, selection, max_points }`
 - `ExtractRegion { input, from, to, output_id? }`
 - `PrepareGenome { genome_id, catalog_path?, cache_dir?, timeout_seconds? }`
@@ -6822,6 +6823,13 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
         offsets first and falls back to coarse genomic-span overlap only for
         legacy mappings that do not carry template offsets
       - deterministic retained-hit re-ranking by alignment-aware retention rank
+    - `export-isoform-triage-tsv` is a conservative read-level triage export:
+      it bins retained reads as `known_isoform_confirmed`,
+      `known_isoform_ambiguous`, `gene_supported_no_isoform_call`, or
+      `off_target_or_bad_seed` from already-computed seed, origin,
+      transcript-template alignment, transition, and secondary-mapping fields.
+      It deliberately does not call novel isoforms and should not be used as an
+      expression heatmap source.
   - alignment inspection behavior:
     - `rna-reads inspect-alignments` accepts coarse `selection` plus a
       structured subset contract:
@@ -6942,8 +6950,9 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
         low-complexity or partial confirmations
   - exact-subset export behavior:
     - `ExportRnaReadHitsFasta`, `ExportRnaReadExonPathsTsv`,
-      `ExportRnaReadExonAbundanceTsv`, and `ExportRnaReadAlignmentsTsv` accept
-      optional `selected_record_indices[]`
+      `ExportRnaReadExonAbundanceTsv`, `ExportRnaReadAlignmentsTsv`, and
+      `ExportRnaReadIsoformTriageTsv` accept optional
+      `selected_record_indices[]`
     - when present, the explicit 0-based stored `record_index` subset
       overrides the coarse `selection` preset
     - these exports also accept optional `subset_spec`, a human-readable formal
