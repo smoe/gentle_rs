@@ -29,8 +29,10 @@ Goal:
 JavaScript, and Lua adapters. Each row has a stable `name`, glossary-sourced
 `description` where applicable, JSON-schema `input_schema`/`output_schema`,
 `mutating` (`false`, `true`, or `external`), per-adapter surfacing
-(`prominent`, `shell_passthrough`, or `not_applicable`), required
-not-applicable justifications, and optional `inline_operand_ok`.
+(`prominent`, `shell_passthrough`, `gap`, or `not_applicable`), required
+not-applicable justifications backed by
+[`capability_not_applicable_overrides.json`](capability_not_applicable_overrides.json)
+where a route is engine-backed, and optional `inline_operand_ok`.
 
 Adapter error payloads that cross machine boundaries use the shared
 `EngineError` shape (`code`, `message`, optional `cause_chain`) so adapters can

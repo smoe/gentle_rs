@@ -4632,7 +4632,7 @@ impl CapabilityMutation {
 }
 
 /// Source class for a capability row in the shared registry.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum CapabilitySource {
     GlossaryCommand,
@@ -4656,6 +4656,7 @@ impl CapabilitySource {
 pub enum AdapterSurfacing {
     Prominent,
     ShellPassthrough,
+    Gap,
     NotApplicable,
 }
 
@@ -4664,8 +4665,13 @@ impl AdapterSurfacing {
         match self {
             Self::Prominent => "prominent",
             Self::ShellPassthrough => "shell-only",
+            Self::Gap => "gap",
             Self::NotApplicable => "n/a",
         }
+    }
+
+    pub fn is_reachable(self) -> bool {
+        matches!(self, Self::Prominent | Self::ShellPassthrough)
     }
 }
 
@@ -4705,6 +4711,10 @@ impl CapabilityDescriptor {
             CapabilityAdapter::Clawbio => self.clawbio,
         }
     }
+
+    pub fn is_reachable_from_adapter(&self, adapter: CapabilityAdapter) -> bool {
+        self.surfacing_for_adapter(adapter).is_reachable()
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -4721,6 +4731,19 @@ struct GlossaryRegistryCommand {
     #[serde(default)]
     engine_operations: Vec<String>,
     usage: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct CapabilityNotApplicableOverrides {
+    overrides: Vec<CapabilityNotApplicableOverride>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CapabilityNotApplicableOverride {
+    source: CapabilitySource,
+    name: String,
+    adapter: CapabilityAdapter,
+    reason: String,
 }
 
 const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
@@ -5122,6 +5145,8 @@ const MCP_TOOL_NAMES: &[(&str, &str, &str, CapabilityMutation)] = &[
 
 static CAPABILITY_REGISTRY: LazyLock<Vec<CapabilityDescriptor>> =
     LazyLock::new(build_capability_registry);
+static CAPABILITY_NOT_APPLICABLE_OVERRIDES: LazyLock<Vec<CapabilityNotApplicableOverride>> =
+    LazyLock::new(load_capability_not_applicable_overrides);
 
 const CAPABILITY_PARITY_ADAPTERS: [CapabilityAdapter; 6] = [
     CapabilityAdapter::Gui,
@@ -5161,11 +5186,42 @@ pub fn capability_descriptor(
 pub fn capability_registry_for_adapter(adapter: CapabilityAdapter) -> Vec<CapabilityDescriptor> {
     capability_registry()
         .iter()
-        .filter(|descriptor| {
-            descriptor.surfacing_for_adapter(adapter) != AdapterSurfacing::NotApplicable
-        })
+        .filter(|descriptor| descriptor.is_reachable_from_adapter(adapter))
         .cloned()
         .collect()
+}
+
+fn load_capability_not_applicable_overrides() -> Vec<CapabilityNotApplicableOverride> {
+    let overrides: CapabilityNotApplicableOverrides = serde_json::from_str(include_str!(
+        "../../../docs/capability_not_applicable_overrides.json"
+    ))
+    .expect("docs/capability_not_applicable_overrides.json must parse");
+    for entry in &overrides.overrides {
+        assert!(
+            !entry.reason.trim().is_empty(),
+            "capability n/a override for {:?} `{}` on {:?} must have a reason",
+            entry.source,
+            entry.name,
+            entry.adapter
+        );
+    }
+    overrides.overrides
+}
+
+fn not_applicable_override_reason(
+    source: CapabilitySource,
+    name: &str,
+    adapter: CapabilityAdapter,
+) -> Option<String> {
+    CAPABILITY_NOT_APPLICABLE_OVERRIDES
+        .iter()
+        .find(|entry| entry.source == source && entry.name == name && entry.adapter == adapter)
+        .or_else(|| {
+            CAPABILITY_NOT_APPLICABLE_OVERRIDES.iter().find(|entry| {
+                entry.source == source && entry.name == "*" && entry.adapter == adapter
+            })
+        })
+        .map(|entry| entry.reason.clone())
 }
 
 /// Render the GUI/CLI/MCP parity matrix from the protocol capability registry.
@@ -5198,11 +5254,12 @@ from each descriptor's `surfacing_justifications` map.\n\n",
     for adapter in capability_parity_adapters() {
         let mut prominent = 0usize;
         let mut shell_only = 0usize;
-        let gap = 0usize;
+        let mut gap = 0usize;
         for descriptor in registry {
             match descriptor.surfacing_for_adapter(*adapter) {
                 AdapterSurfacing::Prominent => prominent += 1,
                 AdapterSurfacing::ShellPassthrough => shell_only += 1,
+                AdapterSurfacing::Gap => gap += 1,
                 AdapterSurfacing::NotApplicable => {}
             }
         }
@@ -5236,10 +5293,39 @@ from each descriptor's `surfacing_justifications` map.\n\n",
             .iter()
             .filter(|descriptor| descriptor.source == CapabilitySource::McpTool),
     );
+    push_open_gaps_section(&mut out, registry);
     while out.ends_with("\n\n") {
         out.pop();
     }
     out
+}
+
+fn push_open_gaps_section(out: &mut String, registry: &[CapabilityDescriptor]) {
+    out.push_str("## Open Gaps\n\n");
+    out.push_str("| Capability | Source | Adapter | Engine operations |\n");
+    out.push_str("|---|---|---|---|\n");
+    let mut count = 0usize;
+    for descriptor in registry {
+        for adapter in capability_parity_adapters() {
+            if descriptor.surfacing_for_adapter(*adapter) != AdapterSurfacing::Gap {
+                continue;
+            }
+            count += 1;
+            out.push_str("| ");
+            out.push_str(&markdown_cell(&descriptor.name));
+            out.push_str(" | ");
+            out.push_str(descriptor.source.as_str());
+            out.push_str(" | ");
+            out.push_str(adapter.label());
+            out.push_str(" | ");
+            out.push_str(&markdown_cell(&descriptor.engine_operations.join(", ")));
+            out.push_str(" |\n");
+        }
+    }
+    if count == 0 {
+        out.push_str("| _None_ |  |  |  |\n");
+    }
+    out.push('\n');
 }
 
 fn push_parity_section<'a>(
@@ -5366,7 +5452,9 @@ fn engine_operation_descriptor(
         js: surfacing.js,
         lua: surfacing.lua,
         clawbio: surfacing.clawbio,
-        surfacing_justifications: surfacing_justifications_for_engine_operation(&surfacing),
+        surfacing_justifications: surfacing_justifications_for_engine_operation(
+            &surfacing, op_name,
+        ),
         inline_operand_ok: inline_operand_ok_for_operation(op_name),
         engine_operations: vec![op_name.to_string()],
         source: CapabilitySource::EngineOperation,
@@ -5396,7 +5484,7 @@ fn mcp_tool_descriptor(
         js: surfacing.js,
         lua: surfacing.lua,
         clawbio: surfacing.clawbio,
-        surfacing_justifications: surfacing_justifications_for_mcp_tool(&surfacing),
+        surfacing_justifications: surfacing_justifications_for_mcp_tool(&surfacing, name),
         inline_operand_ok: None,
         engine_operations: vec![],
         source: CapabilitySource::McpTool,
@@ -5432,35 +5520,52 @@ fn glossary_command_surfacing(command: &GlossaryRegistryCommand) -> CapabilitySu
         .iter()
         .map(String::as_str)
         .collect::<BTreeSet<_>>();
+    let missing = |adapter| missing_glossary_command_surfacing(command, adapter);
     CapabilitySurfacingSet {
         gui: if interfaces.contains("gui-shell") {
             AdapterSurfacing::ShellPassthrough
         } else {
-            AdapterSurfacing::NotApplicable
+            missing(CapabilityAdapter::Gui)
         },
         cli: if interfaces.contains("cli-direct") {
             AdapterSurfacing::Prominent
         } else if interfaces.contains("cli-shell") {
             AdapterSurfacing::ShellPassthrough
         } else {
-            AdapterSurfacing::NotApplicable
+            missing(CapabilityAdapter::Cli)
         },
         mcp: if interfaces.contains("mcp") {
             AdapterSurfacing::Prominent
         } else {
-            AdapterSurfacing::NotApplicable
+            missing(CapabilityAdapter::Mcp)
         },
         js: if interfaces.contains("js") {
             AdapterSurfacing::Prominent
         } else {
-            AdapterSurfacing::NotApplicable
+            missing(CapabilityAdapter::Js)
         },
         lua: if interfaces.contains("lua") {
             AdapterSurfacing::Prominent
         } else {
-            AdapterSurfacing::NotApplicable
+            missing(CapabilityAdapter::Lua)
         },
-        clawbio: AdapterSurfacing::NotApplicable,
+        clawbio: missing(CapabilityAdapter::Clawbio),
+    }
+}
+
+fn missing_glossary_command_surfacing(
+    command: &GlossaryRegistryCommand,
+    adapter: CapabilityAdapter,
+) -> AdapterSurfacing {
+    if command.engine_operations.is_empty() {
+        return AdapterSurfacing::NotApplicable;
+    }
+    if not_applicable_override_reason(CapabilitySource::GlossaryCommand, &command.path, adapter)
+        .is_some()
+    {
+        AdapterSurfacing::NotApplicable
+    } else {
+        AdapterSurfacing::Gap
     }
 }
 
@@ -5493,21 +5598,20 @@ fn surfacing_justifications_for_glossary_command(
     let mut justifications = BTreeMap::new();
     for adapter in capability_parity_adapters() {
         if surfacing.for_adapter(*adapter) == AdapterSurfacing::NotApplicable {
-            let note = if *adapter == CapabilityAdapter::Clawbio {
-                "ClawBio exposes curated skill intents rather than glossary command rows."
-                    .to_string()
-            } else if command.engine_operations.is_empty() {
-                format!(
-                    "The glossary entry for `{}` does not declare a {} interface; this row is adapter-specific.",
-                    command.path,
-                    adapter.label()
-                )
+            let note = if command.engine_operations.is_empty() {
+                "Local CLI/GUI command, not an engine route.".to_string()
             } else {
-                format!(
-                    "The glossary entry for `{}` does not declare a {} interface; related engine operations are projected separately.",
-                    command.path,
-                    adapter.label()
+                not_applicable_override_reason(
+                    CapabilitySource::GlossaryCommand,
+                    &command.path,
+                    *adapter,
                 )
+                .unwrap_or_else(|| {
+                    panic!(
+                        "missing curated n/a override for glossary command `{}` on {:?}",
+                        command.path, adapter
+                    )
+                })
             };
             justifications.insert(adapter.as_str().to_string(), note);
         }
@@ -5517,6 +5621,7 @@ fn surfacing_justifications_for_glossary_command(
 
 fn surfacing_justifications_for_engine_operation(
     surfacing: &CapabilitySurfacingSet,
+    op_name: &str,
 ) -> BTreeMap<String, String> {
     capability_parity_adapters()
         .iter()
@@ -5524,8 +5629,17 @@ fn surfacing_justifications_for_engine_operation(
             (surfacing.for_adapter(*adapter) == AdapterSurfacing::NotApplicable).then(|| {
                 (
                     adapter.as_str().to_string(),
-                    "ClawBio exposes curated skill intents rather than raw engine operation rows."
-                        .to_string(),
+                    not_applicable_override_reason(
+                        CapabilitySource::EngineOperation,
+                        op_name,
+                        *adapter,
+                    )
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "missing curated n/a override for engine operation `{op_name}` on {:?}",
+                            adapter
+                        )
+                    }),
                 )
             })
         })
@@ -5534,6 +5648,7 @@ fn surfacing_justifications_for_engine_operation(
 
 fn surfacing_justifications_for_mcp_tool(
     surfacing: &CapabilitySurfacingSet,
+    tool_name: &str,
 ) -> BTreeMap<String, String> {
     capability_parity_adapters()
         .iter()
@@ -5541,10 +5656,13 @@ fn surfacing_justifications_for_mcp_tool(
             (surfacing.for_adapter(*adapter) == AdapterSurfacing::NotApplicable).then(|| {
                 (
                     adapter.as_str().to_string(),
-                    format!(
-                        "MCP tools/list descriptor; {} uses glossary or engine-operation descriptors instead.",
-                        adapter.label()
-                    ),
+                    not_applicable_override_reason(CapabilitySource::McpTool, tool_name, *adapter)
+                        .unwrap_or_else(|| {
+                            panic!(
+                                "missing curated n/a override for MCP tool `{tool_name}` on {:?}",
+                                adapter
+                            )
+                        }),
                 )
             })
         })
