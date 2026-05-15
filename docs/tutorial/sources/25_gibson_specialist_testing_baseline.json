@@ -2,6 +2,19 @@
   "schema": "gentle.tutorial_source.v2",
   "id": "gibson_specialist_testing_baseline",
   "title": "Gibson Specialist Starter Project (offline)",
+  "catalog": {
+    "order": 38,
+    "path": "docs/tutorial/generated/chapters/15_gibson_specialist_testing_baseline.md",
+    "type": "executable_chapter",
+    "status": "generated+checked/human-pending",
+    "source": "generated_from_tutorial_sources",
+    "audiences": [
+      "gui_first",
+      "cloning_planning",
+      "contributors"
+    ],
+    "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation."
+  },
   "generated_chapter": {
     "order": 15,
     "example_id": "gibson_specialist_testing_baseline",

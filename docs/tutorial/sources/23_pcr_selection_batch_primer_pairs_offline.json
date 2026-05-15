@@ -2,6 +2,19 @@
   "schema": "gentle.tutorial_source.v2",
   "id": "pcr_selection_batch_primer_pairs_offline",
   "title": "Selection-first PCR batch primer design (offline)",
+  "catalog": {
+    "order": 36,
+    "path": "docs/tutorial/generated/chapters/13_pcr_selection_batch_primer_pairs_offline.md",
+    "type": "executable_chapter",
+    "status": "generated+checked/human-pending",
+    "source": "generated_from_tutorial_sources",
+    "audiences": [
+      "gui_first",
+      "primer_design",
+      "contributors"
+    ],
+    "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation."
+  },
   "generated_chapter": {
     "order": 13,
     "example_id": "pcr_selection_batch_primer_pairs_offline",

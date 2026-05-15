@@ -2,6 +2,19 @@
   "schema": "gentle.tutorial_source.v2",
   "id": "tp53_isoform_architecture_online",
   "title": "TP53 isoform architecture expert panel (online)",
+  "catalog": {
+    "order": 33,
+    "path": "docs/tutorial/generated/chapters/10_tp53_isoform_architecture_online.md",
+    "type": "executable_chapter",
+    "status": "generated+checked/human-pending",
+    "source": "generated_from_tutorial_sources",
+    "audiences": [
+      "online_workflows",
+      "sequence_analysis",
+      "contributors"
+    ],
+    "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation. Requires explicit online setup for full execution."
+  },
   "generated_chapter": {
     "order": 10,
     "example_id": "tp53_isoform_architecture_online",

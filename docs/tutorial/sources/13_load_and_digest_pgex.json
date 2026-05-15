@@ -2,6 +2,19 @@
   "schema": "gentle.tutorial_source.v2",
   "id": "load_and_digest_pgex",
   "title": "Load pGEX and digest with BamHI/EcoRI",
+  "catalog": {
+    "order": 26,
+    "path": "docs/tutorial/generated/chapters/03_load_and_digest_pgex.md",
+    "type": "executable_chapter",
+    "status": "generated+checked/human-pending",
+    "source": "generated_from_tutorial_sources",
+    "audiences": [
+      "new_users",
+      "cloning_planning",
+      "contributors"
+    ],
+    "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation."
+  },
   "generated_chapter": {
     "order": 3,
     "example_id": "load_and_digest_pgex",

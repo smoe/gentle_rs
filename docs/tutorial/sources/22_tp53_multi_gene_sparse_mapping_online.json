@@ -2,6 +2,19 @@
   "schema": "gentle.tutorial_source.v2",
   "id": "tp53_multi_gene_sparse_mapping_online",
   "title": "Map TP53 locus reads with multi-gene sparse indexing (online)",
+  "catalog": {
+    "order": 35,
+    "path": "docs/tutorial/generated/chapters/12_tp53_multi_gene_sparse_mapping_online.md",
+    "type": "executable_chapter",
+    "status": "generated+checked/human-pending",
+    "source": "generated_from_tutorial_sources",
+    "audiences": [
+      "online_workflows",
+      "sequence_analysis",
+      "contributors"
+    ],
+    "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation. Requires explicit online setup for full execution."
+  },
   "generated_chapter": {
     "order": 12,
     "example_id": "tp53_multi_gene_sparse_mapping_online",

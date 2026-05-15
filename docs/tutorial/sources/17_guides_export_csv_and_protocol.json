@@ -2,6 +2,18 @@
   "schema": "gentle.tutorial_source.v2",
   "id": "guides_export_csv_and_protocol",
   "title": "Guide oligo export (CSV + protocol)",
+  "catalog": {
+    "order": 30,
+    "path": "docs/tutorial/generated/chapters/07_guides_export_csv_and_protocol.md",
+    "type": "executable_chapter",
+    "status": "generated+checked/human-pending",
+    "source": "generated_from_tutorial_sources",
+    "audiences": [
+      "cli_first",
+      "contributors"
+    ],
+    "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation."
+  },
   "generated_chapter": {
     "order": 7,
     "example_id": "guides_export_csv_and_protocol",

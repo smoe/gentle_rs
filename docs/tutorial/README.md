@@ -142,6 +142,32 @@ Ensembl:
 - reproducible executable companion:
   [`docs/tutorial/generated/chapters/19_tp73_uniprot_projection_audit_cli.md`](./generated/chapters/19_tp73_uniprot_projection_audit_cli.md)
 
+## Human Confirmation Queue
+
+These entries are generated and `tutorial-check` validated, but they have not
+yet had an explicit human functional pass through the tutorial prose and GUI/CLI
+steps. They are now listed in Help -> Tutorials with status
+`generated+checked/human-pending` so they can be picked off one by one:
+
+- [`01 Load FASTA, branch, and reverse-complement`](./generated/chapters/01_load_branch_reverse_complement_pgex_fasta.md)
+- [`02 Find and extend the right genomic target (local catalog)`](./generated/chapters/02_find_and_extend_genomic_target_local_catalog.md)
+- [`03 Load pGEX and digest with BamHI/EcoRI`](./generated/chapters/03_load_and_digest_pgex.md)
+- [`04 Gibson two-fragment overlap planning baseline`](./generated/chapters/04_gibson_two_fragment_overlap_preview.md)
+- [`05 Guide practical filtering and oligo generation`](./generated/chapters/05_guides_filter_and_generate_oligos.md)
+- [`06 Digest -> Ligation -> ExtractRegion minimal slice`](./generated/chapters/06_digest_ligation_extract_region_minimal.md)
+- [`07 Guide oligo export (CSV + protocol)`](./generated/chapters/07_guides_export_csv_and_protocol.md)
+- [`08 Contribute to GENtle development`](./generated/chapters/08_contribute_to_gentle_development.md)
+- [`09 Prepare a reference genome cache (online)`](./generated/chapters/09_prepare_reference_genome_online.md)
+- [`10 TP53 isoform architecture expert panel (online)`](./generated/chapters/10_tp53_isoform_architecture_online.md)
+- [`11 Retrieve TP63 and extend the displayed region by +/-2 kb (online)`](./generated/chapters/11_tp63_anchor_extension_online.md)
+- [`12 Map TP53 locus reads with multi-gene sparse indexing (online)`](./generated/chapters/12_tp53_multi_gene_sparse_mapping_online.md)
+- [`13 Selection-first PCR batch primer design (offline)`](./generated/chapters/13_pcr_selection_batch_primer_pairs_offline.md)
+- [`14 Compare TP73 cDNA against TP73 genomic context via dotplot (online)`](./generated/chapters/14_tp73_cdna_genomic_dotplot_online.md)
+- [`15 Gibson Specialist Starter Project (offline)`](./generated/chapters/15_gibson_specialist_testing_baseline.md)
+- [`16 Gibson Arrangements Starter Project (offline)`](./generated/chapters/16_gibson_arrangements_baseline.md)
+- [`17 TP53 UniProt domain mapping and feature-coding DNA query (online)`](./generated/chapters/17_tp53_uniprot_projection_online.md)
+- [`24 Promoter Design Artifact Slice (Offline Synthetic TP73 Locus)`](./generated/chapters/24_promoter_design_artifact_slice_offline.md)
+
 ## Confidence Map
 
 Treat the tutorial catalog as three confidence bands:
@@ -208,6 +234,11 @@ Use the labels above as trust/maintenance signals:
   - produced from executable examples and validated by
     `cargo run --bin gentle_examples_docs -- tutorial-check`
   - best choice when reproducibility matters most
+- `generated+checked/human-pending`
+  - generated and machine-checked, but listed separately for explicit human
+    functional confirmation
+  - use this queue when you want to pick one tutorial and validate that the
+    prose, GUI affordances, and expected artifacts still line up
 - `manual`
   - hand-written walkthrough
   - useful for GUI and screenshot-driven learning

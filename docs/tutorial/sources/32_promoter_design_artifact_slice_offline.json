@@ -2,6 +2,19 @@
   "schema": "gentle.tutorial_source.v2",
   "id": "promoter_design_artifact_slice_offline",
   "title": "Promoter Design Artifact Slice (Offline Synthetic TP73 Locus)",
+  "catalog": {
+    "order": 41,
+    "path": "docs/tutorial/generated/chapters/24_promoter_design_artifact_slice_offline.md",
+    "type": "executable_chapter",
+    "status": "generated+checked/human-pending",
+    "source": "generated_from_tutorial_sources",
+    "audiences": [
+      "gui_first",
+      "cloning_planning",
+      "contributors"
+    ],
+    "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation."
+  },
   "generated_chapter": {
     "order": 24,
     "example_id": "promoter_design_artifact_slice_offline",
