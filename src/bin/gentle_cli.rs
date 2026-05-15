@@ -4,6 +4,8 @@
 mod gentle_cli_args;
 #[path = "gentle_cli/candidates.rs"]
 mod gentle_cli_candidates;
+#[path = "gentle_cli/doctor.rs"]
+mod gentle_cli_doctor;
 #[path = "gentle_cli/hosts.rs"]
 mod gentle_cli_hosts;
 #[path = "gentle_cli/pools.rs"]
@@ -476,6 +478,7 @@ fn usage_text() -> String {
   gentle_cli help [COMMAND ...] [--format text|json|markdown] [--interface all|cli-direct|cli-shell|gui-shell|js|lua|mcp]\n  \
   gentle_cli [--state PATH|--project PATH] [--progress|--progress-stderr|--progress-stdout] COMMAND ...\n\n  \
   gentle_cli [--state PATH|--project PATH] capabilities\n  \
+  gentle_cli [--state PATH|--project PATH] doctor --agent\n  \
   gentle_cli [--state PATH|--project PATH] op '<operation-json>'|JSON_FILE\n  \
   gentle_cli [--state PATH|--project PATH] workflow '<workflow-json>'|JSON_FILE\n  \
   gentle_cli [--state PATH|--project PATH] state-summary\n  \
@@ -1137,6 +1140,13 @@ fn run() -> Result<(), String> {
         "capabilities" => {
             print_json(&GentleEngine::capabilities())?;
             Ok(())
+        }
+        "doctor" => {
+            if args.len() != cmd_idx + 2 || args[cmd_idx + 1] != "--agent" {
+                usage();
+                return Err("doctor requires --agent".to_string());
+            }
+            gentle_cli_doctor::run_agent_doctor(&state_path)
         }
         "import-state" | "load-project" => {
             if args.len() <= cmd_idx + 1 {
@@ -3901,6 +3911,17 @@ mod tests {
     #[test]
     fn test_parse_forwarded_shell_command_non_forwarded_returns_none() {
         let args = vec!["gentle_cli".to_string(), "state-summary".to_string()];
+        let parsed = parse_forwarded_shell_command(&args, 1).expect("parse forwarded");
+        assert!(parsed.is_none());
+    }
+
+    #[test]
+    fn test_parse_forwarded_shell_command_doctor_is_direct() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "doctor".to_string(),
+            "--agent".to_string(),
+        ];
         let parsed = parse_forwarded_shell_command(&args, 1).expect("parse forwarded");
         assert!(parsed.is_none());
     }

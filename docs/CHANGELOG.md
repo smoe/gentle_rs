@@ -20,6 +20,8 @@ Maintenance rule:
 - Added a protocol-owned capability registry for CLI/MCP/JavaScript/Lua
   discovery and normalized CLI/MCP adapter failures into structured
   `EngineError` payloads.
+- Added a short in-tree agent development loop with `scripts/dev-gentle-cli`,
+  `gentle_cli doctor --agent`, and a dedicated `docs/agent_dev_loop.md`.
 
 ## 2026-05-13
 
