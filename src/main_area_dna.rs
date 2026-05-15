@@ -114,7 +114,7 @@ use crate::{
         RnaReadExonSupportFrequency, RnaReadGeneSupportCompleteRule, RnaReadGeneSupportSummary,
         RnaReadHitSelection, RnaReadInputFormat, RnaReadInterpretProgress,
         RnaReadInterpretationHit, RnaReadInterpretationProfile, RnaReadInterpretationReport,
-        RnaReadInterpretationReportSummary, RnaReadIsoformSupportRow,
+        RnaReadInterpretationReportSummary, RnaReadIsoformSupportRow, RnaReadIsoformTriageBin,
         RnaReadJunctionSupportFrequency, RnaReadLengthDistributionSummary, RnaReadOriginMode,
         RnaReadPairwiseAlignmentDetail, RnaReadReportMode, RnaReadScoreDensityScale,
         RnaReadScoreDensityVariant, RnaReadSeedFilterConfig, RnaReadTopHitPreview,
@@ -705,18 +705,19 @@ mod tests {
             RnaReadAlignmentInspectionRow, RnaReadHitSelection, RnaReadInputFormat,
             RnaReadInterpretProgress, RnaReadInterpretationHit, RnaReadInterpretationProfile,
             RnaReadInterpretationReport, RnaReadInterpretationReportSummary,
-            RnaReadIsoformSupportRow, RnaReadMappingHit, RnaReadOriginMode, RnaReadReportMode,
-            RnaReadScoreDensityVariant, RnaReadSeedFilterConfig, SequenceAlignmentReport,
-            SequenceGenomeAnchorSummary, SequencingConfirmationReadResult,
-            SequencingConfirmationReport, SequencingConfirmationStatus,
-            SequencingConfirmationTargetKind, SequencingConfirmationTargetResult,
-            SequencingConfirmationVariantRow, SequencingPrimerOrientation,
-            SequencingPrimerOverlayReport, SequencingPrimerOverlaySuggestion,
-            SequencingPrimerProblemKind, SequencingPrimerProposalRow, SequencingTraceChannelData,
-            SequencingTraceFormat, SequencingTraceImportReport, SequencingTraceRecord,
-            SplicingScopePreset, TfbsScoreTrackReport, TfbsScoreTrackValueKind,
-            TfbsTrackSimilarityRankingMetric, TfbsTrackSimilarityReport,
-            VariantPromoterContextReport, parse_required_usize_or_formula_text_on_sequence,
+            RnaReadIsoformSupportRow, RnaReadIsoformTriageBin, RnaReadMappingHit,
+            RnaReadOriginMode, RnaReadReportMode, RnaReadScoreDensityVariant,
+            RnaReadSeedFilterConfig, SequenceAlignmentReport, SequenceGenomeAnchorSummary,
+            SequencingConfirmationReadResult, SequencingConfirmationReport,
+            SequencingConfirmationStatus, SequencingConfirmationTargetKind,
+            SequencingConfirmationTargetResult, SequencingConfirmationVariantRow,
+            SequencingPrimerOrientation, SequencingPrimerOverlayReport,
+            SequencingPrimerOverlaySuggestion, SequencingPrimerProblemKind,
+            SequencingPrimerProposalRow, SequencingTraceChannelData, SequencingTraceFormat,
+            SequencingTraceImportReport, SequencingTraceRecord, SplicingScopePreset,
+            TfbsScoreTrackReport, TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric,
+            TfbsTrackSimilarityReport, VariantPromoterContextReport,
+            parse_required_usize_or_formula_text_on_sequence,
         },
         enzymes::active_restriction_enzymes,
         feature_expert::{
@@ -11458,6 +11459,103 @@ mod tests {
             vec![0, 2]
         );
         assert_eq!(isoform.get("TXA").cloned().unwrap_or_default(), vec![0, 2]);
+
+        let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+        let mut area = MainAreaDna::new(dna, None, None);
+        area.focus_rna_read_alignment_effect_record_indices(
+            isoform.get("TXA").cloned().unwrap_or_default(),
+            "mapped isoform TXA",
+        );
+        assert_eq!(area.selected_rna_record_indices(), vec![0, 2]);
+        assert_eq!(
+            area.rna_read_alignment_effect_filter,
+            super::RnaReadAlignmentEffectFilter::SelectedOnly
+        );
+        assert_eq!(
+            area.rna_read_mapped_cdna_subview,
+            super::RnaReadMappedCdnaSubview::ReadEffects
+        );
+    }
+
+    #[test]
+    fn rna_read_isoform_triage_labels_and_colors_are_categorical() {
+        assert_eq!(
+            MainAreaDna::rna_read_isoform_triage_bin_label(Some(
+                RnaReadIsoformTriageBin::KnownIsoformConfirmed
+            )),
+            "confirmed"
+        );
+        assert_eq!(
+            MainAreaDna::rna_read_isoform_triage_bin_label(Some(
+                RnaReadIsoformTriageBin::KnownIsoformAmbiguous
+            )),
+            "ambiguous"
+        );
+        assert_eq!(
+            MainAreaDna::rna_read_isoform_triage_bin_label(None),
+            "no triage"
+        );
+        assert_ne!(
+            MainAreaDna::rna_read_isoform_triage_bin_color(Some(
+                RnaReadIsoformTriageBin::KnownIsoformConfirmed
+            )),
+            MainAreaDna::rna_read_isoform_triage_bin_color(Some(
+                RnaReadIsoformTriageBin::KnownIsoformAmbiguous
+            ))
+        );
+    }
+
+    #[test]
+    fn rna_read_isoform_triage_segment_fractions_follow_priority_order() {
+        let counts = BTreeMap::from([
+            (
+                RnaReadIsoformTriageBin::KnownIsoformAmbiguous
+                    .as_str()
+                    .to_string(),
+                2usize,
+            ),
+            (
+                RnaReadIsoformTriageBin::KnownIsoformConfirmed
+                    .as_str()
+                    .to_string(),
+                1usize,
+            ),
+            (
+                RnaReadIsoformTriageBin::OffTargetOrBadSeed
+                    .as_str()
+                    .to_string(),
+                1usize,
+            ),
+        ]);
+        let segments = MainAreaDna::rna_read_isoform_triage_segment_fractions(&counts, 4);
+        assert_eq!(
+            segments
+                .iter()
+                .map(|(bin, count, _fraction)| (*bin, *count))
+                .collect::<Vec<_>>(),
+            vec![
+                (RnaReadIsoformTriageBin::KnownIsoformConfirmed, 1),
+                (RnaReadIsoformTriageBin::KnownIsoformAmbiguous, 2),
+                (RnaReadIsoformTriageBin::OffTargetOrBadSeed, 1),
+            ]
+        );
+        assert!((segments[1].2 - 0.5).abs() < 0.001);
+    }
+
+    #[test]
+    fn splicing_isoform_read_support_empty_text_distinguishes_missing_inputs() {
+        assert_eq!(
+            MainAreaDna::splicing_isoform_read_support_empty_text(false, false),
+            "Select a saved RNA-read report to inspect isoform-level read support."
+        );
+        assert_eq!(
+            MainAreaDna::splicing_isoform_read_support_empty_text(true, false),
+            "No mapped isoform support rows are available yet; run or rerun phase-2 alignment in RNA-read Mapping."
+        );
+        assert_eq!(
+            MainAreaDna::splicing_isoform_read_support_empty_text(true, true),
+            ""
+        );
     }
 
     #[test]

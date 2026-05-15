@@ -31962,7 +31962,7 @@ fn test_collect_mapped_isoform_support_rows_prefers_best_supported_mapping() {
         },
     ];
 
-    let rows = GentleEngine::collect_mapped_isoform_support_rows(&hits);
+    let rows = GentleEngine::collect_mapped_isoform_support_rows(&hits, 0.80);
     assert_eq!(rows.len(), 2);
     assert_eq!(rows[0].transcript_id, "tx_a");
     assert_eq!(rows[0].aligned_read_count, 2);

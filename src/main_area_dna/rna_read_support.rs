@@ -237,6 +237,7 @@ pub(super) enum RnaReadSelectedExportKind {
     AlignmentsTsv,
     ExonPathsTsv,
     ExonAbundanceTsv,
+    IsoformTriageTsv,
 }
 
 impl RnaReadSelectedExportKind {
@@ -246,6 +247,7 @@ impl RnaReadSelectedExportKind {
             Self::AlignmentsTsv => "Alignments TSV...",
             Self::ExonPathsTsv => "Exon paths TSV...",
             Self::ExonAbundanceTsv => "Exon abundance TSV...",
+            Self::IsoformTriageTsv => "Isoform triage TSV...",
         }
     }
 
@@ -261,6 +263,9 @@ impl RnaReadSelectedExportKind {
             Self::ExonAbundanceTsv => {
                 "Export per-exon support counts derived from the selected or filtered aligned reads."
             }
+            Self::IsoformTriageTsv => {
+                "Export conservative isoform triage bins for the selected or filtered aligned reads."
+            }
         }
     }
 
@@ -270,6 +275,7 @@ impl RnaReadSelectedExportKind {
             Self::AlignmentsTsv => "Set a Report ID first to export selected aligned rows",
             Self::ExonPathsTsv => "Set a Report ID first to export selected exon paths",
             Self::ExonAbundanceTsv => "Set a Report ID first to export selected exon abundance",
+            Self::IsoformTriageTsv => "Set a Report ID first to export selected isoform triage",
         }
     }
 
@@ -283,6 +289,9 @@ impl RnaReadSelectedExportKind {
             Self::ExonAbundanceTsv => {
                 "Select one or more aligned rows first to export their exon abundance"
             }
+            Self::IsoformTriageTsv => {
+                "Select one or more aligned rows first to export their isoform triage"
+            }
         }
     }
 
@@ -292,6 +301,7 @@ impl RnaReadSelectedExportKind {
             Self::AlignmentsTsv => format!("{report_id}_selected_alignments.tsv"),
             Self::ExonPathsTsv => format!("{report_id}_selected_exon_paths.tsv"),
             Self::ExonAbundanceTsv => format!("{report_id}_selected_exon_abundance.tsv"),
+            Self::IsoformTriageTsv => format!("{report_id}_selected_isoform_triage.tsv"),
         }
     }
 
@@ -299,9 +309,10 @@ impl RnaReadSelectedExportKind {
         let dialog = rfd::FileDialog::new().set_file_name(default_name);
         match self {
             Self::Fasta => dialog.add_filter("FASTA", &["fa", "fasta"]),
-            Self::AlignmentsTsv | Self::ExonPathsTsv | Self::ExonAbundanceTsv => {
-                dialog.add_filter("TSV", &["tsv", "txt"])
-            }
+            Self::AlignmentsTsv
+            | Self::ExonPathsTsv
+            | Self::ExonAbundanceTsv
+            | Self::IsoformTriageTsv => dialog.add_filter("TSV", &["tsv", "txt"]),
         }
     }
 
@@ -341,6 +352,18 @@ impl RnaReadSelectedExportKind {
                 selection: RnaReadHitSelection::Aligned,
                 selected_record_indices,
                 subset_spec,
+            },
+            Self::IsoformTriageTsv => Operation::ExportRnaReadIsoformTriageTsv {
+                report_id,
+                path,
+                selection: RnaReadHitSelection::Aligned,
+                limit: None,
+                selected_record_indices,
+                subset_spec,
+                min_identity_fraction: None,
+                min_query_coverage_fraction: None,
+                min_confirmed_transition_fraction: None,
+                max_secondary_mappings: None,
             },
         }
     }

@@ -1701,6 +1701,11 @@ impl MainAreaDna {
                 progress,
                 self.rna_read_evidence_ui.score_density_use_log_scale,
             );
+            self.render_splicing_isoform_read_support_panel(
+                ui,
+                progress,
+                selected_report.as_deref(),
+            );
             self.render_rna_read_length_distributions_panel(ui, view, selected_report.as_deref());
             self.render_rna_read_statistics_tabs(ui, view, progress, false);
             if let Some(next_selection) =
@@ -1714,6 +1719,272 @@ impl MainAreaDna {
             self.save_engine_ops_state();
         }
         ui.separator();
+    }
+
+    pub(super) fn splicing_isoform_read_support_empty_text(
+        has_report: bool,
+        has_mapped_isoforms: bool,
+    ) -> &'static str {
+        if !has_report {
+            "Select a saved RNA-read report to inspect isoform-level read support."
+        } else if !has_mapped_isoforms {
+            "No mapped isoform support rows are available yet; run or rerun phase-2 alignment in RNA-read Mapping."
+        } else {
+            ""
+        }
+    }
+
+    pub(super) fn rna_read_isoform_triage_bin_label(
+        bin: Option<RnaReadIsoformTriageBin>,
+    ) -> &'static str {
+        match bin {
+            Some(RnaReadIsoformTriageBin::KnownIsoformConfirmed) => "confirmed",
+            Some(RnaReadIsoformTriageBin::KnownIsoformAmbiguous) => "ambiguous",
+            Some(RnaReadIsoformTriageBin::GeneSupportedNoIsoformCall) => "gene-supported/no-call",
+            Some(RnaReadIsoformTriageBin::OffTargetOrBadSeed) => "off-target/bad-seed",
+            None => "no triage",
+        }
+    }
+
+    pub(super) fn rna_read_isoform_triage_bin_color(
+        bin: Option<RnaReadIsoformTriageBin>,
+    ) -> egui::Color32 {
+        match bin {
+            Some(RnaReadIsoformTriageBin::KnownIsoformConfirmed) => {
+                egui::Color32::from_rgb(22, 163, 74)
+            }
+            Some(RnaReadIsoformTriageBin::KnownIsoformAmbiguous) => {
+                egui::Color32::from_rgb(234, 179, 8)
+            }
+            Some(RnaReadIsoformTriageBin::GeneSupportedNoIsoformCall) => {
+                egui::Color32::from_rgb(249, 115, 22)
+            }
+            Some(RnaReadIsoformTriageBin::OffTargetOrBadSeed) => {
+                egui::Color32::from_rgb(100, 116, 139)
+            }
+            None => egui::Color32::from_rgb(148, 163, 184),
+        }
+    }
+
+    pub(super) fn rna_read_isoform_triage_segment_fractions(
+        counts: &BTreeMap<String, usize>,
+        total: usize,
+    ) -> Vec<(RnaReadIsoformTriageBin, usize, f32)> {
+        let ordered_bins = [
+            RnaReadIsoformTriageBin::KnownIsoformConfirmed,
+            RnaReadIsoformTriageBin::KnownIsoformAmbiguous,
+            RnaReadIsoformTriageBin::GeneSupportedNoIsoformCall,
+            RnaReadIsoformTriageBin::OffTargetOrBadSeed,
+        ];
+        let recognized_total = ordered_bins
+            .iter()
+            .map(|bin| counts.get(bin.as_str()).copied().unwrap_or_default())
+            .sum::<usize>();
+        let denominator = total.max(recognized_total).max(1) as f32;
+        ordered_bins
+            .into_iter()
+            .filter_map(|bin| {
+                let count = counts.get(bin.as_str()).copied().unwrap_or_default();
+                (count > 0).then_some((bin, count, count as f32 / denominator))
+            })
+            .collect()
+    }
+
+    fn render_rna_read_isoform_triage_chip(
+        ui: &mut egui::Ui,
+        bin: Option<RnaReadIsoformTriageBin>,
+    ) {
+        let color = Self::rna_read_isoform_triage_bin_color(bin);
+        let text_color = match bin {
+            Some(RnaReadIsoformTriageBin::KnownIsoformAmbiguous) => {
+                egui::Color32::from_rgb(30, 41, 59)
+            }
+            _ => egui::Color32::WHITE,
+        };
+        egui::Frame::NONE
+            .fill(color)
+            .inner_margin(egui::Margin::symmetric(6, 2))
+            .corner_radius(4.0)
+            .show(ui, |ui| {
+                ui.small(
+                    egui::RichText::new(Self::rna_read_isoform_triage_bin_label(bin))
+                        .color(text_color),
+                );
+            });
+    }
+
+    fn render_rna_read_isoform_triage_stack_bar(
+        ui: &mut egui::Ui,
+        counts: &BTreeMap<String, usize>,
+        total: usize,
+    ) {
+        let desired = egui::vec2(96.0, 12.0);
+        let (rect, _response) = ui.allocate_exact_size(desired, egui::Sense::hover());
+        let painter = ui.painter();
+        painter.rect_filled(rect, 2.0, egui::Color32::from_rgb(226, 232, 240));
+        let mut x = rect.left();
+        for (bin, _count, fraction) in
+            Self::rna_read_isoform_triage_segment_fractions(counts, total)
+        {
+            let width = (rect.width() * fraction).max(1.0);
+            let right = (x + width).min(rect.right());
+            if right > x {
+                let segment = egui::Rect::from_min_max(
+                    egui::pos2(x, rect.top()),
+                    egui::pos2(right, rect.bottom()),
+                );
+                painter.rect_filled(
+                    segment,
+                    2.0,
+                    Self::rna_read_isoform_triage_bin_color(Some(bin)),
+                );
+            }
+            x = right;
+            if x >= rect.right() {
+                break;
+            }
+        }
+    }
+
+    pub(super) fn render_splicing_isoform_read_support_panel(
+        &mut self,
+        ui: &mut egui::Ui,
+        progress: &RnaReadInterpretProgress,
+        report: Option<&RnaReadInterpretationReport>,
+    ) {
+        egui::CollapsingHeader::new("Isoform read support")
+            .default_open(!progress.mapped_isoform_support_rows.is_empty())
+            .show(ui, |ui| {
+                ui.small(
+                    "Categorical RNA-read support for mapped cDNA isoforms. Rows summarize phase-2 best mappings and conservative isoform triage bins for biological inspection.",
+                );
+                let empty_text = Self::splicing_isoform_read_support_empty_text(
+                    report.is_some(),
+                    !progress.mapped_isoform_support_rows.is_empty(),
+                );
+                if !empty_text.is_empty() {
+                    ui.small(
+                        egui::RichText::new(empty_text)
+                            .color(egui::Color32::from_rgb(180, 83, 9)),
+                    );
+                    return;
+                }
+                let inspection = report.and_then(|report| {
+                    self.current_saved_rna_read_alignment_inspection(report.hits.len(), None)
+                        .ok()
+                });
+                let isoform_contributors = inspection
+                    .as_ref()
+                    .map(|inspection| {
+                        Self::collect_rna_read_mapped_isoform_contributors(inspection.as_ref())
+                    })
+                    .unwrap_or_default();
+                egui::ScrollArea::vertical()
+                    .max_height(Self::default_rna_read_support_table_height(ui))
+                    .min_scrolled_height(Self::default_rna_read_support_table_height(ui))
+                    .show(ui, |ui| {
+                        egui::Grid::new(format!(
+                            "splicing_isoform_read_support_grid_{}",
+                            progress.seq_id
+                        ))
+                        .striped(true)
+                        .num_columns(10)
+                        .show(ui, |ui| {
+                            ui.small("Transcript");
+                            ui.small("Triage");
+                            ui.small("Read bins");
+                            ui.small("Aligned");
+                            ui.small("MSA");
+                            ui.small("Mean id%");
+                            ui.small("Mean cov%");
+                            ui.small("Secondary");
+                            ui.small("Audit");
+                            ui.small("Export");
+                            ui.end_row();
+                            for row in &progress.mapped_isoform_support_rows {
+                                let contributors = isoform_contributors
+                                    .get(&row.transcript_id)
+                                    .cloned()
+                                    .unwrap_or_default();
+                                ui.label(format!(
+                                    "{} ({})",
+                                    row.transcript_label, row.transcript_id
+                                ));
+                                Self::render_rna_read_isoform_triage_chip(
+                                    ui,
+                                    row.dominant_triage_bin,
+                                );
+                                Self::render_rna_read_isoform_triage_stack_bar(
+                                    ui,
+                                    &row.triage_bin_counts,
+                                    row.aligned_read_count,
+                                );
+                                ui.monospace(row.aligned_read_count.to_string());
+                                ui.monospace(row.msa_eligible_read_count.to_string());
+                                ui.monospace(format!(
+                                    "{:.1}",
+                                    row.mean_identity_fraction * 100.0
+                                ));
+                                ui.monospace(format!(
+                                    "{:.1}",
+                                    row.mean_query_coverage_fraction * 100.0
+                                ));
+                                ui.monospace(row.secondary_mapping_total.to_string());
+                                let mut response = ui.add_enabled(
+                                    !contributors.is_empty(),
+                                    egui::Button::new(format!("Audit ({})", contributors.len())),
+                                );
+                                if let Some(inspection) = inspection.as_ref() {
+                                    let hover = Self::format_rna_read_contributor_hover_text(
+                                        inspection,
+                                        &contributors,
+                                    );
+                                    if !hover.is_empty() {
+                                        response = response.on_hover_text(hover);
+                                    }
+                                }
+                                if response.clicked() {
+                                    self.focus_rna_read_alignment_effect_record_indices(
+                                        contributors.clone(),
+                                        &format!("mapped isoform {}", row.transcript_id),
+                                    );
+                                }
+                                ui.add_enabled_ui(!contributors.is_empty(), |ui| {
+                                    ui.menu_button("Export...", |ui| {
+                                        for export_kind in [
+                                            RnaReadSelectedExportKind::Fasta,
+                                            RnaReadSelectedExportKind::AlignmentsTsv,
+                                            RnaReadSelectedExportKind::ExonPathsTsv,
+                                            RnaReadSelectedExportKind::ExonAbundanceTsv,
+                                            RnaReadSelectedExportKind::IsoformTriageTsv,
+                                        ] {
+                                            if ui
+                                                .button(export_kind.menu_label())
+                                                .on_hover_text(export_kind.hover_text())
+                                                .clicked()
+                                            {
+                                                self.export_rna_read_subset_with_record_indices(
+                                                    export_kind,
+                                                    contributors.clone(),
+                                                    None,
+                                                    "No aligned contributor rows are available to export for this mapped isoform.",
+                                                );
+                                                ui.close();
+                                            }
+                                        }
+                                    });
+                                });
+                                ui.end_row();
+                            }
+                        });
+                    });
+                ui.small(
+                    egui::RichText::new(
+                        "These bins are inspection labels only; they are not expression values and do not call novel isoforms.",
+                    )
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+                );
+            });
     }
 
     pub(super) fn render_rna_read_concatemer_review_section(
@@ -7014,6 +7285,7 @@ impl MainAreaDna {
                     RnaReadSelectedExportKind::AlignmentsTsv,
                     RnaReadSelectedExportKind::ExonPathsTsv,
                     RnaReadSelectedExportKind::ExonAbundanceTsv,
+                    RnaReadSelectedExportKind::IsoformTriageTsv,
                 ] {
                     if ui
                         .add_enabled(
@@ -7038,6 +7310,7 @@ impl MainAreaDna {
                     RnaReadSelectedExportKind::AlignmentsTsv,
                     RnaReadSelectedExportKind::ExonPathsTsv,
                     RnaReadSelectedExportKind::ExonAbundanceTsv,
+                    RnaReadSelectedExportKind::IsoformTriageTsv,
                 ] {
                     if ui
                         .add_enabled(
