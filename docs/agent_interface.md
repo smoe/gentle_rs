@@ -11,6 +11,10 @@ coding agents like Codex), start with:
 
 - `docs/agent_interfaces_tutorial.md`
 
+For the shortest working-tree loop an agent can run while editing GENtle, use:
+
+- `docs/agent_dev_loop.md`
+
 ## Why this exists
 
 GENtle exposes multiple agent-facing routes:

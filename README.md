@@ -42,6 +42,9 @@ tour:
 4. If you only have a few minutes, look at the Gibson lineage/cartoon section,
    the TP53/TP73 interpretation figures, and the VKORC1 ClawBio handoff below.
 
+Agents working directly in a checkout should use the short in-tree loop in
+[`docs/agent_dev_loop.md`](docs/agent_dev_loop.md).
+
 ## What To Trust Today
 
 Use this as a task-oriented confidence map rather than assuming every visible
