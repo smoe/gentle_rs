@@ -1,0 +1,47 @@
+{
+  "schema": "gentle.capability_not_applicable_overrides.v1",
+  "overrides": [
+    {
+      "source": "glossary_command",
+      "name": "*",
+      "adapter": "clawbio",
+      "reason": "ClawBio exposes curated skill intents rather than raw glossary command rows."
+    },
+    {
+      "source": "engine_operation",
+      "name": "*",
+      "adapter": "clawbio",
+      "reason": "ClawBio exposes curated skill intents rather than raw engine operation rows."
+    },
+    {
+      "source": "mcp_tool",
+      "name": "*",
+      "adapter": "gui",
+      "reason": "MCP tools/list descriptors are transport-specific metadata, not GUI actions."
+    },
+    {
+      "source": "mcp_tool",
+      "name": "*",
+      "adapter": "cli",
+      "reason": "MCP tools/list descriptors are transport-specific metadata, not CLI subcommands."
+    },
+    {
+      "source": "mcp_tool",
+      "name": "*",
+      "adapter": "js",
+      "reason": "MCP tools/list descriptors are transport-specific metadata, not JavaScript wrapper functions."
+    },
+    {
+      "source": "mcp_tool",
+      "name": "*",
+      "adapter": "lua",
+      "reason": "MCP tools/list descriptors are transport-specific metadata, not Lua wrapper functions."
+    },
+    {
+      "source": "mcp_tool",
+      "name": "*",
+      "adapter": "clawbio",
+      "reason": "ClawBio consumes its skill intent descriptor rather than MCP tools/list metadata."
+    }
+  ]
+}

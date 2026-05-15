@@ -17,6 +17,8 @@ struct GlossaryCommand {
     path: String,
     summary: String,
     interfaces: Vec<String>,
+    #[serde(default)]
+    engine_operations: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -29,8 +31,9 @@ struct ClawBioRoute {
     intent_id: String,
 }
 
-fn expected_surfacing(interfaces: &[String], adapter: CapabilityAdapter) -> AdapterSurfacing {
-    let interfaces = interfaces
+fn expected_surfacing(command: &GlossaryCommand, adapter: CapabilityAdapter) -> AdapterSurfacing {
+    let interfaces = command
+        .interfaces
         .iter()
         .map(String::as_str)
         .collect::<BTreeSet<_>>();
@@ -38,8 +41,10 @@ fn expected_surfacing(interfaces: &[String], adapter: CapabilityAdapter) -> Adap
         CapabilityAdapter::Gui => {
             if interfaces.contains("gui-shell") {
                 AdapterSurfacing::ShellPassthrough
-            } else {
+            } else if command.engine_operations.is_empty() {
                 AdapterSurfacing::NotApplicable
+            } else {
+                AdapterSurfacing::Gap
             }
         }
         CapabilityAdapter::Cli => {
@@ -47,29 +52,37 @@ fn expected_surfacing(interfaces: &[String], adapter: CapabilityAdapter) -> Adap
                 AdapterSurfacing::Prominent
             } else if interfaces.contains("cli-shell") {
                 AdapterSurfacing::ShellPassthrough
-            } else {
+            } else if command.engine_operations.is_empty() {
                 AdapterSurfacing::NotApplicable
+            } else {
+                AdapterSurfacing::Gap
             }
         }
         CapabilityAdapter::Mcp => {
             if interfaces.contains("mcp") {
                 AdapterSurfacing::Prominent
-            } else {
+            } else if command.engine_operations.is_empty() {
                 AdapterSurfacing::NotApplicable
+            } else {
+                AdapterSurfacing::Gap
             }
         }
         CapabilityAdapter::Js => {
             if interfaces.contains("js") {
                 AdapterSurfacing::Prominent
-            } else {
+            } else if command.engine_operations.is_empty() {
                 AdapterSurfacing::NotApplicable
+            } else {
+                AdapterSurfacing::Gap
             }
         }
         CapabilityAdapter::Lua => {
             if interfaces.contains("lua") {
                 AdapterSurfacing::Prominent
-            } else {
+            } else if command.engine_operations.is_empty() {
                 AdapterSurfacing::NotApplicable
+            } else {
+                AdapterSurfacing::Gap
             }
         }
         CapabilityAdapter::Clawbio => AdapterSurfacing::NotApplicable,
@@ -88,7 +101,7 @@ fn command_descriptor<'a>(
                 && descriptor.description == command.summary
                 && capability_parity_adapters().iter().all(|adapter| {
                     descriptor.surfacing_for_adapter(*adapter)
-                        == expected_surfacing(&command.interfaces, *adapter)
+                        == expected_surfacing(command, *adapter)
                 })
         })
         .unwrap_or_else(|| {
@@ -157,9 +170,56 @@ fn registry_surfacing_covers_all_parity_adapters() {
                     descriptor.name,
                     adapter
                 );
+                if descriptor.source == CapabilitySource::GlossaryCommand
+                    && !descriptor.engine_operations.is_empty()
+                {
+                    assert!(
+                        !justification.contains("does not declare"),
+                        "engine-backed n/a for `{}` on {:?} must use a curated reason, not an auto-generated absence note",
+                        descriptor.name,
+                        adapter
+                    );
+                }
             }
         }
     }
+}
+
+#[test]
+fn gap_rows_are_engine_backed_missing_adapter_routes() {
+    let mut gap_count = 0usize;
+    for descriptor in capability_registry() {
+        for adapter in capability_parity_adapters() {
+            if descriptor.surfacing_for_adapter(*adapter) != AdapterSurfacing::Gap {
+                continue;
+            }
+            gap_count += 1;
+            assert_eq!(
+                descriptor.source,
+                CapabilitySource::GlossaryCommand,
+                "only missing glossary adapter routes should appear as open gaps"
+            );
+            assert!(
+                !descriptor.engine_operations.is_empty(),
+                "gap `{}` on {:?} must wrap at least one engine operation",
+                descriptor.name,
+                adapter
+            );
+            assert!(
+                descriptor
+                    .surfacing_justifications
+                    .get(adapter.as_str())
+                    .is_none(),
+                "gap `{}` on {:?} must not carry a not-applicable justification",
+                descriptor.name,
+                adapter
+            );
+        }
+    }
+    assert!(
+        gap_count > 0,
+        "credible parity matrix should surface current adapter gaps"
+    );
 }
 
 #[test]
@@ -171,10 +231,13 @@ fn registry_for_adapter_includes_every_reachable_projection() {
             .collect::<BTreeSet<_>>();
         let expected = capability_registry()
             .iter()
-            .filter(|descriptor| {
-                descriptor.surfacing_for_adapter(*adapter) != AdapterSurfacing::NotApplicable
+            .filter(|descriptor| descriptor.is_reachable_from_adapter(*adapter))
+            .map(|descriptor| {
+                (
+                    descriptor.source.as_str().to_string(),
+                    descriptor.name.clone(),
+                )
             })
-            .map(|descriptor| (descriptor.source.as_str().to_string(), descriptor.name.clone()))
             .collect::<BTreeSet<_>>();
         assert_eq!(
             projected, expected,
@@ -200,7 +263,7 @@ fn glossary_commands_have_matching_registry_entries() {
         for adapter in capability_parity_adapters() {
             assert_eq!(
                 descriptor.surfacing_for_adapter(*adapter),
-                expected_surfacing(&command.interfaces, *adapter),
+                expected_surfacing(command, *adapter),
                 "surfacing mismatch for `{}` on {:?}",
                 command.path,
                 adapter

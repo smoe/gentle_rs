@@ -18,6 +18,8 @@ Maintenance rule:
   surfacing metadata and added a freshness guard plus regeneration script.
 - Replaced binary capability adapter exposure with per-adapter surfacing states
   and added `EngineError.cause_chain` preservation across adapter boundaries.
+- Made engine-backed missing adapter routes render as parity gaps unless a
+  curated not-applicable override supplies a real justification.
 
 ## 2026-05-14
 
