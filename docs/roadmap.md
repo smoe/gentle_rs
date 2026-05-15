@@ -47,6 +47,16 @@ Release acceptance:
 - Full UCSC `rmsk`, raw CEL, full SRA, and genome downloads remain optional
   external resources; CI uses only tiny local fixtures.
 
+Release cut line:
+
+Post-release scope:
+
+- New operations adopt the three-level parity model: engine and reachability
+  parity from PR #1; first-class surfacing decisions land per adapter and may
+  be staged.
+- The parity matrix tests reachability, not surfacing; surfacing decisions are
+  recorded per row with a one-line justification.
+
 ## Next Session Priorities
 
 1. Keep the TP73 evidence-viewer proof workflow green and offline-safe while
