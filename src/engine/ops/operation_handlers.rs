@@ -16299,6 +16299,9 @@ impl GentleEngine {
             promoter_expression_evidence: None,
             promoter_artifact_manifest: None,
             promoter_reporter_candidates: None,
+            reporter_catalog: None,
+            reporter_recommendation: None,
+            reporter_corpus_export: None,
             uniprot_projection_audit: None,
             uniprot_projection_audit_parity: None,
             lab_assistant_instructions: None,
@@ -24435,6 +24438,77 @@ impl GentleEngine {
                     report.recommended_candidate_id
                 ));
                     result.promoter_reporter_candidates = Some(report);
+                }
+                Operation::ListReporterCatalog {
+                    catalog_path,
+                    filter,
+                    limit,
+                    path,
+                } => {
+                    let report = self.list_reporter_catalog(
+                        catalog_path.as_deref(),
+                        filter.as_deref(),
+                        limit,
+                    )?;
+                    if let Some(path) = path.as_deref() {
+                        self.write_pretty_json_file(&report, path, "reporter catalog report")?;
+                        result.messages.push(format!(
+                            "Wrote reporter catalog report with {} active record(s) to '{}'",
+                            report.active_record_count, path
+                        ));
+                    }
+                    result.messages.push(format!(
+                        "Reporter catalog listed {} active record(s){}",
+                        report.active_record_count,
+                        filter
+                            .as_deref()
+                            .map(|value| format!(" for filter '{}'", value))
+                            .unwrap_or_default()
+                    ));
+                    result.warnings.extend(report.warnings.iter().cloned());
+                    result.reporter_catalog = Some(report);
+                }
+                Operation::RecommendReporters {
+                    constraints,
+                    catalog_path,
+                    limit,
+                    path,
+                } => {
+                    let report =
+                        self.recommend_reporters(catalog_path.as_deref(), constraints, limit)?;
+                    if let Some(path) = path.as_deref() {
+                        self.write_pretty_json_file(
+                            &report,
+                            path,
+                            "reporter recommendation report",
+                        )?;
+                        result.messages.push(format!(
+                            "Wrote reporter recommendation report with {} ranked candidate(s) to '{}'",
+                            report.recommended_candidate_count, path
+                        ));
+                    }
+                    result.messages.push(format!(
+                        "Reporter recommender ranked {} candidate(s) and rejected {} by hard constraints",
+                        report.recommended_candidate_count, report.rejected_candidate_count
+                    ));
+                    result.warnings.extend(report.warnings.iter().cloned());
+                    result.reporter_recommendation = Some(report);
+                }
+                Operation::ExportReporterCorpus {
+                    catalog_path,
+                    path,
+                    format,
+                } => {
+                    let export =
+                        self.export_reporter_corpus(catalog_path.as_deref(), &path, format)?;
+                    result.messages.push(format!(
+                        "Exported {} annotated reporter record(s) as {} to '{}'",
+                        export.record_count,
+                        format.as_str(),
+                        path
+                    ));
+                    result.warnings.extend(export.warnings.iter().cloned());
+                    result.reporter_corpus_export = Some(export);
                 }
                 Operation::MaterializeVariantAllele {
                     input,

@@ -30,6 +30,9 @@ Maintenance rule:
   aligned reads.
 - Fixed Agent/Routine Assistant hosted-window focus lookup so embedded macOS
   windows are raised by their stable hosted ids instead of stale title layers.
+- Added an offline reporter-recommender V1 with a provenance-gated local
+  reporter catalog, deterministic constraint ranking, rejected-candidate
+  reasons, and JSON/JSONL corpus export for local AI retrieval or training prep.
 
 ## 2026-05-14
 

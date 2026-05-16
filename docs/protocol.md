@@ -2512,6 +2512,21 @@ Sequencing-trace evidence notes:
   - emits portable record schema `gentle.promoter_reporter_candidates.v1`
   - ranks transcript-aware, strand-aware promoter fragment candidates and marks
     one deterministic default recommendation
+- `ListReporterCatalog { catalog_path?, filter?, limit?, path? }`
+  - emits `gentle.reporter_catalog_report.v1`
+  - validates the local reporter catalog, quarantines rows with missing
+    sequence/provenance/license/safety gates, and adds deterministic sequence
+    annotations such as length, GC, checksum, CDS sanity, and motif hits
+- `RecommendReporters { constraints, catalog_path?, limit?, path? }`
+  - emits `gentle.reporter_recommendation.v1`
+  - runs offline from the local catalog: hard constraints eliminate candidates
+    first, then deterministic soft scores rank the remaining reporter records
+  - rejected candidates remain in the report with machine-readable reasons
+- `ExportReporterCorpus { catalog_path?, path, format=json|jsonl }`
+  - emits `gentle.reporter_corpus_export.v1`
+  - writes the annotated, provenance-bearing reporter corpus for local
+    retrieval or local AI training/evaluation prep; GENtle does not train a
+    model in this V1
 - `MaterializeVariantAllele { input, variant_label_or_id?, allele=reference|alternate, output_id? }`
   - phase-1 scope is single-nucleotide variants only
   - rejects indels, multi-allelic variants, or variants without explicit

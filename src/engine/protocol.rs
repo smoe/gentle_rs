@@ -59,11 +59,17 @@ pub use gentle_protocol::{
     ProteinToDnaHandoffCandidate, ProteinToDnaHandoffCoverage, ProteinToDnaHandoffRankingGoal,
     ProteinToDnaHandoffStrategy, ProtocolCartoonKind, QpcrTranscriptSpecificityEvidence,
     QpcrTranscriptTargetingMode, READ_ACQUISITION_REPORT_SCHEMA,
+    REPORTER_CATALOG_REPORT_SCHEMA, REPORTER_CATALOG_SCHEMA, REPORTER_CORPUS_EXPORT_SCHEMA,
+    REPORTER_RECOMMENDATION_SCHEMA,
     RNA_READ_ALIGNMENT_DISPLAY_BATCH_SCHEMA, RNA_READ_BATCH_MAP_REPORT_SCHEMA,
     RNA_READ_GENE_SCREEN_SUMMARY_SCHEMA, RNA_READ_TRANSCRIPT_CATALOG_INDEX_SCHEMA,
     ReadAcquisitionAnalysisFormat, ReadAcquisitionCommandProvenance, ReadAcquisitionManifestRow,
     ReadAcquisitionOutputPath, ReadAcquisitionReadLayout, ReadAcquisitionReadLengthStats,
-    ReadAcquisitionReport, ReadAcquisitionRunReport, RenderSvgMode,
+    ReadAcquisitionReport, ReadAcquisitionRunReport, RenderSvgMode, ReporterAnnotatedRecord,
+    ReporterCatalog, ReporterCatalogReport, ReporterComputedAnnotation, ReporterConstraints,
+    ReporterCorpusExport, ReporterCorpusExportFormat, ReporterPreferenceWeights,
+    ReporterQuarantinedRecord, ReporterRecommendation, ReporterRecommendationResult,
+    ReporterRecord, ReporterRejectedCandidate, ReporterSourceRef, ReporterSpectralProfile,
     RestrictionCloningPcrHandoffMode, RnaReadAlignConfig, RnaReadAlignmentBackend,
     RnaReadAlignmentDisplay, RnaReadAlignmentDotplotSvgExport, RnaReadAlignmentEffect,
     RnaReadAlignmentInspection, RnaReadAlignmentInspectionEffectFilter,
@@ -3746,6 +3752,12 @@ pub struct OpResult {
     pub promoter_artifact_manifest: Option<PromoterArtifactManifestReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub promoter_reporter_candidates: Option<PromoterReporterCandidateSet>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reporter_catalog: Option<ReporterCatalogReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reporter_recommendation: Option<ReporterRecommendationResult>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reporter_corpus_export: Option<ReporterCorpusExport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub uniprot_projection_audit: Option<Box<UniprotProjectionAuditReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
