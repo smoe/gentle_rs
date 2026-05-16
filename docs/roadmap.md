@@ -1,7 +1,7 @@
 # GENtle Roadmap
 
-Last session: 2026-05-14 - MCP capability-surface hardening prepared; TP73
-evidence-viewer release aim remains active
+Last session: 2026-05-16 - gentle-engine Phase 2 extraction began with
+`iupac_code`; TP73 evidence-viewer release aim remains active
 
 Purpose: fast session orientation. This file answers "what next?" and should be
 readable in under two minutes. Completed work belongs in
@@ -131,9 +131,10 @@ type; continue XML/SnapGene, sequencing-confirmation, primer/qPCR, projection,
 construct-reasoning, RNA-read, and ClawBio/MCP parity work only through shared
 contracts. Useful work here is contract hardening, adapter-helper promotion,
 stack-safe helper splits, protocol snapshots, and targeted parity tests; defer
-broad crate surgery that is not tied to the selected release story. Phase 2
-has not started; the `gentle-engine` crate scaffold has been removed and will
-be re-introduced when the first execution-side module is ready to move.
+broad crate surgery that is not tied to the selected release story.
+- Phase 2 has begun with `crates/gentle-engine` re-introduced and
+  `iupac_code` moved as the first root-independent execution-side module behind
+  the existing root compatibility shim.
 - New operations adopt the three-level parity model: engine and reachability
   parity from the parity matrix in [`gui_cli_mcp_parity.md`](gui_cli_mcp_parity.md);
   first-class surfacing decisions land per adapter and may be staged.

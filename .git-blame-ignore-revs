@@ -31,3 +31,6 @@ f15d97a7744a940f649e9caa0d2fa1b977c3f815
 
 # chore: extract main lineage UI helpers
 c8d9a6670088e7991830c2818676c08619de37c8
+
+# chore: move iupac_code into gentle-engine
+2be525722250a1d1d7b569a1a212851362724430

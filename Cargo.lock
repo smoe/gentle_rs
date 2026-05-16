@@ -16,6 +16,7 @@ dependencies = [
  "egui_extras",
  "flate2",
  "gb-io",
+ "gentle-engine",
  "gentle-gui",
  "gentle-protocol",
  "gentle-render",
@@ -2292,6 +2293,13 @@ checksum = "85649ca51fd72272d7821adaf274ad91c288277713d9c18820d8499a7ff69e9a"
 dependencies = [
  "typenum",
  "version_check",
+]
+
+[[package]]
+name = "gentle-engine"
+version = "0.1.0-internal.7"
+dependencies = [
+ "gentle-protocol",
 ]
 
 [[package]]
