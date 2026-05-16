@@ -2938,11 +2938,6 @@ impl RenderDnaLinear {
             return;
         }
 
-        let groups = self
-            .dna
-            .read()
-            .map(|dna| dna.restriction_enzyme_groups().clone())
-            .unwrap_or_default();
         let (display_mode, preferred_restriction_enzymes) = self
             .display
             .read()
@@ -2954,29 +2949,26 @@ impl RenderDnaLinear {
             })
             .unwrap_or((RestrictionEnzymeDisplayMode::default(), vec![]));
 
-        let mut keys: Vec<_> = groups.keys().cloned().collect();
-        keys.sort();
         let mut visible_groups: Vec<_> = Vec::new();
         let mut total_groups_in_view = 0usize;
-        for key in keys {
-            let names = match groups.get(&key) {
-                Some(names) => names,
-                None => continue,
-            };
-            let pos = self.normalize_pos(key.pos());
-            if pos < viewport.start || pos >= viewport.end {
-                continue;
-            }
-            total_groups_in_view = total_groups_in_view.saturating_add(1);
-            if DnaDisplay::restriction_group_matches_mode(
-                display_mode,
-                &preferred_restriction_enzymes,
-                &key,
-                names,
-            ) {
-                visible_groups.push((key, names.clone()));
+        if let Ok(dna) = self.dna.read() {
+            for (key, names) in dna.restriction_enzyme_groups() {
+                let pos = self.normalize_pos(key.pos());
+                if pos < viewport.start || pos >= viewport.end {
+                    continue;
+                }
+                total_groups_in_view = total_groups_in_view.saturating_add(1);
+                if DnaDisplay::restriction_group_matches_mode(
+                    display_mode,
+                    &preferred_restriction_enzymes,
+                    key,
+                    names,
+                ) {
+                    visible_groups.push((key.clone(), names.clone()));
+                }
             }
         }
+        visible_groups.sort_by(|(left, _), (right, _)| left.cmp(right));
         if visible_groups.is_empty() {
             let empty_text = if total_groups_in_view == 0
                 || matches!(display_mode, RestrictionEnzymeDisplayMode::AllInView)

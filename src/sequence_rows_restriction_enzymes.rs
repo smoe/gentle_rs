@@ -1,6 +1,8 @@
 //! Restriction-enzyme sequence-row renderer implementation.
 
-use crate::{dna_display::DnaDisplay, dna_sequence::DNAsequence};
+use crate::{
+    dna_display::DnaDisplay, dna_sequence::DNAsequence, restriction_enzyme::RestrictionEnzymeKey,
+};
 use eframe::egui::{Align2, FontFamily, FontId, Painter, Pos2, Rect, Stroke, Vec2};
 use std::sync::{Arc, RwLock};
 
@@ -82,7 +84,67 @@ impl RowRestrictionEnzymes {
         };
     }
 
+    fn restriction_site_overlaps_block(
+        key: &RestrictionEnzymeKey,
+        start: usize,
+        end_exclusive: usize,
+    ) -> bool {
+        if start >= end_exclusive || key.to() < 0 {
+            return false;
+        }
+        let start = start as isize;
+        let end_exclusive = end_exclusive as isize;
+        key.to() >= start && key.from() < end_exclusive
+    }
+
+    fn x_for_sequence_position(&self, rect: &Rect, seq_offset: usize, position: usize) -> f32 {
+        let offset = position.saturating_sub(seq_offset);
+        let batch_bases = self.batch_bases.max(1);
+        rect.left()
+            + self.number_offset
+            + self.char_width * 2.0
+            + self.char_width * offset as f32
+            + self.char_width * (offset / batch_bases) as f32
+    }
+
+    fn draw_recognition_span(
+        &self,
+        painter: &Painter,
+        rect: &Rect,
+        seq_offset: usize,
+        from: usize,
+        to_inclusive: usize,
+        y: f32,
+        stroke: Stroke,
+    ) {
+        if to_inclusive < from {
+            return;
+        }
+        let batch_bases = self.batch_bases.max(1);
+        let mut segment_start = from;
+        while segment_start <= to_inclusive {
+            let offset = segment_start.saturating_sub(seq_offset);
+            let remaining_in_batch = batch_bases - (offset % batch_bases);
+            let segment_end = to_inclusive.min(
+                segment_start
+                    .saturating_add(remaining_in_batch)
+                    .saturating_sub(1),
+            );
+            let x1 =
+                self.x_for_sequence_position(rect, seq_offset, segment_start) - self.char_width;
+            let x2 = self.x_for_sequence_position(rect, seq_offset, segment_end);
+            painter.line_segment([Pos2::new(x1, y), Pos2::new(x2, y)], stroke);
+            if segment_end == usize::MAX {
+                break;
+            }
+            segment_start = segment_end.saturating_add(1);
+        }
+    }
+
     pub fn render(&self, _row_num: usize, block_num: usize, painter: &Painter, rect: &Rect) {
+        if self.line_height() <= 0.0 || self.char_width <= 0.0 {
+            return;
+        }
         let (window_start, window_span) = self.window();
         if window_span == 0 || block_num >= self.blocks {
             return;
@@ -92,73 +154,78 @@ impl RowRestrictionEnzymes {
             x: rect.left() + self.number_offset,
             y: rect.top() + self.block_offset,
         };
-        let window_end_exclusive = window_start.saturating_add(window_span).min(self.seq_len());
-        let seq_end_exclusive = (seq_offset + self.bases_per_line).min(window_end_exclusive);
-        if seq_end_exclusive <= seq_offset {
-            return;
-        }
-        let seq = self.dna.read().ok().and_then(|dna| {
-            dna.get_inclusive_range_safe(seq_offset..=seq_end_exclusive.saturating_sub(1))
-        });
-        if let Some(seq) = seq {
-            let groups = self
-                .dna
-                .read()
-                .map(|dna| dna.restriction_enzyme_groups().clone())
-                .unwrap_or_default();
-            let y = rect.top() + self.block_offset;
-            let mut x = pos.x + self.char_width * 2.0;
-            seq.iter().enumerate().for_each(|(offset, _base)| {
-                groups
-                    .iter()
-                    .filter(|(re, _label)| re.from() <= (seq_offset + offset) as isize)
-                    .filter(|(re, _label)| re.to() >= (seq_offset + offset) as isize)
-                    .for_each(|(re, label)| {
-                        let pos = (seq_offset + offset) as isize;
-                        let y = y + re.number_of_cuts() as f32 - 1.0;
-                        let label_color =
-                            DnaDisplay::restriction_enzyme_group_color(re.number_of_cuts());
-                        let cut_color =
-                            DnaDisplay::restriction_enzyme_geometry_color(re.cut_geometry());
-                        painter.line_segment(
-                            [Pos2::new(x - self.char_width, y), Pos2::new(x, y)],
-                            Stroke::new(1.0, label_color),
-                        );
-                        if pos == re.to() {
-                            painter.text(
-                                Pos2::new(x, y),
-                                Align2::RIGHT_TOP,
-                                label.join(",").to_owned(),
-                                FontId {
-                                    size: 9.0,
-                                    family: FontFamily::Proportional,
-                                },
-                                label_color,
-                            );
-                        }
-                        if pos == re.pos() {
-                            painter.line_segment(
-                                [Pos2::new(x, y - self.line_height / 2.0), Pos2::new(x, y)],
-                                Stroke::new(1.0, cut_color),
-                            );
-                        }
-                        if pos == re.mate_pos() {
-                            painter.line_segment(
-                                [Pos2::new(x, y + self.line_height / 2.0), Pos2::new(x, y)],
-                                Stroke::new(1.0, cut_color),
-                            );
-                        }
-                    });
-                x += self.char_width;
-                if (offset + 1) % self.batch_bases == 0 {
-                    x += self.char_width;
-                }
-            });
+        let (seq_end_exclusive, visible_groups) = {
+            let Ok(dna) = self.dna.read() else {
+                return;
+            };
+            let window_end_exclusive = window_start.saturating_add(window_span).min(dna.len());
+            let seq_end_exclusive = (seq_offset + self.bases_per_line).min(window_end_exclusive);
+            if seq_end_exclusive <= seq_offset {
+                return;
+            }
+            let visible_groups = dna
+                .restriction_enzyme_groups()
+                .iter()
+                .filter(|(re, _)| {
+                    Self::restriction_site_overlaps_block(re, seq_offset, seq_end_exclusive)
+                })
+                .map(|(re, label)| (re.clone(), label.clone()))
+                .collect::<Vec<_>>();
+            (seq_end_exclusive, visible_groups)
+        };
+        let base_y = pos.y;
+        for (re, label) in visible_groups {
+            let start = seq_offset as isize;
+            let end_exclusive = seq_end_exclusive as isize;
+            let visible_from = re.from().max(start) as usize;
+            let visible_to = re.to().min(end_exclusive.saturating_sub(1)) as usize;
+            let y = base_y + re.number_of_cuts() as f32 - 1.0;
+            let label_color = DnaDisplay::restriction_enzyme_group_color(re.number_of_cuts());
+            let cut_color = DnaDisplay::restriction_enzyme_geometry_color(re.cut_geometry());
+            self.draw_recognition_span(
+                painter,
+                rect,
+                seq_offset,
+                visible_from,
+                visible_to,
+                y,
+                Stroke::new(1.0, label_color),
+            );
+            if re.to() >= start && re.to() < end_exclusive {
+                let x = self.x_for_sequence_position(rect, seq_offset, re.to() as usize);
+                painter.text(
+                    Pos2::new(x, y),
+                    Align2::RIGHT_TOP,
+                    label.join(","),
+                    FontId {
+                        size: 9.0,
+                        family: FontFamily::Proportional,
+                    },
+                    label_color,
+                );
+            }
+            if re.pos() >= start && re.pos() < end_exclusive {
+                let x = self.x_for_sequence_position(rect, seq_offset, re.pos() as usize);
+                painter.line_segment(
+                    [Pos2::new(x, y - self.line_height / 2.0), Pos2::new(x, y)],
+                    Stroke::new(1.0, cut_color),
+                );
+            }
+            if re.mate_pos() >= start && re.mate_pos() < end_exclusive {
+                let x = self.x_for_sequence_position(rect, seq_offset, re.mate_pos() as usize);
+                painter.line_segment(
+                    [Pos2::new(x, y + self.line_height / 2.0), Pos2::new(x, y)],
+                    Stroke::new(1.0, cut_color),
+                );
+            }
         }
     }
 
     #[inline(always)]
     pub fn blocks(&self) -> usize {
+        if self.line_height() <= 0.0 {
+            return 0;
+        }
         self.blocks
     }
 
@@ -178,5 +245,48 @@ impl RowRestrictionEnzymes {
         } else {
             0.0
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hidden_restriction_row_reports_no_blocks() {
+        let dna = Arc::new(RwLock::new(
+            DNAsequence::from_sequence(&"A".repeat(5_000)).expect("sequence"),
+        ));
+        let display = Arc::new(RwLock::new(DnaDisplay::default()));
+        display
+            .write()
+            .expect("display")
+            .set_show_reverse_complement(false);
+        let mut row = RowRestrictionEnzymes::new(dna, display);
+        row.compute_line_height(&Vec2::new(10.0, 12.0));
+        row.layout(
+            0.0,
+            12.0,
+            &Rect::from_min_size(Pos2::ZERO, Vec2::new(500.0, 100.0)),
+        );
+        assert_eq!(row.line_height(), 0.0);
+        assert_eq!(row.blocks(), 0);
+    }
+
+    #[test]
+    fn restriction_site_overlap_uses_current_text_block() {
+        let site = RestrictionEnzymeKey::new(100, 100, 0, 1, 95, 105);
+        assert!(RowRestrictionEnzymes::restriction_site_overlaps_block(
+            &site, 90, 96
+        ));
+        assert!(RowRestrictionEnzymes::restriction_site_overlaps_block(
+            &site, 100, 110
+        ));
+        assert!(!RowRestrictionEnzymes::restriction_site_overlaps_block(
+            &site, 0, 95
+        ));
+        assert!(!RowRestrictionEnzymes::restriction_site_overlaps_block(
+            &site, 106, 120
+        ));
     }
 }
