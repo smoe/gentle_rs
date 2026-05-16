@@ -4734,15 +4734,16 @@ struct GlossaryRegistryCommand {
 }
 
 #[derive(Debug, Deserialize)]
-struct CapabilityNotApplicableOverrides {
-    overrides: Vec<CapabilityNotApplicableOverride>,
+struct ParityMatrixOverrides {
+    overrides: Vec<ParityMatrixOverride>,
 }
 
 #[derive(Debug, Deserialize)]
-struct CapabilityNotApplicableOverride {
+struct ParityMatrixOverride {
     source: CapabilitySource,
     name: String,
     adapter: CapabilityAdapter,
+    surfacing: AdapterSurfacing,
     reason: String,
 }
 
@@ -5144,10 +5145,51 @@ const MCP_TOOL_NAMES: &[(&str, &str, &str, CapabilityMutation)] = &[
     ),
 ];
 
+const MCP_PROMINENT_GLOSSARY_COMMAND_PATHS: &[&str] = &[
+    "capabilities",
+    "state-summary",
+    "agents list",
+    "agents preflight",
+    "agents discover-models",
+    "agents plan",
+    "agents execute-plan",
+    "op",
+    "workflow",
+    "help",
+    "genomes list",
+    "helpers list",
+    "helpers vocabulary list",
+    "hosts list",
+    "genomes ensembl-available",
+    "construct-reasoning list-graphs",
+    "construct-reasoning show-graph",
+    "construct-reasoning set-annotation-status",
+    "construct-reasoning write-annotation",
+    "ui intents",
+    "ui open",
+    "ui focus",
+    "ui prepared-genomes",
+    "ui latest-prepared",
+    "genomes blast-start",
+    "helpers blast-start",
+    "genomes blast-status",
+    "helpers blast-status",
+    "genomes blast-cancel",
+    "helpers blast-cancel",
+    "genomes blast-list",
+    "helpers blast-list",
+    "transcripts exon-skip-plan",
+    "transcripts exon-skip-materialize",
+];
+
+fn is_mcp_prominent_glossary_command(path: &str) -> bool {
+    MCP_PROMINENT_GLOSSARY_COMMAND_PATHS.contains(&path)
+}
+
 static CAPABILITY_REGISTRY: LazyLock<Vec<CapabilityDescriptor>> =
     LazyLock::new(build_capability_registry);
-static CAPABILITY_NOT_APPLICABLE_OVERRIDES: LazyLock<Vec<CapabilityNotApplicableOverride>> =
-    LazyLock::new(load_capability_not_applicable_overrides);
+static PARITY_MATRIX_OVERRIDES: LazyLock<Vec<ParityMatrixOverride>> =
+    LazyLock::new(load_parity_matrix_overrides);
 
 const CAPABILITY_PARITY_ADAPTERS: [CapabilityAdapter; 6] = [
     CapabilityAdapter::Gui,
@@ -5192,15 +5234,22 @@ pub fn capability_registry_for_adapter(adapter: CapabilityAdapter) -> Vec<Capabi
         .collect()
 }
 
-fn load_capability_not_applicable_overrides() -> Vec<CapabilityNotApplicableOverride> {
-    let overrides: CapabilityNotApplicableOverrides = serde_json::from_str(include_str!(
-        "../../../docs/capability_not_applicable_overrides.json"
-    ))
-    .expect("docs/capability_not_applicable_overrides.json must parse");
+fn load_parity_matrix_overrides() -> Vec<ParityMatrixOverride> {
+    let overrides: ParityMatrixOverrides =
+        serde_json::from_str(include_str!("../../../docs/parity_matrix_overrides.json"))
+            .expect("docs/parity_matrix_overrides.json must parse");
     for entry in &overrides.overrides {
+        assert_eq!(
+            entry.surfacing,
+            AdapterSurfacing::NotApplicable,
+            "parity matrix override for {:?} `{}` on {:?} must declare surfacing=not_applicable",
+            entry.source,
+            entry.name,
+            entry.adapter
+        );
         assert!(
             !entry.reason.trim().is_empty(),
-            "capability n/a override for {:?} `{}` on {:?} must have a reason",
+            "parity matrix override for {:?} `{}` on {:?} must have a reason",
             entry.source,
             entry.name,
             entry.adapter
@@ -5214,11 +5263,11 @@ fn not_applicable_override_reason(
     name: &str,
     adapter: CapabilityAdapter,
 ) -> Option<String> {
-    CAPABILITY_NOT_APPLICABLE_OVERRIDES
+    PARITY_MATRIX_OVERRIDES
         .iter()
         .find(|entry| entry.source == source && entry.name == name && entry.adapter == adapter)
         .or_else(|| {
-            CAPABILITY_NOT_APPLICABLE_OVERRIDES.iter().find(|entry| {
+            PARITY_MATRIX_OVERRIDES.iter().find(|entry| {
                 entry.source == source && entry.name == "*" && entry.adapter == adapter
             })
         })
@@ -5303,30 +5352,65 @@ from each descriptor's `surfacing_justifications` map.\n\n",
 
 fn push_open_gaps_section(out: &mut String, registry: &[CapabilityDescriptor]) {
     out.push_str("## Open Gaps\n\n");
-    out.push_str("| Capability | Source | Adapter | Engine operations |\n");
-    out.push_str("|---|---|---|---|\n");
-    let mut count = 0usize;
+    out.push_str("| Adapter | Capability | Source | Triage | Note |\n");
+    out.push_str("|---|---|---|---|---|\n");
+    let mut gaps = Vec::new();
     for descriptor in registry {
         for adapter in capability_parity_adapters() {
             if descriptor.surfacing_for_adapter(*adapter) != AdapterSurfacing::Gap {
                 continue;
             }
-            count += 1;
+            let (triage, note) = gap_triage_note(descriptor);
+            gaps.push((
+                adapter.label().to_string(),
+                descriptor.name.clone(),
+                descriptor.source.as_str().to_string(),
+                triage.to_string(),
+                note,
+            ));
+        }
+    }
+    gaps.sort_by(|left, right| {
+        left.0
+            .cmp(&right.0)
+            .then_with(|| left.1.cmp(&right.1))
+            .then_with(|| left.2.cmp(&right.2))
+    });
+    if gaps.is_empty() {
+        out.push_str("| _None_ |  |  |  |\n");
+    } else {
+        for (adapter, name, source, triage, note) in gaps {
             out.push_str("| ");
-            out.push_str(&markdown_cell(&descriptor.name));
+            out.push_str(&markdown_cell(&adapter));
             out.push_str(" | ");
-            out.push_str(descriptor.source.as_str());
+            out.push_str(&markdown_cell(&name));
             out.push_str(" | ");
-            out.push_str(adapter.label());
+            out.push_str(&markdown_cell(&source));
             out.push_str(" | ");
-            out.push_str(&markdown_cell(&descriptor.engine_operations.join(", ")));
+            out.push_str(&markdown_cell(&triage));
+            out.push_str(" | ");
+            out.push_str(&markdown_cell(&note));
             out.push_str(" |\n");
         }
     }
-    if count == 0 {
-        out.push_str("| _None_ |  |  |  |\n");
-    }
     out.push('\n');
+}
+
+fn gap_triage_note(descriptor: &CapabilityDescriptor) -> (&'static str, String) {
+    if descriptor.engine_operations.is_empty() {
+        (
+            "needs operation work",
+            "No portable engine operation or curated local-only override is declared.".to_string(),
+        )
+    } else {
+        (
+            "ready to wire",
+            format!(
+                "Engine operation route is declared: {}.",
+                descriptor.engine_operations.join(", ")
+            ),
+        )
+    }
 }
 
 fn push_parity_section<'a>(
@@ -5375,9 +5459,10 @@ fn build_capability_registry() -> Vec<CapabilityDescriptor> {
     let glossary: GlossaryRegistry =
         serde_json::from_str(include_str!("../../../docs/glossary.json"))
             .expect("docs/glossary.json must parse for capability registry");
+    let interfaces_by_path = glossary_interfaces_by_path(&glossary.commands);
     let mut descriptors = vec![];
     for command in &glossary.commands {
-        descriptors.push(glossary_command_descriptor(command));
+        descriptors.push(glossary_command_descriptor(command, &interfaces_by_path));
     }
     for op_name in PUBLIC_ENGINE_OPERATION_NAMES {
         descriptors.push(engine_operation_descriptor(op_name, &glossary.commands));
@@ -5388,8 +5473,24 @@ fn build_capability_registry() -> Vec<CapabilityDescriptor> {
     descriptors
 }
 
-fn glossary_command_descriptor(command: &GlossaryRegistryCommand) -> CapabilityDescriptor {
-    let surfacing = glossary_command_surfacing(command);
+fn glossary_interfaces_by_path(
+    commands: &[GlossaryRegistryCommand],
+) -> BTreeMap<String, BTreeSet<String>> {
+    let mut interfaces_by_path = BTreeMap::new();
+    for command in commands {
+        let interfaces = interfaces_by_path
+            .entry(command.path.clone())
+            .or_insert_with(BTreeSet::new);
+        interfaces.extend(command.interfaces.iter().cloned());
+    }
+    interfaces_by_path
+}
+
+fn glossary_command_descriptor(
+    command: &GlossaryRegistryCommand,
+    interfaces_by_path: &BTreeMap<String, BTreeSet<String>>,
+) -> CapabilityDescriptor {
+    let surfacing = glossary_command_surfacing(command, interfaces_by_path);
     CapabilityDescriptor {
         name: command.path.clone(),
         title: Some(title_from_stable_name(&command.path)),
@@ -5424,7 +5525,7 @@ fn engine_operation_descriptor(
     commands: &[GlossaryRegistryCommand],
 ) -> CapabilityDescriptor {
     let mut description = None;
-    let surfacing = engine_operation_surfacing();
+    let surfacing = engine_operation_surfacing(op_name);
     for command in commands {
         if command
             .engine_operations
@@ -5468,7 +5569,7 @@ fn mcp_tool_descriptor(
     description: &str,
     mutating: CapabilityMutation,
 ) -> CapabilityDescriptor {
-    let surfacing = mcp_tool_surfacing();
+    let surfacing = mcp_tool_surfacing(name);
     CapabilityDescriptor {
         name: name.to_string(),
         title: Some(title.to_string()),
@@ -5513,84 +5614,135 @@ impl CapabilitySurfacingSet {
             CapabilityAdapter::Clawbio => self.clawbio,
         }
     }
+
+    fn set_for_adapter(&mut self, adapter: CapabilityAdapter, surfacing: AdapterSurfacing) {
+        match adapter {
+            CapabilityAdapter::Gui => self.gui = surfacing,
+            CapabilityAdapter::Cli => self.cli = surfacing,
+            CapabilityAdapter::Mcp => self.mcp = surfacing,
+            CapabilityAdapter::Js => self.js = surfacing,
+            CapabilityAdapter::Lua => self.lua = surfacing,
+            CapabilityAdapter::Clawbio => self.clawbio = surfacing,
+        }
+    }
 }
 
-fn glossary_command_surfacing(command: &GlossaryRegistryCommand) -> CapabilitySurfacingSet {
-    let interfaces = command
-        .interfaces
-        .iter()
-        .map(String::as_str)
-        .collect::<BTreeSet<_>>();
-    let missing = |adapter| missing_glossary_command_surfacing(command, adapter);
-    CapabilitySurfacingSet {
+fn glossary_command_surfacing(
+    command: &GlossaryRegistryCommand,
+    interfaces_by_path: &BTreeMap<String, BTreeSet<String>>,
+) -> CapabilitySurfacingSet {
+    let interfaces = interfaces_by_path
+        .get(&command.path)
+        .expect("glossary command path exists in interface index");
+    let mut surfacing = CapabilitySurfacingSet {
         gui: if interfaces.contains("gui-menu") {
             AdapterSurfacing::Prominent
         } else if interfaces.contains("gui-shell") {
             AdapterSurfacing::ShellPassthrough
         } else {
-            missing(CapabilityAdapter::Gui)
+            AdapterSurfacing::Gap
         },
         cli: if interfaces.contains("cli-direct") {
             AdapterSurfacing::Prominent
-        } else if interfaces.contains("cli-shell") {
+        } else if interfaces.contains("cli-shell")
+            || command_is_reachable_via_generic_operation_route(command, CapabilityAdapter::Cli)
+        {
             AdapterSurfacing::ShellPassthrough
         } else {
-            missing(CapabilityAdapter::Cli)
+            AdapterSurfacing::Gap
         },
-        mcp: if interfaces.contains("mcp") {
+        mcp: if interfaces.contains("mcp") || is_mcp_prominent_glossary_command(&command.path) {
             AdapterSurfacing::Prominent
+        } else if command_is_reachable_via_generic_operation_route(command, CapabilityAdapter::Mcp)
+        {
+            AdapterSurfacing::ShellPassthrough
         } else {
-            missing(CapabilityAdapter::Mcp)
+            AdapterSurfacing::Gap
         },
         js: if interfaces.contains("js") {
             AdapterSurfacing::Prominent
+        } else if command_is_reachable_via_generic_operation_route(command, CapabilityAdapter::Js) {
+            AdapterSurfacing::ShellPassthrough
         } else {
-            missing(CapabilityAdapter::Js)
+            AdapterSurfacing::Gap
         },
         lua: if interfaces.contains("lua") {
             AdapterSurfacing::Prominent
+        } else if command_is_reachable_via_generic_operation_route(command, CapabilityAdapter::Lua)
+        {
+            AdapterSurfacing::ShellPassthrough
         } else {
-            missing(CapabilityAdapter::Lua)
+            AdapterSurfacing::Gap
         },
-        clawbio: missing(CapabilityAdapter::Clawbio),
-    }
+        clawbio: AdapterSurfacing::Gap,
+    };
+    apply_parity_matrix_overrides(
+        CapabilitySource::GlossaryCommand,
+        &command.path,
+        &mut surfacing,
+    );
+    surfacing
 }
 
-fn missing_glossary_command_surfacing(
+fn command_is_reachable_via_generic_operation_route(
     command: &GlossaryRegistryCommand,
     adapter: CapabilityAdapter,
-) -> AdapterSurfacing {
-    if command.engine_operations.is_empty() {
-        return AdapterSurfacing::NotApplicable;
-    }
-    if not_applicable_override_reason(CapabilitySource::GlossaryCommand, &command.path, adapter)
-        .is_some()
-    {
-        AdapterSurfacing::NotApplicable
-    } else {
-        AdapterSurfacing::Gap
-    }
+) -> bool {
+    !command.engine_operations.is_empty()
+        && matches!(
+            adapter,
+            CapabilityAdapter::Cli
+                | CapabilityAdapter::Mcp
+                | CapabilityAdapter::Js
+                | CapabilityAdapter::Lua
+        )
 }
 
-fn engine_operation_surfacing() -> CapabilitySurfacingSet {
-    CapabilitySurfacingSet {
+fn engine_operation_surfacing(op_name: &str) -> CapabilitySurfacingSet {
+    let mut surfacing = CapabilitySurfacingSet {
         gui: AdapterSurfacing::ShellPassthrough,
         cli: AdapterSurfacing::ShellPassthrough,
         mcp: AdapterSurfacing::ShellPassthrough,
         js: AdapterSurfacing::ShellPassthrough,
         lua: AdapterSurfacing::ShellPassthrough,
         clawbio: AdapterSurfacing::NotApplicable,
-    }
+    };
+    apply_parity_matrix_overrides(CapabilitySource::EngineOperation, op_name, &mut surfacing);
+    surfacing
 }
 
-fn mcp_tool_surfacing() -> CapabilitySurfacingSet {
-    CapabilitySurfacingSet {
+fn mcp_tool_surfacing(tool_name: &str) -> CapabilitySurfacingSet {
+    let mut surfacing = CapabilitySurfacingSet {
         gui: AdapterSurfacing::NotApplicable,
         cli: AdapterSurfacing::NotApplicable,
         mcp: AdapterSurfacing::Prominent,
         js: AdapterSurfacing::NotApplicable,
         lua: AdapterSurfacing::NotApplicable,
         clawbio: AdapterSurfacing::NotApplicable,
+    };
+    apply_parity_matrix_overrides(CapabilitySource::McpTool, tool_name, &mut surfacing);
+    surfacing
+}
+
+fn apply_parity_matrix_overrides(
+    source: CapabilitySource,
+    name: &str,
+    surfacing: &mut CapabilitySurfacingSet,
+) {
+    for adapter in capability_parity_adapters() {
+        if not_applicable_override_reason(source, name, *adapter).is_none() {
+            continue;
+        }
+        let current = surfacing.for_adapter(*adapter);
+        assert!(
+            !current.is_reachable(),
+            "parity matrix override for {:?} `{}` on {:?} would demote reachable surfacing {:?}",
+            source,
+            name,
+            adapter,
+            current
+        );
+        surfacing.set_for_adapter(*adapter, AdapterSurfacing::NotApplicable);
     }
 }
 
@@ -5601,21 +5753,17 @@ fn surfacing_justifications_for_glossary_command(
     let mut justifications = BTreeMap::new();
     for adapter in capability_parity_adapters() {
         if surfacing.for_adapter(*adapter) == AdapterSurfacing::NotApplicable {
-            let note = if command.engine_operations.is_empty() {
-                "Local CLI/GUI command, not an engine route.".to_string()
-            } else {
-                not_applicable_override_reason(
-                    CapabilitySource::GlossaryCommand,
-                    &command.path,
-                    *adapter,
+            let note = not_applicable_override_reason(
+                CapabilitySource::GlossaryCommand,
+                &command.path,
+                *adapter,
+            )
+            .unwrap_or_else(|| {
+                panic!(
+                    "missing curated n/a override for glossary command `{}` on {:?}",
+                    command.path, adapter
                 )
-                .unwrap_or_else(|| {
-                    panic!(
-                        "missing curated n/a override for glossary command `{}` on {:?}",
-                        command.path, adapter
-                    )
-                })
-            };
+            });
             justifications.insert(adapter.as_str().to_string(), note);
         }
     }
