@@ -16,6 +16,7 @@ dependencies = [
  "egui_extras",
  "flate2",
  "gb-io",
+ "gentle-engine",
  "gentle-gui",
  "gentle-protocol",
  "gentle-render",
