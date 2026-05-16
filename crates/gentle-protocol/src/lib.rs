@@ -8,6 +8,7 @@
 pub mod construct_reasoning;
 pub mod dna_ladder;
 pub mod gene_groups;
+pub mod reporter;
 
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Value, json};
@@ -41,6 +42,14 @@ pub use gene_groups::{
     GeneGroupCatalog, GeneGroupCatalogSourceReport, GeneGroupDoctorReport, GeneGroupDraftReport,
     GeneGroupExternalMapping, GeneGroupExternalResource, GeneGroupListEntry, GeneGroupListReport,
     GeneGroupMember, GeneGroupRecord, GeneGroupResolveReport, GeneGroupShowReport,
+};
+pub use reporter::{
+    REPORTER_CATALOG_REPORT_SCHEMA, REPORTER_CATALOG_SCHEMA, REPORTER_CORPUS_EXPORT_SCHEMA,
+    REPORTER_RECOMMENDATION_SCHEMA, ReporterAnnotatedRecord, ReporterCatalog,
+    ReporterCatalogReport, ReporterComputedAnnotation, ReporterConstraints, ReporterCorpusExport,
+    ReporterCorpusExportFormat, ReporterPreferenceWeights, ReporterQuarantinedRecord,
+    ReporterRecommendation, ReporterRecommendationResult, ReporterRecord,
+    ReporterRejectedCandidate, ReporterSourceRef, ReporterSpectralProfile,
 };
 
 /// Stable identifier for one sequence entry stored in project state.
@@ -4895,6 +4904,9 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "ExportPromoterArtifactManifest",
     "SummarizeMultiGenePromoterTfbs",
     "RenderMultiGenePromoterTfbsSvg",
+    "ListReporterCatalog",
+    "RecommendReporters",
+    "ExportReporterCorpus",
     "ScanTfbsHits",
     "InspectJasparEntry",
     "SummarizeJasparEntries",
@@ -5894,6 +5906,7 @@ fn infer_engine_operation_mutation(operation: &str) -> CapabilityMutation {
         || operation.starts_with("Validate")
         || operation.starts_with("Audit")
         || operation.starts_with("Resolve")
+        || operation.starts_with("Recommend")
         || operation == "SaveFile"
         || operation == "FindRestrictionSites"
         || operation == "AlignSequences"

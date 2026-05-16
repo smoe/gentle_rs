@@ -16,6 +16,8 @@ mod gentle_cli_protocol_cartoon;
 mod gentle_cli_reference;
 #[path = "gentle_cli/rendering.rs"]
 mod gentle_cli_rendering;
+#[path = "gentle_cli/reporters.rs"]
+mod gentle_cli_reporters;
 #[path = "gentle_cli/resources.rs"]
 mod gentle_cli_resources;
 #[path = "gentle_cli/services.rs"]
@@ -29,8 +31,8 @@ use gentle::{
         DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP, DbSnpFetchProgress, Engine,
         EngineStateSummary, GenomeAnnotationScope, GenomeGeneExtractMode,
         GenomeTrackImportProgress, GentleEngine, Operation, OperationProgress,
-        PrimerDesignProgress, ProjectState, RnaReadInterpretProgress, SharedAssetActivityStatus,
-        TfbsProgress,
+        PrimerDesignProgress, ProjectState, ReporterConstraints, ReporterCorpusExportFormat,
+        RnaReadInterpretProgress, SharedAssetActivityStatus, TfbsProgress,
     },
     engine_shell::{
         DEFAULT_CLONING_ROUTINE_CATALOG_PATH, ShellCommand, ShellExecutionOptions,
@@ -487,6 +489,9 @@ fn usage_text() -> String {
   gentle_cli [--state PATH|--project PATH] save-project PATH\n  \
   gentle_cli [--state PATH|--project PATH] load-project PATH\n  \
   gentle_cli [--state PATH|--project PATH] shell 'COMMAND ...'\n\n  \
+  gentle_cli reporters list [--filter TEXT] [--limit N] [--output PATH]\n  \
+  gentle_cli reporters recommend [--assay NAME] [--chassis HOST] [--color COLOR] [--class CLASS] [--max-length-bp N]\n  \
+  gentle_cli reporters export-corpus OUTPUT.json|OUTPUT.jsonl [--format json|jsonl]\n\n  \
   Tip: pass @file.json instead of inline JSON\n  \
   --project is an alias of --state for project.gentle.json files\n\n  \
   Shared command reference (generated from docs/glossary.json):\n  \
@@ -1112,6 +1117,7 @@ fn run() -> Result<(), String> {
         "hosts" => gentle_cli_hosts::handle_hosts_family(&args, cmd_idx),
         "resources" => gentle_cli_resources::handle_resources_family(&args, cmd_idx),
         "services" => gentle_cli_services::handle_services_family(&args, cmd_idx),
+        "reporters" => gentle_cli_reporters::handle_reporters_family(&args, cmd_idx),
         "shell" => {
             if args.len() <= cmd_idx + 1 {
                 usage();

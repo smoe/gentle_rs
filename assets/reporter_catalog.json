@@ -1,0 +1,266 @@
+{
+  "schema": "gentle.reporter_catalog.v1",
+  "curated_at": "2026-05-16",
+  "sources": [
+    {
+      "source_id": "synbiohub_igem_public",
+      "accession": "igem_public_collection",
+      "url": "https://synbiohub.org/public/igem",
+      "retrieved_at": "2026-05-16",
+      "license_status": "open_registry_verify_commercial",
+      "license_note": "Public iGEM/SynBioHub registry sequence source; verify current source terms before commercial or redistributed use."
+    }
+  ],
+  "records": [
+    {
+      "id": "BBa_E0040",
+      "name": "GFPmut3b",
+      "aliases": ["GFP", "green fluorescent protein"],
+      "reporter_class": "fluorescent_protein",
+      "sequence": "ATGCGTAAAGGAGAAGAACTTTTCACTGGAGTTGTCCCAATTCTTGTTGAATTAGATGGTGATGTTAATGGGCACAAATTTTCTGTCAGTGGAGAGGGTGAAGGTGATGCAACATACGGAAAACTTACCCTTAAATTTATTTGCACTACTGGAAAACTACCTGTTCCATGGCCAACACTTGTCACTACTTTCGGTTATGGTGTTCAATGCTTTGCGAGATACCCAGATCATATGAAACAGCATGACTTTTTCAAGAGTGCCATGCCCGAAGGTTATGTACAGGAAAGAACTATATTTTTCAAAGATGACGGGAACTACAAGACACGTGCTGAAGTCAAGTTTGAAGGTGATACCCTTGTTAATAGAATCGAGTTAAAAGGTATTGATTTTAAAGAAGATGGAAACATTCTTGGACACAAATTGGAATACAACTATAACTCACACAATGTATACATCATGGCAGACAAACAAAAGAATGGAATCAAAGTTAACTTCAAAATTAGACACAACATTGAAGATGGAAGCGTTCAACTAGCAGACCATTATCAACAAAATACTCCAATTGGCGATGGCCCTGTCCTTTTACCAGACAACCATTACCTGTCCACACAATCTGCCCTTTCGAAAGATCCCAACGAAAAGAGAGACCACATGGTCCTTCTTGAGTTTGTAACAGCTGCTGGGATTACACATGGCATGGATGAACTATACAAATAATAA",
+      "sequence_sha1": "cbc5d789d44012ff90ad09cb3041f1f9f6c6bd7e",
+      "source_refs": [
+        {
+          "source_id": "synbiohub_igem_public",
+          "accession": "BBa_E0040",
+          "url": "https://synbiohub.org/public/igem/BBa_E0040/1",
+          "retrieved_at": "2026-05-16",
+          "license_status": "open_registry_verify_commercial",
+          "license_note": "Public registry record; verify source terms before commercial use."
+        }
+      ],
+      "license_status": "open_registry_verify_commercial",
+      "provenance_note": "Sequence retrieved from SynBioHub iGEM public FASTA endpoint.",
+      "colors": ["green"],
+      "assay_modes": ["promoter_activity", "live_cell", "fusion_localization", "plate_reader", "flow_cytometry"],
+      "substrate_required": false,
+      "compatible_hosts": ["e_coli", "bacterial", "broad"],
+      "fusion_compatibility": ["standalone", "n_terminal", "c_terminal"],
+      "characterization_confidence": "high",
+      "catalog_use_count": 242,
+      "safety_scope": "benign_reporter_only",
+      "spectral": {
+        "color": "green",
+        "excitation_nm": 501,
+        "emission_nm": 511,
+        "brightness": 54.0,
+        "maturation_minutes": 40.0,
+        "oligomerization": "weak_dimer"
+      },
+      "notes": ["Starter V1 record; use exact upstream record for final source review."]
+    },
+    {
+      "id": "BBa_E0030",
+      "name": "EYFP",
+      "aliases": ["yellow fluorescent protein", "YFP"],
+      "reporter_class": "fluorescent_protein",
+      "sequence": "ATGGTGAGCAAGGGCGAGGAGCTGTTCACCGGGGTGGTGCCCATCCTGGTCGAGCTGGACGGCGACGTAAACGGCCACAAGTTCAGCGTGTCCGGCGAGGGCGAGGGCGATGCCACCTACGGCAAGCTGACCCTGAAGTTCATCTGCACCACCGGCAAGCTGCCCGTGCCCTGGCCCACCCTCGTGACCACCTTCGGCTACGGCCTGCAATGCTTCGCCCGCTACCCCGACCACATGAAGCTGCACGACTTCTTCAAGTCCGCCATGCCCGAAGGCTACGTCCAGGAGCGCACCATCTTCTTCAAGGACGACGGCAACTACAAGACCCGCGCCGAGGTGAAGTTCGAGGGCGACACCCTGGTGAACCGCATCGAGCTGAAGGGCATCGACTTCAAGGAGGACGGCAACATCCTGGGGCACAAGCTGGAGTACAACTACAACAGCCACAACGTCTATATCATGGCCGACAAGCAGAAGAACGGCATCAAGGTGAACTTCAAGATCCGCCACAACATCGAGGACGGCAGCGTGCAGCTCGCCGACCACTACCAGCAGAACACCCCCATCGGCGACGGCCCCGTGCTGCTGCCCGACAACCACTACCTGAGCTACCAGTCCGCCCTGAGCAAAGACCCCAACGAGAAGCGCGATCACATGGTCCTGCTGGAGTTCGTGACCGCCGCCGGGATCACTCTCGGCATGGACGAGCTGTACAAGTAATAA",
+      "sequence_sha1": "5f7971704e418302cda30415bb22b1df9f1f3d64",
+      "source_refs": [
+        {
+          "source_id": "synbiohub_igem_public",
+          "accession": "BBa_E0030",
+          "url": "https://synbiohub.org/public/igem/BBa_E0030/1",
+          "retrieved_at": "2026-05-16",
+          "license_status": "open_registry_verify_commercial",
+          "license_note": "Public registry record; verify source terms before commercial use."
+        }
+      ],
+      "license_status": "open_registry_verify_commercial",
+      "provenance_note": "Sequence retrieved from SynBioHub iGEM public FASTA endpoint.",
+      "colors": ["yellow"],
+      "assay_modes": ["promoter_activity", "live_cell", "fusion_localization", "plate_reader", "flow_cytometry"],
+      "substrate_required": false,
+      "compatible_hosts": ["e_coli", "bacterial", "broad"],
+      "fusion_compatibility": ["standalone", "n_terminal", "c_terminal"],
+      "characterization_confidence": "high",
+      "catalog_use_count": 52,
+      "safety_scope": "benign_reporter_only",
+      "spectral": {
+        "color": "yellow",
+        "excitation_nm": 514,
+        "emission_nm": 527,
+        "brightness": 151.0,
+        "maturation_minutes": 40.0,
+        "oligomerization": "weak_dimer"
+      },
+      "notes": ["Good V1 candidate when a yellow channel is requested."]
+    },
+    {
+      "id": "BBa_E0020",
+      "name": "ECFP",
+      "aliases": ["cyan fluorescent protein", "CFP"],
+      "reporter_class": "fluorescent_protein",
+      "sequence": "ATGGTGAGCAAGGGCGAGGAGCTGTTCACCGGGGTGGTGCCCATCCTGGTCGAGCTGGACGGCGACGTGAACGGCCACAAGTTCAGCGTGTCCGGCGAGGGCGAGGGCGATGCCACCTACGGCAAGCTGACCCTGAAGTTCATCTGCACCACCGGCAAGCTGCCCGTGCCCTGGCCCACCCTCGTGACCACCCTGACCTGGGGCGTGCAGTGCTTCAGCCGCTACCCCGACCACATGAAGCAGCACGACTTCTTCAAGTCCGCCATGCCCGAAGGCTACGTCCAGGAGCGCACCATCTTCTTCAAGGACGACGGCAACTACAAGACCCGCGCCGAGGTGAAGTTCGAGGGCGACACCCTGGTGAACCGCATCGAGCTGAAGGGCATCGACTTCAAGGAGGACGGCAACATCCTGGGGCACAAGCTGGAGTACAACTACATCAGCCACAACGTCTATATCACCGCCGACAAGCAGAAGAACGGCATCAAGGCCAACTTCAAGATCCGCCACAACATCGAGGACGGCAGCGTGCAGCTCGCCGACCACTACCAGCAGAACACCCCCATCGGCGACGGCCCCGTGCTGCTGCCCGACAACCACTACCTGAGCACCCAGTCCGCCCTGAGCAAAGACCCCAACGAGAAGCGCGATCACATGGTCCTGCTGGAGTTCGTGACCGCCGCCGGGATCACTCTCGGCATGGACGAGCTGTACAAGTAATAA",
+      "sequence_sha1": "2a9624c3dd628ee2364d4718fa048b6f7393b145",
+      "source_refs": [
+        {
+          "source_id": "synbiohub_igem_public",
+          "accession": "BBa_E0020",
+          "url": "https://synbiohub.org/public/igem/BBa_E0020/1",
+          "retrieved_at": "2026-05-16",
+          "license_status": "open_registry_verify_commercial",
+          "license_note": "Public registry record; verify source terms before commercial use."
+        }
+      ],
+      "license_status": "open_registry_verify_commercial",
+      "provenance_note": "Sequence retrieved from SynBioHub iGEM public FASTA endpoint.",
+      "colors": ["cyan", "blue"],
+      "assay_modes": ["promoter_activity", "live_cell", "fusion_localization", "plate_reader", "flow_cytometry"],
+      "substrate_required": false,
+      "compatible_hosts": ["e_coli", "bacterial", "broad"],
+      "fusion_compatibility": ["standalone", "n_terminal", "c_terminal"],
+      "characterization_confidence": "moderate",
+      "catalog_use_count": 29,
+      "safety_scope": "benign_reporter_only",
+      "spectral": {
+        "color": "cyan",
+        "excitation_nm": 433,
+        "emission_nm": 475,
+        "brightness": 24.0,
+        "maturation_minutes": 40.0,
+        "oligomerization": "weak_dimer"
+      },
+      "notes": ["Useful for cyan-channel compatibility checks."]
+    },
+    {
+      "id": "BBa_E1010",
+      "name": "mRFP1",
+      "aliases": ["red fluorescent protein", "RFP"],
+      "reporter_class": "fluorescent_protein",
+      "sequence": "ATGGCTTCCTCCGAAGACGTTATCAAAGAGTTCATGCGTTTCAAAGTTCGTATGGAAGGTTCCGTTAACGGTCACGAGTTCGAAATCGAAGGTGAAGGTGAAGGTCGTCCGTACGAAGGTACCCAGACCGCTAAACTGAAAGTTACCAAAGGTGGTCCGCTGCCGTTCGCTTGGGACATCCTGTCCCCGCAGTTCCAGTACGGTTCCAAAGCTTACGTTAAACACCCGGCTGACATCCCGGACTACCTGAAACTGTCCTTCCCGGAAGGTTTCAAATGGGAACGTGTTATGAACTTCGAAGACGGTGGTGTTGTTACCGTTACCCAGGACTCCTCCCTGCAAGACGGTGAGTTCATCTACAAAGTTAAACTGCGTGGTACCAACTTCCCGTCCGACGGTCCGGTTATGCAGAAAAAAACCATGGGTTGGGAAGCTTCCACCGAACGTATGTACCCGGAAGACGGTGCTCTGAAAGGTGAAATCAAAATGCGTCTGAAACTGAAAGACGGTGGTCACTACGACGCTGAAGTTAAAACCACCTACATGGCTAAAAAACCGGTTCAGCTGCCGGGTGCTTACAAAACCGACATCAAACTGGACATCACCTCCCACAACGAAGACTACACCATCGTTGAACAGTACGAACGTGCTGAAGGTCGTCACTCCACCGGTGCTTAATAACGCTGATAGTGCTAGTGTAGATCGC",
+      "sequence_sha1": "cf2753a4ab634410551e3175b4f33f04dcc3a54a",
+      "source_refs": [
+        {
+          "source_id": "synbiohub_igem_public",
+          "accession": "BBa_E1010",
+          "url": "https://synbiohub.org/public/igem/BBa_E1010/1",
+          "retrieved_at": "2026-05-16",
+          "license_status": "open_registry_verify_commercial",
+          "license_note": "Public registry record; verify source terms before commercial use."
+        }
+      ],
+      "license_status": "open_registry_verify_commercial",
+      "provenance_note": "Sequence retrieved from SynBioHub iGEM public FASTA endpoint; V1 annotation warns that this registry sequence is not a complete CDS by simple start/stop-frame checks.",
+      "colors": ["red"],
+      "assay_modes": ["promoter_activity", "live_cell", "fusion_localization", "plate_reader", "flow_cytometry"],
+      "substrate_required": false,
+      "compatible_hosts": ["e_coli", "bacterial", "broad"],
+      "fusion_compatibility": ["standalone", "n_terminal", "c_terminal"],
+      "characterization_confidence": "moderate",
+      "catalog_use_count": 144,
+      "safety_scope": "benign_reporter_only",
+      "spectral": {
+        "color": "red",
+        "excitation_nm": 584,
+        "emission_nm": 607,
+        "brightness": 25.0,
+        "maturation_minutes": 60.0,
+        "oligomerization": "monomer"
+      },
+      "notes": ["Included for red-channel selection; complete-CDS warning is intentional in V1."]
+    },
+    {
+      "id": "BBa_K592009",
+      "name": "amilCP",
+      "aliases": ["blue chromoprotein"],
+      "reporter_class": "chromoprotein",
+      "sequence": "ATGAGTGTGATCGCTAAACAAATGACCTACAAGGTTTATATGTCAGGCACGGTCAATGGACACTACTTTGAGGTCGAAGGCGATGGAAAAGGTAAGCCCTACGAGGGGGAGCAGACGGTAAAGCTCACTGTCACCAAGGGCGGACCTCTGCCATTTGCTTGGGATATTTTATCACCACAGTGTCAGTACGGAAGCATACCATTCACCAAGTACCCTGAAGACATCCCTGACTATGTAAAGCAGTCATTCCCGGAGGGCTATACATGGGAGAGGATCATGAACTTTGAAGATGGTGCAGTGTGTACTGTCAGCAATGATTCCAGCATCCAAGGCAACTGTTTCATCTACCATGTCAAGTTCTCTGGTTTGAACTTTCCTCCCAATGGACCTGTCATGCAGAAGAAGACACAGGGCTGGGAACCCAACACTGAGCGTCTCTTTGCACGAGATGGAATGCTGCTAGGAAACAACTTTATGGCTCTGAAGTTAGAAGGAGGCGGTCACTATTTGTGTGAATTTAAAACTACTTACAAGGCAAAGAAGCCTGTGAAGATGCCAGGGTATCACTATGTTGACCGCAAACTGGATGTAACCAATCACAACAAGGATTACACTTCGGTTGAGCAGTGTGAAATTTCCATTGCACGCAAACCTGTGGTCGCCTAATAA",
+      "sequence_sha1": "08b105ffe8a38ce212e3c9d6b318a82dab3e71dd",
+      "source_refs": [
+        {
+          "source_id": "synbiohub_igem_public",
+          "accession": "BBa_K592009",
+          "url": "https://synbiohub.org/public/igem/BBa_K592009/1",
+          "retrieved_at": "2026-05-16",
+          "license_status": "open_registry_verify_commercial",
+          "license_note": "Public registry record; verify source terms before commercial use."
+        }
+      ],
+      "license_status": "open_registry_verify_commercial",
+      "provenance_note": "Sequence retrieved from SynBioHub iGEM public FASTA endpoint.",
+      "colors": ["blue"],
+      "assay_modes": ["colony_screen", "endpoint_visual"],
+      "substrate_required": false,
+      "compatible_hosts": ["e_coli", "bacterial"],
+      "fusion_compatibility": ["standalone"],
+      "characterization_confidence": "moderate",
+      "catalog_use_count": 27,
+      "safety_scope": "benign_reporter_only",
+      "spectral": {
+        "color": "blue"
+      },
+      "notes": ["Chromoprotein candidate for visual colony screens without instrumentation."]
+    },
+    {
+      "id": "BBa_K592010",
+      "name": "amilGFP",
+      "aliases": ["green chromoprotein"],
+      "reporter_class": "chromoprotein",
+      "sequence": "ATGTCTTATTCAAAGCATGGCATCGTACAAGAAATGAAGACGAAATACCATATGGAAGGCAGTGTCAATGGCCATGAATTTACGATCGAAGGTGTAGGAACTGGGTACCCTTACGAAGGGAAACAGATGTCCGAATTAGTGATCATCAAGCCTGCGGGAAAACCCCTTCCATTCTCCTTTGACATACTGTCATCAGTCTTTCAATATGGAAACCGTTGCTTCACAAAGTACCCGGCAGACATGCCTGACTATTTCAAGCAAGCATTCCCAGATGGAATGTCATATGAAAGGTCATTTCTATTTGAGGATGGAGCAGTTGCTACAGCCAGCTGGAACATTCGTCTCGAAGGAAATTGCTTCATCCACAAATCCATCTTTCATGGCGTAAACTTTCCCGCTGATGGACCCGTAATGAAAAAGAAGACAATTGACTGGGATAAGTCCTTCGAAAAAATGACTGTGTCTAAAGAGGTGCTAAGAGGTGACGTGACTATGTTTCTTATGCTCGAAGGAGGTGGTTCTCACAGATGCCAATTTCACTCCACTTACAAAACAGAGAAGCCGGTCACACTGCCCCCGAATCATGTCGTAGAACATCAAATTGTGAGGACCGACCTTGGCCAAAGTGCAAAAGGCTTTACAGTCAAGCTGGAAGCACATGCCGCGGCTCATGTTAACCCTTTGAAGGTTAAATAATAA",
+      "sequence_sha1": "bc51f158c00e5f93cdf14bc3f10648094ff9cdf9",
+      "source_refs": [
+        {
+          "source_id": "synbiohub_igem_public",
+          "accession": "BBa_K592010",
+          "url": "https://synbiohub.org/public/igem/BBa_K592010/1",
+          "retrieved_at": "2026-05-16",
+          "license_status": "open_registry_verify_commercial",
+          "license_note": "Public registry record; verify source terms before commercial use."
+        }
+      ],
+      "license_status": "open_registry_verify_commercial",
+      "provenance_note": "Sequence retrieved from SynBioHub iGEM public FASTA endpoint.",
+      "colors": ["green"],
+      "assay_modes": ["colony_screen", "endpoint_visual"],
+      "substrate_required": false,
+      "compatible_hosts": ["e_coli", "bacterial"],
+      "fusion_compatibility": ["standalone"],
+      "characterization_confidence": "moderate",
+      "catalog_use_count": 13,
+      "safety_scope": "benign_reporter_only",
+      "spectral": {
+        "color": "green"
+      },
+      "notes": ["Chromoprotein candidate for naked-eye screening."]
+    },
+    {
+      "id": "BBa_I712019",
+      "name": "Firefly luciferase",
+      "aliases": ["luc", "luciferase"],
+      "reporter_class": "luciferase",
+      "sequence": "ATGGAAGACGCCAAAAACATAAAGAAAGGCCCGGCGCCATTCTATCCGCTGGAAGATGGAACCGCTGGAGAGCAACTGCATAAGGCTATGAAGAGATACGCCCTGGTTCCTGGAACAATTGCTTTTACAGATGCACATATCGAGGTGGACATCACTTACGCTGAGTACTTCGAAATGTCCGTTCGGTTGGCAGAAGCTATGAAACGATATGGGCTGAATACAAATCACAGAATCGTCGTATGCAGTGAAAACTCTCTTCAATTCTTTATGCCGGTGTTGGGCGCGTTATTTATCGGAGTTGCAGTTGCGCCCGCGAACGACATTTATAATGAACGTGAATTGCTCAACAGTATGGGCATTTCGCAGCCTACCGTGGTGTTCGTTTCCAAAAAGGGGTTGCAAAAAATTTTGAACGTGCAAAAAAAGCTCCCAATCATCCAAAAAATTATTATCATGGATTCTAAAACGGATTACCAGGGATTTCAGTCGATGTACACGTTCGTCACATCTCATCTACCTCCCGGTTTTAATGAATACGATTTTGTGCCAGAGTCCTTCGATAGGGACAAGACAATTGCACTGATCATGAACTCCTCTGGATCTACTGGTCTGCCTAAAGGTGTCGCTCTGCCTCATAGAACTGCCTGCGTGAGATTCTCGCATGCCAGAGATCCTATTTTTGGCAATCAAATCATTCCGGATACTGCGATTTTAAGTGTTGTTCCATTCCATCACGGTTTTGGAATGTTTACTACACTCGGATATTTGATATGTGGATTTCGAGTCGTCTTAATGTATAGATTTGAAGAAGAGCTGTTTCTGAGGAGCCTTCAGGATTACAAGATTCAAAGTGCGCTGCTGGTGCCAACCCTATTCTCCTTCTTCGCCAAAAGCACTCTGATTGACAAATACGATTTATCTAATTTACACGAAATTGCTTCTGGTGGCGCTCCCCTCTCTAAGGAAGTCGGGGAAGCGGTTGCCAAGAGGTTCCATCTGCCAGGTATCAGGCAAGGATATGGGCTCACTGAGACTACATCAGCTATTCTGATTACACCCGAGGGGGATGATAAACCGGGCGCGGTCGGTAAAGTTGTTCCATTTTTTGAAGCGAAGGTTGTGGATCTGGATACCGGGAAAACGCTGGGCGTTAATCAAAGAGGCGAACTGTGTGTGAGAGGTCCTATGATTATGTCCGGTTATGTAAACAATCCGGAAGCGACCAACGCCTTGATTGACAAGGATGGATGGCTACATTCTGGAGACATAGCTTACTGGGACGAAGACGAACACTTCTTCATCGTTGACCGCCTGAAGTCTCTGATTAAGTACAAAGGCTATCAGGTGGCTCCCGCTGAATTGGAATCCATCTTGCTCCAACACCCCAACATCTTCGACGCAGGTGTCGCAGGTCTTCCCGACGATGACGCCGGTGAACTTCCCGCCGCCGTTGTTGTTTTGGAGCACGGAAAGACGATGACGGAAAAAGAGATCGTGGATTACGTCGCCAGTCAAGTAACAACCGCGAAAAAGTTGCGCGGAGGAGTTGTGTTTGTGGACGAAGTACCGAAAGGTCTTACCGGAAAACTCGACGCAAGAAAAATCAGAGAGATCCTCATAAAGGCCAAGAAGGGCGGAAAGATCGCCGTGTAA",
+      "sequence_sha1": "f58acd75e9742121fcf9e2fee1a0b6d162629414",
+      "source_refs": [
+        {
+          "source_id": "synbiohub_igem_public",
+          "accession": "BBa_I712019",
+          "url": "https://synbiohub.org/public/igem/BBa_I712019/1",
+          "retrieved_at": "2026-05-16",
+          "license_status": "open_registry_verify_commercial",
+          "license_note": "Public registry record; verify source terms before commercial use."
+        }
+      ],
+      "license_status": "open_registry_verify_commercial",
+      "provenance_note": "Sequence retrieved from SynBioHub iGEM public FASTA endpoint.",
+      "colors": ["luminescent"],
+      "assay_modes": ["promoter_activity", "endpoint_quantitation", "low_expression_quantitation"],
+      "substrate_required": true,
+      "compatible_hosts": ["e_coli", "bacterial", "eukaryotic"],
+      "fusion_compatibility": ["standalone"],
+      "characterization_confidence": "moderate",
+      "catalog_use_count": 22,
+      "safety_scope": "benign_reporter_only",
+      "spectral": {
+        "color": "luminescent",
+        "emission_nm": 560
+      },
+      "notes": ["Requires luciferin/substrate workflow; V1 only recommends when substrate use is allowed."]
+    }
+  ],
+  "notes": [
+    "V1 is intentionally a small, auditable starter catalog rather than a full public registry mirror.",
+    "Normal recommendation runs are offline and use this local catalog only.",
+    "Remote source queries are reserved for future explicit refresh/provenance workflows."
+  ]
+}

@@ -656,6 +656,8 @@ mod protein_handoff;
 mod read_acquisition;
 #[path = "engine/analysis/repeat_cohort.rs"]
 mod repeat_cohort;
+#[path = "engine/ops/reporter_ops.rs"]
+mod reporter_ops;
 #[path = "engine/analysis/rna_reads.rs"]
 mod rna_reads;
 #[path = "engine/state/sequence_ops.rs"]
@@ -4163,6 +4165,33 @@ pub enum Operation {
         max_candidates: usize,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
+    },
+    ListReporterCatalog {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        filter: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        limit: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    RecommendReporters {
+        #[serde(default)]
+        constraints: ReporterConstraints,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        limit: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    ExportReporterCorpus {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        catalog_path: Option<String>,
+        path: String,
+        #[serde(default)]
+        format: ReporterCorpusExportFormat,
     },
     MaterializeVariantAllele {
         input: SeqId,
@@ -7685,6 +7714,9 @@ impl GentleEngine {
                 | Operation::SyncJasparRemoteMetadata { .. }
                 | Operation::SummarizeVariantPromoterContext { .. }
                 | Operation::SuggestPromoterReporterFragments { .. }
+                | Operation::ListReporterCatalog { .. }
+                | Operation::RecommendReporters { .. }
+                | Operation::ExportReporterCorpus { .. }
                 | Operation::ExportRnaReadReport { .. }
                 | Operation::ExportRnaReadHitsFasta { .. }
                 | Operation::ExportRnaReadSampleSheet { .. }

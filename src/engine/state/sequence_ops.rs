@@ -1239,6 +1239,27 @@ impl GentleEngine {
             Operation::ImportUniprotSwissProt { path, .. } => {
                 Self::push_unique_token(&mut summary.file_paths, path);
             }
+            Operation::ListReporterCatalog {
+                catalog_path, path, ..
+            }
+            | Operation::RecommendReporters {
+                catalog_path, path, ..
+            } => {
+                if let Some(path) = catalog_path.as_deref() {
+                    Self::push_unique_token(&mut summary.file_paths, path);
+                }
+                if let Some(path) = path.as_deref() {
+                    Self::push_unique_token(&mut summary.file_paths, path);
+                }
+            }
+            Operation::ExportReporterCorpus {
+                catalog_path, path, ..
+            } => {
+                if let Some(path) = catalog_path.as_deref() {
+                    Self::push_unique_token(&mut summary.file_paths, path);
+                }
+                Self::push_unique_token(&mut summary.file_paths, path);
+            }
             Operation::ValidateProtocolCartoonTemplate { template_path } => {
                 Self::push_unique_token(&mut summary.file_paths, template_path);
             }
@@ -1483,6 +1504,13 @@ impl GentleEngine {
             Operation::SummarizeJasparEntries {
                 path: Some(path), ..
             } => push(path),
+            Operation::ListReporterCatalog {
+                path: Some(path), ..
+            }
+            | Operation::RecommendReporters {
+                path: Some(path), ..
+            }
+            | Operation::ExportReporterCorpus { path, .. } => push(path),
             _ => {}
         }
         paths
