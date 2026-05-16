@@ -1,11 +1,14 @@
 use gentle::{app::gui_prominent_glossary_entries, engine::GentleEngine};
 use gentle_protocol::{
-    AdapterSurfacing, CapabilityAdapter, CapabilityDescriptor, CapabilitySource,
-    capability_parity_adapters, capability_registry,
+    capability_parity_adapters, capability_registry, AdapterSurfacing, CapabilityAdapter,
+    CapabilityDescriptor, CapabilitySource,
 };
 use serde::Deserialize;
 use serde_json::Value;
-use std::{collections::BTreeSet, process::Command};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    process::Command,
+};
 
 #[derive(Debug, Deserialize)]
 struct Glossary {
@@ -22,6 +25,20 @@ struct GlossaryCommand {
 }
 
 #[derive(Debug, Deserialize)]
+struct ParityMatrixOverrides {
+    overrides: Vec<ParityMatrixOverride>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ParityMatrixOverride {
+    source: CapabilitySource,
+    name: String,
+    adapter: CapabilityAdapter,
+    surfacing: AdapterSurfacing,
+    reason: String,
+}
+
+#[derive(Debug, Deserialize)]
 struct ClawBioIntents {
     routes: Vec<ClawBioRoute>,
 }
@@ -31,20 +48,62 @@ struct ClawBioRoute {
     intent_id: String,
 }
 
-fn expected_surfacing(command: &GlossaryCommand, adapter: CapabilityAdapter) -> AdapterSurfacing {
-    let interfaces = command
-        .interfaces
+fn glossary_commands() -> Vec<GlossaryCommand> {
+    let glossary: Glossary =
+        serde_json::from_str(include_str!("../docs/glossary.json")).expect("parse glossary");
+    glossary.commands
+}
+
+fn interfaces_by_path(commands: &[GlossaryCommand]) -> BTreeMap<String, BTreeSet<String>> {
+    let mut interfaces_by_path = BTreeMap::new();
+    for command in commands {
+        let interfaces = interfaces_by_path
+            .entry(command.path.clone())
+            .or_insert_with(BTreeSet::new);
+        interfaces.extend(command.interfaces.iter().cloned());
+    }
+    interfaces_by_path
+}
+
+fn parity_matrix_overrides() -> Vec<ParityMatrixOverride> {
+    let parsed: ParityMatrixOverrides =
+        serde_json::from_str(include_str!("../docs/parity_matrix_overrides.json"))
+            .expect("parse parity matrix overrides");
+    parsed.overrides
+}
+
+fn override_reason<'a>(
+    overrides: &'a [ParityMatrixOverride],
+    source: CapabilitySource,
+    name: &str,
+    adapter: CapabilityAdapter,
+) -> Option<&'a str> {
+    overrides
         .iter()
-        .map(String::as_str)
-        .collect::<BTreeSet<_>>();
+        .find(|entry| entry.source == source && entry.name == name && entry.adapter == adapter)
+        .or_else(|| {
+            overrides.iter().find(|entry| {
+                entry.source == source && entry.name == "*" && entry.adapter == adapter
+            })
+        })
+        .map(|entry| entry.reason.as_str())
+}
+
+fn expected_surfacing_without_overrides(
+    command: &GlossaryCommand,
+    adapter: CapabilityAdapter,
+    interfaces_by_path: &BTreeMap<String, BTreeSet<String>>,
+    mcp_command_paths: &BTreeSet<String>,
+) -> AdapterSurfacing {
+    let interfaces = interfaces_by_path
+        .get(&command.path)
+        .expect("glossary path interface index");
     match adapter {
         CapabilityAdapter::Gui => {
             if interfaces.contains("gui-menu") {
                 AdapterSurfacing::Prominent
             } else if interfaces.contains("gui-shell") {
                 AdapterSurfacing::ShellPassthrough
-            } else if command.engine_operations.is_empty() {
-                AdapterSurfacing::NotApplicable
             } else {
                 AdapterSurfacing::Gap
             }
@@ -52,19 +111,17 @@ fn expected_surfacing(command: &GlossaryCommand, adapter: CapabilityAdapter) -> 
         CapabilityAdapter::Cli => {
             if interfaces.contains("cli-direct") {
                 AdapterSurfacing::Prominent
-            } else if interfaces.contains("cli-shell") {
+            } else if interfaces.contains("cli-shell") || !command.engine_operations.is_empty() {
                 AdapterSurfacing::ShellPassthrough
-            } else if command.engine_operations.is_empty() {
-                AdapterSurfacing::NotApplicable
             } else {
                 AdapterSurfacing::Gap
             }
         }
         CapabilityAdapter::Mcp => {
-            if interfaces.contains("mcp") {
+            if interfaces.contains("mcp") || mcp_command_paths.contains(&command.path) {
                 AdapterSurfacing::Prominent
-            } else if command.engine_operations.is_empty() {
-                AdapterSurfacing::NotApplicable
+            } else if !command.engine_operations.is_empty() {
+                AdapterSurfacing::ShellPassthrough
             } else {
                 AdapterSurfacing::Gap
             }
@@ -72,8 +129,8 @@ fn expected_surfacing(command: &GlossaryCommand, adapter: CapabilityAdapter) -> 
         CapabilityAdapter::Js => {
             if interfaces.contains("js") {
                 AdapterSurfacing::Prominent
-            } else if command.engine_operations.is_empty() {
-                AdapterSurfacing::NotApplicable
+            } else if !command.engine_operations.is_empty() {
+                AdapterSurfacing::ShellPassthrough
             } else {
                 AdapterSurfacing::Gap
             }
@@ -81,19 +138,56 @@ fn expected_surfacing(command: &GlossaryCommand, adapter: CapabilityAdapter) -> 
         CapabilityAdapter::Lua => {
             if interfaces.contains("lua") {
                 AdapterSurfacing::Prominent
-            } else if command.engine_operations.is_empty() {
-                AdapterSurfacing::NotApplicable
+            } else if !command.engine_operations.is_empty() {
+                AdapterSurfacing::ShellPassthrough
             } else {
                 AdapterSurfacing::Gap
             }
         }
-        CapabilityAdapter::Clawbio => AdapterSurfacing::NotApplicable,
+        CapabilityAdapter::Clawbio => AdapterSurfacing::Gap,
+    }
+}
+
+fn expected_surfacing(
+    command: &GlossaryCommand,
+    adapter: CapabilityAdapter,
+    interfaces_by_path: &BTreeMap<String, BTreeSet<String>>,
+    mcp_command_paths: &BTreeSet<String>,
+    overrides: &[ParityMatrixOverride],
+) -> AdapterSurfacing {
+    let surfacing = expected_surfacing_without_overrides(
+        command,
+        adapter,
+        interfaces_by_path,
+        mcp_command_paths,
+    );
+    if override_reason(
+        overrides,
+        CapabilitySource::GlossaryCommand,
+        &command.path,
+        adapter,
+    )
+    .is_some()
+    {
+        assert!(
+            !surfacing.is_reachable(),
+            "override for `{}` on {:?} must not demote {:?}",
+            command.path,
+            adapter,
+            surfacing
+        );
+        AdapterSurfacing::NotApplicable
+    } else {
+        surfacing
     }
 }
 
 fn command_descriptor<'a>(
     registry: &'a [CapabilityDescriptor],
     command: &GlossaryCommand,
+    interfaces_by_path: &BTreeMap<String, BTreeSet<String>>,
+    mcp_command_paths: &BTreeSet<String>,
+    overrides: &[ParityMatrixOverride],
 ) -> &'a CapabilityDescriptor {
     registry
         .iter()
@@ -103,7 +197,13 @@ fn command_descriptor<'a>(
                 && descriptor.description == command.summary
                 && capability_parity_adapters().iter().all(|adapter| {
                     descriptor.surfacing_for_adapter(*adapter)
-                        == expected_surfacing(command, *adapter)
+                        == expected_surfacing(
+                            command,
+                            *adapter,
+                            interfaces_by_path,
+                            mcp_command_paths,
+                            overrides,
+                        )
                 })
         })
         .unwrap_or_else(|| {
@@ -151,6 +251,27 @@ fn clawbio_intent_ids() -> BTreeSet<String> {
         .collect()
 }
 
+fn open_gap_rows_from_matrix() -> BTreeSet<(String, String, String)> {
+    let markdown = gentle_protocol::render_gui_cli_mcp_parity_matrix_markdown();
+    let section = markdown
+        .split("## Open Gaps")
+        .nth(1)
+        .expect("open gaps section");
+    section
+        .lines()
+        .filter(|line| line.starts_with('|') && !line.contains("---") && !line.contains("Adapter"))
+        .filter_map(|line| {
+            let cells = line
+                .trim_matches('|')
+                .split('|')
+                .map(|cell| cell.trim().to_string())
+                .collect::<Vec<_>>();
+            (cells.len() >= 3 && cells[0] != "_None_")
+                .then(|| (cells[0].clone(), cells[1].clone(), cells[2].clone()))
+        })
+        .collect()
+}
+
 #[test]
 fn registry_surfacing_covers_all_parity_adapters() {
     for descriptor in capability_registry() {
@@ -188,7 +309,154 @@ fn registry_surfacing_covers_all_parity_adapters() {
 }
 
 #[test]
-fn gap_rows_are_engine_backed_missing_adapter_routes() {
+fn not_applicable_cells_have_curated_override_entries() {
+    let overrides = parity_matrix_overrides();
+    for descriptor in capability_registry() {
+        for adapter in capability_parity_adapters() {
+            if descriptor.surfacing_for_adapter(*adapter) != AdapterSurfacing::NotApplicable {
+                continue;
+            }
+            let override_reason =
+                override_reason(&overrides, descriptor.source, &descriptor.name, *adapter)
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "not-applicable cell `{}` on {:?} must have a parity override",
+                            descriptor.name, adapter
+                        )
+                    });
+            assert!(
+                !override_reason.trim().is_empty(),
+                "not-applicable override for `{}` on {:?} must have a reason",
+                descriptor.name,
+                adapter
+            );
+            let justification = descriptor
+                .surfacing_justifications
+                .get(adapter.as_str())
+                .unwrap_or_else(|| {
+                    panic!(
+                        "missing not-applicable justification for `{}` on {:?}",
+                        descriptor.name, adapter
+                    )
+                });
+            assert_eq!(
+                justification, override_reason,
+                "not-applicable justification for `{}` on {:?} must come from the override table",
+                descriptor.name, adapter
+            );
+        }
+    }
+}
+
+#[test]
+fn parity_overrides_do_not_demote_prominent_or_shell_routes() {
+    let commands = glossary_commands();
+    let interfaces_by_path = interfaces_by_path(&commands);
+    let mcp_command_paths = mcp_tool_command_paths();
+    let overrides = parity_matrix_overrides();
+
+    for entry in &overrides {
+        assert_eq!(
+            entry.surfacing,
+            AdapterSurfacing::NotApplicable,
+            "only explicit not-applicable overrides are supported"
+        );
+        assert!(
+            !entry.reason.trim().is_empty(),
+            "override for {:?} `{}` on {:?} must have a reason",
+            entry.source,
+            entry.name,
+            entry.adapter
+        );
+        match entry.source {
+            CapabilitySource::GlossaryCommand => {
+                let matching = commands
+                    .iter()
+                    .filter(|command| entry.name == "*" || command.path == entry.name)
+                    .collect::<Vec<_>>();
+                assert!(
+                    !matching.is_empty(),
+                    "glossary override references unknown command `{}`",
+                    entry.name
+                );
+                for command in matching {
+                    let default = expected_surfacing_without_overrides(
+                        command,
+                        entry.adapter,
+                        &interfaces_by_path,
+                        &mcp_command_paths,
+                    );
+                    assert!(
+                        !default.is_reachable(),
+                        "override for glossary command `{}` on {:?} would demote {:?}",
+                        command.path,
+                        entry.adapter,
+                        default
+                    );
+                }
+            }
+            CapabilitySource::EngineOperation => {
+                let matching = gentle_protocol::public_engine_operation_names()
+                    .iter()
+                    .filter(|name| entry.name == "*" || **name == entry.name.as_str())
+                    .collect::<Vec<_>>();
+                assert!(
+                    !matching.is_empty(),
+                    "engine override references unknown operation `{}`",
+                    entry.name
+                );
+                let default = match entry.adapter {
+                    CapabilityAdapter::Clawbio => AdapterSurfacing::NotApplicable,
+                    CapabilityAdapter::Gui
+                    | CapabilityAdapter::Cli
+                    | CapabilityAdapter::Mcp
+                    | CapabilityAdapter::Js
+                    | CapabilityAdapter::Lua => AdapterSurfacing::ShellPassthrough,
+                };
+                assert!(
+                    !default.is_reachable(),
+                    "override for engine operation `{}` on {:?} would demote {:?}",
+                    entry.name,
+                    entry.adapter,
+                    default
+                );
+            }
+            CapabilitySource::McpTool => {
+                let matching = capability_registry()
+                    .iter()
+                    .filter(|descriptor| {
+                        descriptor.source == CapabilitySource::McpTool
+                            && (entry.name == "*" || descriptor.name == entry.name)
+                    })
+                    .collect::<Vec<_>>();
+                assert!(
+                    !matching.is_empty(),
+                    "MCP tool override references unknown tool `{}`",
+                    entry.name
+                );
+                let default = match entry.adapter {
+                    CapabilityAdapter::Mcp => AdapterSurfacing::Prominent,
+                    CapabilityAdapter::Gui
+                    | CapabilityAdapter::Cli
+                    | CapabilityAdapter::Js
+                    | CapabilityAdapter::Lua
+                    | CapabilityAdapter::Clawbio => AdapterSurfacing::NotApplicable,
+                };
+                assert!(
+                    !default.is_reachable(),
+                    "override for MCP tool `{}` on {:?} would demote {:?}",
+                    entry.name,
+                    entry.adapter,
+                    default
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn gap_rows_are_listed_in_open_gap_section() {
+    let open_gap_rows = open_gap_rows_from_matrix();
     let mut gap_count = 0usize;
     for descriptor in capability_registry() {
         for adapter in capability_parity_adapters() {
@@ -199,11 +467,16 @@ fn gap_rows_are_engine_backed_missing_adapter_routes() {
             assert_eq!(
                 descriptor.source,
                 CapabilitySource::GlossaryCommand,
-                "only missing glossary adapter routes should appear as open gaps"
+                "only glossary adapter routes should appear as open gaps"
+            );
+            let row = (
+                adapter.label().to_string(),
+                descriptor.name.clone(),
+                descriptor.source.as_str().to_string(),
             );
             assert!(
-                !descriptor.engine_operations.is_empty(),
-                "gap `{}` on {:?} must wrap at least one engine operation",
+                open_gap_rows.contains(&row),
+                "gap `{}` on {:?} must be listed in ## Open Gaps",
                 descriptor.name,
                 adapter
             );
@@ -251,12 +524,20 @@ fn registry_for_adapter_includes_every_reachable_projection() {
 
 #[test]
 fn glossary_commands_have_matching_registry_entries() {
-    let glossary: Glossary =
-        serde_json::from_str(include_str!("../docs/glossary.json")).expect("parse glossary");
+    let commands = glossary_commands();
+    let interfaces_by_path = interfaces_by_path(&commands);
+    let mcp_command_paths = mcp_tool_command_paths();
+    let overrides = parity_matrix_overrides();
     let registry = capability_registry();
 
-    for command in &glossary.commands {
-        let descriptor = command_descriptor(registry, command);
+    for command in &commands {
+        let descriptor = command_descriptor(
+            registry,
+            command,
+            &interfaces_by_path,
+            &mcp_command_paths,
+            &overrides,
+        );
         assert_eq!(
             descriptor.description, command.summary,
             "registry description must be sourced from docs/glossary.json for `{}`",
@@ -265,7 +546,13 @@ fn glossary_commands_have_matching_registry_entries() {
         for adapter in capability_parity_adapters() {
             assert_eq!(
                 descriptor.surfacing_for_adapter(*adapter),
-                expected_surfacing(command, *adapter),
+                expected_surfacing(
+                    command,
+                    *adapter,
+                    &interfaces_by_path,
+                    &mcp_command_paths,
+                    &overrides,
+                ),
                 "surfacing mismatch for `{}` on {:?}",
                 command.path,
                 adapter

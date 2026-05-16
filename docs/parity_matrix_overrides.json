@@ -1,0 +1,3673 @@
+{
+  "schema": "gentle.parity_matrix_overrides.v1",
+  "overrides": [
+    {
+      "source": "engine_operation",
+      "name": "*",
+      "adapter": "clawbio",
+      "surfacing": "not_applicable",
+      "reason": "ClawBio exposes curated skill intents rather than raw engine operation rows."
+    },
+    {
+      "source": "glossary_command",
+      "name": "*",
+      "adapter": "clawbio",
+      "surfacing": "not_applicable",
+      "reason": "ClawBio exposes curated skill intents rather than raw glossary command rows."
+    },
+    {
+      "source": "glossary_command",
+      "name": "agents ask",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Agent orchestration uses dedicated adapter tools where available, not raw glossary projection."
+    },
+    {
+      "source": "glossary_command",
+      "name": "agents ask",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Agent orchestration uses dedicated adapter tools where available, not raw glossary projection."
+    },
+    {
+      "source": "glossary_command",
+      "name": "agents ask",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Agent orchestration uses dedicated adapter tools where available, not raw glossary projection."
+    },
+    {
+      "source": "glossary_command",
+      "name": "agents discover-models",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Agent orchestration uses dedicated adapter tools where available, not raw glossary projection."
+    },
+    {
+      "source": "glossary_command",
+      "name": "agents discover-models",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Agent orchestration uses dedicated adapter tools where available, not raw glossary projection."
+    },
+    {
+      "source": "glossary_command",
+      "name": "agents execute-plan",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Agent orchestration uses dedicated adapter tools where available, not raw glossary projection."
+    },
+    {
+      "source": "glossary_command",
+      "name": "agents execute-plan",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Agent orchestration uses dedicated adapter tools where available, not raw glossary projection."
+    },
+    {
+      "source": "glossary_command",
+      "name": "agents list",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Agent orchestration uses dedicated adapter tools where available, not raw glossary projection."
+    },
+    {
+      "source": "glossary_command",
+      "name": "agents list",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Agent orchestration uses dedicated adapter tools where available, not raw glossary projection."
+    },
+    {
+      "source": "glossary_command",
+      "name": "agents plan",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Agent orchestration uses dedicated adapter tools where available, not raw glossary projection."
+    },
+    {
+      "source": "glossary_command",
+      "name": "agents plan",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Agent orchestration uses dedicated adapter tools where available, not raw glossary projection."
+    },
+    {
+      "source": "glossary_command",
+      "name": "agents preflight",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Agent orchestration uses dedicated adapter tools where available, not raw glossary projection."
+    },
+    {
+      "source": "glossary_command",
+      "name": "agents preflight",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Agent orchestration uses dedicated adapter tools where available, not raw glossary projection."
+    },
+    {
+      "source": "glossary_command",
+      "name": "apply_operation",
+      "adapter": "cli",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "apply_operation",
+      "adapter": "gui",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "apply_operation",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "apply_workflow",
+      "adapter": "cli",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "apply_workflow",
+      "adapter": "gui",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "apply_workflow",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "arrays inspect-microarray-track",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "arrays inspect-microarray-track",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "arrays inspect-microarray-track",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "ask_agent_system",
+      "adapter": "cli",
+      "surfacing": "not_applicable",
+      "reason": "Agent orchestration uses dedicated adapter tools where available, not raw glossary projection."
+    },
+    {
+      "source": "glossary_command",
+      "name": "ask_agent_system",
+      "adapter": "gui",
+      "surfacing": "not_applicable",
+      "reason": "Agent orchestration uses dedicated adapter tools where available, not raw glossary projection."
+    },
+    {
+      "source": "glossary_command",
+      "name": "ask_agent_system",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Agent orchestration uses dedicated adapter tools where available, not raw glossary projection."
+    },
+    {
+      "source": "glossary_command",
+      "name": "batch plan",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "batch plan",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "batch plan",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "batch run",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "batch run",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "batch run",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "blast_helper_genome",
+      "adapter": "cli",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "blast_helper_genome",
+      "adapter": "gui",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "blast_helper_genome",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "blast_reference_genome",
+      "adapter": "cli",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "blast_reference_genome",
+      "adapter": "gui",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "blast_reference_genome",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "cache clear",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes."
+    },
+    {
+      "source": "glossary_command",
+      "name": "cache clear",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes."
+    },
+    {
+      "source": "glossary_command",
+      "name": "cache clear",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes."
+    },
+    {
+      "source": "glossary_command",
+      "name": "cache inspect",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes."
+    },
+    {
+      "source": "glossary_command",
+      "name": "cache inspect",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes."
+    },
+    {
+      "source": "glossary_command",
+      "name": "cache inspect",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes."
+    },
+    {
+      "source": "glossary_command",
+      "name": "candidates list",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "candidates list",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "candidates list",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "candidates metrics",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "candidates metrics",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "candidates metrics",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "candidates show",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "candidates show",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "candidates show",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "candidates template-list",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "candidates template-list",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "candidates template-list",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "candidates template-run",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "candidates template-run",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "candidates template-run",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "candidates template-show",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "candidates template-show",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "candidates template-show",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "digest",
+      "adapter": "gui",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "dotplot list",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "dotplot list",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "dotplot list",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "dotplot show",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "dotplot show",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "dotplot show",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "export_dna_ladders",
+      "adapter": "gui",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "export_rna_ladders",
+      "adapter": "gui",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "extend_genome_anchor",
+      "adapter": "gui",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "extract_genome_gene",
+      "adapter": "gui",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "extract_genome_region",
+      "adapter": "gui",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "features tfbs-summary",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "features tfbs-summary",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "features tfbs-summary",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "flex list",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "flex list",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "flex list",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "flex show",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "flex show",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "flex show",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "gene-groups doctor",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "gene-groups doctor",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "gene-groups doctor",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "gene-groups draft",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "gene-groups draft",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "gene-groups draft",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "gene-groups list",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "gene-groups list",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "gene-groups list",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "gene-groups resolve",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "gene-groups resolve",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "gene-groups resolve",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "gene-groups show",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "gene-groups show",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "gene-groups show",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "genomes blast",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "genomes blast",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "genomes blast",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "genomes blast-cancel",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "genomes blast-cancel",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "genomes blast-list",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "genomes blast-list",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "genomes blast-start",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "genomes blast-start",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "genomes blast-status",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "genomes blast-status",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "genomes ensembl-available",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "genomes ensembl-available",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "genomes genes",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "genomes genes",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "genomes genes",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "genomes install-ensembl",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "genomes install-ensembl",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "genomes install-ensembl",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "genomes list",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "genomes list",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "genomes preview-ensembl-specs",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "genomes preview-ensembl-specs",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "genomes preview-ensembl-specs",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "genomes remove-catalog-entry",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "genomes remove-catalog-entry",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "genomes remove-catalog-entry",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "genomes remove-prepared",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "genomes remove-prepared",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "genomes remove-prepared",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "genomes status",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "genomes status",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "genomes status",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "genomes update-ensembl-specs",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "genomes update-ensembl-specs",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "genomes update-ensembl-specs",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "genomes validate-catalog",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "genomes validate-catalog",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "genomes validate-catalog",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "guides filter-show",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "guides filter-show",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "guides filter-show",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "guides list",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "guides list",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "guides list",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "guides oligos-list",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "guides oligos-list",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "guides oligos-list",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "guides oligos-show",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "guides oligos-show",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "guides oligos-show",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "guides show",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "guides show",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "guides show",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "help",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "help",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "helpers blast",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "helpers blast",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "helpers blast",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "helpers blast-cancel",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "helpers blast-cancel",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "helpers blast-list",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "helpers blast-list",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "helpers blast-start",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "helpers blast-start",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "helpers blast-status",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "helpers blast-status",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "helpers ensembl-available",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "helpers ensembl-available",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "helpers ensembl-available",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "helpers genes",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "helpers genes",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "helpers genes",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "helpers install-ensembl",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "helpers install-ensembl",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "helpers install-ensembl",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "helpers list",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "helpers list",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "helpers preview-ensembl-specs",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "helpers preview-ensembl-specs",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "helpers preview-ensembl-specs",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "helpers remove-catalog-entry",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "helpers remove-catalog-entry",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "helpers remove-catalog-entry",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "helpers remove-prepared",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "helpers remove-prepared",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "helpers remove-prepared",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "helpers status",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "helpers status",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "helpers status",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "helpers update-ensembl-specs",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "helpers update-ensembl-specs",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "helpers update-ensembl-specs",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "helpers validate-catalog",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "helpers validate-catalog",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "helpers validate-catalog",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "helpers vocabulary doctor",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "helpers vocabulary doctor",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "helpers vocabulary doctor",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "helpers vocabulary list",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "helpers vocabulary list",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "history redo",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Undo/redo history is session-local state management, not a portable adapter route."
+    },
+    {
+      "source": "glossary_command",
+      "name": "history redo",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Undo/redo history is session-local state management, not a portable adapter route."
+    },
+    {
+      "source": "glossary_command",
+      "name": "history redo",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Undo/redo history is session-local state management, not a portable adapter route."
+    },
+    {
+      "source": "glossary_command",
+      "name": "history status",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Undo/redo history is session-local state management, not a portable adapter route."
+    },
+    {
+      "source": "glossary_command",
+      "name": "history status",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Undo/redo history is session-local state management, not a portable adapter route."
+    },
+    {
+      "source": "glossary_command",
+      "name": "history status",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Undo/redo history is session-local state management, not a portable adapter route."
+    },
+    {
+      "source": "glossary_command",
+      "name": "history undo",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Undo/redo history is session-local state management, not a portable adapter route."
+    },
+    {
+      "source": "glossary_command",
+      "name": "history undo",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Undo/redo history is session-local state management, not a portable adapter route."
+    },
+    {
+      "source": "glossary_command",
+      "name": "history undo",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Undo/redo history is session-local state management, not a portable adapter route."
+    },
+    {
+      "source": "glossary_command",
+      "name": "hosts list",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "hosts list",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "import_genome_bed_track",
+      "adapter": "gui",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "import_genome_bigwig_track",
+      "adapter": "gui",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "import_genome_vcf_track",
+      "adapter": "gui",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "import_pool",
+      "adapter": "cli",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "import_pool",
+      "adapter": "gui",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "import_pool",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "import-pool",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "import-pool",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "import-pool",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "inspect_dna_ladders",
+      "adapter": "cli",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "inspect_dna_ladders",
+      "adapter": "gui",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "inspect_dna_ladders",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "inspect_rna_ladders",
+      "adapter": "cli",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "inspect_rna_ladders",
+      "adapter": "gui",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "inspect_rna_ladders",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "inspect-feature-expert",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Expert/report inspection currently remains a shell workflow until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "inspect-feature-expert",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Expert/report inspection currently remains a shell workflow until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "inspect-feature-expert",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Expert/report inspection currently remains a shell workflow until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "is_reference_genome_prepared",
+      "adapter": "cli",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "is_reference_genome_prepared",
+      "adapter": "gui",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "is_reference_genome_prepared",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "ladders list",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "ladders list",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "ladders list",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "list_agent_systems",
+      "adapter": "cli",
+      "surfacing": "not_applicable",
+      "reason": "Agent orchestration uses dedicated adapter tools where available, not raw glossary projection."
+    },
+    {
+      "source": "glossary_command",
+      "name": "list_agent_systems",
+      "adapter": "gui",
+      "surfacing": "not_applicable",
+      "reason": "Agent orchestration uses dedicated adapter tools where available, not raw glossary projection."
+    },
+    {
+      "source": "glossary_command",
+      "name": "list_agent_systems",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Agent orchestration uses dedicated adapter tools where available, not raw glossary projection."
+    },
+    {
+      "source": "glossary_command",
+      "name": "list_dna_ladders",
+      "adapter": "cli",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "list_dna_ladders",
+      "adapter": "gui",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "list_dna_ladders",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "list_ensembl_installable_genomes",
+      "adapter": "cli",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "list_ensembl_installable_genomes",
+      "adapter": "gui",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "list_ensembl_installable_genomes",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "list_helper_catalog_entries",
+      "adapter": "cli",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "list_helper_catalog_entries",
+      "adapter": "gui",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "list_helper_catalog_entries",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "list_host_profile_catalog_entries",
+      "adapter": "cli",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "list_host_profile_catalog_entries",
+      "adapter": "gui",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "list_host_profile_catalog_entries",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "list_reference_catalog_entries",
+      "adapter": "cli",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "list_reference_catalog_entries",
+      "adapter": "gui",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "list_reference_catalog_entries",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "list_reference_genome_genes",
+      "adapter": "cli",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "list_reference_genome_genes",
+      "adapter": "gui",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "list_reference_genome_genes",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "list_reference_genomes",
+      "adapter": "cli",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "list_reference_genomes",
+      "adapter": "gui",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "list_reference_genomes",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "list_rna_ladders",
+      "adapter": "cli",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "list_rna_ladders",
+      "adapter": "gui",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "list_rna_ladders",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "load_dna",
+      "adapter": "cli",
+      "surfacing": "not_applicable",
+      "reason": "Project/file load-save helpers are local adapter I/O, not shared engine operations."
+    },
+    {
+      "source": "glossary_command",
+      "name": "load_dna",
+      "adapter": "gui",
+      "surfacing": "not_applicable",
+      "reason": "Project/file load-save helpers are local adapter I/O, not shared engine operations."
+    },
+    {
+      "source": "glossary_command",
+      "name": "load_dna",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Project/file load-save helpers are local adapter I/O, not shared engine operations."
+    },
+    {
+      "source": "glossary_command",
+      "name": "load_project",
+      "adapter": "cli",
+      "surfacing": "not_applicable",
+      "reason": "Project/file load-save helpers are local adapter I/O, not shared engine operations."
+    },
+    {
+      "source": "glossary_command",
+      "name": "load_project",
+      "adapter": "gui",
+      "surfacing": "not_applicable",
+      "reason": "Project/file load-save helpers are local adapter I/O, not shared engine operations."
+    },
+    {
+      "source": "glossary_command",
+      "name": "load_project",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Project/file load-save helpers are local adapter I/O, not shared engine operations."
+    },
+    {
+      "source": "glossary_command",
+      "name": "load-project",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Project/file load-save helpers are local adapter I/O, not shared engine operations."
+    },
+    {
+      "source": "glossary_command",
+      "name": "load-project",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Project/file load-save helpers are local adapter I/O, not shared engine operations."
+    },
+    {
+      "source": "glossary_command",
+      "name": "load-project",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Project/file load-save helpers are local adapter I/O, not shared engine operations."
+    },
+    {
+      "source": "glossary_command",
+      "name": "macros instance-list",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "macros instance-list",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "macros instance-list",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "macros instance-show",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "macros instance-show",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "macros instance-show",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "macros run",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "macros run",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "macros run",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "macros template-import",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "macros template-import",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "macros template-import",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "macros template-list",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "macros template-list",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "macros template-list",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "macros template-run",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "macros template-run",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "macros template-run",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "macros template-show",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "macros template-show",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "macros template-show",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "op",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "op",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "panels inspect-isoform",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Expert/report inspection currently remains a shell workflow until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "panels inspect-isoform",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Expert/report inspection currently remains a shell workflow until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "panels inspect-isoform",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Expert/report inspection currently remains a shell workflow until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "panels validate-isoform",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Expert/report inspection currently remains a shell workflow until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "panels validate-isoform",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Expert/report inspection currently remains a shell workflow until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "panels validate-isoform",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Expert/report inspection currently remains a shell workflow until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "planning objective clear",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "planning objective clear",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "planning objective clear",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "planning objective set",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "planning objective set",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "planning objective set",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "planning objective show",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "planning objective show",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "planning objective show",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "planning profile clear",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "planning profile clear",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "planning profile clear",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "planning profile set",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "planning profile set",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "planning profile set",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "planning profile show",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "planning profile show",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "planning profile show",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "planning suggestions accept",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "planning suggestions accept",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "planning suggestions accept",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "planning suggestions list",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "planning suggestions list",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "planning suggestions list",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "planning suggestions reject",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "planning suggestions reject",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "planning suggestions reject",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "planning sync pull",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "planning sync pull",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "planning sync pull",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "planning sync push",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "planning sync push",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "planning sync push",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "planning sync status",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "planning sync status",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "planning sync status",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "prepare_genome",
+      "adapter": "gui",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "primers export-restriction-cloning-handoff",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Stored report/workspace inspection remains shell workflow unless listed as an open gap."
+    },
+    {
+      "source": "glossary_command",
+      "name": "primers export-restriction-cloning-handoff",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Stored report/workspace inspection remains shell workflow unless listed as an open gap."
+    },
+    {
+      "source": "glossary_command",
+      "name": "primers export-restriction-cloning-handoff",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Stored report/workspace inspection remains shell workflow unless listed as an open gap."
+    },
+    {
+      "source": "glossary_command",
+      "name": "primers list-restriction-cloning-handoffs",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Stored report/workspace inspection remains shell workflow unless listed as an open gap."
+    },
+    {
+      "source": "glossary_command",
+      "name": "primers list-restriction-cloning-handoffs",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Stored report/workspace inspection remains shell workflow unless listed as an open gap."
+    },
+    {
+      "source": "glossary_command",
+      "name": "primers list-restriction-cloning-handoffs",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Stored report/workspace inspection remains shell workflow unless listed as an open gap."
+    },
+    {
+      "source": "glossary_command",
+      "name": "primers seed-from-feature",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Stored report/workspace inspection remains shell workflow unless listed as an open gap."
+    },
+    {
+      "source": "glossary_command",
+      "name": "primers seed-from-feature",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Stored report/workspace inspection remains shell workflow unless listed as an open gap."
+    },
+    {
+      "source": "glossary_command",
+      "name": "primers seed-from-feature",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Stored report/workspace inspection remains shell workflow unless listed as an open gap."
+    },
+    {
+      "source": "glossary_command",
+      "name": "primers seed-from-splicing",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Stored report/workspace inspection remains shell workflow unless listed as an open gap."
+    },
+    {
+      "source": "glossary_command",
+      "name": "primers seed-from-splicing",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Stored report/workspace inspection remains shell workflow unless listed as an open gap."
+    },
+    {
+      "source": "glossary_command",
+      "name": "primers seed-from-splicing",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Stored report/workspace inspection remains shell workflow unless listed as an open gap."
+    },
+    {
+      "source": "glossary_command",
+      "name": "primers seed-restriction-cloning-handoff",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Stored report/workspace inspection remains shell workflow unless listed as an open gap."
+    },
+    {
+      "source": "glossary_command",
+      "name": "primers seed-restriction-cloning-handoff",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Stored report/workspace inspection remains shell workflow unless listed as an open gap."
+    },
+    {
+      "source": "glossary_command",
+      "name": "primers seed-restriction-cloning-handoff",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Stored report/workspace inspection remains shell workflow unless listed as an open gap."
+    },
+    {
+      "source": "glossary_command",
+      "name": "primers show-restriction-cloning-handoff",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Stored report/workspace inspection remains shell workflow unless listed as an open gap."
+    },
+    {
+      "source": "glossary_command",
+      "name": "primers show-restriction-cloning-handoff",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Stored report/workspace inspection remains shell workflow unless listed as an open gap."
+    },
+    {
+      "source": "glossary_command",
+      "name": "primers show-restriction-cloning-handoff",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Stored report/workspace inspection remains shell workflow unless listed as an open gap."
+    },
+    {
+      "source": "glossary_command",
+      "name": "proteases list",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "proteases list",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "proteases list",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "proteases show",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "proteases show",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "proteases show",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "protocol-cartoon list",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "protocol-cartoon list",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "protocol-cartoon list",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added."
+    },
+    {
+      "source": "glossary_command",
+      "name": "render_pool_gel_svg",
+      "adapter": "gui",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "resources install-ucsc-rmsk",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes."
+    },
+    {
+      "source": "glossary_command",
+      "name": "resources install-ucsc-rmsk",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes."
+    },
+    {
+      "source": "glossary_command",
+      "name": "resources install-ucsc-rmsk",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes."
+    },
+    {
+      "source": "glossary_command",
+      "name": "resources list-publication-datasets",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "resources list-publication-datasets",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "resources list-publication-datasets",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "resources prepare-publication-dataset",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes."
+    },
+    {
+      "source": "glossary_command",
+      "name": "resources prepare-publication-dataset",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes."
+    },
+    {
+      "source": "glossary_command",
+      "name": "resources prepare-publication-dataset",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes."
+    },
+    {
+      "source": "glossary_command",
+      "name": "resources prepare-ucsc-rmsk-index",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes."
+    },
+    {
+      "source": "glossary_command",
+      "name": "resources prepare-ucsc-rmsk-index",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes."
+    },
+    {
+      "source": "glossary_command",
+      "name": "resources prepare-ucsc-rmsk-index",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes."
+    },
+    {
+      "source": "glossary_command",
+      "name": "resources status-publication-dataset",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "resources status-publication-dataset",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "resources status-publication-dataset",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "resources suggest-ucsc-rmsk-index",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "resources suggest-ucsc-rmsk-index",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "resources suggest-ucsc-rmsk-index",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "resources sync-jaspar",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes."
+    },
+    {
+      "source": "glossary_command",
+      "name": "resources sync-jaspar",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes."
+    },
+    {
+      "source": "glossary_command",
+      "name": "resources sync-jaspar",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes."
+    },
+    {
+      "source": "glossary_command",
+      "name": "resources sync-rebase",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes."
+    },
+    {
+      "source": "glossary_command",
+      "name": "resources sync-rebase",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes."
+    },
+    {
+      "source": "glossary_command",
+      "name": "resources sync-rebase",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes."
+    },
+    {
+      "source": "glossary_command",
+      "name": "resources sync-ucsc-rmsk",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes."
+    },
+    {
+      "source": "glossary_command",
+      "name": "resources sync-ucsc-rmsk",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes."
+    },
+    {
+      "source": "glossary_command",
+      "name": "resources sync-ucsc-rmsk",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes."
+    },
+    {
+      "source": "glossary_command",
+      "name": "rna-info",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Expert/report inspection currently remains a shell workflow until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "rna-info",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Expert/report inspection currently remains a shell workflow until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "rna-info",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Expert/report inspection currently remains a shell workflow until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "rna-reads build-transcript-index",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Stored report/workspace inspection remains shell workflow unless listed as an open gap."
+    },
+    {
+      "source": "glossary_command",
+      "name": "rna-reads build-transcript-index",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Stored report/workspace inspection remains shell workflow unless listed as an open gap."
+    },
+    {
+      "source": "glossary_command",
+      "name": "rna-reads build-transcript-index",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Stored report/workspace inspection remains shell workflow unless listed as an open gap."
+    },
+    {
+      "source": "glossary_command",
+      "name": "rna-reads inspect-concatemers",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Stored report/workspace inspection remains shell workflow unless listed as an open gap."
+    },
+    {
+      "source": "glossary_command",
+      "name": "rna-reads inspect-concatemers",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Stored report/workspace inspection remains shell workflow unless listed as an open gap."
+    },
+    {
+      "source": "glossary_command",
+      "name": "rna-reads inspect-concatemers",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Stored report/workspace inspection remains shell workflow unless listed as an open gap."
+    },
+    {
+      "source": "glossary_command",
+      "name": "routines compare",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "routines compare",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "routines compare",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "routines explain",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "routines explain",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "routines explain",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "routines list",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "routines list",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "routines list",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Planner and macro management remains shell workflow state until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "save_project",
+      "adapter": "cli",
+      "surfacing": "not_applicable",
+      "reason": "Project/file load-save helpers are local adapter I/O, not shared engine operations."
+    },
+    {
+      "source": "glossary_command",
+      "name": "save_project",
+      "adapter": "gui",
+      "surfacing": "not_applicable",
+      "reason": "Project/file load-save helpers are local adapter I/O, not shared engine operations."
+    },
+    {
+      "source": "glossary_command",
+      "name": "save_project",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Project/file load-save helpers are local adapter I/O, not shared engine operations."
+    },
+    {
+      "source": "glossary_command",
+      "name": "save-project",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Project/file load-save helpers are local adapter I/O, not shared engine operations."
+    },
+    {
+      "source": "glossary_command",
+      "name": "save-project",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Project/file load-save helpers are local adapter I/O, not shared engine operations."
+    },
+    {
+      "source": "glossary_command",
+      "name": "save-project",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Project/file load-save helpers are local adapter I/O, not shared engine operations."
+    },
+    {
+      "source": "glossary_command",
+      "name": "screenshot-window",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Screenshot capture is policy-disabled and intentionally GUI-local."
+    },
+    {
+      "source": "glossary_command",
+      "name": "screenshot-window",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Screenshot capture is policy-disabled and intentionally GUI-local."
+    },
+    {
+      "source": "glossary_command",
+      "name": "screenshot-window",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Screenshot capture is policy-disabled and intentionally GUI-local."
+    },
+    {
+      "source": "glossary_command",
+      "name": "services guide",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "services guide",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "services guide",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "services handoff",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "services handoff",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "services handoff",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "services project-preflight",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "services project-preflight",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "services project-preflight",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "services project-quote",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "services project-quote",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "services project-quote",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "services providers doctor",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "services providers doctor",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "services providers doctor",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "services providers list",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "services providers list",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "services providers list",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "services status",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "services status",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "services status",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "set_parameter",
+      "adapter": "gui",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "set_vcf_display_filter",
+      "adapter": "gui",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "state_summary",
+      "adapter": "cli",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "state_summary",
+      "adapter": "gui",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "state_summary",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Adapter helper function; other adapters use their own operation/workflow routes instead of this wrapper name."
+    },
+    {
+      "source": "glossary_command",
+      "name": "state-summary",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "state-summary",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "sync_jaspar",
+      "adapter": "cli",
+      "surfacing": "not_applicable",
+      "reason": "Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes."
+    },
+    {
+      "source": "glossary_command",
+      "name": "sync_jaspar",
+      "adapter": "gui",
+      "surfacing": "not_applicable",
+      "reason": "Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes."
+    },
+    {
+      "source": "glossary_command",
+      "name": "sync_jaspar",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes."
+    },
+    {
+      "source": "glossary_command",
+      "name": "sync_rebase",
+      "adapter": "cli",
+      "surfacing": "not_applicable",
+      "reason": "Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes."
+    },
+    {
+      "source": "glossary_command",
+      "name": "sync_rebase",
+      "adapter": "gui",
+      "surfacing": "not_applicable",
+      "reason": "Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes."
+    },
+    {
+      "source": "glossary_command",
+      "name": "sync_rebase",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes."
+    },
+    {
+      "source": "glossary_command",
+      "name": "tracks tracked add",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "tracks tracked add",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "tracks tracked add",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "tracks tracked apply",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "tracks tracked apply",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "tracks tracked apply",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "tracks tracked clear",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "tracks tracked clear",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "tracks tracked clear",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "tracks tracked list",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "tracks tracked list",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "tracks tracked list",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "tracks tracked remove",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "tracks tracked remove",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "tracks tracked remove",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "transcripts residue-genomic-coordinates",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "transcripts residue-genomic-coordinates",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "transcripts residue-genomic-coordinates",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "ui focus",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "GUI open/focus routing is local window state, not a JS/Lua headless operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "ui focus",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "GUI open/focus routing is local window state, not a JS/Lua headless operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "ui intents",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "GUI open/focus routing is local window state, not a JS/Lua headless operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "ui intents",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "GUI open/focus routing is local window state, not a JS/Lua headless operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "ui latest-prepared",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "GUI open/focus routing is local window state, not a JS/Lua headless operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "ui latest-prepared",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "GUI open/focus routing is local window state, not a JS/Lua headless operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "ui open",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "GUI open/focus routing is local window state, not a JS/Lua headless operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "ui open",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "GUI open/focus routing is local window state, not a JS/Lua headless operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "ui prepared-genomes",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "GUI open/focus routing is local window state, not a JS/Lua headless operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "ui prepared-genomes",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "GUI open/focus routing is local window state, not a JS/Lua headless operation."
+    },
+    {
+      "source": "glossary_command",
+      "name": "uniprot audit-export",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Expert/report inspection currently remains a shell workflow until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "uniprot audit-export",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Expert/report inspection currently remains a shell workflow until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "uniprot audit-export",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Expert/report inspection currently remains a shell workflow until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "uniprot audit-list",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Expert/report inspection currently remains a shell workflow until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "uniprot audit-list",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Expert/report inspection currently remains a shell workflow until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "uniprot audit-list",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Expert/report inspection currently remains a shell workflow until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "uniprot audit-parity-export",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Expert/report inspection currently remains a shell workflow until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "uniprot audit-parity-export",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Expert/report inspection currently remains a shell workflow until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "uniprot audit-parity-export",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Expert/report inspection currently remains a shell workflow until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "uniprot audit-parity-list",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Expert/report inspection currently remains a shell workflow until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "uniprot audit-parity-list",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Expert/report inspection currently remains a shell workflow until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "uniprot audit-parity-list",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Expert/report inspection currently remains a shell workflow until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "uniprot audit-parity-show",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Expert/report inspection currently remains a shell workflow until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "uniprot audit-parity-show",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Expert/report inspection currently remains a shell workflow until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "uniprot audit-parity-show",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Expert/report inspection currently remains a shell workflow until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "uniprot audit-show",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Expert/report inspection currently remains a shell workflow until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "uniprot audit-show",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Expert/report inspection currently remains a shell workflow until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "uniprot audit-show",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Expert/report inspection currently remains a shell workflow until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "uniprot compare-ensembl-exons",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Expert/report inspection currently remains a shell workflow until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "uniprot compare-ensembl-exons",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Expert/report inspection currently remains a shell workflow until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "uniprot compare-ensembl-exons",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Expert/report inspection currently remains a shell workflow until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "uniprot compare-ensembl-peptide",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Expert/report inspection currently remains a shell workflow until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "uniprot compare-ensembl-peptide",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Expert/report inspection currently remains a shell workflow until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "uniprot compare-ensembl-peptide",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Expert/report inspection currently remains a shell workflow until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "uniprot feature-coding-dna",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Expert/report inspection currently remains a shell workflow until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "uniprot feature-coding-dna",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Expert/report inspection currently remains a shell workflow until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "uniprot feature-coding-dna",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Expert/report inspection currently remains a shell workflow until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "uniprot resolve-ensembl-links",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Expert/report inspection currently remains a shell workflow until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "uniprot resolve-ensembl-links",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Expert/report inspection currently remains a shell workflow until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "uniprot resolve-ensembl-links",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Expert/report inspection currently remains a shell workflow until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "uniprot transcript-accounting",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Expert/report inspection currently remains a shell workflow until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "uniprot transcript-accounting",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Expert/report inspection currently remains a shell workflow until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "uniprot transcript-accounting",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Expert/report inspection currently remains a shell workflow until a portable operation is defined."
+    },
+    {
+      "source": "glossary_command",
+      "name": "workflow",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "workflow",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Local shell workflow without a portable engine operation; intentionally not projected on this adapter."
+    },
+    {
+      "source": "glossary_command",
+      "name": "write_gb",
+      "adapter": "cli",
+      "surfacing": "not_applicable",
+      "reason": "Project/file load-save helpers are local adapter I/O, not shared engine operations."
+    },
+    {
+      "source": "glossary_command",
+      "name": "write_gb",
+      "adapter": "gui",
+      "surfacing": "not_applicable",
+      "reason": "Project/file load-save helpers are local adapter I/O, not shared engine operations."
+    },
+    {
+      "source": "glossary_command",
+      "name": "write_gb",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Project/file load-save helpers are local adapter I/O, not shared engine operations."
+    },
+    {
+      "source": "mcp_tool",
+      "name": "*",
+      "adapter": "clawbio",
+      "surfacing": "not_applicable",
+      "reason": "ClawBio consumes its skill intent descriptor rather than MCP tools/list metadata."
+    },
+    {
+      "source": "mcp_tool",
+      "name": "*",
+      "adapter": "cli",
+      "surfacing": "not_applicable",
+      "reason": "MCP tools/list descriptors are transport-specific metadata, not CLI subcommands."
+    },
+    {
+      "source": "mcp_tool",
+      "name": "*",
+      "adapter": "gui",
+      "surfacing": "not_applicable",
+      "reason": "MCP tools/list descriptors are transport-specific metadata, not GUI actions."
+    },
+    {
+      "source": "mcp_tool",
+      "name": "*",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "MCP tools/list descriptors are transport-specific metadata, not JavaScript wrapper functions."
+    },
+    {
+      "source": "mcp_tool",
+      "name": "*",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "MCP tools/list descriptors are transport-specific metadata, not Lua wrapper functions."
+    }
+  ]
+}
