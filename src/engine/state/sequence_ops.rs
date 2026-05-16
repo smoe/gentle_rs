@@ -1260,6 +1260,24 @@ impl GentleEngine {
                 }
                 Self::push_unique_token(&mut summary.file_paths, path);
             }
+            Operation::PlanReporterConstructHandoff {
+                candidate_set_path,
+                catalog_path,
+                reporter_backbone_load_path,
+                path,
+                ..
+            } => {
+                Self::push_unique_token(&mut summary.file_paths, candidate_set_path);
+                if let Some(path) = catalog_path.as_deref() {
+                    Self::push_unique_token(&mut summary.file_paths, path);
+                }
+                if let Some(path) = reporter_backbone_load_path.as_deref() {
+                    Self::push_unique_token(&mut summary.file_paths, path);
+                }
+                if let Some(path) = path.as_deref() {
+                    Self::push_unique_token(&mut summary.file_paths, path);
+                }
+            }
             Operation::ValidateProtocolCartoonTemplate { template_path } => {
                 Self::push_unique_token(&mut summary.file_paths, template_path);
             }
@@ -1510,7 +1528,10 @@ impl GentleEngine {
             | Operation::RecommendReporters {
                 path: Some(path), ..
             }
-            | Operation::ExportReporterCorpus { path, .. } => push(path),
+            | Operation::ExportReporterCorpus { path, .. }
+            | Operation::PlanReporterConstructHandoff {
+                path: Some(path), ..
+            } => push(path),
             _ => {}
         }
         paths

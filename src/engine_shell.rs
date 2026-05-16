@@ -24312,9 +24312,12 @@ fn execute_export_import_and_resource_command(
                     path: output.clone(),
                 })
                 .map_err(|e| e.to_string())?;
+            let report = op_result
+                .reporter_catalog
+                .ok_or_else(|| "Reporter catalog operation returned no report".to_string())?;
             Ok(ShellRunResult {
                 state_changed: false,
-                output: json!({ "result": op_result }),
+                output: json!({ "result": report }),
             })
         }
         ShellCommand::ReportersRecommend {
@@ -24331,9 +24334,12 @@ fn execute_export_import_and_resource_command(
                     path: output.clone(),
                 })
                 .map_err(|e| e.to_string())?;
+            let report = op_result.reporter_recommendation.ok_or_else(|| {
+                "Reporter recommendation operation returned no report".to_string()
+            })?;
             Ok(ShellRunResult {
                 state_changed: false,
-                output: json!({ "result": op_result }),
+                output: json!({ "result": report }),
             })
         }
         ShellCommand::ReportersExportCorpus {
@@ -24348,9 +24354,12 @@ fn execute_export_import_and_resource_command(
                     format: *format,
                 })
                 .map_err(|e| e.to_string())?;
+            let export = op_result
+                .reporter_corpus_export
+                .ok_or_else(|| "Reporter corpus export operation returned no report".to_string())?;
             Ok(ShellRunResult {
                 state_changed: false,
-                output: json!({ "result": op_result }),
+                output: json!({ "result": export }),
             })
         }
         ShellCommand::ResourcesListPublicationDatasets {

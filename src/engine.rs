@@ -4193,6 +4193,27 @@ pub enum Operation {
         #[serde(default)]
         format: ReporterCorpusExportFormat,
     },
+    PlanReporterConstructHandoff {
+        candidate_set_path: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        candidate_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reporter_constraints: Option<ReporterConstraints>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reporter_backbone_seq_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reporter_backbone_load_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reference_fragment_seq_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        alternate_fragment_seq_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        output_prefix: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
     MaterializeVariantAllele {
         input: SeqId,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -7717,6 +7738,7 @@ impl GentleEngine {
                 | Operation::ListReporterCatalog { .. }
                 | Operation::RecommendReporters { .. }
                 | Operation::ExportReporterCorpus { .. }
+                | Operation::PlanReporterConstructHandoff { .. }
                 | Operation::ExportRnaReadReport { .. }
                 | Operation::ExportRnaReadHitsFasta { .. }
                 | Operation::ExportRnaReadSampleSheet { .. }

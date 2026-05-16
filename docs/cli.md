@@ -2141,6 +2141,7 @@ Shared shell command:
     - `reporters list [--catalog PATH] [--filter TEXT] [--limit N] [--output FILE.json]`
     - `reporters recommend [--catalog PATH] [--assay NAME] [--chassis HOST] [--live true|false] [--color COLOR] [--class CLASS] [--excitation-nm NM] [--emission-nm NM] [--fusion MODE] [--max-length-bp N] [--forbid-motif IUPAC] [--substrate-allowed true|false] [--limit N] [--output FILE.json]`
     - `reporters export-corpus OUTPUT.json|OUTPUT.jsonl [--catalog PATH] [--format json|jsonl]`
+    - `reporters plan-handoff CANDIDATE_SET.json [--candidate-id ID] [--catalog PATH] [--backbone-seq-id ID] [--backbone-path PATH] [--reference-fragment-seq-id ID] [--alternate-fragment-seq-id ID] [--output-prefix PREFIX] [--output FILE.json]`
     - `variant materialize-allele SEQ_ID --allele reference|alternate [--variant ID] [--output-id ID]`
     - `primers design REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
     - `primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`

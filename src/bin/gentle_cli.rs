@@ -492,6 +492,7 @@ fn usage_text() -> String {
   gentle_cli reporters list [--filter TEXT] [--limit N] [--output PATH]\n  \
   gentle_cli reporters recommend [--assay NAME] [--chassis HOST] [--color COLOR] [--class CLASS] [--max-length-bp N]\n  \
   gentle_cli reporters export-corpus OUTPUT.json|OUTPUT.jsonl [--format json|jsonl]\n\n  \
+  gentle_cli reporters plan-handoff CANDIDATE_SET.json [--candidate-id ID] [--catalog PATH] [--backbone-seq-id ID] [--backbone-path PATH] [--reference-fragment-seq-id ID] [--alternate-fragment-seq-id ID] [--output-prefix PREFIX] [--output FILE.json]\n\n  \
   Tip: pass @file.json instead of inline JSON\n  \
   --project is an alias of --state for project.gentle.json files\n\n  \
   Shared command reference (generated from docs/glossary.json):\n  \

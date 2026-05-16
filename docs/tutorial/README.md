@@ -47,6 +47,9 @@ If you are GUI-first and want one concrete pharmacogenomic handoff into cloning:
   [`docs/tutorial/vkorc1_variant_followup_expert_gui.md`](./vkorc1_variant_followup_expert_gui.md)
 - Use the VKORC1 / rs9923231 PGx-alert-to-mammalian-reporter walkthrough:
   [`docs/tutorial/vkorc1_warfarin_promoter_luciferase_gui.md`](./vkorc1_warfarin_promoter_luciferase_gui.md)
+- Use the reporter construct handoff tutorial when you want the saved
+  promoter-candidate report turned into a read-only macro-readiness plan:
+  [`docs/tutorial/reporter_construct_handoff_cli.md`](./reporter_construct_handoff_cli.md)
 
 If you want to test the destination-first Gibson specialist end-to-end:
 
@@ -211,6 +214,7 @@ Treat the tutorial catalog as three confidence bands:
 | [`docs/tutorial/protein_reverse_translation_gui.md`](./protein_reverse_translation_gui.md) | GUI walkthrough + shared-engine parity | `manual/hybrid` | Protein import, reverse translation, provenance inspection, lineage audit | Hand-written manual check for Ensembl protein import, reverse translation result inspection, and reverse-translation lineage reopen. |
 | [`docs/tutorial/vkorc1_variant_followup_expert_gui.md`](./vkorc1_variant_followup_expert_gui.md) | GUI walkthrough | `manual/hybrid` | Fastest GUI path from one SNP to one portable reporter-design bundle | Focuses on the dedicated `Promoter design` window and ends with the exported handoff bundle. |
 | [`docs/tutorial/vkorc1_warfarin_promoter_luciferase_gui.md`](./vkorc1_warfarin_promoter_luciferase_gui.md) | GUI walkthrough + CLI mapping | `shared-engine baseline` | GUI-first pharmacogenomic reporter planning | Longer background + parity path for the same VKORC1 / rs9923231 promoter-reporter story. |
+| [`docs/tutorial/reporter_construct_handoff_cli.md`](./reporter_construct_handoff_cli.md) | CLI walkthrough + shared-engine parity | `manual/hybrid` | Read-only reporter macro handoff planning from a saved promoter-candidate set | Shows how to generate and inspect `gentle.reporter_construct_handoff.v1`, interpret typed port readiness, and run only the reviewed validate/build commands afterward. |
 | [`docs/tutorial/gibson_specialist_testing_gui.md`](./gibson_specialist_testing_gui.md) | GUI walkthrough + CLI parity | `manual/hybrid` | Gibson specialist testing, preview/export parity, contributor verification | Hand-written end-to-end test script for `Patterns -> Gibson...` using local inputs plus `gibson preview`; documents the current multi-insert `defined opening` guardrail. |
 | [`docs/tutorial/gibson_arrangements_gui.md`](./gibson_arrangements_gui.md) | GUI walkthrough + CLI parity | `manual/hybrid` | Arrangement reuse, Gibson output inspection, gel-lane planning | Hand-written walkthrough for the arrangement that Gibson apply creates automatically, including singleton output containers and arrangement-level gel export. |
 | [`docs/tutorial/gibson_physical_rack_gui.md`](./gibson_physical_rack_gui.md) | GUI walkthrough + CLI parity | `manual/hybrid` | Physical rack export, README-grade isometric figure generation, carrier-label/OpenSCAD handoff | Hand-written walkthrough for taking the arrangement-ready Gibson starter into the linked rack layer and exporting one pseudo-3D/isometric hero SVG plus the other physical carrier projections. |
@@ -264,7 +268,8 @@ Use the labels above as trust/maintenance signals:
 
 1. Read [`docs/tutorial/vkorc1_variant_followup_expert_gui.md`](./vkorc1_variant_followup_expert_gui.md)
 2. Continue with [`docs/tutorial/vkorc1_warfarin_promoter_luciferase_gui.md`](./vkorc1_warfarin_promoter_luciferase_gui.md) if you want the fuller background and CLI mapping
-3. Save the resulting project state and exported bundle for later CLI/agent replay
+3. Use [`docs/tutorial/reporter_construct_handoff_cli.md`](./reporter_construct_handoff_cli.md) to turn the saved promoter-candidate report into a reviewed macro-readiness plan
+4. Save the resulting project state and exported bundle for later CLI/agent replay
 
 ### Path B1: GUI-first simple PCR
 

@@ -334,6 +334,25 @@ The repository now also ships a workflow macro template:
 
 - [assets/cloning_patterns_catalog/reporter/promoter_luciferase/allele_paired_promoter_luciferase_reporter.json](/Users/u005069/.codex/worktrees/47dd/gentle_rs/assets/cloning_patterns_catalog/reporter/promoter_luciferase/allele_paired_promoter_luciferase_reporter.json)
 
+Before running the macro, generate the read-only reporter construct handoff.
+This consumes the saved promoter-fragment candidate report, keeps the reporter
+recommendation offline, names the exact macro template, and reports which
+fragment/backbone inputs are ready, derivable, or still need to be loaded:
+
+```bash
+cargo run --quiet --bin gentle_cli -- \
+  reporters plan-handoff docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/promoter_reporter_candidates.json \
+  --backbone-seq-id gentle_mammalian_luciferase_backbone_v1 \
+  --backbone-path data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb \
+  --reference-fragment-seq-id vkorc1_rs9923231_promoter_reference \
+  --alternate-fragment-seq-id vkorc1_rs9923231_promoter_alternate \
+  --output docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/reporter_construct_handoff.json
+```
+
+For a slower walkthrough of how to inspect that JSON plan and use its
+validate-only command safely, see
+[`docs/tutorial/reporter_construct_handoff_cli.md`](./reporter_construct_handoff_cli.md).
+
 Import and run it through the shared shell:
 
 ```bash

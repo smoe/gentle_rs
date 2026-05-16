@@ -11,6 +11,8 @@ pub const REPORTER_CATALOG_REPORT_SCHEMA: &str = "gentle.reporter_catalog_report
 pub const REPORTER_RECOMMENDATION_SCHEMA: &str = "gentle.reporter_recommendation.v1";
 /// Agent/local-AI reporter corpus export schema.
 pub const REPORTER_CORPUS_EXPORT_SCHEMA: &str = "gentle.reporter_corpus_export.v1";
+/// Reporter-backed construct handoff plan schema.
+pub const REPORTER_CONSTRUCT_HANDOFF_SCHEMA: &str = "gentle.reporter_construct_handoff.v1";
 
 /// Supported corpus export shapes for local AI retrieval/training prep.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -253,5 +255,124 @@ pub struct ReporterCorpusExport {
     pub format: ReporterCorpusExportFormat,
     pub record_count: usize,
     pub records: Vec<ReporterAnnotatedRecord>,
+    pub warnings: Vec<String>,
+}
+
+/// Readiness state for one macro-template port binding.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum PortBindingStatus {
+    Ready,
+    ProvidedMissingFromState,
+    Derivable,
+    #[default]
+    Missing,
+}
+
+/// Resolution state for the reporter backbone needed by a construct handoff.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ReporterBackboneResolutionStatus {
+    ResolvedInState,
+    UnresolvedSeqIdProvided,
+    #[default]
+    RequiresManualLoad,
+}
+
+/// Provenance for a reporter construct handoff plan.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct ReporterConstructHandoffProvenance {
+    pub candidate_set_path: String,
+    pub candidate_set_schema: String,
+    pub candidate_set_generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub candidate_set_op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub candidate_set_run_id: Option<String>,
+    pub reporter_catalog_path: String,
+    pub macro_template_id: String,
+}
+
+/// Selected promoter-fragment candidate for a reporter construct handoff.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct ReporterConstructSelectedFragment {
+    pub candidate_id: String,
+    pub source_seq_id: String,
+    pub variant_label: String,
+    pub gene_label: Option<String>,
+    pub transcript_id: String,
+    pub transcript_label: String,
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    pub length_bp: usize,
+    pub extract_fragment_seq_id: String,
+    pub reference_fragment_seq_id: String,
+    pub alternate_fragment_seq_id: String,
+    pub rationale: String,
+}
+
+/// Selected reporter row for a construct handoff.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct ReporterConstructSelectedReporter {
+    pub reporter_id: String,
+    pub name: String,
+    pub reporter_class: String,
+    pub score: f64,
+    pub substrate_required: bool,
+    pub rationale: Vec<String>,
+    pub warnings: Vec<String>,
+}
+
+/// One macro-template port binding with typed readiness.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct ReporterConstructPortBinding {
+    pub port_id: String,
+    pub value: Option<String>,
+    pub status: PortBindingStatus,
+    pub required: bool,
+    pub note: String,
+}
+
+/// Reporter-backbone readiness and optional load hint.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct ReporterBackboneResolution {
+    pub seq_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub load_path: Option<String>,
+    pub status: ReporterBackboneResolutionStatus,
+    pub note: String,
+}
+
+/// One explicit command a user or agent may run after inspecting the handoff.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct ReporterConstructHandoffCommand {
+    pub label: String,
+    pub command_kind: String,
+    pub command: String,
+    pub mutating: bool,
+    pub note: String,
+}
+
+/// Read-only plan connecting a promoter fragment, reporter, backbone, and macro.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct ReporterConstructHandoffPlan {
+    pub schema: String,
+    pub generated_at_unix_ms: u128,
+    pub status: String,
+    pub provenance: ReporterConstructHandoffProvenance,
+    pub selected_fragment: ReporterConstructSelectedFragment,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selected_reporter: Option<ReporterConstructSelectedReporter>,
+    pub reporter_recommendation: ReporterRecommendationResult,
+    pub backbone: ReporterBackboneResolution,
+    pub port_bindings: Vec<ReporterConstructPortBinding>,
+    pub commands: Vec<ReporterConstructHandoffCommand>,
     pub warnings: Vec<String>,
 }

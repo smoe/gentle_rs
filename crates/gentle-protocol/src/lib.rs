@@ -44,12 +44,17 @@ pub use gene_groups::{
     GeneGroupMember, GeneGroupRecord, GeneGroupResolveReport, GeneGroupShowReport,
 };
 pub use reporter::{
-    REPORTER_CATALOG_REPORT_SCHEMA, REPORTER_CATALOG_SCHEMA, REPORTER_CORPUS_EXPORT_SCHEMA,
-    REPORTER_RECOMMENDATION_SCHEMA, ReporterAnnotatedRecord, ReporterCatalog,
-    ReporterCatalogReport, ReporterComputedAnnotation, ReporterConstraints, ReporterCorpusExport,
-    ReporterCorpusExportFormat, ReporterPreferenceWeights, ReporterQuarantinedRecord,
-    ReporterRecommendation, ReporterRecommendationResult, ReporterRecord,
-    ReporterRejectedCandidate, ReporterSourceRef, ReporterSpectralProfile,
+    PortBindingStatus, REPORTER_CATALOG_REPORT_SCHEMA, REPORTER_CATALOG_SCHEMA,
+    REPORTER_CONSTRUCT_HANDOFF_SCHEMA, REPORTER_CORPUS_EXPORT_SCHEMA,
+    REPORTER_RECOMMENDATION_SCHEMA, ReporterAnnotatedRecord, ReporterBackboneResolution,
+    ReporterBackboneResolutionStatus, ReporterCatalog, ReporterCatalogReport,
+    ReporterComputedAnnotation, ReporterConstraints, ReporterConstructHandoffCommand,
+    ReporterConstructHandoffPlan, ReporterConstructHandoffProvenance,
+    ReporterConstructPortBinding, ReporterConstructSelectedFragment,
+    ReporterConstructSelectedReporter, ReporterCorpusExport, ReporterCorpusExportFormat,
+    ReporterPreferenceWeights, ReporterQuarantinedRecord, ReporterRecommendation,
+    ReporterRecommendationResult, ReporterRecord, ReporterRejectedCandidate, ReporterSourceRef,
+    ReporterSpectralProfile,
 };
 
 /// Stable identifier for one sequence entry stored in project state.
@@ -4907,6 +4912,7 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "ListReporterCatalog",
     "RecommendReporters",
     "ExportReporterCorpus",
+    "PlanReporterConstructHandoff",
     "ScanTfbsHits",
     "InspectJasparEntry",
     "SummarizeJasparEntries",
