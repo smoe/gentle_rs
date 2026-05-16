@@ -1482,8 +1482,7 @@ mod tests {
         );
 
         let insd_xml_path = "test_files/fixtures/import_parity/toy.small.insdseq.xml";
-        let insd_loaded =
-            load_from_file(insd_xml_path).expect("load INSD XML by extension");
+        let insd_loaded = load_from_file(insd_xml_path).expect("load INSD XML by extension");
         assert_eq!(insd_loaded.len(), 120);
         assert!(insd_loaded.features().iter().any(|feature| {
             feature.kind.to_string().eq_ignore_ascii_case("gene")
@@ -1515,8 +1514,7 @@ mod tests {
     #[test]
     fn test_toy_small_snapgene_load_from_file_by_extension_and_fallback() {
         let snapgene_path = "packages/snapgene-reader/tests/data/toy.small.dna";
-        let snapgene_loaded =
-            load_from_file(snapgene_path).expect("load SnapGene by extension");
+        let snapgene_loaded = load_from_file(snapgene_path).expect("load SnapGene by extension");
         assert_eq!(snapgene_loaded.len(), 120);
         assert!(
             snapgene_loaded

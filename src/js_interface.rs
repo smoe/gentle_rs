@@ -32,11 +32,7 @@ impl From<EngineError> for JsAnyhow {
 }
 
 impl JsAnyhow {
-    fn from_adapter_cause(
-        code: ErrorCode,
-        message: &str,
-        source: impl std::fmt::Display,
-    ) -> Self {
+    fn from_adapter_cause(code: ErrorCode, message: &str, source: impl std::fmt::Display) -> Self {
         let error = EngineError::new(code, message).with_cause(source);
         let payload = serde_json::to_string(&error).unwrap_or_else(|_| error.to_string());
         deno_core::anyhow::anyhow!(payload).into()

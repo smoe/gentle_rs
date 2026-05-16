@@ -38,8 +38,8 @@ impl LuaInterface {
     }
 
     pub fn load_dna(path: &str) -> LuaResult<DNAsequence> {
-        let mut dna =
-            dna_sequence::load_from_file(path).map_err(|e| LuaError::RuntimeError(e.to_string()))?;
+        let mut dna = dna_sequence::load_from_file(path)
+            .map_err(|e| LuaError::RuntimeError(e.to_string()))?;
 
         // Add default enzymes and stuff
         *dna.restriction_enzymes_mut() = active_restriction_enzymes();
@@ -1843,9 +1843,7 @@ impl LuaInterface {
                         .map_err(|e| Self::err(&format!("Invalid project value: {e}")))?;
                     let workflow: Workflow = Self::parse_or_decode(lua, workflow)?;
                     let mut engine = GentleEngine::from_state(state);
-                    let results = engine
-                        .apply_workflow(workflow)
-                        .map_err(Self::engine_err)?;
+                    let results = engine.apply_workflow(workflow).map_err(Self::engine_err)?;
                     #[derive(Serialize)]
                     struct Response {
                         state: ProjectState,

@@ -1,7 +1,7 @@
 use gentle::{app::gui_prominent_glossary_entries, engine::GentleEngine};
 use gentle_protocol::{
-    capability_parity_adapters, capability_registry, AdapterSurfacing, CapabilityAdapter,
-    CapabilityDescriptor, CapabilitySource,
+    AdapterSurfacing, CapabilityAdapter, CapabilityDescriptor, CapabilitySource,
+    capability_parity_adapters, capability_registry,
 };
 use serde::Deserialize;
 use serde_json::Value;

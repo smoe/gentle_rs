@@ -55,6 +55,13 @@ use tempfile::tempdir;
 static JASPAR_RELOAD_TEST_COUNTER: AtomicUsize = AtomicUsize::new(1);
 static ATTRACT_RELOAD_TEST_COUNTER: AtomicUsize = AtomicUsize::new(1);
 
+fn reporter_catalog_path() -> String {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("assets/reporter_catalog.json")
+        .to_string_lossy()
+        .to_string()
+}
+
 #[derive(Debug, Deserialize)]
 struct GlossaryFixture {
     commands: Vec<GlossaryCommandFixture>,
@@ -4861,6 +4868,77 @@ fn parse_proteases_list_with_filter_and_output() {
         ShellCommand::ProteasesList { filter, output } => {
             assert_eq!(filter.as_deref(), Some("trypsin"));
             assert_eq!(output.as_deref(), Some("proteases.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_reporters_commands() {
+    let list = parse_shell_line(
+        "reporters list --catalog assets/reporter_catalog.json --filter GFP --limit 2 --output reporters.json",
+    )
+    .expect("parse reporters list");
+    match list {
+        ShellCommand::ReportersList {
+            catalog_path,
+            filter,
+            limit,
+            output,
+        } => {
+            assert_eq!(catalog_path.as_deref(), Some("assets/reporter_catalog.json"));
+            assert_eq!(filter.as_deref(), Some("GFP"));
+            assert_eq!(limit, Some(2));
+            assert_eq!(output.as_deref(), Some("reporters.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let recommend = parse_shell_line(
+        "reporters recommend --catalog assets/reporter_catalog.json --assay promoter_activity --chassis e_coli --live true --color red --class fluorescent_protein --excitation-nm 584 --emission-nm 607 --fusion standalone --max-length-bp 900 --forbid-motif GAATTC --substrate-allowed false --limit 3 --output ranked.json",
+    )
+    .expect("parse reporters recommend");
+    match recommend {
+        ShellCommand::ReportersRecommend {
+            catalog_path,
+            constraints,
+            limit,
+            output,
+        } => {
+            assert_eq!(catalog_path.as_deref(), Some("assets/reporter_catalog.json"));
+            assert_eq!(constraints.intended_assay.as_deref(), Some("promoter_activity"));
+            assert_eq!(constraints.chassis.as_deref(), Some("e_coli"));
+            assert_eq!(constraints.live_assay, Some(true));
+            assert_eq!(constraints.desired_color.as_deref(), Some("red"));
+            assert_eq!(
+                constraints.allowed_reporter_classes,
+                vec!["fluorescent_protein"]
+            );
+            assert_eq!(constraints.available_excitation_nm, vec![584]);
+            assert_eq!(constraints.available_emission_nm, vec![607]);
+            assert_eq!(constraints.fusion_mode.as_deref(), Some("standalone"));
+            assert_eq!(constraints.max_coding_length_bp, Some(900));
+            assert_eq!(constraints.forbidden_motifs, vec!["GAATTC"]);
+            assert_eq!(constraints.substrate_allowed, Some(false));
+            assert_eq!(limit, Some(3));
+            assert_eq!(output.as_deref(), Some("ranked.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let export = parse_shell_line(
+        "reporters export-corpus reporters.jsonl --catalog assets/reporter_catalog.json --format jsonl",
+    )
+    .expect("parse reporters export");
+    match export {
+        ShellCommand::ReportersExportCorpus {
+            catalog_path,
+            output,
+            format,
+        } => {
+            assert_eq!(catalog_path.as_deref(), Some("assets/reporter_catalog.json"));
+            assert_eq!(output, "reporters.jsonl");
+            assert_eq!(format, ReporterCorpusExportFormat::Jsonl);
         }
         other => panic!("unexpected command: {other:?}"),
     }
@@ -16052,6 +16130,86 @@ fn execute_proteases_list_writes_catalog_json() {
         json.get("filter").and_then(|value| value.as_str()),
         Some("tag_removal")
     );
+}
+
+#[test]
+fn execute_reporters_commands_cover_list_recommend_and_export() {
+    let td = tempdir().expect("tempdir");
+    let list_output_path = td.path().join("reporters.catalog.json");
+    let corpus_output_path = td.path().join("reporters.jsonl");
+    let catalog_path = reporter_catalog_path();
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+
+    let list = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ReportersList {
+            catalog_path: Some(catalog_path.clone()),
+            filter: Some("GFP".to_string()),
+            limit: Some(2),
+            output: Some(list_output_path.to_string_lossy().to_string()),
+        },
+    )
+    .expect("execute reporters list");
+    assert!(!list.state_changed);
+    assert_eq!(
+        list.output["result"]["schema"].as_str(),
+        Some("gentle.reporter_catalog_report.v1")
+    );
+    assert!(
+        list.output["result"]["active_record_count"]
+            .as_u64()
+            .is_some_and(|count| count >= 1)
+    );
+    let written_catalog = fs::read_to_string(&list_output_path).expect("read reporter catalog");
+    let written_catalog_json: serde_json::Value =
+        serde_json::from_str(&written_catalog).expect("parse reporter catalog JSON");
+    assert_eq!(
+        written_catalog_json["schema"].as_str(),
+        Some("gentle.reporter_catalog_report.v1")
+    );
+
+    let recommend = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ReportersRecommend {
+            catalog_path: Some(catalog_path.clone()),
+            constraints: ReporterConstraints {
+                desired_color: Some("red".to_string()),
+                intended_assay: Some("promoter_activity".to_string()),
+                chassis: Some("e_coli".to_string()),
+                ..ReporterConstraints::default()
+            },
+            limit: Some(3),
+            output: None,
+        },
+    )
+    .expect("execute reporters recommend");
+    assert!(!recommend.state_changed);
+    assert_eq!(
+        recommend.output["result"]["schema"].as_str(),
+        Some("gentle.reporter_recommendation.v1")
+    );
+    assert!(
+        recommend.output["result"]["recommended_candidate_count"]
+            .as_u64()
+            .is_some_and(|count| count >= 1)
+    );
+
+    let export = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ReportersExportCorpus {
+            catalog_path: Some(catalog_path),
+            output: corpus_output_path.to_string_lossy().to_string(),
+            format: ReporterCorpusExportFormat::Jsonl,
+        },
+    )
+    .expect("execute reporters export");
+    assert!(!export.state_changed);
+    assert_eq!(
+        export.output["result"]["schema"].as_str(),
+        Some("gentle.reporter_corpus_export.v1")
+    );
+    let written_corpus = fs::read_to_string(&corpus_output_path).expect("read reporter corpus");
+    assert!(written_corpus.lines().count() >= 1);
 }
 
 #[test]

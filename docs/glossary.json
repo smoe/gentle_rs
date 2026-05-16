@@ -1506,6 +1506,48 @@
       {
          "aliases": [],
          "engine_operations": [
+            "ListReporterCatalog"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "reporters list",
+         "summary": "List locally curated reporter catalog entries, with optional text filtering and JSON export.",
+         "usage": "reporters list [--catalog PATH] [--filter TEXT] [--limit N] [--output FILE.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "RecommendReporters"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "reporters recommend",
+         "summary": "Rank reporter candidates against deterministic assay, host, spectral, and motif constraints.",
+         "usage": "reporters recommend [--catalog PATH] [--assay NAME] [--chassis HOST] [--live true|false] [--color COLOR] [--class CLASS] [--excitation-nm NM] [--emission-nm NM] [--fusion MODE] [--max-length-bp N] [--forbid-motif IUPAC] [--substrate-allowed true|false] [--limit N] [--output FILE.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportReporterCorpus"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "reporters export-corpus",
+         "summary": "Export the active reporter catalog as a JSON or JSONL corpus for local review or retrieval tooling.",
+         "usage": "reporters export-corpus OUTPUT.json|OUTPUT.jsonl [--catalog PATH] [--format json|jsonl]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
             "BenchmarkJasparRegistry"
          ],
          "interfaces": [
