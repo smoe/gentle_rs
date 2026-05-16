@@ -6,13 +6,15 @@ pub(super) fn handle_reporters_family(args: &[String], cmd_idx: usize) -> Result
     if args.len() <= cmd_idx + 1 {
         usage();
         return Err(
-            "reporters requires a subcommand: list, recommend, or export-corpus".to_string(),
+            "reporters requires a subcommand: list, recommend, export-corpus, or plan-handoff"
+                .to_string(),
         );
     }
     match args[cmd_idx + 1].as_str() {
         "list" => handle_reporters_list(args, cmd_idx + 2),
         "recommend" => handle_reporters_recommend(args, cmd_idx + 2),
         "export-corpus" => handle_reporters_export_corpus(args, cmd_idx + 2),
+        "plan-handoff" => handle_reporters_plan_handoff(args, cmd_idx + 2),
         other => Err(format!("Unknown reporters subcommand '{other}'")),
     }
 }
@@ -189,6 +191,78 @@ fn handle_reporters_export_corpus(args: &[String], mut idx: usize) -> Result<(),
             catalog_path,
             path: output,
             format,
+        })
+        .map_err(|e| e.to_string())?;
+    print_json(&result)
+}
+
+fn handle_reporters_plan_handoff(args: &[String], mut idx: usize) -> Result<(), String> {
+    if idx >= args.len() {
+        usage();
+        return Err("reporters plan-handoff requires CANDIDATE_SET.json".to_string());
+    }
+    let candidate_set_path = args[idx].clone();
+    idx += 1;
+    let mut candidate_id: Option<String> = None;
+    let mut catalog_path: Option<String> = None;
+    let mut reporter_backbone_seq_id: Option<String> = None;
+    let mut reporter_backbone_load_path: Option<String> = None;
+    let mut reference_fragment_seq_id: Option<String> = None;
+    let mut alternate_fragment_seq_id: Option<String> = None;
+    let mut output_prefix: Option<String> = None;
+    let mut output: Option<String> = None;
+    while idx < args.len() {
+        match args[idx].as_str() {
+            "--candidate-id" => {
+                candidate_id = Some(required_value(args, idx, "--candidate-id")?);
+                idx += 2;
+            }
+            "--catalog" => {
+                catalog_path = Some(required_value(args, idx, "--catalog")?);
+                idx += 2;
+            }
+            "--backbone-seq-id" => {
+                reporter_backbone_seq_id = Some(required_value(args, idx, "--backbone-seq-id")?);
+                idx += 2;
+            }
+            "--backbone-path" => {
+                reporter_backbone_load_path = Some(required_value(args, idx, "--backbone-path")?);
+                idx += 2;
+            }
+            "--reference-fragment-seq-id" => {
+                reference_fragment_seq_id =
+                    Some(required_value(args, idx, "--reference-fragment-seq-id")?);
+                idx += 2;
+            }
+            "--alternate-fragment-seq-id" => {
+                alternate_fragment_seq_id =
+                    Some(required_value(args, idx, "--alternate-fragment-seq-id")?);
+                idx += 2;
+            }
+            "--output-prefix" => {
+                output_prefix = Some(required_value(args, idx, "--output-prefix")?);
+                idx += 2;
+            }
+            "--output" => {
+                output = Some(required_value(args, idx, "--output")?);
+                idx += 2;
+            }
+            other => return Err(format!("Unknown reporters plan-handoff option '{other}'")),
+        }
+    }
+    let mut engine = GentleEngine::new();
+    let result = engine
+        .apply(Operation::PlanReporterConstructHandoff {
+            candidate_set_path,
+            candidate_id,
+            catalog_path,
+            reporter_constraints: None,
+            reporter_backbone_seq_id,
+            reporter_backbone_load_path,
+            reference_fragment_seq_id,
+            alternate_fragment_seq_id,
+            output_prefix,
+            path: output,
         })
         .map_err(|e| e.to_string())?;
     print_json(&result)

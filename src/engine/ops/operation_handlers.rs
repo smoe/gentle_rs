@@ -16302,6 +16302,7 @@ impl GentleEngine {
             reporter_catalog: None,
             reporter_recommendation: None,
             reporter_corpus_export: None,
+            reporter_construct_handoff: None,
             uniprot_projection_audit: None,
             uniprot_projection_audit_parity: None,
             lab_assistant_instructions: None,
@@ -24509,6 +24510,47 @@ impl GentleEngine {
                     ));
                     result.warnings.extend(export.warnings.iter().cloned());
                     result.reporter_corpus_export = Some(export);
+                }
+                Operation::PlanReporterConstructHandoff {
+                    candidate_set_path,
+                    candidate_id,
+                    catalog_path,
+                    reporter_constraints,
+                    reporter_backbone_seq_id,
+                    reporter_backbone_load_path,
+                    reference_fragment_seq_id,
+                    alternate_fragment_seq_id,
+                    output_prefix,
+                    path,
+                } => {
+                    let plan = self.plan_reporter_construct_handoff(
+                        &candidate_set_path,
+                        candidate_id.as_deref(),
+                        catalog_path.as_deref(),
+                        reporter_constraints,
+                        reporter_backbone_seq_id.as_deref(),
+                        reporter_backbone_load_path.as_deref(),
+                        reference_fragment_seq_id.as_deref(),
+                        alternate_fragment_seq_id.as_deref(),
+                        output_prefix.as_deref(),
+                    )?;
+                    if let Some(path) = path.as_deref() {
+                        self.write_pretty_json_file(
+                            &plan,
+                            path,
+                            "reporter construct handoff plan",
+                        )?;
+                        result.messages.push(format!(
+                            "Wrote reporter construct handoff plan '{}' to '{}'",
+                            plan.status, path
+                        ));
+                    }
+                    result.messages.push(format!(
+                        "Planned reporter construct handoff '{}' for candidate '{}'",
+                        plan.status, plan.selected_fragment.candidate_id
+                    ));
+                    result.warnings.extend(plan.warnings.iter().cloned());
+                    result.reporter_construct_handoff = Some(plan);
                 }
                 Operation::MaterializeVariantAllele {
                     input,

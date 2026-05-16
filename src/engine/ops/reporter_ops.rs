@@ -5,6 +5,11 @@ use sha1::{Digest, Sha1};
 
 const DEFAULT_REPORTER_CATALOG_PATH: &str = "assets/reporter_catalog.json";
 const DEFAULT_REPORTER_RECOMMENDATION_LIMIT: usize = 5;
+const REPORTER_CONSTRUCT_MACRO_TEMPLATE_ID: &str = "allele_paired_promoter_luciferase_reporter";
+const DEFAULT_REPORTER_BACKBONE_SEQ_ID: &str = "gentle_mammalian_luciferase_backbone_v1";
+const DEFAULT_REPORTER_BACKBONE_LOAD_PATH: &str =
+    "data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb";
+const DEFAULT_REPORTER_CONSTRUCT_OVERLAP_BP: usize = 20;
 
 impl GentleEngine {
     pub(crate) fn list_reporter_catalog(
@@ -127,6 +132,235 @@ impl GentleEngine {
             }
         }
         Ok(export)
+    }
+
+    pub(crate) fn plan_reporter_construct_handoff(
+        &self,
+        candidate_set_path: &str,
+        candidate_id: Option<&str>,
+        catalog_path: Option<&str>,
+        reporter_constraints: Option<ReporterConstraints>,
+        reporter_backbone_seq_id: Option<&str>,
+        reporter_backbone_load_path: Option<&str>,
+        reference_fragment_seq_id: Option<&str>,
+        alternate_fragment_seq_id: Option<&str>,
+        output_prefix: Option<&str>,
+    ) -> Result<ReporterConstructHandoffPlan, EngineError> {
+        let candidate_set = Self::read_promoter_reporter_candidate_set(candidate_set_path)?;
+        if candidate_set.schema != PROMOTER_REPORTER_CANDIDATES_SCHEMA {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Promoter-reporter candidate set '{}' has schema '{}', expected '{}'",
+                    candidate_set_path, candidate_set.schema, PROMOTER_REPORTER_CANDIDATES_SCHEMA
+                ),
+                cause_chain: vec![],
+            });
+        }
+        let selected_candidate_id = candidate_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or(&candidate_set.recommended_candidate_id);
+        let candidate = candidate_set
+            .candidates
+            .iter()
+            .find(|row| row.candidate_id == selected_candidate_id)
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Candidate '{}' was not found in promoter-reporter candidate set '{}'",
+                    selected_candidate_id, candidate_set_path
+                ),
+                cause_chain: vec![],
+            })?;
+
+        let mut constraints = reporter_constraints.unwrap_or_default();
+        let luciferase_route_requested = if constraints.allowed_reporter_classes.is_empty() {
+            constraints
+                .allowed_reporter_classes
+                .push("luciferase".to_string());
+            true
+        } else {
+            constraints
+                .allowed_reporter_classes
+                .iter()
+                .any(|class| Self::normalize_reporter_token(class) == "luciferase")
+        };
+        if constraints.intended_assay.is_none() {
+            constraints.intended_assay = Some("promoter_activity".to_string());
+        }
+
+        let reporter_recommendation = if luciferase_route_requested {
+            self.recommend_reporters(catalog_path, constraints.clone(), Some(1))?
+        } else {
+            ReporterRecommendationResult {
+                schema: REPORTER_RECOMMENDATION_SCHEMA.to_string(),
+                generated_at_unix_ms: Self::now_unix_ms(),
+                catalog_path: Self::effective_reporter_catalog_label(catalog_path),
+                constraints: constraints.clone(),
+                warnings: vec![
+                    "no_compatible_macro_route: V1 supports only luciferase reporters through allele_paired_promoter_luciferase_reporter"
+                        .to_string(),
+                ],
+                ..ReporterRecommendationResult::default()
+            }
+        };
+        let selected_reporter = reporter_recommendation.recommendations.first().map(|row| {
+            ReporterConstructSelectedReporter {
+                reporter_id: row.reporter_id.clone(),
+                name: row.name.clone(),
+                reporter_class: row.record.record.reporter_class.clone(),
+                score: row.score,
+                substrate_required: row.record.record.substrate_required,
+                rationale: row.rationale.clone(),
+                warnings: row.warnings.clone(),
+            }
+        });
+
+        let extract_fragment_seq_id = candidate.candidate_id.clone();
+        let reference_seq_id = reference_fragment_seq_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+            .unwrap_or_else(|| format!("{}_reference", extract_fragment_seq_id));
+        let alternate_seq_id = alternate_fragment_seq_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+            .unwrap_or_else(|| format!("{}_alternate", extract_fragment_seq_id));
+        let backbone_seq_id = reporter_backbone_seq_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or(DEFAULT_REPORTER_BACKBONE_SEQ_ID)
+            .to_string();
+        let backbone_load_path = reporter_backbone_load_path
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+            .or_else(|| Some(DEFAULT_REPORTER_BACKBONE_LOAD_PATH.to_string()));
+        let output_prefix = output_prefix
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+            .unwrap_or_else(|| {
+                format!(
+                    "{}_reporter_pair",
+                    Self::normalize_id_token(&candidate_set.seq_id)
+                )
+            });
+
+        let selected_fragment = ReporterConstructSelectedFragment {
+            candidate_id: candidate.candidate_id.clone(),
+            source_seq_id: candidate_set.seq_id.clone(),
+            variant_label: candidate_set.variant_label.clone(),
+            gene_label: candidate.gene_label.clone(),
+            transcript_id: candidate.transcript_id.clone(),
+            transcript_label: candidate.transcript_label.clone(),
+            start_0based: candidate.start_0based,
+            end_0based_exclusive: candidate.end_0based_exclusive,
+            length_bp: candidate.length_bp,
+            extract_fragment_seq_id: extract_fragment_seq_id.clone(),
+            reference_fragment_seq_id: reference_seq_id.clone(),
+            alternate_fragment_seq_id: alternate_seq_id.clone(),
+            rationale: candidate.rationale.clone(),
+        };
+
+        let backbone = self.resolve_reporter_backbone(
+            &backbone_seq_id,
+            backbone_load_path.as_deref(),
+            reporter_backbone_seq_id.is_some(),
+        );
+        let mut port_bindings = vec![
+            self.reporter_sequence_port_binding(
+                "reference_fragment_seq_id",
+                &reference_seq_id,
+                reference_fragment_seq_id.is_some(),
+                true,
+                "Reference-allele promoter fragment for the macro template.",
+            ),
+            self.reporter_sequence_port_binding(
+                "alternate_fragment_seq_id",
+                &alternate_seq_id,
+                alternate_fragment_seq_id.is_some(),
+                true,
+                "Alternate-allele promoter fragment for the macro template.",
+            ),
+            self.reporter_backbone_port_binding(&backbone, reporter_backbone_seq_id.is_some()),
+            ReporterConstructPortBinding {
+                port_id: "overlap_bp".to_string(),
+                value: Some(DEFAULT_REPORTER_CONSTRUCT_OVERLAP_BP.to_string()),
+                status: PortBindingStatus::Ready,
+                required: true,
+                note: "Stable reserved overlap parameter for the existing macro template."
+                    .to_string(),
+            },
+        ];
+        if !luciferase_route_requested || selected_reporter.is_none() {
+            port_bindings.clear();
+        }
+
+        let mut warnings = reporter_recommendation.warnings.clone();
+        if !luciferase_route_requested {
+            warnings.push(
+                "no_compatible_macro_route: V1 supports only luciferase reporters through allele_paired_promoter_luciferase_reporter"
+                    .to_string(),
+            );
+        } else if selected_reporter.is_none() {
+            warnings.push(
+                "No luciferase reporter candidate satisfied the handoff constraints".to_string(),
+            );
+        }
+
+        let commands = if luciferase_route_requested && selected_reporter.is_some() {
+            Self::reporter_construct_handoff_commands(
+                &candidate_set,
+                &candidate,
+                &extract_fragment_seq_id,
+                &reference_seq_id,
+                &alternate_seq_id,
+                &backbone,
+                &output_prefix,
+            )
+        } else {
+            vec![]
+        };
+        let status = if !luciferase_route_requested {
+            "no_compatible_macro_route"
+        } else if selected_reporter.is_none() {
+            "no_compatible_reporter"
+        } else if port_bindings
+            .iter()
+            .filter(|binding| binding.required)
+            .all(|binding| binding.status == PortBindingStatus::Ready)
+        {
+            "ready"
+        } else {
+            "needs_inputs"
+        }
+        .to_string();
+
+        Ok(ReporterConstructHandoffPlan {
+            schema: REPORTER_CONSTRUCT_HANDOFF_SCHEMA.to_string(),
+            generated_at_unix_ms: Self::now_unix_ms(),
+            status,
+            provenance: ReporterConstructHandoffProvenance {
+                candidate_set_path: candidate_set_path.to_string(),
+                candidate_set_schema: candidate_set.schema.clone(),
+                candidate_set_generated_at_unix_ms: candidate_set.generated_at_unix_ms,
+                candidate_set_op_id: candidate_set.op_id.clone(),
+                candidate_set_run_id: candidate_set.run_id.clone(),
+                reporter_catalog_path: reporter_recommendation.catalog_path.clone(),
+                macro_template_id: REPORTER_CONSTRUCT_MACRO_TEMPLATE_ID.to_string(),
+            },
+            selected_fragment,
+            selected_reporter,
+            reporter_recommendation,
+            backbone,
+            port_bindings,
+            commands,
+            warnings,
+        })
     }
 
     fn annotated_reporter_catalog(
@@ -608,6 +842,244 @@ impl GentleEngine {
             .collect::<Vec<_>>()
             .join("_")
     }
+
+    fn read_promoter_reporter_candidate_set(
+        path: &str,
+    ) -> Result<PromoterReporterCandidateSet, EngineError> {
+        let text = std::fs::read_to_string(path).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not read promoter-reporter candidate set '{path}': {e}"),
+            cause_chain: vec![],
+        })?;
+        serde_json::from_str(&text).map_err(|e| EngineError {
+            code: ErrorCode::InvalidInput,
+            message: format!("Could not parse promoter-reporter candidate set '{path}': {e}"),
+            cause_chain: vec![],
+        })
+    }
+
+    fn resolve_reporter_backbone(
+        &self,
+        seq_id: &str,
+        load_path: Option<&str>,
+        explicit_seq_id: bool,
+    ) -> ReporterBackboneResolution {
+        if self.state.sequences.contains_key(seq_id) {
+            return ReporterBackboneResolution {
+                seq_id: seq_id.to_string(),
+                load_path: load_path.map(ToOwned::to_owned),
+                status: ReporterBackboneResolutionStatus::ResolvedInState,
+                note: "Reporter backbone sequence is already loaded in project state.".to_string(),
+            };
+        }
+        if load_path.is_some() {
+            return ReporterBackboneResolution {
+                seq_id: seq_id.to_string(),
+                load_path: load_path.map(ToOwned::to_owned),
+                status: ReporterBackboneResolutionStatus::RequiresManualLoad,
+                note: "Reporter backbone must be loaded before running the macro template."
+                    .to_string(),
+            };
+        }
+        ReporterBackboneResolution {
+            seq_id: seq_id.to_string(),
+            load_path: None,
+            status: ReporterBackboneResolutionStatus::UnresolvedSeqIdProvided,
+            note: if explicit_seq_id {
+                "Reporter backbone seq_id was provided but is not present in project state."
+                    .to_string()
+            } else {
+                "Reporter backbone seq_id is not present and no load path was provided.".to_string()
+            },
+        }
+    }
+
+    fn reporter_sequence_port_binding(
+        &self,
+        port_id: &str,
+        seq_id: &str,
+        explicit_seq_id: bool,
+        derivable: bool,
+        note: &str,
+    ) -> ReporterConstructPortBinding {
+        let status = if self.state.sequences.contains_key(seq_id) {
+            PortBindingStatus::Ready
+        } else if explicit_seq_id {
+            PortBindingStatus::ProvidedMissingFromState
+        } else if derivable {
+            PortBindingStatus::Derivable
+        } else {
+            PortBindingStatus::Missing
+        };
+        ReporterConstructPortBinding {
+            port_id: port_id.to_string(),
+            value: Some(seq_id.to_string()),
+            status,
+            required: true,
+            note: note.to_string(),
+        }
+    }
+
+    fn reporter_backbone_port_binding(
+        &self,
+        backbone: &ReporterBackboneResolution,
+        explicit_seq_id: bool,
+    ) -> ReporterConstructPortBinding {
+        let status = match backbone.status {
+            ReporterBackboneResolutionStatus::ResolvedInState => PortBindingStatus::Ready,
+            ReporterBackboneResolutionStatus::UnresolvedSeqIdProvided => {
+                if explicit_seq_id {
+                    PortBindingStatus::ProvidedMissingFromState
+                } else {
+                    PortBindingStatus::Missing
+                }
+            }
+            ReporterBackboneResolutionStatus::RequiresManualLoad => {
+                if explicit_seq_id {
+                    PortBindingStatus::ProvidedMissingFromState
+                } else {
+                    PortBindingStatus::Missing
+                }
+            }
+        };
+        ReporterConstructPortBinding {
+            port_id: "reporter_backbone_seq_id".to_string(),
+            value: Some(backbone.seq_id.clone()),
+            status,
+            required: true,
+            note: backbone.note.clone(),
+        }
+    }
+
+    fn reporter_construct_handoff_commands(
+        candidate_set: &PromoterReporterCandidateSet,
+        candidate: &PromoterReporterFragmentCandidate,
+        extract_fragment_seq_id: &str,
+        reference_seq_id: &str,
+        alternate_seq_id: &str,
+        backbone: &ReporterBackboneResolution,
+        output_prefix: &str,
+    ) -> Vec<ReporterConstructHandoffCommand> {
+        let mut commands = vec![ReporterConstructHandoffCommand {
+            label: "Extract selected promoter fragment".to_string(),
+            command_kind: "op".to_string(),
+            command: format!(
+                "op {}",
+                serde_json::json!({
+                    "ExtractRegion": {
+                        "input": candidate_set.seq_id,
+                        "from": candidate.start_0based,
+                        "to": candidate.end_0based_exclusive,
+                        "output_id": extract_fragment_seq_id,
+                    }
+                })
+            ),
+            mutating: true,
+            note: "Creates the selected promoter fragment sequence before allele materialization."
+                .to_string(),
+        }];
+        commands.push(ReporterConstructHandoffCommand {
+            label: "Materialize reference allele fragment".to_string(),
+            command_kind: "op".to_string(),
+            command: format!(
+                "op {}",
+                serde_json::json!({
+                    "MaterializeVariantAllele": {
+                        "input": extract_fragment_seq_id,
+                        "variant_label_or_id": candidate_set.variant_label,
+                        "allele": "reference",
+                        "output_id": reference_seq_id,
+                    }
+                })
+            ),
+            mutating: true,
+            note: "Creates the reference-allele promoter insert for the macro template."
+                .to_string(),
+        });
+        commands.push(ReporterConstructHandoffCommand {
+            label: "Materialize alternate allele fragment".to_string(),
+            command_kind: "op".to_string(),
+            command: format!(
+                "op {}",
+                serde_json::json!({
+                    "MaterializeVariantAllele": {
+                        "input": extract_fragment_seq_id,
+                        "variant_label_or_id": candidate_set.variant_label,
+                        "allele": "alternate",
+                        "output_id": alternate_seq_id,
+                    }
+                })
+            ),
+            mutating: true,
+            note: "Creates the alternate-allele promoter insert for the macro template."
+                .to_string(),
+        });
+        if backbone.status == ReporterBackboneResolutionStatus::RequiresManualLoad {
+            if let Some(load_path) = backbone.load_path.as_deref() {
+                commands.push(ReporterConstructHandoffCommand {
+                    label: "Load reporter backbone".to_string(),
+                    command_kind: "op".to_string(),
+                    command: format!(
+                        "op {}",
+                        serde_json::json!({
+                            "LoadFile": {
+                                "path": load_path,
+                                "as_id": backbone.seq_id,
+                            }
+                        })
+                    ),
+                    mutating: true,
+                    note: "Loads the promoterless luciferase reporter backbone into project state."
+                        .to_string(),
+                });
+            }
+        }
+        commands.push(ReporterConstructHandoffCommand {
+            label: "Import reporter macro templates".to_string(),
+            command_kind: "shell".to_string(),
+            command: "macros template-import assets/cloning_patterns_catalog".to_string(),
+            mutating: true,
+            note: "Makes the built-in reporter macro template available in the project."
+                .to_string(),
+        });
+        let macro_bindings = format!(
+            "macros template-run {} --bind reference_fragment_seq_id={} --bind alternate_fragment_seq_id={} --bind reporter_backbone_seq_id={} --bind overlap_bp={} --bind output_prefix={} --transactional",
+            REPORTER_CONSTRUCT_MACRO_TEMPLATE_ID,
+            Self::quote_reporter_shell_token(reference_seq_id),
+            Self::quote_reporter_shell_token(alternate_seq_id),
+            Self::quote_reporter_shell_token(&backbone.seq_id),
+            DEFAULT_REPORTER_CONSTRUCT_OVERLAP_BP,
+            Self::quote_reporter_shell_token(output_prefix)
+        );
+        commands.push(ReporterConstructHandoffCommand {
+            label: "Validate reporter macro".to_string(),
+            command_kind: "shell".to_string(),
+            command: format!("{macro_bindings} --validate-only"),
+            mutating: false,
+            note: "Checks macro-template bindings before creating construct preview sequences."
+                .to_string(),
+        });
+        commands.push(ReporterConstructHandoffCommand {
+            label: "Run reporter macro".to_string(),
+            command_kind: "shell".to_string(),
+            command: macro_bindings,
+            mutating: true,
+            note: "Creates paired reference/alternate promoter-luciferase construct previews."
+                .to_string(),
+        });
+        commands
+    }
+
+    fn quote_reporter_shell_token(value: &str) -> String {
+        if !value.is_empty()
+            && value
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.' | '/' | ':'))
+        {
+            return value.to_string();
+        }
+        format!("'{}'", value.replace('\'', "'\\''"))
+    }
 }
 
 #[cfg(test)]
@@ -661,6 +1133,10 @@ mod tests {
         };
         std::fs::write(&path, serde_json::to_string_pretty(&catalog).unwrap()).unwrap();
         (td, path.to_string_lossy().to_string())
+    }
+
+    fn vkorc1_candidate_set_path() -> &'static str {
+        "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/promoter_reporter_candidates.json"
     }
 
     #[test]
@@ -766,5 +1242,160 @@ mod tests {
         assert_eq!(text.lines().count(), 1);
         assert!(text.contains("\"source_refs\""));
         assert!(text.contains("\"license_status\""));
+    }
+
+    #[test]
+    fn reporter_construct_handoff_uses_vkorc1_candidate_set_and_luciferase_route() {
+        let engine = GentleEngine::new();
+        let plan = engine
+            .plan_reporter_construct_handoff(
+                vkorc1_candidate_set_path(),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
+            .expect("plan reporter construct handoff");
+        assert_eq!(plan.schema, REPORTER_CONSTRUCT_HANDOFF_SCHEMA);
+        assert_eq!(
+            plan.provenance.macro_template_id,
+            REPORTER_CONSTRUCT_MACRO_TEMPLATE_ID
+        );
+        assert_eq!(
+            plan.selected_fragment.candidate_id,
+            "vkorc1_rs9923231_context_enst00000498155_2413_3501_promoter_fragment"
+        );
+        assert_eq!(
+            plan.selected_reporter
+                .as_ref()
+                .expect("selected reporter")
+                .reporter_class,
+            "luciferase"
+        );
+        assert!(plan.commands.iter().any(|command| {
+            command
+                .command
+                .contains("allele_paired_promoter_luciferase_reporter")
+        }));
+    }
+
+    #[test]
+    fn reporter_construct_handoff_rejects_unknown_candidate_id() {
+        let engine = GentleEngine::new();
+        let err = engine
+            .plan_reporter_construct_handoff(
+                vkorc1_candidate_set_path(),
+                Some("missing_candidate"),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
+            .expect_err("unknown candidate should fail");
+        assert_eq!(err.code, ErrorCode::InvalidInput);
+    }
+
+    #[test]
+    fn reporter_construct_handoff_rejects_wrong_candidate_set_schema() {
+        let td = tempdir().expect("tempdir");
+        let path = td.path().join("candidate_set.json");
+        std::fs::write(&path, r#"{"schema":"wrong.schema"}"#).expect("write candidate set");
+        let engine = GentleEngine::new();
+        let err = engine
+            .plan_reporter_construct_handoff(
+                &path.to_string_lossy(),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
+            .expect_err("wrong schema should fail");
+        assert_eq!(err.code, ErrorCode::InvalidInput);
+    }
+
+    #[test]
+    fn reporter_construct_handoff_marks_non_luciferase_constraints_as_no_macro_route() {
+        let constraints = ReporterConstraints {
+            allowed_reporter_classes: vec!["fluorescent_protein".to_string()],
+            ..ReporterConstraints::default()
+        };
+        let engine = GentleEngine::new();
+        let plan = engine
+            .plan_reporter_construct_handoff(
+                vkorc1_candidate_set_path(),
+                None,
+                None,
+                Some(constraints),
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
+            .expect("plan no compatible macro route");
+        assert_eq!(plan.status, "no_compatible_macro_route");
+        assert!(plan.selected_reporter.is_none());
+        assert!(plan.port_bindings.is_empty());
+        assert!(plan.commands.is_empty());
+    }
+
+    #[test]
+    fn reporter_construct_handoff_reports_backbone_and_port_readiness() {
+        let mut engine = GentleEngine::new();
+        engine
+            .apply(Operation::LoadFile {
+                path: DEFAULT_REPORTER_BACKBONE_LOAD_PATH.to_string(),
+                as_id: Some(DEFAULT_REPORTER_BACKBONE_SEQ_ID.to_string()),
+            })
+            .expect("load reporter backbone");
+        let plan = engine
+            .plan_reporter_construct_handoff(
+                vkorc1_candidate_set_path(),
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some("provided_reference"),
+                None,
+                None,
+            )
+            .expect("plan reporter construct handoff");
+        assert_eq!(
+            plan.backbone.status,
+            ReporterBackboneResolutionStatus::ResolvedInState
+        );
+        let reference = plan
+            .port_bindings
+            .iter()
+            .find(|binding| binding.port_id == "reference_fragment_seq_id")
+            .expect("reference binding");
+        assert_eq!(
+            reference.status,
+            PortBindingStatus::ProvidedMissingFromState
+        );
+        let alternate = plan
+            .port_bindings
+            .iter()
+            .find(|binding| binding.port_id == "alternate_fragment_seq_id")
+            .expect("alternate binding");
+        assert_eq!(alternate.status, PortBindingStatus::Derivable);
+        let backbone = plan
+            .port_bindings
+            .iter()
+            .find(|binding| binding.port_id == "reporter_backbone_seq_id")
+            .expect("backbone binding");
+        assert_eq!(backbone.status, PortBindingStatus::Ready);
     }
 }

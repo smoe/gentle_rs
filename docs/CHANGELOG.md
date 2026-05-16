@@ -12,6 +12,12 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-05-17
+
+- Added a reporter construct handoff tutorial that shows how to generate and
+  inspect `gentle.reporter_construct_handoff.v1` from a saved
+  promoter-reporter candidate set before running any macro commands.
+
 ## 2026-05-16
 
 - Restored shared-shell reachability for the reporter catalog/recommender
@@ -40,6 +46,10 @@ Maintenance rule:
 - Added an offline reporter-recommender V1 with a provenance-gated local
   reporter catalog, deterministic constraint ranking, rejected-candidate
   reasons, and JSON/JSONL corpus export for local AI retrieval or training prep.
+- Added a read-only reporter construct handoff plan that joins saved
+  promoter-reporter candidate reports, the offline luciferase recommender, and
+  the existing `allele_paired_promoter_luciferase_reporter` macro without
+  creating constructs automatically.
 
 ## 2026-05-14
 

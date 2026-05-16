@@ -2527,6 +2527,18 @@ Sequencing-trace evidence notes:
   - writes the annotated, provenance-bearing reporter corpus for local
     retrieval or local AI training/evaluation prep; GENtle does not train a
     model in this V1
+- `PlanReporterConstructHandoff { candidate_set_path, candidate_id?, catalog_path?, reporter_constraints?, reporter_backbone_seq_id?, reporter_backbone_load_path?, reference_fragment_seq_id?, alternate_fragment_seq_id?, output_prefix?, path? }`
+  - emits `gentle.reporter_construct_handoff.v1`
+  - consumes a saved `gentle.promoter_reporter_candidates.v1` JSON report
+    rather than re-running promoter-fragment selection
+  - V1 supports the exact macro template
+    `allele_paired_promoter_luciferase_reporter` and defaults reporter
+    recommendation to luciferase-class candidates
+  - reports typed macro-port readiness plus reporter-backbone resolution, and
+    emits explicit follow-up commands for manual extraction, allele
+    materialization, backbone loading, macro import, validation, and macro run
+  - does not create constructs, fetch live registries, optimize codons, or make
+    wet-lab claims
 - `MaterializeVariantAllele { input, variant_label_or_id?, allele=reference|alternate, output_id? }`
   - phase-1 scope is single-nucleotide variants only
   - rejects indels, multi-allelic variants, or variants without explicit
