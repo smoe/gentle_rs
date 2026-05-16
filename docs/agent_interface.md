@@ -371,6 +371,9 @@ an agent has selected a deterministic operation.
 - `render-pool-gel-svg`
 - `render-rna-svg`
 - `render-svg`
+- `reporters export-corpus`
+- `reporters list`
+- `reporters recommend`
 - `resources benchmark-jaspar`
 - `resources inspect-jaspar`
 - `resources install-ucsc-rmsk`

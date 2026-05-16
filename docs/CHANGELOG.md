@@ -12,6 +12,13 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-05-16
+
+- Restored shared-shell reachability for the reporter catalog/recommender
+  family so `reporters list`, `reporters recommend`, and
+  `reporters export-corpus` now work through GUI Shell and
+  `gentle_cli shell ...` as documented.
+
 ## 2026-05-15
 
 - Regenerated the GUI/CLI/MCP parity matrix from `CapabilityDescriptor`

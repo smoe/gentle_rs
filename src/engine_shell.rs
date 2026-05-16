@@ -64,7 +64,8 @@ use crate::{
         RackOccupant, RackPhysicalTemplateKind, RackProfileKind, ReadAcquisitionAnalysisFormat,
         ReadAcquisitionReadLayout, RenderSvgMode, RepeatAnnotationFilter,
         RepeatEnvironmentCohortReport, RepeatEnvironmentGeometryMode,
-        RestrictionCloningPcrHandoffMode, ReverseTranslationReport,
+        ReporterConstraints, ReporterCorpusExportFormat, RestrictionCloningPcrHandoffMode,
+        ReverseTranslationReport,
         ReverseTranslationReportSummary, RnaReadAlignConfig, RnaReadAlignmentDisplayBatch,
         RnaReadAlignmentInspectionEffectFilter, RnaReadAlignmentInspectionSortKey,
         RnaReadAlignmentInspectionSubsetSpec, RnaReadConcatemerInspectionSettings,
@@ -836,6 +837,23 @@ pub enum ShellCommand {
         output: String,
         min_length_aa: Option<usize>,
         ladders: Option<Vec<String>>,
+    },
+    ReportersList {
+        catalog_path: Option<String>,
+        filter: Option<String>,
+        limit: Option<usize>,
+        output: Option<String>,
+    },
+    ReportersRecommend {
+        catalog_path: Option<String>,
+        constraints: ReporterConstraints,
+        limit: Option<usize>,
+        output: Option<String>,
+    },
+    ReportersExportCorpus {
+        catalog_path: Option<String>,
+        output: String,
+        format: ReporterCorpusExportFormat,
     },
     ExportPool {
         inputs: Vec<String>,
@@ -6424,6 +6442,62 @@ impl ShellCommand {
                 candidate_members.len(),
                 go_mappings.len(),
                 output.as_deref().unwrap_or("-"),
+            ),
+            Self::ReportersList {
+                catalog_path,
+                filter,
+                limit,
+                output,
+            } => format!(
+                "list reporter catalog entries{}{} (catalog='{}', output='{}')",
+                filter
+                    .as_deref()
+                    .map(|value| format!(" matching '{}'", value))
+                    .unwrap_or_default(),
+                limit
+                    .map(|value| format!(", limit={value}"))
+                    .unwrap_or_default(),
+                catalog_path
+                    .as_deref()
+                    .unwrap_or("assets/reporter_catalog.json"),
+                output.as_deref().unwrap_or("-"),
+            ),
+            Self::ReportersRecommend {
+                catalog_path,
+                constraints,
+                limit,
+                output,
+            } => format!(
+                "recommend reporter candidates{}{}{} (catalog='{}', output='{}')",
+                constraints
+                    .desired_color
+                    .as_deref()
+                    .map(|value| format!(" for color '{}'", value))
+                    .unwrap_or_default(),
+                constraints
+                    .intended_assay
+                    .as_deref()
+                    .map(|value| format!(", assay='{}'", value))
+                    .unwrap_or_default(),
+                limit
+                    .map(|value| format!(", limit={value}"))
+                    .unwrap_or_default(),
+                catalog_path
+                    .as_deref()
+                    .unwrap_or("assets/reporter_catalog.json"),
+                output.as_deref().unwrap_or("-"),
+            ),
+            Self::ReportersExportCorpus {
+                catalog_path,
+                output,
+                format,
+            } => format!(
+                "export reporter corpus (catalog='{}', format={:?}, output='{}')",
+                catalog_path
+                    .as_deref()
+                    .unwrap_or("assets/reporter_catalog.json"),
+                format,
+                output,
             ),
             Self::ResourcesListPublicationDatasets {
                 filter,
@@ -17464,6 +17538,274 @@ fn parse_gene_groups_command(tokens: &[String]) -> Result<ShellCommand, String> 
     }
 }
 
+fn parse_reporters_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err(
+            "reporters requires a subcommand: list, recommend, or export-corpus".to_string(),
+        );
+    }
+    match tokens[1].as_str() {
+        "list" => {
+            let mut catalog_path: Option<String> = None;
+            let mut filter: Option<String> = None;
+            let mut limit: Option<usize> = None;
+            let mut output: Option<String> = None;
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--catalog" => {
+                        catalog_path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--catalog",
+                            "reporters list",
+                        )?);
+                    }
+                    "--filter" => {
+                        filter = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--filter",
+                            "reporters list",
+                        )?);
+                    }
+                    "--limit" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--limit", "reporters list")?;
+                        limit = Some(
+                            raw.parse::<usize>()
+                                .map_err(|e| format!("Invalid --limit value '{raw}': {e}"))?,
+                        );
+                    }
+                    "--output" | "--path" => {
+                        output = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--output",
+                            "reporters list",
+                        )?);
+                    }
+                    other => return Err(format!("Unknown option '{other}' for reporters list")),
+                }
+            }
+            Ok(ShellCommand::ReportersList {
+                catalog_path,
+                filter,
+                limit,
+                output,
+            })
+        }
+        "recommend" => {
+            let mut catalog_path: Option<String> = None;
+            let mut limit: Option<usize> = None;
+            let mut output: Option<String> = None;
+            let mut constraints = ReporterConstraints::default();
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--catalog" => {
+                        catalog_path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--catalog",
+                            "reporters recommend",
+                        )?);
+                    }
+                    "--limit" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--limit",
+                            "reporters recommend",
+                        )?;
+                        limit = Some(
+                            raw.parse::<usize>()
+                                .map_err(|e| format!("Invalid --limit value '{raw}': {e}"))?,
+                        );
+                    }
+                    "--output" | "--path" => {
+                        output = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--output",
+                            "reporters recommend",
+                        )?);
+                    }
+                    "--assay" => {
+                        constraints.intended_assay = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--assay",
+                            "reporters recommend",
+                        )?);
+                    }
+                    "--chassis" => {
+                        constraints.chassis = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--chassis",
+                            "reporters recommend",
+                        )?);
+                    }
+                    "--live" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--live", "reporters recommend")?;
+                        constraints.live_assay = parse_bool_binding(&raw);
+                        if constraints.live_assay.is_none() {
+                            return Err(format!(
+                                "Invalid --live value '{raw}'; expected true/false"
+                            ));
+                        }
+                    }
+                    "--color" => {
+                        constraints.desired_color = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--color",
+                            "reporters recommend",
+                        )?);
+                    }
+                    "--class" => {
+                        constraints.allowed_reporter_classes.push(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--class",
+                            "reporters recommend",
+                        )?);
+                    }
+                    "--excitation-nm" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--excitation-nm",
+                            "reporters recommend",
+                        )?;
+                        constraints.available_excitation_nm.push(raw.parse::<u16>().map_err(
+                            |e| format!("Invalid --excitation-nm value '{raw}': {e}"),
+                        )?);
+                    }
+                    "--emission-nm" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--emission-nm",
+                            "reporters recommend",
+                        )?;
+                        constraints.available_emission_nm.push(raw.parse::<u16>().map_err(
+                            |e| format!("Invalid --emission-nm value '{raw}': {e}"),
+                        )?);
+                    }
+                    "--fusion" => {
+                        constraints.fusion_mode = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--fusion",
+                            "reporters recommend",
+                        )?);
+                    }
+                    "--max-length-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-length-bp",
+                            "reporters recommend",
+                        )?;
+                        constraints.max_coding_length_bp =
+                            Some(raw.parse::<usize>().map_err(|e| {
+                                format!("Invalid --max-length-bp value '{raw}': {e}")
+                            })?);
+                    }
+                    "--forbid-motif" => {
+                        constraints.forbidden_motifs.push(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--forbid-motif",
+                            "reporters recommend",
+                        )?);
+                    }
+                    "--substrate-allowed" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--substrate-allowed",
+                            "reporters recommend",
+                        )?;
+                        constraints.substrate_allowed = parse_bool_binding(&raw);
+                        if constraints.substrate_allowed.is_none() {
+                            return Err(format!(
+                                "Invalid --substrate-allowed value '{raw}'; expected true/false"
+                            ));
+                        }
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for reporters recommend"));
+                    }
+                }
+            }
+            Ok(ShellCommand::ReportersRecommend {
+                catalog_path,
+                constraints,
+                limit,
+                output,
+            })
+        }
+        "export-corpus" => {
+            if tokens.len() < 3 || tokens[2].starts_with("--") {
+                return Err(
+                    "reporters export-corpus requires OUTPUT.json|OUTPUT.jsonl [--catalog PATH] [--format json|jsonl]"
+                        .to_string(),
+                );
+            }
+            let output = tokens[2].clone();
+            let mut catalog_path: Option<String> = None;
+            let mut format = ReporterCorpusExportFormat::Json;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--catalog" => {
+                        catalog_path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--catalog",
+                            "reporters export-corpus",
+                        )?);
+                    }
+                    "--format" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--format",
+                            "reporters export-corpus",
+                        )?;
+                        format = match raw.as_str() {
+                            "json" => ReporterCorpusExportFormat::Json,
+                            "jsonl" => ReporterCorpusExportFormat::Jsonl,
+                            _ => {
+                                return Err(format!(
+                                    "Invalid reporters export format '{raw}'"
+                                ));
+                            }
+                        };
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for reporters export-corpus"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::ReportersExportCorpus {
+                catalog_path,
+                output,
+                format,
+            })
+        }
+        other => Err(format!(
+            "Unknown reporters subcommand '{other}' (expected list, recommend, or export-corpus)"
+        )),
+    }
+}
+
 /// Parse tokenized shell input into one canonical `ShellCommand`.
 ///
 /// Start here when debugging shell grammar or adapter parity: GUI Shell and
@@ -19152,6 +19494,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "agents" => parse_agents_command(tokens),
         "routines" => parse_routines_command(tokens),
         "gene-groups" | "gene_groups" | "genegroups" => parse_gene_groups_command(tokens),
+        "reporters" => parse_reporters_command(tokens),
         "resources" => {
             if tokens.len() < 2 {
                 return Err(
@@ -23957,6 +24300,61 @@ fn execute_export_import_and_resource_command(
                 state_changed: false,
                 output: serde_json::to_value(report)
                     .map_err(|e| format!("Could not serialize gene-group draft report: {e}"))?,
+            })
+        }
+        ShellCommand::ReportersList {
+            catalog_path,
+            filter,
+            limit,
+            output,
+        } => {
+            let op_result = engine
+                .apply(Operation::ListReporterCatalog {
+                    catalog_path: catalog_path.clone(),
+                    filter: filter.clone(),
+                    limit: *limit,
+                    path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": op_result }),
+            })
+        }
+        ShellCommand::ReportersRecommend {
+            catalog_path,
+            constraints,
+            limit,
+            output,
+        } => {
+            let op_result = engine
+                .apply(Operation::RecommendReporters {
+                    constraints: constraints.clone(),
+                    catalog_path: catalog_path.clone(),
+                    limit: *limit,
+                    path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": op_result }),
+            })
+        }
+        ShellCommand::ReportersExportCorpus {
+            catalog_path,
+            output,
+            format,
+        } => {
+            let op_result = engine
+                .apply(Operation::ExportReporterCorpus {
+                    catalog_path: catalog_path.clone(),
+                    path: output.clone(),
+                    format: *format,
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": op_result }),
             })
         }
         ShellCommand::ResourcesListPublicationDatasets {
@@ -32432,6 +32830,9 @@ fn execute_shell_command_with_options_dispatch(
             | ShellCommand::GeneGroupsResolve { .. }
             | ShellCommand::GeneGroupsDoctor { .. }
             | ShellCommand::GeneGroupsDraft { .. }
+            | ShellCommand::ReportersList { .. }
+            | ShellCommand::ReportersRecommend { .. }
+            | ShellCommand::ReportersExportCorpus { .. }
             | ShellCommand::ResourcesListPublicationDatasets { .. }
             | ShellCommand::ResourcesPublicationDatasetStatus { .. }
             | ShellCommand::ResourcesPreparePublicationDataset { .. }
@@ -33069,6 +33470,9 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::GeneGroupsResolve { .. }
         | ShellCommand::GeneGroupsDoctor { .. }
         | ShellCommand::GeneGroupsDraft { .. }
+        | ShellCommand::ReportersList { .. }
+        | ShellCommand::ReportersRecommend { .. }
+        | ShellCommand::ReportersExportCorpus { .. }
         | ShellCommand::ResourcesListPublicationDatasets { .. }
         | ShellCommand::ResourcesPublicationDatasetStatus { .. }
         | ShellCommand::ResourcesPreparePublicationDataset { .. }

@@ -7480,9 +7480,7 @@ pub struct RnaReadAlignmentTsvExport {
 }
 
 /// Conservative per-read isoform triage bins for aligned RNA-read reports.
-#[derive(
-    Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Default,
-)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum RnaReadIsoformTriageBin {
     KnownIsoformConfirmed,

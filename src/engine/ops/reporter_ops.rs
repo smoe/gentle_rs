@@ -677,9 +677,11 @@ mod tests {
         assert_eq!(report.active_record_count, 1);
         assert_eq!(report.quarantined_record_count, 1);
         assert_eq!(report.records[0].record.id, first.id);
-        assert!(report.quarantined_records[0]
-            .reasons
-            .contains(&"unclear_or_unaccepted_license_status".to_string()));
+        assert!(
+            report.quarantined_records[0]
+                .reasons
+                .contains(&"unclear_or_unaccepted_license_status".to_string())
+        );
     }
 
     #[test]
@@ -706,9 +708,11 @@ mod tests {
             .expect("list catalog");
         assert_eq!(report.active_record_count, 0);
         assert_eq!(report.quarantined_record_count, 1);
-        assert!(report.quarantined_records[0]
-            .reasons
-            .contains(&"invalid_sequence_characters".to_string()));
+        assert!(
+            report.quarantined_records[0]
+                .reasons
+                .contains(&"invalid_sequence_characters".to_string())
+        );
     }
 
     #[test]
@@ -736,10 +740,12 @@ mod tests {
         assert_eq!(result.recommended_candidate_count, 1);
         assert_eq!(result.recommendations[0].reporter_id, "red");
         assert_eq!(result.rejected_candidate_count, 1);
-        assert!(result.rejected_candidates[0]
-            .reasons
-            .iter()
-            .any(|reason| reason.starts_with("color_mismatch")));
+        assert!(
+            result.rejected_candidates[0]
+                .reasons
+                .iter()
+                .any(|reason| reason.starts_with("color_mismatch"))
+        );
     }
 
     #[test]

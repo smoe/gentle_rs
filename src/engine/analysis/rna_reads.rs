@@ -4477,14 +4477,16 @@ impl GentleEngine {
             .iter()
             .copied()
             .collect::<HashSet<_>>();
-        let file = File::create(path)
-            .map_err(|e| {
-                EngineError::new(
-                    ErrorCode::Io,
-                    format!("Could not create RNA-read isoform triage TSV export '{}'", path),
-                )
-                .with_cause(e)
-            })?;
+        let file = File::create(path).map_err(|e| {
+            EngineError::new(
+                ErrorCode::Io,
+                format!(
+                    "Could not create RNA-read isoform triage TSV export '{}'",
+                    path
+                ),
+            )
+            .with_cause(e)
+        })?;
         let mut writer = BufWriter::new(file);
         for line in Self::rna_read_isoform_triage_tsv_metadata_lines(
             &report,
@@ -4494,17 +4496,16 @@ impl GentleEngine {
             subset_spec,
             thresholds,
         ) {
-            writeln!(writer, "{line}")
-                .map_err(|e| {
-                    EngineError::new(
-                        ErrorCode::Io,
-                        format!(
-                            "Could not write RNA-read isoform triage TSV metadata to '{}'",
-                            path
-                        ),
-                    )
-                    .with_cause(e)
-                })?;
+            writeln!(writer, "{line}").map_err(|e| {
+                EngineError::new(
+                    ErrorCode::Io,
+                    format!(
+                        "Could not write RNA-read isoform triage TSV metadata to '{}'",
+                        path
+                    ),
+                )
+                .with_cause(e)
+            })?;
         }
         writeln!(
             writer,
