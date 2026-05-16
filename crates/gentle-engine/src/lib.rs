@@ -1,4 +1,6 @@
-//! Deterministic GENtle biology engine.
+//! Deterministic GENtle biology engine — first slice.
 //!
-//! This crate is intentionally empty at scaffold time; execution-side modules
-//! move here in small, behavior-preserving slices.
+//! Currently owns the IUPAC nucleotide-code conversion and validation
+//! helpers. Further engine modules will move here in subsequent PRs.
+
+pub mod iupac_code;
