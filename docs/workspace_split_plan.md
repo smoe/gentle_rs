@@ -1,6 +1,6 @@
 # Workspace / Crate Split Plan
 
-Last updated: 2026-05-09
+Last updated: 2026-05-16
 
 Purpose: describe the intended multi-crate end state for GENtle and the order
 in which the current monocrate should be split without breaking the
@@ -20,9 +20,10 @@ workspace settings by default.
 
 Current status:
 
-- the Cargo workspace scaffold exists, but Phase 2 has not started; the
-  `gentle-engine` crate scaffold has been removed and will be re-introduced
-  when the first execution-side module is ready to move;
+- Phase 2 has begun: `crates/gentle-engine` is re-introduced as a real
+  workspace member with `iupac_code` as its first execution-side module, while
+  the root crate keeps a compatibility shim for the old `gentle::iupac_code`
+  import path;
 - production code still mostly lives in the root crate;
 - Phase 1 has now started by extracting the first stable id aliases, shared
   enums, and `EngineError`/`ErrorCode` into `crates/gentle-protocol`;
