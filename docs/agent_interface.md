@@ -398,6 +398,7 @@ an agent has selected a deterministic operation.
 - `rna-reads export-alignment-dotplot-svg`
 - `rna-reads export-alignments-tsv`
 - `rna-reads export-hits-fasta`
+- `rna-reads export-isoform-triage-tsv`
 - `rna-reads export-paths-tsv`
 - `rna-reads export-report`
 - `rna-reads export-sample-sheet`
