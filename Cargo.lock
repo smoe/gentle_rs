@@ -2285,6 +2285,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "gentle-engine"
+version = "0.1.0-internal.7"
+dependencies = [
+ "gentle-protocol",
+]
+
+[[package]]
 name = "gentle-gui"
 version = "0.1.0-internal.7"
 dependencies = [
