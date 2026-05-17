@@ -34,6 +34,18 @@ pub(super) fn preferred_openai_agent_system_id(systems: &[AgentSystemSpec]) -> O
         .map(|system| system.id.clone())
 }
 
+pub(super) fn preferred_anthropic_agent_system_id(systems: &[AgentSystemSpec]) -> Option<String> {
+    for preferred_id in ["anthropic_claude_sonnet_native", "claude_sonnet_native"] {
+        if systems.iter().any(|system| system.id == preferred_id) {
+            return Some(preferred_id.to_string());
+        }
+    }
+    systems
+        .iter()
+        .find(|system| matches!(system.transport, AgentSystemTransport::NativeAnthropic))
+        .map(|system| system.id.clone())
+}
+
 pub(super) fn preferred_local_agent_system_id(systems: &[AgentSystemSpec]) -> Option<String> {
     for preferred_id in [
         "local_llama_compat",

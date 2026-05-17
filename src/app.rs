@@ -109,8 +109,9 @@ use crate::{
         AGENT_MAX_RETRIES_ENV, AGENT_MODEL_ENV, AGENT_READ_TIMEOUT_SECS_ENV,
         AGENT_TIMEOUT_SECS_ENV, AgentExecutionIntent, AgentInvocationOutcome, AgentResponse,
         AgentSystemSpec, AgentSystemTransport, DEFAULT_AGENT_SYSTEM_CATALOG_PATH,
-        OPENAI_API_KEY_ENV, OPENAI_COMPAT_UNSPECIFIED_MODEL, agent_system_availability,
-        discover_openai_models, invoke_agent_support_with_env_overrides, load_agent_system_catalog,
+        ANTHROPIC_API_KEY_ENV, OPENAI_API_KEY_ENV, OPENAI_COMPAT_UNSPECIFIED_MODEL,
+        agent_system_availability, discover_models_for_agent_system,
+        invoke_agent_support_with_env_overrides, load_agent_system_catalog,
     },
     agent_transport::{
         AgentLiveProbeStatusClass, AgentSystemPreflight, build_agent_system_preflight_with_live,
@@ -201,7 +202,8 @@ use agent_assistant_config::{
     agent_prompt_template_text, default_agent_connect_timeout_secs_string,
     default_agent_max_response_bytes_string, default_agent_max_retries_string,
     default_agent_read_timeout_secs_string, default_agent_timeout_secs_string,
-    normalize_agent_model_name, preferred_local_agent_system_id, preferred_openai_agent_system_id,
+    normalize_agent_model_name, preferred_anthropic_agent_system_id, preferred_local_agent_system_id,
+    preferred_openai_agent_system_id,
 };
 use anyhow::{Result, anyhow};
 use eframe::egui::{self, Key, KeyboardShortcut, Modifiers, Pos2, Ui, Vec2, ViewportId};
@@ -251,6 +253,8 @@ const DEFAULT_HELPER_GENOME_CACHE_DIR: &str = "data/helper_genomes";
 const DEFAULT_DBSNP_TUTORIAL_RS_ID: &str = "rs9923231";
 const RACK_HELP_AUTO_MINIMIZE_MOVE_THRESHOLD: u32 = 3;
 const GUI_OPENAI_DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
+const GUI_ANTHROPIC_DEFAULT_MODEL: &str = "claude-sonnet-4-6";
+const GUI_ANTHROPIC_DEFAULT_BASE_URL: &str = "https://api.anthropic.com/v1";
 const GUI_OPENAI_COMPAT_DEFAULT_BASE_URL: &str = "http://127.0.0.1:11434/v1";
 const WINDOW_OPEN_SLOW_THRESHOLD_MS: u128 = 400;
 const EMBEDDED_SEQUENCE_WINDOW_DRAG_MARGIN_X_PX: f32 = 140.0;
@@ -23211,7 +23215,8 @@ mod tests {
         GibsonUiOpeningMode, HelpDoc, HelpSearchMatch, HelpTutorialDocEntry,
         LINEAGE_GRAPH_WORKSPACE_METADATA_KEY, LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT,
         LineageAnalysisKind, LineageCopyPayloadKind, LineageNodeKind, LineageRow,
-        MAX_RECENT_PROJECTS, OPENAI_API_KEY_ENV, OPERATION_HISTORY_SCROLL_ID,
+        ANTHROPIC_API_KEY_ENV, MAX_RECENT_PROJECTS, OPENAI_API_KEY_ENV,
+        OPERATION_HISTORY_SCROLL_ID,
         PendingEnsemblCatalogUpdateDialog, PendingEnsemblInstallableGenomeDialog,
         PendingEnsemblQuickInstallDialog, PersistedConfiguration, PersistedLineageGraphWorkspace,
         PersistedLineageNodeGroup, PersistedRackWorkspace, PrepareGenomeDialogPrimaryAction,
@@ -23223,7 +23228,8 @@ mod tests {
         RetryCleanupAuditActionFilter, RetrySnapshotKindFilter, RetrySnapshotPendingCleanupAction,
         RoutineAssistantStage, TutorialProjectOpenOutcome, TutorialProjectTask,
         TutorialProjectTaskMessage, TutorialProjectTaskProgress, gui_prominent_glossary_entries,
-        preferred_local_agent_system_id, preferred_openai_agent_system_id,
+        preferred_anthropic_agent_system_id, preferred_local_agent_system_id,
+        preferred_openai_agent_system_id,
     };
     use crate::{
         agent_bridge::{AgentSystemSpec, AgentSystemTransport},
@@ -23636,6 +23642,10 @@ mod tests {
                 "msty_local_compat_template",
                 AgentSystemTransport::NativeOpenaiCompat,
             ),
+            test_agent_system(
+                "anthropic_claude_sonnet_native",
+                AgentSystemTransport::NativeAnthropic,
+            ),
             test_agent_system("openai_gpt5_native", AgentSystemTransport::NativeOpenai),
         ];
         assert_eq!(
@@ -23643,8 +23653,40 @@ mod tests {
             Some("openai_gpt5_native")
         );
         assert_eq!(
+            preferred_anthropic_agent_system_id(&systems).as_deref(),
+            Some("anthropic_claude_sonnet_native")
+        );
+        assert_eq!(
             preferred_local_agent_system_id(&systems).as_deref(),
             Some("msty_local_compat_template")
+        );
+    }
+
+    #[test]
+    fn selected_agent_session_env_overrides_use_anthropic_key_for_claude() {
+        let mut app = GENtleApp::default();
+        let system = test_agent_system(
+            "anthropic_claude_sonnet_native",
+            AgentSystemTransport::NativeAnthropic,
+        );
+        app.agent_openai_api_key = "sk-ant-test".to_string();
+        app.agent_base_url_override = "https://api.anthropic.com/v1".to_string();
+        app.agent_model_override = "claude-sonnet-4-6".to_string();
+        let overrides = app
+            .selected_agent_session_env_overrides(&system)
+            .expect("agent overrides");
+        assert_eq!(
+            overrides.get(ANTHROPIC_API_KEY_ENV).map(String::as_str),
+            Some("sk-ant-test")
+        );
+        assert_eq!(overrides.get(OPENAI_API_KEY_ENV), None);
+        assert_eq!(
+            overrides.get(AGENT_BASE_URL_ENV).map(String::as_str),
+            Some("https://api.anthropic.com/v1")
+        );
+        assert_eq!(
+            overrides.get(AGENT_MODEL_ENV).map(String::as_str),
+            Some("claude-sonnet-4-6")
         );
     }
 
@@ -23717,12 +23759,17 @@ mod tests {
     #[test]
     fn agent_test_setup_uses_live_for_native_transports_only() {
         let native = test_agent_system("openai_gpt5_native", AgentSystemTransport::NativeOpenai);
+        let anthropic = test_agent_system(
+            "anthropic_claude_sonnet_native",
+            AgentSystemTransport::NativeAnthropic,
+        );
         let compat = test_agent_system(
             "msty_local_compat_template",
             AgentSystemTransport::NativeOpenaiCompat,
         );
         let echo = test_agent_system("builtin_echo", AgentSystemTransport::BuiltinEcho);
         assert!(GENtleApp::agent_test_setup_uses_live_probe(&native));
+        assert!(GENtleApp::agent_test_setup_uses_live_probe(&anthropic));
         assert!(GENtleApp::agent_test_setup_uses_live_probe(&compat));
         assert!(!GENtleApp::agent_test_setup_uses_live_probe(&echo));
     }

@@ -44,6 +44,8 @@ tour:
 
 Agents working directly in a checkout should use the short in-tree loop in
 [`docs/agent_dev_loop.md`](docs/agent_dev_loop.md).
+For Claude-specific internal and external agent scenarios, see
+[`docs/quickstart_claude.md`](docs/quickstart_claude.md).
 
 ## What To Trust Today
 
