@@ -30920,6 +30920,45 @@ mod tests {
     }
 
     #[test]
+    fn agent_assistant_content_scrolls_on_small_viewport() {
+        let ctx = egui::Context::default();
+        let screen_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(640.0, 260.0));
+        let mut app = GENtleApp::default();
+        app.agent_system_id = "builtin_echo".to_string();
+        app.agent_prompt = (0..10)
+            .map(|idx| format!("agent prompt regression line {idx}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(screen_rect),
+            ..Default::default()
+        });
+        let panel_response =
+            crate::egui_compat::show_central_panel(&ctx, egui::CentralPanel::default(), |ui| {
+                app.render_agent_assistant_contents_scrollable(
+                    ui,
+                    "agent_assistant_scroll_regression_test",
+                )
+            });
+        let scroll_output = panel_response.inner;
+
+        assert!(
+            scroll_output.content_size.y > scroll_output.inner_rect.height() + 80.0,
+            "agent assistant content should overflow vertically on a small viewport: content={:?}, inner={:?}",
+            scroll_output.content_size,
+            scroll_output.inner_rect
+        );
+        assert!(
+            scroll_output.inner_rect.height() <= screen_rect.height(),
+            "agent assistant scroll area should stay bounded by the viewport: inner={:?}, screen={:?}",
+            scroll_output.inner_rect,
+            screen_rect
+        );
+        let _ = ctx.end_pass();
+    }
+
+    #[test]
     fn embedded_configuration_graphics_window_width_stays_bounded_across_frames() {
         let ctx = egui::Context::default();
         ctx.set_embed_viewports(true);
