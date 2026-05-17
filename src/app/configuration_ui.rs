@@ -113,6 +113,29 @@ impl GENtleApp {
             return;
         }
         let viewport_id = Self::configuration_viewport_id();
+        let spec = self.hosted_window_spec_for_viewport(
+            "Configuration",
+            Self::hosted_configuration_window_id(),
+            viewport_id,
+            Vec2::new(720.0, 540.0),
+            Vec2::new(460.0, 320.0),
+        );
+        if ctx.embed_viewports() {
+            let mut open = self.show_configuration_dialog;
+            let render_started = Instant::now();
+            crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                self.render_configuration_contents(ui)
+            });
+            self.note_slow_open_phase(
+                viewport_id,
+                "Configuration first-frame render",
+                render_started.elapsed().as_millis(),
+            );
+            self.show_configuration_dialog =
+                Self::reconcile_embedded_window_open_state(self.show_configuration_dialog, open);
+            self.finalize_viewport_open_probe(viewport_id, "Configuration");
+            return;
+        }
         let builder = egui::ViewportBuilder::default()
             .with_title("Configuration")
             .with_inner_size([720.0, 540.0])

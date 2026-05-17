@@ -3361,6 +3361,27 @@ impl GENtleApp {
             Vec2::new(1040.0, 680.0),
             Vec2::new(820.0, 480.0),
         );
+        if ctx.embed_viewports() {
+            let mut open = self.show_uniprot_dialog;
+            let mut close_requested = false;
+            crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("protein_evidence_embedded_scroll")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                            ui,
+                            scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                        );
+                        close_requested = self.render_uniprot_dialog_contents(ui);
+                    });
+            });
+            if close_requested {
+                open = false;
+            }
+            self.show_uniprot_dialog = open;
+            return;
+        }
         let builder = crate::egui_compat::viewport_builder_for_hosted_window(&spec);
         ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
             self.note_viewport_focus_if_active(ctx, viewport_id);

@@ -4886,7 +4886,10 @@ fn parse_reporters_commands() {
             limit,
             output,
         } => {
-            assert_eq!(catalog_path.as_deref(), Some("assets/reporter_catalog.json"));
+            assert_eq!(
+                catalog_path.as_deref(),
+                Some("assets/reporter_catalog.json")
+            );
             assert_eq!(filter.as_deref(), Some("GFP"));
             assert_eq!(limit, Some(2));
             assert_eq!(output.as_deref(), Some("reporters.json"));
@@ -4905,8 +4908,14 @@ fn parse_reporters_commands() {
             limit,
             output,
         } => {
-            assert_eq!(catalog_path.as_deref(), Some("assets/reporter_catalog.json"));
-            assert_eq!(constraints.intended_assay.as_deref(), Some("promoter_activity"));
+            assert_eq!(
+                catalog_path.as_deref(),
+                Some("assets/reporter_catalog.json")
+            );
+            assert_eq!(
+                constraints.intended_assay.as_deref(),
+                Some("promoter_activity")
+            );
             assert_eq!(constraints.chassis.as_deref(), Some("e_coli"));
             assert_eq!(constraints.live_assay, Some(true));
             assert_eq!(constraints.desired_color.as_deref(), Some("red"));
@@ -4936,7 +4945,10 @@ fn parse_reporters_commands() {
             output,
             format,
         } => {
-            assert_eq!(catalog_path.as_deref(), Some("assets/reporter_catalog.json"));
+            assert_eq!(
+                catalog_path.as_deref(),
+                Some("assets/reporter_catalog.json")
+            );
             assert_eq!(output, "reporters.jsonl");
             assert_eq!(format, ReporterCorpusExportFormat::Jsonl);
         }

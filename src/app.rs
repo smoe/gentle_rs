@@ -988,6 +988,7 @@ pub struct GENtleApp {
     agent_discovered_model_pick: String,
     agent_model_discovery_status: String,
     agent_model_discovery_source_key: String,
+    agent_model_discovery_failed_source_key: String,
     agent_model_discovery_task: Option<AgentModelDiscoveryTask>,
     agent_prompt_template_id: String,
     agent_prompt: String,
@@ -2612,6 +2613,7 @@ impl Default for GENtleApp {
             agent_discovered_model_pick: String::new(),
             agent_model_discovery_status: String::new(),
             agent_model_discovery_source_key: String::new(),
+            agent_model_discovery_failed_source_key: String::new(),
             agent_model_discovery_task: None,
             agent_prompt_template_id: AGENT_PROMPT_TEMPLATE_DEFAULT_ID.to_string(),
             agent_prompt: String::new(),
@@ -6445,6 +6447,7 @@ Error: `{err}`"
         self.agent_discovered_model_pick.clear();
         self.agent_model_discovery_status.clear();
         self.agent_model_discovery_source_key.clear();
+        self.agent_model_discovery_failed_source_key.clear();
         self.uniprot_status.clear();
         self.genbank_status.clear();
         self.load_bed_track_subscriptions_from_state();
@@ -12900,6 +12903,22 @@ Error: `{err}`"
             Vec2::new(980.0, 760.0),
             Vec2::new(760.0, 560.0),
         );
+        if ctx.embed_viewports() {
+            let mut close_requested = false;
+            crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("arrangement_gel_embedded_scroll")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        close_requested = self.render_arrangement_gel_preview_contents(ui);
+                    });
+            });
+            if close_requested || ctx.input(|i| i.key_pressed(Key::Escape)) {
+                open = false;
+            }
+            self.show_arrangement_gel_preview_dialog = open;
+            return;
+        }
         let builder = crate::egui_compat::viewport_builder_for_hosted_window(&spec);
         ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
             self.note_viewport_focus_if_active(ctx, viewport_id);
@@ -13049,6 +13068,21 @@ Error: `{err}`"
             Vec2::new(980.0, 760.0),
             Vec2::new(760.0, 560.0),
         );
+        if ctx.embed_viewports() {
+            let mut close_requested = false;
+            crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        close_requested = self.render_rack_labels_preview_contents(ui);
+                    });
+            });
+            if close_requested || ctx.input(|i| i.key_pressed(Key::Escape)) {
+                open = false;
+            }
+            self.show_rack_labels_preview_dialog = open;
+            return;
+        }
         let builder = crate::egui_compat::viewport_builder_for_hosted_window(&spec);
         ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
             self.note_viewport_focus_if_active(ctx, viewport_id);
@@ -13163,6 +13197,22 @@ Error: `{err}`"
             Vec2::new(1200.0, 840.0),
             Vec2::new(920.0, 620.0),
         );
+        if ctx.embed_viewports() {
+            let mut close_requested = false;
+            crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("pcr_design_embedded_scroll")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        close_requested = self.render_pcr_design_contents(ui, ctx)
+                    });
+            });
+            if close_requested || ctx.input(|i| i.key_pressed(Key::Escape)) {
+                open = false;
+            }
+            self.show_pcr_design_dialog = open;
+            return;
+        }
         let builder = crate::egui_compat::viewport_builder_for_hosted_window(&spec);
         ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
             self.note_viewport_focus_if_active(ctx, viewport_id);
@@ -13286,6 +13336,22 @@ Error: `{err}`"
             Vec2::new(1180.0, 820.0),
             Vec2::new(920.0, 620.0),
         );
+        if ctx.embed_viewports() {
+            let mut close_requested = false;
+            crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("sequencing_confirmation_embedded_scroll")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        close_requested = self.render_sequencing_confirmation_contents(ui, ctx)
+                    });
+            });
+            if close_requested || ctx.input(|i| i.key_pressed(Key::Escape)) {
+                open = false;
+            }
+            self.show_sequencing_confirmation_dialog = open;
+            return;
+        }
         let builder = crate::egui_compat::viewport_builder_for_hosted_window(&spec);
         ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
             self.note_viewport_focus_if_active(ctx, viewport_id);
@@ -13833,6 +13899,17 @@ Error: `{err}`"
             Vec2::new(980.0, 760.0),
             Vec2::new(700.0, 520.0),
         );
+        if ctx.embed_viewports() {
+            let mut close_requested = false;
+            crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                close_requested = self.render_planning_contents(ui)
+            });
+            if close_requested || ctx.input(|i| i.key_pressed(Key::Escape)) {
+                open = false;
+            }
+            self.show_planning_dialog = open;
+            return;
+        }
         let builder = crate::egui_compat::viewport_builder_for_hosted_window(&spec);
         ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
             self.note_viewport_focus_if_active(ctx, viewport_id);
@@ -14302,6 +14379,7 @@ Error: `{err}`"
         self.agent_discovered_model_pick.clear();
         self.agent_model_discovery_status.clear();
         self.agent_model_discovery_source_key.clear();
+        self.agent_model_discovery_failed_source_key.clear();
         self.load_bed_track_subscriptions_from_state();
         self.load_lineage_graph_workspace_from_state();
         self.load_rack_workspace_from_state();
@@ -20423,6 +20501,89 @@ Error: `{err}`"
             .with_title("Command Palette")
             .with_inner_size([760.0, 520.0])
             .with_min_inner_size([500.0, 320.0]);
+        if ctx.embed_viewports() {
+            let mut render_contents = |ui: &mut Ui| {
+                ui.label("Search actions, settings, and help topics");
+                let input_id = ui.make_persistent_id("gentle_command_palette_search");
+                let search_response = ui.add(
+                    egui::TextEdit::singleline(&mut self.command_palette_query)
+                        .id(input_id)
+                        .desired_width(f32::INFINITY)
+                        .hint_text("Type action name (Cmd/Ctrl+K)"),
+                );
+                if self.command_palette_focus_query {
+                    search_response.request_focus();
+                    self.command_palette_focus_query = false;
+                }
+                if ui.input(|i| i.key_pressed(Key::ArrowDown)) {
+                    if !entries.is_empty() {
+                        self.command_palette_selected =
+                            (self.command_palette_selected + 1) % entries.len();
+                    }
+                }
+                if ui.input(|i| i.key_pressed(Key::ArrowUp)) && !entries.is_empty() {
+                    if self.command_palette_selected == 0 {
+                        self.command_palette_selected = entries.len() - 1;
+                    } else {
+                        self.command_palette_selected -= 1;
+                    }
+                }
+                if ui.input(|i| i.key_pressed(Key::Enter))
+                    && !entries.is_empty()
+                    && self.command_palette_selected < entries.len()
+                {
+                    execute_action = Some(entries[self.command_palette_selected].action);
+                }
+
+                ui.separator();
+                if entries.is_empty() {
+                    ui.small("No matching commands");
+                } else {
+                    egui::ScrollArea::vertical()
+                        .id_salt("command_palette_results_scroll")
+                        .max_height(400.0)
+                        .show(ui, |ui| {
+                            scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                                ui,
+                                scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                            );
+                            for (idx, entry) in entries.iter().enumerate() {
+                                let selected = self.command_palette_selected == idx;
+                                let label = format!("{} — {}", entry.title, entry.detail);
+                                let response = ui.selectable_label(selected, label);
+                                if response.hovered() {
+                                    self.command_palette_selected = idx;
+                                    self.hover_status_name =
+                                        format!("Command palette: {}", entry.title);
+                                }
+                                if response.clicked() {
+                                    execute_action = Some(entry.action);
+                                }
+                            }
+                        });
+                }
+            };
+            let spec = crate::egui_compat::HostedWindowSpec::new(
+                "Command Palette",
+                egui::Id::new("Command Palette"),
+                Vec2::new(760.0, 520.0),
+                Vec2::new(500.0, 320.0),
+            )
+            .foreground(render_command_palette_in_foreground);
+            crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| render_contents(ui));
+
+            if let Some(action) = execute_action {
+                self.execute_command_palette_action(ctx, action);
+                open = false;
+            }
+
+            if ctx.input(|i| i.key_pressed(Key::Escape)) {
+                open = false;
+            }
+
+            self.show_command_palette_dialog = open;
+            return;
+        }
         ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
             self.note_viewport_focus_if_active(ctx, viewport_id);
             let mut render_contents = |ui: &mut Ui| {
@@ -23571,6 +23732,59 @@ mod tests {
         app.agent_preflight_output = Some(crate::agent_transport::AgentSystemPreflight::default());
         app.invalidate_agent_preflight_after_setup_input_change();
         assert!(app.agent_preflight_output.is_none());
+    }
+
+    #[test]
+    fn agent_model_discovery_uses_env_key_when_session_key_is_empty() {
+        let _lock = crate::genomes::genbank_env_lock()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let _guard = EnvVarGuard::set(OPENAI_API_KEY_ENV, "sk-test-from-env");
+        let app = GENtleApp::default();
+
+        assert_eq!(
+            app.selected_agent_model_discovery_key_label(),
+            "env-openai-api-key"
+        );
+        assert_eq!(
+            app.selected_agent_model_discovery_api_key().as_deref(),
+            Some("sk-test-from-env")
+        );
+    }
+
+    #[test]
+    fn agent_model_discovery_does_not_auto_retry_failed_source() {
+        let mut app = GENtleApp::default();
+        let system = test_agent_system(
+            "msty_local_compat_template",
+            AgentSystemTransport::NativeOpenaiCompat,
+        );
+        app.agent_base_url_override = "http://127.0.0.1:9/v1".to_string();
+        let source_key = app
+            .selected_agent_model_discovery_source_key(&system)
+            .expect("source key");
+        app.agent_model_discovery_failed_source_key = source_key;
+        app.agent_model_discovery_status =
+            "Model discovery failed after 0.1s: unauthorized. Authentication failed.".to_string();
+
+        app.start_agent_model_discovery_task(&system, false);
+
+        assert!(app.agent_model_discovery_task.is_none());
+        assert!(
+            app.agent_model_discovery_status
+                .contains("Authentication failed")
+        );
+    }
+
+    #[test]
+    fn agent_model_discovery_auth_failure_hint_mentions_api_key_type() {
+        let hint = GENtleApp::agent_model_discovery_failure_hint(
+            "model discovery failed at https://api.openai.com/v1/models (status=401 Unauthorized): invalid_api_key",
+        )
+        .expect("auth hint");
+
+        assert!(hint.contains("OpenAI Platform API key"));
+        assert!(hint.contains("ChatGPT/Codex subscription tokens"));
     }
 
     #[test]
@@ -29818,6 +30032,178 @@ mod tests {
     }
 
     #[test]
+    fn embedded_window_layer_id_for_root_tools_uses_hosted_window_ids() {
+        let app = GENtleApp::default();
+        let cases = [
+            (
+                GENtleApp::prepare_genome_viewport_id(),
+                egui::Id::new((
+                    "hosted_prepare_genome_window",
+                    GENtleApp::prepare_genome_viewport_id(),
+                )),
+            ),
+            (
+                GENtleApp::retrieve_genome_viewport_id(),
+                egui::Id::new((
+                    "hosted_retrieve_genome_window",
+                    GENtleApp::retrieve_genome_viewport_id(),
+                )),
+            ),
+            (
+                GENtleApp::blast_genome_viewport_id(),
+                egui::Id::new((
+                    "hosted_blast_genome_window",
+                    GENtleApp::blast_genome_viewport_id(),
+                )),
+            ),
+            (
+                GENtleApp::bed_track_viewport_id(),
+                egui::Id::new((
+                    "hosted_bed_track_window",
+                    GENtleApp::bed_track_viewport_id(),
+                )),
+            ),
+            (
+                GENtleApp::gibson_viewport_id(),
+                egui::Id::new(("hosted_gibson_window", GENtleApp::gibson_viewport_id())),
+            ),
+            (
+                GENtleApp::arrangement_gel_preview_viewport_id(),
+                egui::Id::new((
+                    "hosted_arrangement_gel_preview_window",
+                    GENtleApp::arrangement_gel_preview_viewport_id(),
+                )),
+            ),
+            (
+                GENtleApp::pcr_design_viewport_id(),
+                egui::Id::new((
+                    "hosted_pcr_design_window",
+                    GENtleApp::pcr_design_viewport_id(),
+                )),
+            ),
+            (
+                GENtleApp::sequencing_confirmation_viewport_id(),
+                egui::Id::new((
+                    "hosted_sequencing_confirmation_window",
+                    GENtleApp::sequencing_confirmation_viewport_id(),
+                )),
+            ),
+            (
+                GENtleApp::planning_viewport_id(),
+                egui::Id::new(("hosted_planning_window", GENtleApp::planning_viewport_id())),
+            ),
+            (
+                GENtleApp::uniprot_viewport_id(),
+                egui::Id::new(("hosted_uniprot_window", GENtleApp::uniprot_viewport_id())),
+            ),
+        ];
+
+        for (viewport_id, hosted_id) in cases {
+            assert_eq!(
+                app.embedded_window_layer_id_for_viewport(viewport_id),
+                Some(egui::LayerId::new(egui::Order::Middle, hosted_id))
+            );
+        }
+    }
+
+    #[test]
+    fn embedded_root_tool_windows_render_as_sibling_hosted_windows() {
+        let screen_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1600.0, 1000.0));
+
+        let ctx = egui::Context::default();
+        ctx.set_embed_viewports(true);
+        let mut app = GENtleApp::default();
+        app.show_configuration_dialog = true;
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(screen_rect),
+            ..Default::default()
+        });
+        app.render_configuration_dialog(&ctx);
+        assert!(ctx.memory(|mem| {
+            mem.areas().is_visible(&egui::LayerId::new(
+                egui::Order::Middle,
+                GENtleApp::hosted_configuration_window_id(),
+            ))
+        }));
+        assert!(!ctx.memory(|mem| {
+            mem.areas().is_visible(&egui::LayerId::new(
+                egui::Order::Middle,
+                egui::Id::new(GENtleApp::configuration_viewport_id()),
+            ))
+        }));
+        let _ = ctx.end_pass();
+
+        let ctx = egui::Context::default();
+        ctx.set_embed_viewports(true);
+        let mut app = GENtleApp::default();
+        app.show_routine_assistant_dialog = true;
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(screen_rect),
+            ..Default::default()
+        });
+        app.render_routine_assistant_dialog(&ctx);
+        assert!(ctx.memory(|mem| {
+            mem.areas().is_visible(&egui::LayerId::new(
+                egui::Order::Middle,
+                GENtleApp::hosted_routine_assistant_window_id(),
+            ))
+        }));
+        assert!(!ctx.memory(|mem| {
+            mem.areas().is_visible(&egui::LayerId::new(
+                egui::Order::Middle,
+                egui::Id::new(GENtleApp::routine_assistant_viewport_id()),
+            ))
+        }));
+        let _ = ctx.end_pass();
+
+        let ctx = egui::Context::default();
+        ctx.set_embed_viewports(true);
+        let mut app = GENtleApp::default();
+        app.show_command_palette_dialog = true;
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(screen_rect),
+            ..Default::default()
+        });
+        app.render_command_palette_dialog(&ctx);
+        assert!(ctx.memory(|mem| {
+            mem.areas().is_visible(&egui::LayerId::new(
+                egui::Order::Middle,
+                egui::Id::new("Command Palette"),
+            ))
+        }));
+        assert!(!ctx.memory(|mem| {
+            mem.areas().is_visible(&egui::LayerId::new(
+                egui::Order::Middle,
+                egui::Id::new(GENtleApp::command_palette_viewport_id()),
+            ))
+        }));
+        let _ = ctx.end_pass();
+
+        let ctx = egui::Context::default();
+        ctx.set_embed_viewports(true);
+        let mut app = GENtleApp::default();
+        app.history_ui.show_panel = true;
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(screen_rect),
+            ..Default::default()
+        });
+        app.render_history_panel(&ctx);
+        assert!(ctx.memory(|mem| {
+            mem.areas().is_visible(&egui::LayerId::new(
+                egui::Order::Middle,
+                egui::Id::new("Operation History"),
+            ))
+        }));
+        assert!(!ctx.memory(|mem| {
+            mem.areas().is_visible(&egui::LayerId::new(
+                egui::Order::Middle,
+                egui::Id::new(GENtleApp::history_viewport_id()),
+            ))
+        }));
+        let _ = ctx.end_pass();
+    }
+
+    #[test]
     fn embedded_window_layer_id_for_sequence_viewport_uses_hosted_sequence_window_id() {
         let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
         let mut app = GENtleApp::default();
@@ -30415,6 +30801,29 @@ mod tests {
         ctx.begin_pass(egui::RawInput::default());
         app.render_help_dialog(&ctx);
         assert!(ctx.memory(|mem| mem.areas().is_visible(&foreground_help_layer_id)));
+        assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_viewport_layer_id)));
+        let _ = ctx.end_pass();
+    }
+
+    #[test]
+    fn embedded_agent_assistant_renders_as_single_hosted_window_without_viewport_title_shell() {
+        let ctx = egui::Context::default();
+        ctx.set_embed_viewports(true);
+        let mut app = GENtleApp::default();
+        app.show_agent_assistant_dialog = true;
+        app.queue_focus_viewport(GENtleApp::agent_assistant_viewport_id());
+        let hosted_layer_id = egui::LayerId::new(
+            egui::Order::Foreground,
+            GENtleApp::hosted_agent_assistant_window_id(),
+        );
+        let stale_viewport_layer_id = egui::LayerId::new(
+            egui::Order::Middle,
+            egui::Id::new(GENtleApp::agent_assistant_viewport_id()),
+        );
+
+        ctx.begin_pass(egui::RawInput::default());
+        app.render_agent_assistant_dialog(&ctx);
+        assert!(ctx.memory(|mem| mem.areas().is_visible(&hosted_layer_id)));
         assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_viewport_layer_id)));
         let _ = ctx.end_pass();
     }

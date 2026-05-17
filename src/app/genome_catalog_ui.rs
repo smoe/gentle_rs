@@ -855,6 +855,37 @@ impl GENtleApp {
             Vec2::new(520.0, 360.0),
         );
 
+        if ctx.embed_viewports() {
+            let mut open = self.show_reference_genome_prepare_dialog;
+            let mut close_requested = false;
+            crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                close_requested = self
+                    .render_reference_genome_prepare_scroll_area(
+                        ui,
+                        "prepare_genome_embedded_scroll",
+                    )
+                    .inner;
+            });
+            if close_requested {
+                open = false;
+                self.dismiss_pending_prepared_genome_reinstall_for_host(
+                    PreparedGenomeReinstallDialogHost::PrepareDialog,
+                );
+            }
+            self.render_prepared_genome_reinstall_confirm_dialog(
+                ctx,
+                PreparedGenomeReinstallDialogHost::PrepareDialog,
+            );
+            self.show_reference_genome_prepare_dialog = open;
+            if !self.show_reference_genome_prepare_dialog {
+                self.dismiss_pending_prepared_genome_reinstall_for_host(
+                    PreparedGenomeReinstallDialogHost::PrepareDialog,
+                );
+                self.clear_prepare_dialog_ephemeral_state();
+            }
+            return;
+        }
+
         let builder = crate::egui_compat::viewport_builder_for_hosted_window(&spec);
         ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
             self.note_viewport_focus_if_active(ctx, viewport_id);
@@ -2000,6 +2031,19 @@ impl GENtleApp {
             Vec2::new(860.0, 520.0),
         );
 
+        if ctx.embed_viewports() {
+            let mut open = self.show_reference_genome_retrieve_dialog;
+            let mut close_requested = false;
+            crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                close_requested = self.render_reference_genome_retrieve_contents(ui);
+            });
+            if close_requested {
+                open = false;
+            }
+            self.show_reference_genome_retrieve_dialog = open;
+            return;
+        }
+
         let builder = crate::egui_compat::viewport_builder_for_hosted_window(&spec);
         ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
             self.note_viewport_focus_if_active(ctx, viewport_id);
@@ -2673,6 +2717,19 @@ impl GENtleApp {
             Vec2::new(980.0, 700.0),
             Vec2::new(640.0, 420.0),
         );
+
+        if ctx.embed_viewports() {
+            let mut open = self.show_reference_genome_blast_dialog;
+            let mut close_requested = false;
+            crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                close_requested = self.render_reference_genome_blast_contents(ui);
+            });
+            if close_requested {
+                open = false;
+            }
+            self.show_reference_genome_blast_dialog = open;
+            return;
+        }
 
         let builder = crate::egui_compat::viewport_builder_for_hosted_window(&spec);
         ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
@@ -3517,6 +3574,18 @@ impl GENtleApp {
             Vec2::new(980.0, 620.0),
             Vec2::new(620.0, 320.0),
         );
+        if ctx.embed_viewports() {
+            let mut open = self.show_genome_bed_track_dialog;
+            let mut close_requested = false;
+            crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                close_requested = self.render_genome_bed_track_contents(ui)
+            });
+            if close_requested {
+                open = false;
+            }
+            self.show_genome_bed_track_dialog = open;
+            return;
+        }
         let builder = crate::egui_compat::viewport_builder_for_hosted_window(&spec);
         ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
             self.note_viewport_focus_if_active(ctx, viewport_id);
