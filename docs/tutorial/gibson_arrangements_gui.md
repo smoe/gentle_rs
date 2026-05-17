@@ -6,6 +6,9 @@
 > shared `gibson apply`, arrangement persistence, and `render-pool-gel-svg`
 > paths so the same setup can be replayed deterministically.
 
+See also: executable reference chapter
+[`16 Gibson Arrangements Starter Project (offline)`](./generated/chapters/16_gibson_arrangements_baseline.md).
+
 This tutorial shows how GENtle turns one successful Gibson apply step into a
 reusable arrangement.
 

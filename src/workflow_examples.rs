@@ -2149,6 +2149,33 @@ fn render_tutorial_local_execution_note(chapter: &TutorialChapter) -> String {
     out
 }
 
+fn guided_walkthrough_target_from_generated_chapter(guide_path: &str) -> String {
+    let guide_path = guide_path.trim();
+    guide_path
+        .strip_prefix("docs/tutorial/")
+        .map(|relative| format!("../../{relative}"))
+        .unwrap_or_else(|| guide_path.to_string())
+}
+
+fn render_tutorial_guided_walkthrough_see_also(chapter: &TutorialChapter) -> String {
+    let Some(guide_path) = &chapter.guide_path else {
+        return String::new();
+    };
+    let guide_path = guide_path.trim();
+    if guide_path.is_empty() {
+        return String::new();
+    }
+    let mut out = String::new();
+    out.push_str("\nSee also: guided walkthrough [");
+    out.push_str(guide_path);
+    out.push_str("](");
+    out.push_str(&guided_walkthrough_target_from_generated_chapter(
+        guide_path,
+    ));
+    out.push_str("). Use that page first when you want a human-led path; this chapter is the executable reference.\n");
+    out
+}
+
 fn tutorial_step_at(steps: &[String], idx: usize) -> Option<&str> {
     steps
         .get(idx)
@@ -2290,6 +2317,7 @@ fn render_tutorial_chapter_markdown(
         out.push_str(chapter.narrative.trim());
         out.push_str("\n");
     }
+    out.push_str(&render_tutorial_guided_walkthrough_see_also(chapter));
     out.push_str(&render_tutorial_prerequisites(chapter, chapter_by_id)?);
     out.push_str(&render_tutorial_local_execution_note(chapter));
     out.push_str("\n## When This Routine Is Useful\n\n");
@@ -2431,6 +2459,7 @@ fn render_tutorial_index(
         "- Start chapters in the GUI to understand biological intent and visual context.\n",
     );
     out.push_str("- Then use the command equivalents for repeatable runs and automation.\n\n");
+    out.push_str("These chapters are generated from executable workflow JSON. They are stable, regenerable, and machine-checked, but they are reference material - not first-time walkthroughs. If you are new to GENtle, start with the guided walkthroughs in [`../README.md`](../README.md).\n\n");
     out.push_str("Online execution was ");
     out.push_str(if online_enabled {
         "enabled"
@@ -3454,6 +3483,11 @@ mod tests {
         let generated = out_dir.path().join("generated");
         generate_tutorial_docs(&source, &manifest, &generated, repo_root)
             .expect("tutorial generation should pass");
+        let readme = generated.join("README.md");
+        let readme_markdown = std::fs::read_to_string(&readme).expect("read generated README");
+        assert!(readme_markdown.contains("reference material - not first-time walkthroughs"));
+        assert!(readme_markdown.contains("guided walkthroughs in [`../README.md`](../README.md)"));
+
         let chapter = generated.join("chapters/01_load_branch_reverse_complement_pgex_fasta.md");
         let markdown = std::fs::read_to_string(&chapter).expect("read generated chapter markdown");
         assert!(markdown.starts_with("---\nchapter_id: "));
@@ -3472,6 +3506,12 @@ mod tests {
         assert!(online_markdown.contains("CLI:\n\n```bash\nGENTLE_TEST_ONLINE=1 cargo run"));
         assert!(online_markdown.contains("> Expected:"));
         assert!(!online_markdown.contains("## Command Equivalent (After GUI)"));
+
+        let simple_pcr_chapter = generated.join("chapters/18_simple_pcr_selection_gui.md");
+        let simple_pcr_markdown =
+            std::fs::read_to_string(&simple_pcr_chapter).expect("read simple PCR chapter markdown");
+        assert!(simple_pcr_markdown.contains("See also: guided walkthrough"));
+        assert!(simple_pcr_markdown.contains("../../simple_pcr_selection_gui.md"));
 
         let promoter_chapter =
             generated.join("chapters/24_promoter_design_artifact_slice_offline.md");

@@ -26,6 +26,8 @@ Recommended progression:
 - Start chapters in the GUI to understand biological intent and visual context.
 - Then use the command equivalents for repeatable runs and automation.
 
+These chapters are generated from executable workflow JSON. They are stable, regenerable, and machine-checked, but they are reference material - not first-time walkthroughs. If you are new to GENtle, start with the guided walkthroughs in [`../README.md`](../README.md).
+
 Online execution was disabled (`GENTLE_TEST_ONLINE=0` during generation).
 
 ## Chapters

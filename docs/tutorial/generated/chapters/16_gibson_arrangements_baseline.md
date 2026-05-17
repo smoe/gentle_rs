@@ -14,6 +14,8 @@ Open directly into an arrangement-ready Gibson result with vector, insert, assem
 
 This chapter now uses its own deterministic workflow example instead of reusing the Gibson specialist starter. `File -> Open Tutorial Project...` builds the pGEX + insert starter, applies the canonical single-insert Gibson plan, exports a lab-assistant handoff Markdown file, and then opens the arrangement guide so the user can inspect singleton outputs, stored arrangements, gel export, and bench-facing instructions without first repeating the cloning step.
 
+See also: guided walkthrough [docs/tutorial/gibson_arrangements_gui.md](../../gibson_arrangements_gui.md). Use that page first when you want a human-led path; this chapter is the executable reference.
+
 ## When This Routine Is Useful
 
 - You want to inspect the arrangement that Gibson apply creates without first navigating through the earlier Gibson-specialist apply walkthrough.

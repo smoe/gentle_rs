@@ -5,6 +5,9 @@
 > Drift note: this page is hand-written, but it is tied to the current
 > selection-first PCR Designer and the shared primer-design engine route.
 
+See also: executable reference chapter
+[`18 Simple PCR From a Selected Core Region`](./generated/chapters/18_simple_pcr_selection_gui.md).
+
 This tutorial is intentionally small.
 
 It is for the most common first PCR question:
