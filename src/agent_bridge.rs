@@ -31,10 +31,14 @@ const AGENT_MAX_RESPONSE_BYTES_DEFAULT: usize = 1_048_576;
 const AGENT_MAX_RESPONSE_BYTES_HARD_MAX: usize = 64 * 1024 * 1024;
 const OPENAI_DEFAULT_MODEL: &str = "gpt-5";
 const OPENAI_DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
+const ANTHROPIC_DEFAULT_MODEL: &str = "claude-sonnet-4-6";
+const ANTHROPIC_DEFAULT_BASE_URL: &str = "https://api.anthropic.com/v1";
+const ANTHROPIC_API_VERSION: &str = "2023-06-01";
 pub const OPENAI_COMPAT_UNSPECIFIED_MODEL: &str = "unspecified";
 const OPENAI_COMPAT_DEFAULT_MODEL: &str = OPENAI_COMPAT_UNSPECIFIED_MODEL;
 const OPENAI_COMPAT_DEFAULT_BASE_URL: &str = "http://127.0.0.1:11434/v1";
 pub const OPENAI_API_KEY_ENV: &str = "OPENAI_API_KEY";
+pub const ANTHROPIC_API_KEY_ENV: &str = "ANTHROPIC_API_KEY";
 pub const AGENT_BASE_URL_ENV: &str = "GENTLE_AGENT_BASE_URL";
 pub const AGENT_MODEL_ENV: &str = "GENTLE_AGENT_MODEL";
 pub const AGENT_TIMEOUT_SECS_ENV: &str = "GENTLE_AGENT_TIMEOUT_SECS";
@@ -94,6 +98,14 @@ pub(crate) fn redact_sensitive_text(raw: &str) -> String {
             "$1[REDACTED_OPENAI_API_KEY]",
         ),
         (
+            r"(?i)(ANTHROPIC_API_KEY\s*=\s*)([^\s,;]+)",
+            "$1[REDACTED_ANTHROPIC_API_KEY]",
+        ),
+        (
+            r"(?i)(x-api-key\s*:\s*)([^\s,;]+)",
+            "$1[REDACTED_API_KEY]",
+        ),
+        (
             r"(?i)(authorization\s*:\s*bearer\s+)([^\s,;]+)",
             "$1[REDACTED_BEARER_TOKEN]",
         ),
@@ -106,6 +118,10 @@ pub(crate) fn redact_sensitive_text(raw: &str) -> String {
             "$1=[REDACTED]",
         ),
         (r"\bsk-[A-Za-z0-9_-]{8,}\b", "[REDACTED_OPENAI_KEY]"),
+        (
+            r"\bsk-ant-[A-Za-z0-9_-]{8,}\b",
+            "[REDACTED_ANTHROPIC_KEY]",
+        ),
     ] {
         if let Ok(re) = Regex::new(pattern) {
             out = re.replace_all(&out, replacement).into_owned();
@@ -214,18 +230,26 @@ fn resolve_executable_path(program: &str) -> Option<PathBuf> {
     None
 }
 
-fn resolve_api_key(system: &AgentSystemSpec) -> Option<String> {
+fn resolve_env_key(system: &AgentSystemSpec, key: &str) -> Option<String> {
     system
         .env
-        .get(OPENAI_API_KEY_ENV)
+        .get(key)
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
         .or_else(|| {
-            std::env::var(OPENAI_API_KEY_ENV)
+            std::env::var(key)
                 .ok()
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty())
         })
+}
+
+fn resolve_openai_api_key(system: &AgentSystemSpec) -> Option<String> {
+    resolve_env_key(system, OPENAI_API_KEY_ENV)
+}
+
+fn resolve_anthropic_api_key(system: &AgentSystemSpec) -> Option<String> {
+    resolve_env_key(system, ANTHROPIC_API_KEY_ENV)
 }
 
 fn parse_positive_u64(raw: &str) -> Option<u64> {
@@ -539,6 +563,19 @@ fn openai_compat_endpoint_candidates(base_url: &str) -> Vec<String> {
     endpoints
 }
 
+fn anthropic_endpoint_candidates(base_url: &str) -> Vec<String> {
+    let normalized =
+        normalize_base_url(base_url).unwrap_or_else(|| base_url.trim_end_matches('/').to_string());
+    let mut endpoints = vec![format!("{normalized}/messages")];
+    if !normalized.ends_with("/v1") {
+        let v1 = format!("{normalized}/v1/messages");
+        if !endpoints.contains(&v1) {
+            endpoints.push(v1);
+        }
+    }
+    endpoints
+}
+
 fn openai_compat_endpoint_candidates_for_system(
     system: &AgentSystemSpec,
 ) -> Result<Vec<String>, String> {
@@ -658,6 +695,70 @@ pub fn discover_openai_models(
         .unwrap_or_else(|| "model discovery failed: no endpoint candidate succeeded".to_string()))
 }
 
+pub fn discover_anthropic_models(
+    base_url: &str,
+    api_key: Option<&str>,
+) -> Result<Vec<String>, String> {
+    let endpoints =
+        openai_model_list_endpoint_candidates(base_url).map_err(|e| redact_sensitive_text(&e))?;
+    let api_key = api_key
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| format!("{ANTHROPIC_API_KEY_ENV} is required for Claude model discovery"))?;
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(20))
+        .build()
+        .map_err(|e| format!("could not build Anthropic model-discovery client: {e}"))?;
+    let mut first_error: Option<String> = None;
+    for endpoint in endpoints {
+        match client
+            .get(&endpoint)
+            .header("x-api-key", api_key)
+            .header("anthropic-version", ANTHROPIC_API_VERSION)
+            .send()
+        {
+            Ok(response) => {
+                let status = response.status();
+                let body = response
+                    .text()
+                    .map_err(|e| format!("could not read model discovery response body: {e}"))?;
+                if !status.is_success() {
+                    if (status.as_u16() == 404 || status.as_u16() == 405) && first_error.is_none() {
+                        first_error = Some(format!(
+                            "model discovery endpoint not supported at {endpoint} (status={status})"
+                        ));
+                        continue;
+                    }
+                    return Err(redact_sensitive_text(&format!(
+                        "Anthropic model discovery failed at {endpoint} (status={status}): {}",
+                        body.trim()
+                    )));
+                }
+                let value = serde_json::from_str::<Value>(&body).map_err(|e| {
+                    format!(
+                        "Anthropic model discovery endpoint returned invalid JSON at {endpoint}: {e}"
+                    )
+                })?;
+                let models = extract_models_from_openai_models_payload(&value);
+                if models.is_empty() {
+                    return Err(format!(
+                        "Anthropic model discovery at {endpoint} succeeded but returned no model ids"
+                    ));
+                }
+                return Ok(models);
+            }
+            Err(e) => {
+                if first_error.is_none() {
+                    first_error = Some(format!("request failed at {endpoint}: {e}"));
+                }
+            }
+        }
+    }
+    Err(first_error.unwrap_or_else(|| {
+        "Anthropic model discovery failed: no endpoint candidate succeeded".to_string()
+    }))
+}
+
 pub fn agent_system_availability(system: &AgentSystemSpec) -> AgentSystemAvailability {
     match system.transport {
         AgentSystemTransport::BuiltinEcho => AgentSystemAvailability {
@@ -690,10 +791,22 @@ pub fn agent_system_availability(system: &AgentSystemSpec) -> AgentSystemAvailab
             }
         }
         AgentSystemTransport::NativeOpenai => {
-            if resolve_api_key(system).is_none() {
+            if resolve_openai_api_key(system).is_none() {
                 return AgentSystemAvailability {
                     available: false,
                     reason: Some(format!("{OPENAI_API_KEY_ENV} is not set")),
+                };
+            }
+            AgentSystemAvailability {
+                available: true,
+                reason: None,
+            }
+        }
+        AgentSystemTransport::NativeAnthropic => {
+            if resolve_anthropic_api_key(system).is_none() {
+                return AgentSystemAvailability {
+                    available: false,
+                    reason: Some(format!("{ANTHROPIC_API_KEY_ENV} is not set")),
                 };
             }
             AgentSystemAvailability {
@@ -754,6 +867,7 @@ pub enum AgentSystemTransport {
     #[default]
     ExternalJsonStdio,
     NativeOpenai,
+    NativeAnthropic,
     NativeOpenaiCompat,
     BuiltinEcho,
 }
@@ -763,6 +877,7 @@ impl AgentSystemTransport {
         match self {
             Self::ExternalJsonStdio => "external_json_stdio",
             Self::NativeOpenai => "native_openai",
+            Self::NativeAnthropic => "native_anthropic",
             Self::NativeOpenaiCompat => "native_openai_compat",
             Self::BuiltinEcho => "builtin_echo",
         }
@@ -1633,6 +1748,27 @@ fn extract_openai_chat_completions_text(response_json: &Value) -> Option<String>
     }
 }
 
+fn extract_anthropic_message_text(response_json: &Value) -> Option<String> {
+    let content = response_json.get("content").and_then(Value::as_array)?;
+    let mut collected = String::new();
+    for block in content {
+        if let Some(text) = block.get("text").and_then(Value::as_str) {
+            let trimmed = text.trim();
+            if !trimmed.is_empty() {
+                if !collected.is_empty() {
+                    collected.push('\n');
+                }
+                collected.push_str(trimmed);
+            }
+        }
+    }
+    if collected.trim().is_empty() {
+        None
+    } else {
+        Some(collected)
+    }
+}
+
 pub(crate) fn extract_openai_error_code(body: &str) -> Option<String> {
     let value = serde_json::from_str::<Value>(body).ok()?;
     let error = value.get("error")?;
@@ -1640,6 +1776,17 @@ pub(crate) fn extract_openai_error_code(body: &str) -> Option<String> {
         .get("code")
         .and_then(Value::as_str)
         .or_else(|| error.get("type").and_then(Value::as_str))
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+pub(crate) fn extract_anthropic_error_code(body: &str) -> Option<String> {
+    let value = serde_json::from_str::<Value>(body).ok()?;
+    let error = value.get("error")?;
+    error
+        .get("type")
+        .and_then(Value::as_str)
+        .or_else(|| error.get("code").and_then(Value::as_str))
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
 }
@@ -1668,12 +1815,36 @@ fn classify_openai_http_error(status: reqwest::StatusCode, body: &str) -> Extern
     }
 }
 
+fn classify_anthropic_http_error(status: reqwest::StatusCode, body: &str) -> ExternalAttemptError {
+    let message_prefix = format!("Anthropic API error (status={}): {}", status, body.trim());
+    let error_code = extract_anthropic_error_code(body).unwrap_or_default();
+    let lower = format!("{error_code} {body}").to_ascii_lowercase();
+    let kind = if status.as_u16() == 401 || status.as_u16() == 403 {
+        ExternalAttemptErrorKind::Unavailable
+    } else if status.as_u16() == 429
+        && (lower.contains("credit")
+            || lower.contains("quota")
+            || lower.contains("billing")
+            || lower.contains("balance"))
+    {
+        ExternalAttemptErrorKind::Unavailable
+    } else if status.is_server_error() || status.as_u16() == 429 {
+        ExternalAttemptErrorKind::Transient
+    } else {
+        ExternalAttemptErrorKind::Fatal
+    };
+    ExternalAttemptError {
+        kind,
+        message: message_prefix,
+    }
+}
+
 fn invoke_native_openai_once(
     system: &AgentSystemSpec,
     request_json: &str,
 ) -> Result<NativeHttpInvokeResult, ExternalAttemptError> {
     let runtime = resolve_agent_runtime_config(system);
-    let api_key = resolve_api_key(system).ok_or_else(|| ExternalAttemptError {
+    let api_key = resolve_openai_api_key(system).ok_or_else(|| ExternalAttemptError {
         kind: ExternalAttemptErrorKind::Unavailable,
         message: format!("{OPENAI_API_KEY_ENV} is not set"),
     })?;
@@ -1744,12 +1915,87 @@ fn invoke_native_openai_once(
     })
 }
 
+fn invoke_native_anthropic_once(
+    system: &AgentSystemSpec,
+    request_json: &str,
+) -> Result<NativeHttpInvokeResult, ExternalAttemptError> {
+    let runtime = resolve_agent_runtime_config(system);
+    let api_key = resolve_anthropic_api_key(system).ok_or_else(|| ExternalAttemptError {
+        kind: ExternalAttemptErrorKind::Unavailable,
+        message: format!("{ANTHROPIC_API_KEY_ENV} is not set"),
+    })?;
+    let model = resolve_model(system, ANTHROPIC_DEFAULT_MODEL);
+    let base_url = resolve_base_url(system, ANTHROPIC_DEFAULT_BASE_URL);
+    let endpoints = anthropic_endpoint_candidates(&base_url);
+    let endpoint = endpoints
+        .first()
+        .cloned()
+        .unwrap_or_else(|| format!("{base_url}/messages"));
+    let system_prompt = "You are a GENtle agent bridge.\nReturn STRICT JSON only with this schema:\n{\"schema\":\"gentle.agent_response.v1\",\"assistant_message\":\"string\",\"questions\":[\"string\"],\"suggested_commands\":[{\"title\":\"string\",\"rationale\":\"string\",\"command\":\"string\",\"execution\":\"chat|ask|auto\"}]}\nUse only keys from the schema. Extensions may use x_ prefix. Do not include markdown fences.";
+    let payload = json!({
+        "model": model,
+        "max_tokens": 4096,
+        "system": system_prompt,
+        "messages": [
+            {
+                "role": "user",
+                "content": format!("GENtle agent request JSON:\n{request_json}")
+            }
+        ]
+    });
+    let client = reqwest::blocking::Client::builder()
+        .connect_timeout(Duration::from_secs(runtime.connect_timeout_secs))
+        .timeout(Duration::from_secs(runtime.read_timeout_secs))
+        .build()
+        .map_err(|e| ExternalAttemptError {
+            kind: ExternalAttemptErrorKind::Fatal,
+            message: format!("could not build Anthropic client: {e}"),
+        })?;
+    let response = client
+        .post(&endpoint)
+        .header("x-api-key", api_key)
+        .header("anthropic-version", ANTHROPIC_API_VERSION)
+        .header("Content-Type", "application/json")
+        .json(&payload)
+        .send()
+        .map_err(|e| ExternalAttemptError {
+            kind: if e.is_timeout() || e.is_connect() || e.is_request() {
+                ExternalAttemptErrorKind::Transient
+            } else {
+                ExternalAttemptErrorKind::Fatal
+            },
+            message: format!("Anthropic request failed: {e}"),
+        })?;
+    let status = response.status();
+    let body =
+        read_response_body_limited(response, runtime.max_response_bytes, "Anthropic response")?;
+    if !status.is_success() {
+        return Err(classify_anthropic_http_error(status, &body));
+    }
+    let response_json = serde_json::from_str::<Value>(&body).map_err(|e| ExternalAttemptError {
+        kind: ExternalAttemptErrorKind::Fatal,
+        message: format!("Anthropic API returned invalid JSON: {e}"),
+    })?;
+    let text = extract_anthropic_message_text(&response_json).ok_or_else(|| {
+        ExternalAttemptError {
+            kind: ExternalAttemptErrorKind::Fatal,
+            message: "Anthropic API response did not contain content text".to_string(),
+        }
+    })?;
+    Ok(NativeHttpInvokeResult {
+        text,
+        raw_body: body,
+        attempted_endpoints: vec![endpoint.clone()],
+        selected_endpoint: Some(endpoint),
+    })
+}
+
 fn invoke_native_openai_compat_once(
     system: &AgentSystemSpec,
     request_json: &str,
 ) -> Result<NativeHttpInvokeResult, ExternalAttemptError> {
     let runtime = resolve_agent_runtime_config(system);
-    let api_key = resolve_api_key(system);
+    let api_key = resolve_openai_api_key(system);
     let model = resolve_model(system, OPENAI_COMPAT_DEFAULT_MODEL);
     if is_model_unspecified(&model) {
         return Err(ExternalAttemptError {
@@ -2152,6 +2398,86 @@ pub fn invoke_agent_support_with_env_overrides(
                 runtime: runtime_summary,
             }
         }
+        AgentSystemTransport::NativeAnthropic => {
+            let mut stdout: Option<String> = None;
+            let mut raw_body: Option<String> = None;
+            let mut attempted_endpoints: Vec<String> = vec![];
+            let mut selected_endpoint: Option<String> = None;
+            let mut last_transient_message: Option<String> = None;
+            for attempt in 1..=attempt_limit {
+                match invoke_native_anthropic_once(&system, &request_json) {
+                    Ok(result) => {
+                        stdout = Some(result.text);
+                        raw_body = Some(result.raw_body);
+                        attempted_endpoints = result.attempted_endpoints;
+                        selected_endpoint = result.selected_endpoint;
+                        break;
+                    }
+                    Err(error) => match error.kind {
+                        ExternalAttemptErrorKind::Unavailable => {
+                            return Err(agent_err(
+                                AgentBridgeErrorCode::AdapterUnavailable,
+                                error.message,
+                            ));
+                        }
+                        ExternalAttemptErrorKind::Fatal => {
+                            return Err(agent_err(
+                                AgentBridgeErrorCode::AdapterFailed,
+                                error.message,
+                            ));
+                        }
+                        ExternalAttemptErrorKind::Transient => {
+                            last_transient_message = Some(error.message.clone());
+                            if attempt >= attempt_limit {
+                                return Err(agent_err(
+                                    AgentBridgeErrorCode::AdapterTransient,
+                                    format!(
+                                        "native Anthropic call remained transiently unavailable after {} attempts (max_retries={}): {}",
+                                        attempt_limit, runtime.max_retries, error.message
+                                    ),
+                                ));
+                            }
+                            thread::sleep(retry_backoff_duration(attempt));
+                        }
+                    },
+                }
+            }
+            if stdout.is_none() {
+                return Err(agent_err(
+                    AgentBridgeErrorCode::AdapterTransient,
+                    format!(
+                        "native Anthropic call did not complete after {} attempts (max_retries={}){}",
+                        attempt_limit,
+                        runtime.max_retries,
+                        last_transient_message
+                            .as_ref()
+                            .map(|value| format!(": {value}"))
+                            .unwrap_or_default()
+                    ),
+                ));
+            }
+            let stdout = stdout.expect("checked is_some above");
+            let response = parse_agent_response(&stdout)?;
+            let mut runtime_summary = runtime_summary(&runtime);
+            runtime_summary.endpoint_candidates =
+                anthropic_endpoint_candidates(&resolve_base_url(&system, ANTHROPIC_DEFAULT_BASE_URL));
+            runtime_summary.attempted_endpoints = attempted_endpoints;
+            runtime_summary.selected_endpoint = selected_endpoint;
+            AgentInvocationOutcome {
+                catalog_path: resolved_catalog_path,
+                system_id: system.id,
+                system_label: system.label,
+                transport: system.transport.as_str().to_string(),
+                command: vec![],
+                request: request_value,
+                response,
+                raw_stdout: stdout,
+                raw_stderr: raw_body.unwrap_or_default(),
+                exit_code: Some(0),
+                elapsed_ms: start.elapsed().as_millis(),
+                runtime: runtime_summary,
+            }
+        }
         AgentSystemTransport::NativeOpenaiCompat => {
             let mut stdout: Option<String> = None;
             let mut raw_body: Option<String> = None;
@@ -2339,6 +2665,33 @@ mod tests {
     }
 
     #[test]
+    fn availability_native_anthropic_uses_system_env_override() {
+        let mut system = AgentSystemSpec {
+            id: "anthropic_native".to_string(),
+            label: "Anthropic Native".to_string(),
+            description: None,
+            transport: AgentSystemTransport::NativeAnthropic,
+            command: vec![],
+            model: Some("claude-sonnet-4-6".to_string()),
+            base_url: None,
+            env: HashMap::new(),
+            working_dir: None,
+        };
+        let unavailable = agent_system_availability(&system);
+        assert!(!unavailable.available);
+        assert_eq!(
+            unavailable.reason.as_deref(),
+            Some("ANTHROPIC_API_KEY is not set")
+        );
+        system.env.insert(
+            ANTHROPIC_API_KEY_ENV.to_string(),
+            "sk-ant-test".to_string(),
+        );
+        let available = agent_system_availability(&system);
+        assert!(available.available);
+    }
+
+    #[test]
     fn availability_external_stdio_requires_command() {
         let system = AgentSystemSpec {
             id: "stdio".to_string(),
@@ -2469,6 +2822,34 @@ mod tests {
             models,
             vec!["deepseek-r1:8b".to_string(), "qwen3:0.6b".to_string()]
         );
+    }
+
+    #[test]
+    fn extract_anthropic_message_text_reads_text_blocks() {
+        let value = serde_json::json!({
+            "type": "message",
+            "content": [
+                {"type": "text", "text": "{\"schema\":\"gentle.agent_response.v1\"}"},
+                {"type": "text", "text": "{\"assistant_message\":\"ok\"}"}
+            ]
+        });
+        let text = extract_anthropic_message_text(&value).expect("anthropic text");
+        assert!(text.contains("gentle.agent_response.v1"));
+        assert!(text.contains("assistant_message"));
+    }
+
+    #[test]
+    fn classify_anthropic_auth_error_is_unavailable() {
+        let body = r#"{
+  "type": "error",
+  "error": {
+    "type": "authentication_error",
+    "message": "invalid x-api-key"
+  }
+}"#;
+        let err = classify_anthropic_http_error(reqwest::StatusCode::UNAUTHORIZED, body);
+        assert_eq!(err.kind, ExternalAttemptErrorKind::Unavailable);
+        assert!(err.message.contains("Anthropic API error (status=401"));
     }
 
     #[test]

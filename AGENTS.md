@@ -23,6 +23,8 @@ Before non-trivial edits, read:
 6. [`docs/maintenance_chore_plan.md`](docs/maintenance_chore_plan.md) when
    running recurring hygiene, drift, parity, release-readiness, provenance, or
    decision-expiry chores.
+7. [`docs/quickstart_claude.md`](docs/quickstart_claude.md) when setting up or
+   explaining Claude-driven internal Agent Assistant or external checkout loops.
 
 ## Core Principles
 

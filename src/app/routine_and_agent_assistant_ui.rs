@@ -103,15 +103,21 @@ impl GENtleApp {
         system: &AgentSystemSpec,
     ) -> Result<HashMap<String, String>, String> {
         let mut overrides = HashMap::new();
-        let openai_api_key = self.agent_openai_api_key.trim();
-        if !openai_api_key.is_empty() {
-            overrides.insert(OPENAI_API_KEY_ENV.to_string(), openai_api_key.to_string());
+        let session_api_key = self.agent_openai_api_key.trim();
+        if !session_api_key.is_empty() {
+            let key_env = match system.transport {
+                AgentSystemTransport::NativeAnthropic => ANTHROPIC_API_KEY_ENV,
+                _ => OPENAI_API_KEY_ENV,
+            };
+            overrides.insert(key_env.to_string(), session_api_key.to_string());
         }
         let override_base_url = self.agent_base_url_override.trim();
         if !override_base_url.is_empty()
             && matches!(
                 system.transport,
-                AgentSystemTransport::NativeOpenai | AgentSystemTransport::NativeOpenaiCompat
+                AgentSystemTransport::NativeOpenai
+                    | AgentSystemTransport::NativeAnthropic
+                    | AgentSystemTransport::NativeOpenaiCompat
             )
         {
             overrides.insert(
@@ -130,7 +136,9 @@ impl GENtleApp {
         if let Some(override_model) = override_model
             && matches!(
                 system.transport,
-                AgentSystemTransport::NativeOpenai | AgentSystemTransport::NativeOpenaiCompat
+                AgentSystemTransport::NativeOpenai
+                    | AgentSystemTransport::NativeAnthropic
+                    | AgentSystemTransport::NativeOpenaiCompat
             )
         {
             overrides.insert(AGENT_MODEL_ENV.to_string(), override_model);
@@ -140,6 +148,7 @@ impl GENtleApp {
                 system.transport,
                 AgentSystemTransport::ExternalJsonStdio
                     | AgentSystemTransport::NativeOpenai
+                    | AgentSystemTransport::NativeAnthropic
                     | AgentSystemTransport::NativeOpenaiCompat
             )
         {
@@ -151,7 +160,9 @@ impl GENtleApp {
         if let Some(connect_timeout_override) = self.parse_agent_connect_timeout_seconds()?
             && matches!(
                 system.transport,
-                AgentSystemTransport::NativeOpenai | AgentSystemTransport::NativeOpenaiCompat
+                AgentSystemTransport::NativeOpenai
+                    | AgentSystemTransport::NativeAnthropic
+                    | AgentSystemTransport::NativeOpenaiCompat
             )
         {
             overrides.insert(
@@ -164,6 +175,7 @@ impl GENtleApp {
                 system.transport,
                 AgentSystemTransport::ExternalJsonStdio
                     | AgentSystemTransport::NativeOpenai
+                    | AgentSystemTransport::NativeAnthropic
                     | AgentSystemTransport::NativeOpenaiCompat
             )
         {
@@ -177,6 +189,7 @@ impl GENtleApp {
                 system.transport,
                 AgentSystemTransport::ExternalJsonStdio
                     | AgentSystemTransport::NativeOpenai
+                    | AgentSystemTransport::NativeAnthropic
                     | AgentSystemTransport::NativeOpenaiCompat
             )
         {
@@ -190,6 +203,7 @@ impl GENtleApp {
                 system.transport,
                 AgentSystemTransport::ExternalJsonStdio
                     | AgentSystemTransport::NativeOpenai
+                    | AgentSystemTransport::NativeAnthropic
                     | AgentSystemTransport::NativeOpenaiCompat
             )
         {
@@ -218,7 +232,9 @@ impl GENtleApp {
     ) -> Option<String> {
         if !matches!(
             system.transport,
-            AgentSystemTransport::NativeOpenai | AgentSystemTransport::NativeOpenaiCompat
+            AgentSystemTransport::NativeOpenai
+                | AgentSystemTransport::NativeAnthropic
+                | AgentSystemTransport::NativeOpenaiCompat
         ) {
             return None;
         }
@@ -236,6 +252,7 @@ impl GENtleApp {
         }
         Some(match system.transport {
             AgentSystemTransport::NativeOpenai => GUI_OPENAI_DEFAULT_BASE_URL.to_string(),
+            AgentSystemTransport::NativeAnthropic => GUI_ANTHROPIC_DEFAULT_BASE_URL.to_string(),
             AgentSystemTransport::NativeOpenaiCompat => {
                 GUI_OPENAI_COMPAT_DEFAULT_BASE_URL.to_string()
             }
@@ -314,7 +331,9 @@ impl GENtleApp {
     pub(super) fn agent_test_setup_uses_live_probe(system: &AgentSystemSpec) -> bool {
         matches!(
             system.transport,
-            AgentSystemTransport::NativeOpenai | AgentSystemTransport::NativeOpenaiCompat
+            AgentSystemTransport::NativeOpenai
+                | AgentSystemTransport::NativeAnthropic
+                | AgentSystemTransport::NativeOpenaiCompat
         )
     }
 
@@ -351,6 +370,13 @@ impl GENtleApp {
     }
 
     pub(super) fn agent_preflight_next_actions(preflight: &AgentSystemPreflight) -> Vec<String> {
+        let key_hint = if preflight.transport == AgentSystemTransport::NativeAnthropic.as_str() {
+            format!("Paste an Anthropic API key or set {ANTHROPIC_API_KEY_ENV}.")
+        } else {
+            format!(
+                "Paste a session key or set {OPENAI_API_KEY_ENV}; ChatGPT/Codex subscriptions are not OpenAI API keys."
+            )
+        };
         if let Some(live) = &preflight.live_probe {
             let model_is_unspecified = preflight
                 .model
@@ -362,9 +388,7 @@ impl GENtleApp {
                 .unwrap_or(true);
             return match live.status_class {
                 AgentLiveProbeStatusClass::Ok => vec![],
-                AgentLiveProbeStatusClass::MissingKey => vec![format!(
-                    "Paste a session key or set {OPENAI_API_KEY_ENV}; ChatGPT/Codex subscriptions are not OpenAI API keys."
-                )],
+                AgentLiveProbeStatusClass::MissingKey => vec![key_hint],
                 AgentLiveProbeStatusClass::AuthFailed => {
                     vec!["Check the API key/token for this endpoint, then run Test Setup again."
                         .to_string()]
@@ -405,11 +429,11 @@ impl GENtleApp {
         if preflight
             .warnings
             .iter()
-            .any(|warning| warning.contains(OPENAI_API_KEY_ENV))
+            .any(|warning| {
+                warning.contains(OPENAI_API_KEY_ENV) || warning.contains(ANTHROPIC_API_KEY_ENV)
+            })
         {
-            actions.push(format!(
-                "Paste a session key or set {OPENAI_API_KEY_ENV}; ChatGPT/Codex subscriptions are not OpenAI API keys."
-            ));
+            actions.push(key_hint);
         }
         if preflight
             .availability_reason
@@ -496,7 +520,9 @@ impl GENtleApp {
     ) {
         if !matches!(
             system.transport,
-            AgentSystemTransport::NativeOpenai | AgentSystemTransport::NativeOpenaiCompat
+            AgentSystemTransport::NativeOpenai
+                | AgentSystemTransport::NativeAnthropic
+                | AgentSystemTransport::NativeOpenaiCompat
         ) {
             return;
         }
@@ -528,7 +554,15 @@ impl GENtleApp {
             "Discovering models at {base_url} (auth={key_label}; timeout about 20s per endpoint) ..."
         );
         self.agent_model_discovery_task = None;
-        let api_key = self.selected_agent_model_discovery_api_key();
+        let env_overrides = match self.selected_agent_session_env_overrides(system) {
+            Ok(overrides) => overrides,
+            Err(err) => {
+                self.agent_model_discovery_status = err;
+                return;
+            }
+        };
+        let catalog_path = self.agent_catalog_path.trim().to_string();
+        let system_id = system.id.clone();
         let (tx, rx) = mpsc::channel::<AgentModelDiscoveryTaskMessage>();
         self.agent_model_discovery_task = Some(AgentModelDiscoveryTask {
             started: Instant::now(),
@@ -536,7 +570,15 @@ impl GENtleApp {
             receiver: rx,
         });
         std::thread::spawn(move || {
-            let result = discover_openai_models(&base_url, api_key.as_deref());
+            let result = discover_models_for_agent_system(
+                Some(catalog_path.as_str()),
+                &system_id,
+                if env_overrides.is_empty() {
+                    None
+                } else {
+                    Some(&env_overrides)
+                },
+            );
             let _ = tx.send(AgentModelDiscoveryTaskMessage::Done { source_key, result });
         });
     }
@@ -1917,7 +1959,7 @@ impl GENtleApp {
             ui.group(|ui| {
                 ui.strong("Quick start");
                 ui.small(
-                    "Choose whether GENtle should talk to the OpenAI API, a local OpenAI-compatible model, or the offline demo.",
+                    "Choose whether GENtle should talk to OpenAI, Claude, a local OpenAI-compatible model, or the offline demo.",
                 );
                 ui.horizontal_wrapped(|ui| {
                     if let Some(openai_system_id) =
@@ -1935,6 +1977,23 @@ impl GENtleApp {
                             self.agent_model_override.clear();
                             self.agent_discovered_model_pick.clear();
                             self.agent_status = "Selected OpenAI API quick start. Add OPENAI_API_KEY or paste a session key, then run Test Setup.".to_string();
+                        }
+                    }
+                    if let Some(anthropic_system_id) =
+                        preferred_anthropic_agent_system_id(&self.agent_systems)
+                    {
+                        if ui
+                            .button("Use Claude API")
+                            .on_hover_text(
+                                "Select the native Anthropic Claude profile and use ANTHROPIC_API_KEY for requests",
+                            )
+                            .clicked()
+                        {
+                            self.select_agent_system_and_reset_setup(&anthropic_system_id);
+                            self.agent_base_url_override.clear();
+                            self.agent_model_override.clear();
+                            self.agent_discovered_model_pick.clear();
+                            self.agent_status = "Selected Claude API quick start. Add ANTHROPIC_API_KEY or paste an Anthropic API key, then run Test Setup.".to_string();
                         }
                     }
                     if let Some(local_system_id) =
@@ -1967,7 +2026,7 @@ impl GENtleApp {
                     }
                 });
                 ui.small(
-                    "OpenAI API mode uses OPENAI_API_KEY and talks to the API directly. If you want a path that avoids OpenAI API billing, prefer a local OpenAI-compatible endpoint.",
+                    "Cloud API modes use provider API keys and talk to the provider directly. If you want a no-extra-OpenAI-bill path inside GENtle, prefer a local OpenAI-compatible endpoint.",
                 );
             });
             ui.group(|ui| {
@@ -2007,7 +2066,9 @@ impl GENtleApp {
             }
             if matches!(
                 system.transport,
-                AgentSystemTransport::NativeOpenai | AgentSystemTransport::NativeOpenaiCompat
+                AgentSystemTransport::NativeOpenai
+                    | AgentSystemTransport::NativeAnthropic
+                    | AgentSystemTransport::NativeOpenaiCompat
             ) {
                 if let Some(source_key) = self.selected_agent_model_discovery_source_key(&system) {
                     if self.agent_model_discovery_source_key != source_key {
@@ -2041,13 +2102,16 @@ impl GENtleApp {
                     .as_deref()
                     .map(str::trim)
                     .and_then(normalize_agent_model_name)
-                    .unwrap_or_else(|| OPENAI_COMPAT_UNSPECIFIED_MODEL.to_string());
+                    .unwrap_or_else(|| match system.transport {
+                        AgentSystemTransport::NativeAnthropic => {
+                            GUI_ANTHROPIC_DEFAULT_MODEL.to_string()
+                        }
+                        _ => OPENAI_COMPAT_UNSPECIFIED_MODEL.to_string(),
+                    });
                 let model_override = normalize_agent_model_name(self.agent_model_override.trim());
                 if let Some(model_override) = model_override {
                     ui.small(format!("model: {model_override} (session override)"));
-                } else if matches!(system.transport, AgentSystemTransport::NativeOpenaiCompat)
-                    && normalize_agent_model_name(&self.agent_discovered_model_pick).is_some()
-                {
+                } else if normalize_agent_model_name(&self.agent_discovered_model_pick).is_some() {
                     ui.small(format!(
                         "model: {} (selected discovered model)",
                         self.agent_discovered_model_pick.trim()
@@ -2075,12 +2139,20 @@ impl GENtleApp {
         } else if self.agent_systems.is_empty() {
             ui.small("No systems loaded from this catalog.");
         }
+        let selected_transport = self
+            .selected_agent_system()
+            .map(|system| system.transport)
+            .unwrap_or_default();
+        let (key_label, key_hint) = match selected_transport {
+            AgentSystemTransport::NativeAnthropic => ("Anthropic API key", "sk-ant-..."),
+            _ => ("OpenAI API key", "sk-..."),
+        };
         ui.horizontal(|ui| {
-            ui.label("OpenAI API key");
+            ui.label(key_label);
             let response = ui.add(
                 egui::TextEdit::singleline(&mut self.agent_openai_api_key)
                     .password(true)
-                    .hint_text("sk-..."),
+                    .hint_text(key_hint),
             );
             preflight_inputs_changed |= response.changed();
             if ui
@@ -2211,7 +2283,9 @@ impl GENtleApp {
                 }
                 if matches!(
                     system.transport,
-                    AgentSystemTransport::NativeOpenai | AgentSystemTransport::NativeOpenaiCompat
+                    AgentSystemTransport::NativeOpenai
+                        | AgentSystemTransport::NativeAnthropic
+                        | AgentSystemTransport::NativeOpenaiCompat
                 ) {
                     if ui
                         .button("Discover Models")
@@ -2233,7 +2307,9 @@ impl GENtleApp {
             });
             if !matches!(
                 system.transport,
-                AgentSystemTransport::NativeOpenai | AgentSystemTransport::NativeOpenaiCompat
+                AgentSystemTransport::NativeOpenai
+                    | AgentSystemTransport::NativeAnthropic
+                    | AgentSystemTransport::NativeOpenaiCompat
             ) {
                 self.clear_agent_model_discovery_snapshot();
             } else {

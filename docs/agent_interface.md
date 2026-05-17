@@ -603,5 +603,7 @@ Example command suggestions (valid through Agent Assistant execution path):
 
 - `docs/gui.md` (GUI usage and Agent Assistant UI details)
 - `docs/cli.md` (CLI and MCP operational commands)
+- `docs/quickstart_claude.md` (Claude-specific internal and external driving
+  scenarios)
 - `docs/protocol.md` (protocol details and schema-level definitions)
 - `docs/architecture.md` (architecture invariants and parity rules)
