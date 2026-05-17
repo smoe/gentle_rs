@@ -3490,6 +3490,14 @@ Agent bridge catalog schema (`gentle.agent_systems.v1`):
       "model": "gpt-5",
       "base_url": "https://api.openai.com/v1",
       "env": {}
+    },
+    {
+      "id": "anthropic_claude_sonnet_native",
+      "label": "Claude Sonnet (native Anthropic HTTP)",
+      "transport": "native_anthropic",
+      "model": "claude-sonnet-4-6",
+      "base_url": "https://api.anthropic.com/v1",
+      "env": {}
     }
   ]
 }
@@ -3501,6 +3509,9 @@ Transport notes:
 - `external_json_stdio`: requires local bridge executable from `command[0]`.
 - `native_openai`: built-in OpenAI HTTP adapter; requires `OPENAI_API_KEY`
   (environment or system-level `env` override in catalog entry).
+- `native_anthropic`: built-in Anthropic Claude HTTP adapter; requires
+  `ANTHROPIC_API_KEY` (environment or system-level `env` override in catalog
+  entry).
 - `native_openai_compat`: built-in OpenAI-compatible local HTTP adapter
   (`/chat/completions`), intended for local services such as Jan/Msty/Ollama
   when they expose an OpenAI-compatible endpoint. API key is optional.

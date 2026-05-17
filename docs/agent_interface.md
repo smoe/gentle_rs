@@ -513,6 +513,8 @@ Key properties:
 - ChatGPT/Codex subscriptions do not authenticate the OpenAI API. Native OpenAI
   API mode needs `OPENAI_API_KEY`; external MCP agents should connect through
   `gentle_mcp` instead of making GENtle spend OpenAI API usage.
+- Native Claude mode uses the Anthropic API directly and needs
+  `ANTHROPIC_API_KEY`; it is a separate first-run route from OpenAI.
 - `agents preflight` remains config-only by default. `--live` adds the optional
   `gentle.agent_preflight.v1.live_probe` model-list probe without sending a
   generation request.

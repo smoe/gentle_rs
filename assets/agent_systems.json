@@ -36,6 +36,14 @@
       "base_url": "https://api.openai.com/v1"
     },
     {
+      "id": "anthropic_claude_sonnet_native",
+      "label": "Claude Sonnet (native Anthropic HTTP)",
+      "description": "Direct Anthropic Claude API integration without external bridge binary. Requires ANTHROPIC_API_KEY in environment (or paste a session key in the GUI).",
+      "transport": "native_anthropic",
+      "model": "claude-sonnet-4-6",
+      "base_url": "https://api.anthropic.com/v1"
+    },
+    {
       "id": "local_llama_compat",
       "label": "Local Llama (OpenAI-compatible)",
       "description": "Template for local OpenAI-compatible Llama services (e.g. Ollama/Jan/Msty gateway). Keep model as 'unspecified' and select from discovered models, or set a concrete model override. API key is optional.",

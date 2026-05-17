@@ -101,10 +101,7 @@ pub(crate) fn redact_sensitive_text(raw: &str) -> String {
             r"(?i)(ANTHROPIC_API_KEY\s*=\s*)([^\s,;]+)",
             "$1[REDACTED_ANTHROPIC_API_KEY]",
         ),
-        (
-            r"(?i)(x-api-key\s*:\s*)([^\s,;]+)",
-            "$1[REDACTED_API_KEY]",
-        ),
+        (r"(?i)(x-api-key\s*:\s*)([^\s,;]+)", "$1[REDACTED_API_KEY]"),
         (
             r"(?i)(authorization\s*:\s*bearer\s+)([^\s,;]+)",
             "$1[REDACTED_BEARER_TOKEN]",
@@ -118,10 +115,7 @@ pub(crate) fn redact_sensitive_text(raw: &str) -> String {
             "$1=[REDACTED]",
         ),
         (r"\bsk-[A-Za-z0-9_-]{8,}\b", "[REDACTED_OPENAI_KEY]"),
-        (
-            r"\bsk-ant-[A-Za-z0-9_-]{8,}\b",
-            "[REDACTED_ANTHROPIC_KEY]",
-        ),
+        (r"\bsk-ant-[A-Za-z0-9_-]{8,}\b", "[REDACTED_ANTHROPIC_KEY]"),
     ] {
         if let Ok(re) = Regex::new(pattern) {
             out = re.replace_all(&out, replacement).into_owned();
@@ -1976,12 +1970,11 @@ fn invoke_native_anthropic_once(
         kind: ExternalAttemptErrorKind::Fatal,
         message: format!("Anthropic API returned invalid JSON: {e}"),
     })?;
-    let text = extract_anthropic_message_text(&response_json).ok_or_else(|| {
-        ExternalAttemptError {
+    let text =
+        extract_anthropic_message_text(&response_json).ok_or_else(|| ExternalAttemptError {
             kind: ExternalAttemptErrorKind::Fatal,
             message: "Anthropic API response did not contain content text".to_string(),
-        }
-    })?;
+        })?;
     Ok(NativeHttpInvokeResult {
         text,
         raw_body: body,
@@ -2459,8 +2452,10 @@ pub fn invoke_agent_support_with_env_overrides(
             let stdout = stdout.expect("checked is_some above");
             let response = parse_agent_response(&stdout)?;
             let mut runtime_summary = runtime_summary(&runtime);
-            runtime_summary.endpoint_candidates =
-                anthropic_endpoint_candidates(&resolve_base_url(&system, ANTHROPIC_DEFAULT_BASE_URL));
+            runtime_summary.endpoint_candidates = anthropic_endpoint_candidates(&resolve_base_url(
+                &system,
+                ANTHROPIC_DEFAULT_BASE_URL,
+            ));
             runtime_summary.attempted_endpoints = attempted_endpoints;
             runtime_summary.selected_endpoint = selected_endpoint;
             AgentInvocationOutcome {
@@ -2683,10 +2678,9 @@ mod tests {
             unavailable.reason.as_deref(),
             Some("ANTHROPIC_API_KEY is not set")
         );
-        system.env.insert(
-            ANTHROPIC_API_KEY_ENV.to_string(),
-            "sk-ant-test".to_string(),
-        );
+        system
+            .env
+            .insert(ANTHROPIC_API_KEY_ENV.to_string(), "sk-ant-test".to_string());
         let available = agent_system_availability(&system);
         assert!(available.available);
     }
