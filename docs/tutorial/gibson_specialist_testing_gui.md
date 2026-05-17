@@ -6,6 +6,9 @@
 > shared `gibson preview` route, exported plan JSON, and deterministic local
 > tutorial inputs.
 
+See also: executable reference chapter
+[`15 Gibson Specialist Starter Project (offline)`](./generated/chapters/15_gibson_specialist_testing_baseline.md).
+
 This tutorial is a practical test script for the dedicated `Patterns ->
 Gibson...` specialist window.
 

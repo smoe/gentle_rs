@@ -14,6 +14,8 @@ Build a TP73 locus project, fetch UniProt and Ensembl protein evidence, persist 
 
 This executable chapter turns the TP73 UniProt/Ensembl audit into a reproducible online workflow. It prepares GRCh38, extracts TP73, fetches the reviewed UniProt entry and matching Ensembl protein evidence, projects the protein onto the locus, persists the integrated audit and direct-vs-composed parity report, and keeps one shared expert SVG export alongside the stored report artifacts. The companion hand-written tutorial then explains how to inspect the same outcome through the public primitive commands.
 
+See also: guided walkthrough [docs/tutorial/tp73_uniprot_projection_audit_cli.md](../../tp73_uniprot_projection_audit_cli.md). Use that page first when you want a human-led path; this chapter is the executable reference.
+
 > **How to Run This Locally**
 > Set `GENTLE_TEST_ONLINE=1` and run from the repository root. This workflow prepares/extracts GRCh38 Ensembl 116 from Ensembl FTP, fetches UniProt `Q9H3D4`, queries Ensembl protein evidence for `ENSP00000264724`, and then writes the audit/parity reports plus SVG locally.
 

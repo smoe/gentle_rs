@@ -14,6 +14,8 @@ Build a ready-to-open tutorial project with one circular destination and one lin
 
 This chapter exists to remove setup friction from Gibson specialist testing. The executable workflow loads a known circular pGEX destination and one small synthetic insert under stable IDs, so `File -> Open Tutorial Project...` can hand you a reproducible starting state before you continue in the dedicated GUI specialist.
 
+See also: guided walkthrough [docs/tutorial/gibson_specialist_testing_gui.md](../../gibson_specialist_testing_gui.md). Use that page first when you want a human-led path; this chapter is the executable reference.
+
 ## When This Routine Is Useful
 
 - You want to test `Patterns -> Gibson...` without manually importing files first.

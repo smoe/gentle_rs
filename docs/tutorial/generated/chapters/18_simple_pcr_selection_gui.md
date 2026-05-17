@@ -14,6 +14,8 @@ Open a ready local TP73 sequence and walk through the smallest useful PCR story:
 
 This chapter is intentionally minimal. The tutorial project opens one stable local TP73 locus so you can stay in the GUI, paint or select one region of interest, launch `Simple PCR from selection`, and reason about primer placement in beginner terms before moving on to the richer batch-PCR chapter.
 
+See also: guided walkthrough [docs/tutorial/simple_pcr_selection_gui.md](../../simple_pcr_selection_gui.md). Use that page first when you want a human-led path; this chapter is the executable reference.
+
 ## When This Routine Is Useful
 
 - You want the shortest possible path from one selected region to one PCR design attempt.

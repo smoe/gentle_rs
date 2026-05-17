@@ -1,5 +1,8 @@
 # TP73 UniProt Projection Audit
 
+See also: executable reference chapter
+[`19 Audit a TP73 UniProt Projection Against Ensembl and Derived Coding Sequence`](./generated/chapters/19_tp73_uniprot_projection_audit_cli.md).
+
 This walkthrough shows two ways to inspect a projected TP73 UniProt entry:
 
 1. the integrated audit path, and

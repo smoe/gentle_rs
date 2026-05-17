@@ -12,6 +12,12 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-05-18
+
+- Split the tutorial hub into hand-written guided walkthroughs versus
+  machine-generated executable reference chapters, with reciprocal links for
+  generated chapters that have guided counterparts.
+
 ## 2026-05-17
 
 - Added v3 tutorial-source teaching fields for generated chapters, including
