@@ -39,6 +39,12 @@ const OPENAI_COMPAT_DEFAULT_MODEL: &str = OPENAI_COMPAT_UNSPECIFIED_MODEL;
 const OPENAI_COMPAT_DEFAULT_BASE_URL: &str = "http://127.0.0.1:11434/v1";
 pub const OPENAI_API_KEY_ENV: &str = "OPENAI_API_KEY";
 pub const ANTHROPIC_API_KEY_ENV: &str = "ANTHROPIC_API_KEY";
+pub(crate) const ANTHROPIC_API_KEY_AUTH_HINT: &str =
+    "Use an Anthropic Console API key for ANTHROPIC_API_KEY; Claude Code/Claude.ai subscription or OAuth tokens are not Anthropic API keys.";
+const ANTHROPIC_API_KEY_WRONG_KIND_HINT: &str =
+    "This looks like a Claude Code/Claude.ai OAuth token, not an Anthropic Console API key. Use an Anthropic Console API key for ANTHROPIC_API_KEY instead.";
+const ANTHROPIC_API_KEY_UNUSUAL_SHAPE_HINT: &str =
+    "This does not look like an Anthropic Console API key. Current Anthropic API keys usually begin with sk-ant-api; Test Setup can still verify the key live.";
 pub const AGENT_BASE_URL_ENV: &str = "GENTLE_AGENT_BASE_URL";
 pub const AGENT_MODEL_ENV: &str = "GENTLE_AGENT_MODEL";
 pub const AGENT_TIMEOUT_SECS_ENV: &str = "GENTLE_AGENT_TIMEOUT_SECS";
@@ -244,6 +250,25 @@ fn resolve_openai_api_key(system: &AgentSystemSpec) -> Option<String> {
 
 fn resolve_anthropic_api_key(system: &AgentSystemSpec) -> Option<String> {
     resolve_env_key(system, ANTHROPIC_API_KEY_ENV)
+}
+
+pub(crate) fn anthropic_api_key_kind_warning(raw: &str) -> Option<&'static str> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    if lower.starts_with("sk-ant-oat") {
+        Some(ANTHROPIC_API_KEY_WRONG_KIND_HINT)
+    } else if lower.starts_with("sk-ant-api") || lower.starts_with("sk-ant-") {
+        None
+    } else {
+        Some(ANTHROPIC_API_KEY_UNUSUAL_SHAPE_HINT)
+    }
+}
+
+pub(crate) fn anthropic_api_key_is_known_non_api_token(raw: &str) -> bool {
+    raw.trim().to_ascii_lowercase().starts_with("sk-ant-oat")
 }
 
 fn parse_positive_u64(raw: &str) -> Option<u64> {
@@ -699,6 +724,9 @@ pub fn discover_anthropic_models(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .ok_or_else(|| format!("{ANTHROPIC_API_KEY_ENV} is required for Claude model discovery"))?;
+    if anthropic_api_key_is_known_non_api_token(api_key) {
+        return Err(ANTHROPIC_API_KEY_WRONG_KIND_HINT.to_string());
+    }
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(20))
         .build()
@@ -723,9 +751,15 @@ pub fn discover_anthropic_models(
                         ));
                         continue;
                     }
+                    let hint = if status.as_u16() == 401 || status.as_u16() == 403 {
+                        format!(" Hint: {ANTHROPIC_API_KEY_AUTH_HINT}")
+                    } else {
+                        String::new()
+                    };
                     return Err(redact_sensitive_text(&format!(
-                        "Anthropic model discovery failed at {endpoint} (status={status}): {}",
-                        body.trim()
+                        "Anthropic model discovery failed at {endpoint} (status={status}): {}{}",
+                        body.trim(),
+                        hint
                     )));
                 }
                 let value = serde_json::from_str::<Value>(&body).map_err(|e| {
@@ -1827,9 +1861,14 @@ fn classify_anthropic_http_error(status: reqwest::StatusCode, body: &str) -> Ext
     } else {
         ExternalAttemptErrorKind::Fatal
     };
+    let message = if status.as_u16() == 401 || status.as_u16() == 403 {
+        format!("{message_prefix}\nHint: {ANTHROPIC_API_KEY_AUTH_HINT}")
+    } else {
+        message_prefix
+    };
     ExternalAttemptError {
         kind,
-        message: message_prefix,
+        message,
     }
 }
 
@@ -1918,6 +1957,12 @@ fn invoke_native_anthropic_once(
         kind: ExternalAttemptErrorKind::Unavailable,
         message: format!("{ANTHROPIC_API_KEY_ENV} is not set"),
     })?;
+    if anthropic_api_key_is_known_non_api_token(&api_key) {
+        return Err(ExternalAttemptError {
+            kind: ExternalAttemptErrorKind::Unavailable,
+            message: ANTHROPIC_API_KEY_WRONG_KIND_HINT.to_string(),
+        });
+    }
     let model = resolve_model(system, ANTHROPIC_DEFAULT_MODEL);
     let base_url = resolve_base_url(system, ANTHROPIC_DEFAULT_BASE_URL);
     let endpoints = anthropic_endpoint_candidates(&base_url);
@@ -2844,6 +2889,16 @@ mod tests {
         let err = classify_anthropic_http_error(reqwest::StatusCode::UNAUTHORIZED, body);
         assert_eq!(err.kind, ExternalAttemptErrorKind::Unavailable);
         assert!(err.message.contains("Anthropic API error (status=401"));
+        assert!(err.message.contains("Claude Code/Claude.ai"));
+    }
+
+    #[test]
+    fn anthropic_key_kind_warning_flags_claude_oauth_token() {
+        let warning = anthropic_api_key_kind_warning("sk-ant-oat01-not-for-api")
+            .expect("Claude OAuth token should be flagged");
+        assert!(warning.contains("Claude Code/Claude.ai OAuth token"));
+        assert!(warning.contains("Anthropic Console API key"));
+        assert!(anthropic_api_key_kind_warning("sk-ant-api03-console-key").is_none());
     }
 
     #[test]

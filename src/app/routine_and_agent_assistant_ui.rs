@@ -302,15 +302,25 @@ impl GENtleApp {
 
     pub(super) fn agent_model_discovery_failure_hint(error: &str) -> Option<&'static str> {
         let lower = error.to_ascii_lowercase();
-        if lower.contains("401")
+        let auth_failed = lower.contains("401")
             || lower.contains("403")
             || lower.contains("unauthorized")
             || lower.contains("invalid_api_key")
             || lower.contains("incorrect api key")
+            || lower.contains("authentication_error");
+        if auth_failed
+            && (lower.contains("anthropic")
+                || lower.contains("x-api-key")
+                || lower.contains("claude code")
+                || lower.contains("claude.ai"))
         {
-            return Some(
-                "Authentication failed. Use an OpenAI Platform API key for OPENAI_API_KEY; ChatGPT/Codex subscription tokens are not OpenAI API keys.",
-            );
+            if lower.contains("claude code/claude.ai") {
+                return None;
+            }
+            return Some(ANTHROPIC_API_KEY_AUTH_HINT);
+        }
+        if auth_failed {
+            return Some("Authentication failed. Use an OpenAI Platform API key for OPENAI_API_KEY; ChatGPT/Codex subscription tokens are not OpenAI API keys.");
         }
         if lower.contains("timed out") || lower.contains("timeout") {
             return Some(
@@ -390,8 +400,14 @@ impl GENtleApp {
                 AgentLiveProbeStatusClass::Ok => vec![],
                 AgentLiveProbeStatusClass::MissingKey => vec![key_hint],
                 AgentLiveProbeStatusClass::AuthFailed => {
-                    vec!["Check the API key/token for this endpoint, then run Test Setup again."
-                        .to_string()]
+                    if preflight.transport == AgentSystemTransport::NativeAnthropic.as_str() {
+                        vec![ANTHROPIC_API_KEY_AUTH_HINT.to_string()]
+                    } else {
+                        vec![
+                            "Check the API key/token for this endpoint, then run Test Setup again."
+                                .to_string(),
+                        ]
+                    }
                 }
                 AgentLiveProbeStatusClass::QuotaOrBilling => vec![
                     "Check provider billing/quota; this setup probe did not intentionally generate tokens."

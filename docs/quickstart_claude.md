@@ -37,8 +37,9 @@ cargo build
 
 Important: `assets/agent_systems.json` now ships a native Claude entry,
 `anthropic_claude_sonnet_native`. Real internal Claude use needs
-`ANTHROPIC_API_KEY` or a session key pasted in the GUI. The offline
-`builtin_echo` system proves the GENtle loop, but it is not Claude.
+`ANTHROPIC_API_KEY` or an Anthropic Console API key pasted in the GUI. Claude
+Code or Claude.ai subscription/login tokens are not Anthropic API keys. The
+offline `builtin_echo` system proves the GENtle loop, but it is not Claude.
 
 Do not start by wiring `gentle_mcp` into `~/.claude.json`. That can be useful
 for a dedicated MCP agent, but it pins Claude to an installed binary. The

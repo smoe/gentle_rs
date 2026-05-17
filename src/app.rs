@@ -107,11 +107,11 @@ use crate::{
     agent_bridge::{
         AGENT_BASE_URL_ENV, AGENT_CONNECT_TIMEOUT_SECS_ENV, AGENT_MAX_RESPONSE_BYTES_ENV,
         AGENT_MAX_RETRIES_ENV, AGENT_MODEL_ENV, AGENT_READ_TIMEOUT_SECS_ENV,
-        AGENT_TIMEOUT_SECS_ENV, ANTHROPIC_API_KEY_ENV, AgentExecutionIntent,
-        AgentInvocationOutcome, AgentResponse, AgentSystemSpec, AgentSystemTransport,
-        DEFAULT_AGENT_SYSTEM_CATALOG_PATH, OPENAI_API_KEY_ENV, OPENAI_COMPAT_UNSPECIFIED_MODEL,
-        agent_system_availability, invoke_agent_support_with_env_overrides,
-        load_agent_system_catalog,
+        AGENT_TIMEOUT_SECS_ENV, ANTHROPIC_API_KEY_AUTH_HINT, ANTHROPIC_API_KEY_ENV,
+        AgentExecutionIntent, AgentInvocationOutcome, AgentResponse, AgentSystemSpec,
+        AgentSystemTransport, DEFAULT_AGENT_SYSTEM_CATALOG_PATH, OPENAI_API_KEY_ENV,
+        OPENAI_COMPAT_UNSPECIFIED_MODEL, agent_system_availability,
+        invoke_agent_support_with_env_overrides, load_agent_system_catalog,
     },
     agent_transport::{
         AgentLiveProbeStatusClass, AgentSystemPreflight, build_agent_system_preflight_with_live,
@@ -23200,8 +23200,9 @@ mod tests {
     use super::{
         AGENT_BASE_URL_ENV, AGENT_CONNECT_TIMEOUT_SECS_ENV, AGENT_MAX_RESPONSE_BYTES_ENV,
         AGENT_MAX_RETRIES_ENV, AGENT_MODEL_ENV, AGENT_READ_TIMEOUT_SECS_ENV,
-        AGENT_TIMEOUT_SECS_ENV, ANTHROPIC_API_KEY_ENV, APP_CONFIGURATION_SCHEMA_VERSION,
-        BACKGROUND_JOB_HISTORY_METADATA_KEY, BACKGROUND_JOB_HISTORY_SCHEMA,
+        AGENT_TIMEOUT_SECS_ENV, ANTHROPIC_API_KEY_AUTH_HINT, ANTHROPIC_API_KEY_ENV,
+        APP_CONFIGURATION_SCHEMA_VERSION, BACKGROUND_JOB_HISTORY_METADATA_KEY,
+        BACKGROUND_JOB_HISTORY_SCHEMA,
         BACKGROUND_JOBS_RECENT_JOB_EVENTS_SCROLL_ID, BACKGROUND_JOBS_RETRY_CLEANUP_AUDIT_SCROLL_ID,
         BACKGROUND_JOBS_RETRY_SNAPSHOTS_REMOVED_PREVIEW_SCROLL_ID,
         BACKGROUND_JOBS_RETRY_SNAPSHOTS_RETAINED_PREVIEW_SCROLL_ID,
@@ -23775,6 +23776,22 @@ mod tests {
     }
 
     #[test]
+    fn agent_preflight_next_actions_explain_anthropic_auth_tokens() {
+        let preflight = crate::agent_transport::AgentSystemPreflight {
+            transport: AgentSystemTransport::NativeAnthropic.as_str().to_string(),
+            live_probe: Some(crate::agent_transport::AgentSystemLiveProbe {
+                enabled: true,
+                status_class: crate::agent_transport::AgentLiveProbeStatusClass::AuthFailed,
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let actions = GENtleApp::agent_preflight_next_actions(&preflight);
+        assert_eq!(actions, vec![ANTHROPIC_API_KEY_AUTH_HINT.to_string()]);
+    }
+
+    #[test]
     fn agent_setup_input_change_invalidates_stale_preflight() {
         let mut app = GENtleApp::default();
         app.agent_preflight_output = Some(crate::agent_transport::AgentSystemPreflight::default());
@@ -23848,6 +23865,17 @@ mod tests {
 
         assert!(hint.contains("OpenAI Platform API key"));
         assert!(hint.contains("ChatGPT/Codex subscription tokens"));
+    }
+
+    #[test]
+    fn agent_model_discovery_auth_failure_hint_mentions_anthropic_console_key() {
+        let hint = GENtleApp::agent_model_discovery_failure_hint(
+            "Anthropic model discovery failed at https://api.anthropic.com/v1/models (status=401 Unauthorized): authentication_error invalid x-api-key",
+        )
+        .expect("auth hint");
+
+        assert!(hint.contains("Anthropic Console API key"));
+        assert!(hint.contains("Claude Code/Claude.ai"));
     }
 
     #[test]

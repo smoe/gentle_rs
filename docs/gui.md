@@ -2545,10 +2545,14 @@ Claude setup (explicit):
 
 1. Open `File -> Agent Assistant...`.
 2. Click `Use Claude API` or choose `Claude Sonnet (native Anthropic HTTP)`.
-3. Paste your Anthropic API key into `Anthropic API key` (format `sk-ant-...`).
+3. Paste your Anthropic Console API key into `Anthropic API key` (format
+   `sk-ant-...`). Claude Code or Claude.ai subscription/login tokens are not
+   Anthropic API keys.
 4. Click `Test Setup` to confirm the key/base URL/model resolve correctly.
    This checks model discovery only; it does not intentionally send a
    token-generating request.
+   - GENtle flags obvious Claude Code/Claude.ai OAuth tokens before contacting
+     Anthropic; final validation still comes from the live model-list probe.
 5. Enter prompt text and click `Ask Agent`.
 6. If you prefer environment setup instead of GUI key field, launch GENtle with:
 
