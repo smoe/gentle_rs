@@ -14,6 +14,9 @@ Fetch TP73 cDNA, extract TP73 from GRCh38, and compute a pair-forward dotplot wi
 
 This chapter captures a practical cDNA-vs-genomic verification route for transcript structure interpretation. The focus is a reproducible first-pass map that reveals exon-aligned block patterns while preserving one shared operation path across GUI and CLI interfaces.
 
+> **How to Run This Locally**
+> Set `GENTLE_TEST_ONLINE=1` and run from the repository root. This chapter fetches TP73 cDNA `NM_001126241.3` from NCBI/GenBank and prepares GRCh38 Ensembl 116 from Ensembl FTP before computing the local dotplot.
+
 ## When This Routine Is Useful
 
 - You want a deterministic cDNA-vs-genomic control for exon/intron-aware interpretation.

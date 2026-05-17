@@ -529,6 +529,17 @@
         "Select the target genome and start preparation with explicit cache settings.",
         "Confirm prepared status in the GUI before attempting extraction workflows."
       ],
+      "cli_steps": [
+        "GENTLE_TEST_ONLINE=1 cargo run --bin gentle_cli -- workflow @docs/examples/workflows/prepare_reference_genome_online.json",
+        "cargo run --bin gentle_cli -- genomes status \"Human GRCh38 Ensembl 116\" --catalog assets/genomes.json --cache-dir data/genomes",
+        "cargo run --bin gentle_cli -- genomes status \"Human GRCh38 Ensembl 116\" --catalog assets/genomes.json --cache-dir data/genomes"
+      ],
+      "step_expectations": [
+        "The workflow starts only when `GENTLE_TEST_ONLINE=1` is set and prepares the selected cache target.",
+        "The status payload names `Human GRCh38 Ensembl 116` and reports the effective cache directory.",
+        "Prepared status becomes visible before extraction or promoter chapters depend on this reference."
+      ],
+      "local_execution_note": "Set `GENTLE_TEST_ONLINE=1` and run from the repository root. This chapter downloads the GRCh38 Ensembl 116 soft-masked FASTA and GTF from `https://ftp.ensembl.org/pub/release-116/vertebrates/`; make sure `data/genomes` has enough disk space and that interrupted downloads can be retried.",
       "learning_objectives": [
         "Recognize which tutorial flows require network access and external tools.",
         "Use `GENTLE_TEST_ONLINE` to opt into online chapter execution.",
@@ -583,6 +594,7 @@
         "Open DNA window `Engine Ops -> Isoform architecture panels`, import `assets/panels/tp53_isoforms_v1.json`.",
         "Open `Isoform Expert` and export SVG from the same panel context."
       ],
+      "local_execution_note": "Set `GENTLE_TEST_ONLINE=1` and run from the repository root. The workflow prepares/extracts `Human GRCh38 Ensembl 116` from Ensembl FTP, then imports the local curated panel `assets/panels/tp53_isoforms_v1.json` and writes `exports/tp53_isoform_architecture.svg`.",
       "learning_objectives": [
         "Execute an end-to-end isoform-panel workflow using shared engine operations.",
         "Understand how curated panel JSON joins genome-derived transcripts without GUI-only logic.",
@@ -643,6 +655,7 @@
         "Open `File -> Retrieve Genome Sequence...`, set gene query/filter to `TP63`, review the displayed TP63 coordinate hit, and extract the first TP63 entry.",
         "In the resulting DNA sequence window (`grch38_tp63`), use `Extend 5'` with `2000 bp`, then `Extend 3'` with `2000 bp` to produce the +/-2 kb context sequence."
       ],
+      "local_execution_note": "Set `GENTLE_TEST_ONLINE=1` and run from the repository root. The workflow prepares `Human GRCh38 Ensembl 116` using Ensembl FTP FASTA/GTF endpoints from `assets/genomes.json`, then extracts TP63 and extends the anchored locus locally.",
       "learning_objectives": [
         "Use annotation-backed gene retrieval to inspect coordinates before extracting a sequence.",
         "Apply anchored-region extension from the DNA sequence viewer without losing genome-anchor provenance.",
@@ -702,6 +715,7 @@
         "Open Splicing Expert for a TP53 transcript, set `Origin mode` to `multi_gene_sparse`, and set `Target genes` to `TP53, TP63, TP73`.",
         "Run Nanopore interpretation from the same panel and inspect sparse-origin warnings/summary fields in the report section."
       ],
+      "local_execution_note": "Set `GENTLE_TEST_ONLINE=1` and run from the repository root. The workflow prepares/extracts GRCh38 Ensembl 116 from Ensembl FTP, then runs the multi-gene sparse RNA-read interpretation against locally derived TP53-family transcript templates.",
       "learning_objectives": [
         "Map one gene locus from reference genome preparation through read-interpretation in a single operation chain.",
         "Understand what `multi_gene_sparse` changes at runtime (expanded local transcript-template indexing).",
@@ -861,6 +875,7 @@
         "Prepare `Human GRCh38 Ensembl 116`, retrieve gene `TP73` as `tp73_genomic`.",
         "Open `tp73_cdna`, switch to `Dotplot map`, set pair mode against `tp73_genomic`, and compute with `word<=7`, `step=1`, `mismatches=0`."
       ],
+      "local_execution_note": "Set `GENTLE_TEST_ONLINE=1` and run from the repository root. This chapter fetches TP73 cDNA `NM_001126241.3` from NCBI/GenBank and prepares GRCh38 Ensembl 116 from Ensembl FTP before computing the local dotplot.",
       "learning_objectives": [
         "Use one deterministic route from accession retrieval to pairwise dotplot artifact generation.",
         "Understand why high-sensitivity seed sampling (`step=1`, low word size) improves cDNA-vs-genomic block visibility.",
@@ -1063,6 +1078,7 @@
         "In `Feature coding DNA query`, enter `DNA-binding`, leave `feature transcript` empty unless you want to pin one isoform, choose `mode=both`, and press `Query Coding DNA`.",
         "Read the result panel to see the amino-acid span, genomic coding DNA, optional translation-speed optimized DNA, and the reported exon or exon pair for each matching transcript feature span."
       ],
+      "local_execution_note": "Set `GENTLE_TEST_ONLINE=1` and run from the repository root. The workflow prepares/extracts GRCh38 Ensembl 116 from Ensembl FTP, fetches reviewed UniProt accession `P04637`, then performs projection and coding-DNA queries locally.",
       "learning_objectives": [
         "Use one persisted UniProt projection as the canonical bridge from reviewed protein annotation to locus-level transcript/CDS geometry and back to coding DNA.",
         "Understand that both the protein expert and the feature-coding DNA query are thin views over stored engine state, not separate GUI-only mapping models.",
@@ -1217,6 +1233,7 @@
         "Open the saved projection in the Protein Expert or inspect the exported SVG artifact to verify the projected feature geometry.",
         "Use the companion CLI tutorial to rebuild the same result from `resolve-ensembl-links`, `transcript-accounting`, `compare-ensembl-exons`, and `compare-ensembl-peptide`."
       ],
+      "local_execution_note": "Set `GENTLE_TEST_ONLINE=1` and run from the repository root. This workflow prepares/extracts GRCh38 Ensembl 116 from Ensembl FTP, fetches UniProt `Q9H3D4`, queries Ensembl protein evidence for `ENSP00000264724`, and then writes the audit/parity reports plus SVG locally.",
       "learning_objectives": [
         "Use one executable chapter as the reproducible setup layer behind the TP73 UniProt/Ensembl audit walkthrough.",
         "Understand that the high-level audit and parity report are built on the same reusable primitive record families exposed to shell/CLI and future AI callers.",
@@ -1305,6 +1322,35 @@
         "Set TF motifs to `SP1,TP53,TP63,TP73`, run `Show TF score tracks`, then export `TF score tracks SVG...` for the visual artifact.",
         "Set TFBS similarity anchor to `SP1`, compare against `TP53,TP63,TP73,CTCF`, run `Show TFBS similarity ranking`, then export the JSON ranking.",
         "Inspect the component manifest to see which JSON/SVG artifacts were produced; downstream tools can choose their own presentation order."
+      ],
+      "cli_steps": [
+        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/promoter_design_artifact_slice_offline.json",
+        "cargo run --bin gentle_cli -- shell 'variant annotate-promoters tp73_promoter_artifact_demo --gene-label TP73 --upstream-bp 40 --downstream-bp 15 --collapse transcript'",
+        "cargo run --bin gentle_cli -- shell 'variant annotate-promoters tp73_promoter_artifact_demo --gene-label TP73 --upstream-bp 40 --downstream-bp 15 --collapse transcript'",
+        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/promoter_design_artifact_slice_offline.json",
+        "cargo run --bin gentle_cli -- shell 'features promoter-evidence-matrix tp73_promoter_artifact_demo --gene-label TP73 --promoter-upstream-bp 40 --promoter-downstream-bp 15 --path artifacts/tp73_promoter_artifact_demo.evidence_matrix.json'",
+        "cargo run --bin gentle_cli -- shell 'features promoter-isoform-comparison tp73_promoter_artifact_demo --gene-label TP73 --promoter-upstream-bp 40 --promoter-downstream-bp 15 --path artifacts/tp73_promoter_artifact_demo.isoform_promoter_comparison.json'",
+        "cargo run --bin gentle_cli -- shell 'features promoter-expression-evidence tp73_promoter_artifact_demo --gene-label TP73 --promoter-upstream-bp 40 --promoter-downstream-bp 15 --source-label synthetic_demo --expression-json {\"transcript_id\":\"ENSTTP73DEMO1\",\"value\":18.0,\"unit\":\"a.u.\"} --path artifacts/tp73_promoter_artifact_demo.promoter_expression_evidence.json'",
+        "cargo run --bin gentle_cli -- shell 'features tfbs-score-tracks-svg tp73_promoter_artifact_demo artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg --motif SP1 --motif TP53 --motif TP63 --motif TP73 --range 60..158 --score-kind llr_background_tail_log10'",
+        "cargo run --bin gentle_cli -- shell 'features tfbs-track-similarity tp73_promoter_artifact_demo --anchor-motif SP1 --candidate-motif TP53 --candidate-motif TP63 --candidate-motif TP73 --candidate-motif CTCF --range 60..158 --ranking-metric smoothed_spearman --score-kind llr_background_tail_log10 --path artifacts/tp73_promoter_artifact_demo.tfbs_similarity.json'",
+        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/promoter_design_artifact_slice_offline.json"
+      ],
+      "step_expectations": [
+        "The canonical workflow loads the synthetic TP73-like locus under `tp73_promoter_artifact_demo` and writes the promoter artifact bundle.",
+        "Promoter-window controls resolve against the TP73 gene/mRNA features in the same shared engine state.",
+        "The window parameters are the tiny-locus tutorial values used by all downstream promoter reports.",
+        "`alternative_promoters.json` reports three transcript windows collapsed into two DNA-level promoter windows.",
+        "`evidence_matrix.json` contains two promoter candidates and shows the shared promoter with `2 tx` support plus multiple evidence kinds.",
+        "`isoform_promoter_comparison.json` separates the shared-TSS and alternative-start promoter groups.",
+        "`promoter_expression_evidence.json` links the synthetic expression rows to promoter groups through transcript IDs.",
+        "`tfbs_score_tracks.svg` is written and embedded below as the visual output of the chapter.",
+        "`tfbs_similarity.json` ranks TP53, TP63, TP73, and CTCF against SP1 using `smoothed_spearman`.",
+        "`promoter_artifact_manifest.json` lists the generated JSON/SVG components so downstream tools can present them in their own order."
+      ],
+      "prerequisites": [
+        "load_branch_reverse_complement_pgex_fasta",
+        "guides_export_csv_and_protocol",
+        "contribute_to_gentle_development"
       ],
       "learning_objectives": [
         "Validate the GUI-facing Promoter design controls against shared engine operations.",

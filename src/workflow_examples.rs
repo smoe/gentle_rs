@@ -18,7 +18,8 @@ pub const ONLINE_EXAMPLE_TEST_ENV: &str = "GENTLE_TEST_ONLINE";
 pub const SKIP_REMOTE_TESTS_ENV: &str = "GENTLE_SKIP_REMOTE_TESTS";
 pub const TUTORIAL_CATALOG_SCHEMA: &str = "gentle.tutorial_catalog.v1";
 pub const TUTORIAL_CATALOG_META_SCHEMA: &str = "gentle.tutorial_catalog_meta.v1";
-pub const TUTORIAL_SOURCE_SCHEMA: &str = "gentle.tutorial_source.v2";
+pub const TUTORIAL_SOURCE_SCHEMA: &str = "gentle.tutorial_source.v3";
+pub const LEGACY_TUTORIAL_SOURCE_SCHEMA_V2: &str = "gentle.tutorial_source.v2";
 pub const TUTORIAL_MANIFEST_SCHEMA: &str = "gentle.tutorial_manifest.v1";
 pub const TUTORIAL_GENERATION_REPORT_SCHEMA: &str = "gentle.tutorial_generation_report.v1";
 pub const DEFAULT_TUTORIAL_CATALOG_PATH: &str = "docs/tutorial/catalog.json";
@@ -104,6 +105,14 @@ pub struct TutorialSourceGeneratedChapterSection {
     pub use_cases: Vec<String>,
     #[serde(default)]
     pub gui_steps: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cli_steps: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub step_expectations: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub prerequisites: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_execution_note: Option<String>,
     #[serde(default)]
     pub learning_objectives: Vec<String>,
     #[serde(default)]
@@ -158,6 +167,10 @@ impl TutorialSourceGeneratedChapterSection {
             narrative: self.narrative,
             use_cases: self.use_cases,
             gui_steps: self.gui_steps,
+            cli_steps: self.cli_steps,
+            step_expectations: self.step_expectations,
+            prerequisites: self.prerequisites,
+            local_execution_note: self.local_execution_note,
             learning_objectives: self.learning_objectives,
             concepts: self.concepts,
             parameter_notes: self.parameter_notes,
@@ -254,6 +267,14 @@ pub struct TutorialChapter {
     pub use_cases: Vec<String>,
     #[serde(default)]
     pub gui_steps: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cli_steps: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub step_expectations: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub prerequisites: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_execution_note: Option<String>,
     #[serde(default)]
     pub learning_objectives: Vec<String>,
     #[serde(default)]
@@ -368,6 +389,13 @@ fn default_tutorial_catalog_meta_schema() -> String {
 
 fn default_tutorial_source_schema() -> String {
     TUTORIAL_SOURCE_SCHEMA.to_string()
+}
+
+fn is_supported_tutorial_source_schema(schema: &str) -> bool {
+    matches!(
+        schema,
+        TUTORIAL_SOURCE_SCHEMA | LEGACY_TUTORIAL_SOURCE_SCHEMA_V2
+    )
 }
 
 fn default_tutorial_manifest_schema() -> String {
@@ -775,12 +803,13 @@ pub fn load_tutorial_source_units(source_dir: &Path) -> Result<Vec<TutorialSourc
     let mut seen_chapter_orders: HashSet<usize> = HashSet::new();
     for path in json_paths {
         let unit = parse_tutorial_source_unit(&path)?;
-        if unit.schema != TUTORIAL_SOURCE_SCHEMA {
+        if !is_supported_tutorial_source_schema(&unit.schema) {
             return Err(format!(
-                "Tutorial source '{}' uses unsupported schema '{}'; expected '{}'",
+                "Tutorial source '{}' uses unsupported schema '{}'; expected '{}' or '{}'",
                 display_path(&path),
                 unit.schema,
-                TUTORIAL_SOURCE_SCHEMA
+                TUTORIAL_SOURCE_SCHEMA,
+                LEGACY_TUTORIAL_SOURCE_SCHEMA_V2
             ));
         }
         if unit.id.trim().is_empty() || unit.title.trim().is_empty() {
@@ -825,6 +854,20 @@ pub fn load_tutorial_source_units(source_dir: &Path) -> Result<Vec<TutorialSourc
             if generated.example_id.trim().is_empty() {
                 return Err(format!(
                     "Tutorial source '{}' has incomplete `generated_chapter` fields",
+                    display_path(&path)
+                ));
+            }
+            if unit.schema == TUTORIAL_SOURCE_SCHEMA
+                && generated.tier == TutorialTier::Online
+                && generated
+                    .local_execution_note
+                    .as_deref()
+                    .map(str::trim)
+                    .unwrap_or_default()
+                    .is_empty()
+            {
+                return Err(format!(
+                    "Tutorial source '{}' uses v3 online chapter fields and must define `local_execution_note`",
                     display_path(&path)
                 ));
             }
@@ -1034,6 +1077,11 @@ pub fn load_tutorial_manifest(manifest_path: &Path) -> Result<TutorialManifest, 
             display_path(manifest_path)
         )
     })?;
+    let chapter_ids = manifest
+        .chapters
+        .iter()
+        .map(|chapter| chapter.id.clone())
+        .collect::<HashSet<_>>();
     let mut seen_ids: HashSet<String> = HashSet::new();
     let mut seen_orders: HashSet<usize> = HashSet::new();
     for chapter in &manifest.chapters {
@@ -1135,6 +1183,62 @@ pub fn load_tutorial_manifest(manifest_path: &Path) -> Result<TutorialManifest, 
                 return Err(format!(
                     "Tutorial chapter '{}' contains blank gui_steps entry",
                     chapter.id
+                ));
+            }
+        }
+        if chapter.cli_steps.len() > chapter.gui_steps.len() {
+            return Err(format!(
+                "Tutorial chapter '{}' has more cli_steps than gui_steps",
+                chapter.id
+            ));
+        }
+        for cli_step in &chapter.cli_steps {
+            if cli_step.trim().is_empty() {
+                return Err(format!(
+                    "Tutorial chapter '{}' contains blank cli_steps entry",
+                    chapter.id
+                ));
+            }
+        }
+        if chapter.step_expectations.len() > chapter.gui_steps.len() {
+            return Err(format!(
+                "Tutorial chapter '{}' has more step_expectations than gui_steps",
+                chapter.id
+            ));
+        }
+        for expectation in &chapter.step_expectations {
+            if expectation.trim().is_empty() {
+                return Err(format!(
+                    "Tutorial chapter '{}' contains blank step_expectations entry",
+                    chapter.id
+                ));
+            }
+        }
+        if let Some(local_execution_note) = &chapter.local_execution_note {
+            if local_execution_note.trim().is_empty() {
+                return Err(format!(
+                    "Tutorial chapter '{}' contains blank local_execution_note",
+                    chapter.id
+                ));
+            }
+        }
+        for prerequisite in &chapter.prerequisites {
+            if prerequisite.trim().is_empty() {
+                return Err(format!(
+                    "Tutorial chapter '{}' contains blank prerequisites entry",
+                    chapter.id
+                ));
+            }
+            if prerequisite == &chapter.id {
+                return Err(format!(
+                    "Tutorial chapter '{}' cannot list itself as a prerequisite",
+                    chapter.id
+                ));
+            }
+            if !chapter_ids.contains(prerequisite) {
+                return Err(format!(
+                    "Tutorial chapter '{}' references unknown prerequisite '{}'",
+                    chapter.id, prerequisite
                 ));
             }
         }
@@ -1828,6 +1932,13 @@ fn sorted_manifest_chapters(manifest: &TutorialManifest) -> Vec<TutorialChapter>
     chapters
 }
 
+fn tutorial_chapter_lookup(chapters: &[TutorialChapter]) -> HashMap<String, TutorialChapter> {
+    chapters
+        .iter()
+        .map(|chapter| (chapter.id.clone(), chapter.clone()))
+        .collect()
+}
+
 fn chapter_markdown_filename(order: usize, id: &str) -> String {
     format!("{:02}_{}.md", order, markdown_file_stem(id))
 }
@@ -1990,6 +2101,121 @@ fn render_tutorial_at_a_glance(chapter: &TutorialChapter) -> String {
     out
 }
 
+fn render_tutorial_prerequisites(
+    chapter: &TutorialChapter,
+    chapter_by_id: &HashMap<String, TutorialChapter>,
+) -> Result<String, String> {
+    if chapter.prerequisites.is_empty() {
+        return Ok(String::new());
+    }
+    let mut out = String::new();
+    out.push_str("\n**Prerequisites:** Read ");
+    for (idx, prerequisite_id) in chapter.prerequisites.iter().enumerate() {
+        let prerequisite = chapter_by_id.get(prerequisite_id).ok_or_else(|| {
+            format!(
+                "Tutorial chapter '{}' references unknown prerequisite '{}'",
+                chapter.id, prerequisite_id
+            )
+        })?;
+        if idx > 0 {
+            out.push_str(", ");
+        }
+        out.push('[');
+        out.push_str(&chapter_link_label(prerequisite));
+        out.push_str("](");
+        out.push_str(&chapter_link_target(prerequisite, false));
+        out.push(')');
+    }
+    out.push_str(" first.");
+    out.push_str("\n");
+    Ok(out)
+}
+
+fn render_tutorial_local_execution_note(chapter: &TutorialChapter) -> String {
+    let Some(note) = &chapter.local_execution_note else {
+        return String::new();
+    };
+    let note = note.trim();
+    if note.is_empty() {
+        return String::new();
+    }
+    let mut out = String::new();
+    out.push_str("\n> **How to Run This Locally**\n");
+    for line in note.lines() {
+        out.push_str("> ");
+        out.push_str(line.trim());
+        out.push('\n');
+    }
+    out
+}
+
+fn tutorial_step_at(steps: &[String], idx: usize) -> Option<&str> {
+    steps
+        .get(idx)
+        .map(|step| step.trim())
+        .filter(|step| !step.is_empty())
+}
+
+fn tutorial_step_heading(gui_step: &str) -> String {
+    let mut heading = gui_step.trim().trim_end_matches('.').replace('`', "");
+    if heading.chars().count() > 80 {
+        heading = truncate_markdown_one_line(&heading, 80);
+    }
+    if let Some(first) = heading.get_mut(0..1) {
+        first.make_ascii_uppercase();
+    }
+    heading
+}
+
+fn tutorial_chapter_has_complete_cli_steps(chapter: &TutorialChapter) -> bool {
+    !chapter.gui_steps.is_empty()
+        && chapter
+            .gui_steps
+            .iter()
+            .enumerate()
+            .all(|(idx, _)| tutorial_step_at(&chapter.cli_steps, idx).is_some())
+}
+
+fn render_tutorial_gui_steps(chapter: &TutorialChapter) -> String {
+    let mut out = String::new();
+    out.push_str("\n## GUI First\n\n");
+    if chapter.gui_steps.is_empty() {
+        out.push_str("- No GUI-first steps are required for this chapter.\n");
+        return out;
+    }
+    for (idx, step) in chapter.gui_steps.iter().enumerate() {
+        let step = step.trim();
+        let cli_step = tutorial_step_at(&chapter.cli_steps, idx);
+        let expectation = tutorial_step_at(&chapter.step_expectations, idx);
+        if cli_step.is_none() && expectation.is_none() {
+            out.push_str(&format!("{}. ", idx + 1));
+            out.push_str(step);
+            out.push('\n');
+            continue;
+        }
+        out.push_str(&format!(
+            "### Step {}: {}\n\n",
+            idx + 1,
+            tutorial_step_heading(step)
+        ));
+        out.push_str("GUI: ");
+        out.push_str(step);
+        out.push_str("\n\n");
+        if let Some(cli_step) = cli_step {
+            out.push_str("CLI:\n\n");
+            out.push_str("```bash\n");
+            out.push_str(cli_step);
+            out.push_str("\n```\n\n");
+        }
+        if let Some(expectation) = expectation {
+            out.push_str("> Expected: ");
+            out.push_str(expectation);
+            out.push_str("\n\n");
+        }
+    }
+    out
+}
+
 fn render_tutorial_produced_artifacts(retained_artifacts: &[String], output_dir: &Path) -> String {
     if retained_artifacts.is_empty() {
         return String::new();
@@ -2042,6 +2268,7 @@ fn render_tutorial_chapter_markdown(
     output_dir: &Path,
     online_enabled: bool,
     concept_by_id: &HashMap<String, TutorialConcept>,
+    chapter_by_id: &HashMap<String, TutorialChapter>,
 ) -> Result<String, String> {
     let source_path = display_path(&loaded.path);
     let mut out = String::new();
@@ -2063,6 +2290,8 @@ fn render_tutorial_chapter_markdown(
         out.push_str(chapter.narrative.trim());
         out.push_str("\n");
     }
+    out.push_str(&render_tutorial_prerequisites(chapter, chapter_by_id)?);
+    out.push_str(&render_tutorial_local_execution_note(chapter));
     out.push_str("\n## When This Routine Is Useful\n\n");
     for use_case in &chapter.use_cases {
         out.push_str("- ");
@@ -2077,26 +2306,19 @@ fn render_tutorial_chapter_markdown(
     }
     out.push_str(&render_tutorial_concepts_compact(chapter, concept_by_id)?);
     out.push_str(&render_tutorial_at_a_glance(chapter));
-    out.push_str("\n## GUI First\n\n");
-    if chapter.gui_steps.is_empty() {
-        out.push_str("- No GUI-first steps are required for this chapter.\n");
-    } else {
-        for (idx, step) in chapter.gui_steps.iter().enumerate() {
-            out.push_str(&format!("{}. ", idx + 1));
-            out.push_str(step.trim());
-            out.push('\n');
-        }
+    out.push_str(&render_tutorial_gui_steps(chapter));
+    if !tutorial_chapter_has_complete_cli_steps(chapter) {
+        out.push_str("\n## Command Equivalent (After GUI)\n\n");
+        out.push_str("Run the same routine non-interactively once the GUI flow is clear:\n\n");
+        out.push_str("```bash\n");
+        out.push_str("cargo run --bin gentle_cli -- workflow @");
+        out.push_str(&source_path);
+        out.push_str("\n");
+        out.push_str("cargo run --bin gentle_cli -- shell 'workflow @");
+        out.push_str(&source_path);
+        out.push_str("'\n");
+        out.push_str("```\n");
     }
-    out.push_str("\n## Command Equivalent (After GUI)\n\n");
-    out.push_str("Run the same routine non-interactively once the GUI flow is clear:\n\n");
-    out.push_str("```bash\n");
-    out.push_str("cargo run --bin gentle_cli -- workflow @");
-    out.push_str(&source_path);
-    out.push_str("\n");
-    out.push_str("cargo run --bin gentle_cli -- shell 'workflow @");
-    out.push_str(&source_path);
-    out.push_str("'\n");
-    out.push_str("```\n");
     out.push_str("\n## Parameters That Matter\n\n");
     if chapter.parameter_notes.is_empty() {
         out.push_str("- This chapter intentionally avoids additional command options; run the canonical workflow unchanged.\n");
@@ -2410,6 +2632,7 @@ pub fn generate_tutorial_docs(
     validate_tutorial_manifest_against_examples(&manifest, &examples)?;
     let concept_by_id = tutorial_concept_lookup(&manifest.concepts)?;
     let sorted_chapters = sorted_manifest_chapters(&manifest);
+    let chapter_by_id = tutorial_chapter_lookup(&sorted_chapters);
     let occurrences_by_concept = concept_occurrences(&sorted_chapters);
     if output_dir.exists() {
         fs::remove_dir_all(output_dir)
@@ -2438,6 +2661,20 @@ pub fn generate_tutorial_docs(
             })?
             .clone();
         let executed = chapter.tier.should_execute(online_enabled);
+        if chapter.tier == TutorialTier::Online
+            && !executed
+            && chapter
+                .local_execution_note
+                .as_deref()
+                .map(str::trim)
+                .unwrap_or_default()
+                .is_empty()
+        {
+            return Err(format!(
+                "Tutorial chapter '{}' is online and skipped during generation; add `local_execution_note` so readers know how to run it locally",
+                chapter.id
+            ));
+        }
         let run_dir =
             TempDir::new().map_err(|e| format!("Could not create temp run directory: {e}"))?;
         if executed {
@@ -2461,6 +2698,7 @@ pub fn generate_tutorial_docs(
             output_dir,
             online_enabled,
             &concept_by_id,
+            &chapter_by_id,
         )?;
         let chapter_file = markdown_path_for_chapter(chapter);
         let chapter_out_path = chapters_dir.join(&chapter_file);
@@ -3098,6 +3336,24 @@ mod tests {
     }
 
     #[test]
+    fn tutorial_sources_accept_v2_and_v3_during_schema_transition() {
+        let sources =
+            load_tutorial_source_units(&tutorial_source_dir()).expect("load tutorial sources");
+        assert!(
+            sources
+                .iter()
+                .any(|source| source.schema == LEGACY_TUTORIAL_SOURCE_SCHEMA_V2),
+            "expected at least one legacy v2 tutorial source during the transition"
+        );
+        assert!(
+            sources
+                .iter()
+                .any(|source| source.schema == TUTORIAL_SOURCE_SCHEMA),
+            "expected at least one v3 tutorial source with enriched teaching fields"
+        );
+    }
+
+    #[test]
     fn tutorial_catalog_check_passes_on_committed_tree() {
         check_tutorial_catalog_generated(
             &tutorial_catalog_meta_path(),
@@ -3208,10 +3464,24 @@ mod tests {
         assert!(markdown.contains("## Parameters That Matter"));
         assert!(markdown.contains("## Canonical Source"));
 
+        let online_chapter = generated.join("chapters/09_prepare_reference_genome_online.md");
+        let online_markdown =
+            std::fs::read_to_string(&online_chapter).expect("read online chapter markdown");
+        assert!(online_markdown.contains("> **How to Run This Locally**"));
+        assert!(online_markdown.contains("### Step 1:"));
+        assert!(online_markdown.contains("CLI:\n\n```bash\nGENTLE_TEST_ONLINE=1 cargo run"));
+        assert!(online_markdown.contains("> Expected:"));
+        assert!(!online_markdown.contains("## Command Equivalent (After GUI)"));
+
         let promoter_chapter =
             generated.join("chapters/24_promoter_design_artifact_slice_offline.md");
         let promoter_markdown =
             std::fs::read_to_string(&promoter_chapter).expect("read promoter chapter markdown");
+        assert!(promoter_markdown.contains("**Prerequisites:** Read [Chapter 1:"));
+        assert!(promoter_markdown.contains("### Step 8:"));
+        assert!(promoter_markdown.contains("CLI:\n\n```bash\ncargo run --bin gentle_cli"));
+        assert!(promoter_markdown.contains("> Expected: `tfbs_score_tracks.svg`"));
+        assert!(!promoter_markdown.contains("## Command Equivalent (After GUI)"));
         assert!(promoter_markdown.contains("## What This Chapter Produces"));
         assert!(promoter_markdown.contains(
             "![tp73_promoter_artifact_demo.tfbs_score_tracks.svg](../artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg)"

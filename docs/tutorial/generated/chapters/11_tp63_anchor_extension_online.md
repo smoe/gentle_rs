@@ -14,6 +14,9 @@ Prepare Human GRCh38, inspect TP63 genomic coordinates, extract TP63, and extend
 
 This chapter focuses on day-to-day genome-anchored sequence inspection: identify TP63 in GRCh38, verify coordinates before extraction, and then widen the visible anchored region directly in the DNA sequence window. The key point is that extension remains deterministic and provenance-preserving, whether triggered in the GUI or via shell/CLI operations.
 
+> **How to Run This Locally**
+> Set `GENTLE_TEST_ONLINE=1` and run from the repository root. The workflow prepares `Human GRCh38 Ensembl 116` using Ensembl FTP FASTA/GTF endpoints from `assets/genomes.json`, then extracts TP63 and extends the anchored locus locally.
+
 ## When This Routine Is Useful
 
 - You want to inspect promoter-proximal and downstream context around TP63 without manually typing coordinates.

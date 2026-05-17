@@ -1,5 +1,5 @@
 {
-  "schema": "gentle.tutorial_source.v2",
+  "schema": "gentle.tutorial_source.v3",
   "id": "tp53_multi_gene_sparse_mapping_online",
   "title": "Map TP53 locus reads with multi-gene sparse indexing (online)",
   "catalog": {
@@ -31,6 +31,7 @@
       "Open Splicing Expert for a TP53 transcript, set `Origin mode` to `multi_gene_sparse`, and set `Target genes` to `TP53, TP63, TP73`.",
       "Run Nanopore interpretation from the same panel and inspect sparse-origin warnings/summary fields in the report section."
     ],
+    "local_execution_note": "Set `GENTLE_TEST_ONLINE=1` and run from the repository root. The workflow prepares/extracts GRCh38 Ensembl 116 from Ensembl FTP, then runs the multi-gene sparse RNA-read interpretation against locally derived TP53-family transcript templates.",
     "learning_objectives": [
       "Map one gene locus from reference genome preparation through read-interpretation in a single operation chain.",
       "Understand what `multi_gene_sparse` changes at runtime (expanded local transcript-template indexing).",

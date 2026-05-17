@@ -14,6 +14,9 @@ Maintenance rule:
 
 ## 2026-05-17
 
+- Added v3 tutorial-source teaching fields for generated chapters, including
+  per-step CLI/expected-outcome rendering, prerequisite links, and online
+  local-execution callouts while keeping v2 sources loadable during migration.
 - Added a reporter construct handoff tutorial that shows how to generate and
   inspect `gentle.reporter_construct_handoff.v1` from a saved
   promoter-reporter candidate set before running any macro commands.

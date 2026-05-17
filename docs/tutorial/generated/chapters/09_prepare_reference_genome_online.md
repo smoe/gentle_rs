@@ -14,6 +14,9 @@ Document network-dependent preparation without destabilizing offline default che
 
 Reference-genome preparation is crucial for genome-anchored cloning interpretation, but it depends on online resources and local tool setup. This chapter keeps that path explicit and opt-in so default tutorial checks remain robust.
 
+> **How to Run This Locally**
+> Set `GENTLE_TEST_ONLINE=1` and run from the repository root. This chapter downloads the GRCh38 Ensembl 116 soft-masked FASTA and GTF from `https://ftp.ensembl.org/pub/release-116/vertebrates/`; make sure `data/genomes` has enough disk space and that interrupted downloads can be retried.
+
 ## When This Routine Is Useful
 
 - You need genome-anchored extraction around gene/promoter context.
@@ -34,18 +37,42 @@ Reference-genome preparation is crucial for genome-anchored cloning interpretati
 
 ## GUI First
 
-1. Open prepared-reference controls from the GUI menus.
-2. Select the target genome and start preparation with explicit cache settings.
-3. Confirm prepared status in the GUI before attempting extraction workflows.
+### Step 1: Open prepared-reference controls from the GUI menus
 
-## Command Equivalent (After GUI)
+GUI: Open prepared-reference controls from the GUI menus.
 
-Run the same routine non-interactively once the GUI flow is clear:
+CLI:
 
 ```bash
-cargo run --bin gentle_cli -- workflow @docs/examples/workflows/prepare_reference_genome_online.json
-cargo run --bin gentle_cli -- shell 'workflow @docs/examples/workflows/prepare_reference_genome_online.json'
+GENTLE_TEST_ONLINE=1 cargo run --bin gentle_cli -- workflow @docs/examples/workflows/prepare_reference_genome_online.json
 ```
+
+> Expected: The workflow starts only when `GENTLE_TEST_ONLINE=1` is set and prepares the selected cache target.
+
+### Step 2: Select the target genome and start preparation with explicit cache settings
+
+GUI: Select the target genome and start preparation with explicit cache settings.
+
+CLI:
+
+```bash
+cargo run --bin gentle_cli -- genomes status "Human GRCh38 Ensembl 116" --catalog assets/genomes.json --cache-dir data/genomes
+```
+
+> Expected: The status payload names `Human GRCh38 Ensembl 116` and reports the effective cache directory.
+
+### Step 3: Confirm prepared status in the GUI before attempting extraction workflows
+
+GUI: Confirm prepared status in the GUI before attempting extraction workflows.
+
+CLI:
+
+```bash
+cargo run --bin gentle_cli -- genomes status "Human GRCh38 Ensembl 116" --catalog assets/genomes.json --cache-dir data/genomes
+```
+
+> Expected: Prepared status becomes visible before extraction or promoter chapters depend on this reference.
+
 
 ## Parameters That Matter
 

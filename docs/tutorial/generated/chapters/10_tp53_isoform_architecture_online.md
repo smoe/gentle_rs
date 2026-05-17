@@ -14,6 +14,9 @@ Build a TP53 locus project and export Figure-1-style transcript/protein isoform 
 
 This chapter demonstrates a publication-oriented use case: derive TP53 from a prepared GRCh38 reference, import a curated isoform panel, and render transcript/protein architecture from the same expert-view payload used by GUI and shell interfaces. The focus is parity and provenance, not manual figure drawing.
 
+> **How to Run This Locally**
+> Set `GENTLE_TEST_ONLINE=1` and run from the repository root. The workflow prepares/extracts `Human GRCh38 Ensembl 116` from Ensembl FTP, then imports the local curated panel `assets/panels/tp53_isoforms_v1.json` and writes `exports/tp53_isoform_architecture.svg`.
+
 ## When This Routine Is Useful
 
 - You want transcript and protein isoform architecture from one sequence context with explicit panel provenance.

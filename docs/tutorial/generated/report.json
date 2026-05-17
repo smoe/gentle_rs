@@ -58,18 +58,18 @@
     "chapters/06_digest_ligation_extract_region_minimal.md": "6b22972d5139b432aa284215f1b0eef927ef3974",
     "chapters/07_guides_export_csv_and_protocol.md": "938e13648b8b9ff6d01a5908d84c6787e4922de9",
     "chapters/08_contribute_to_gentle_development.md": "d45c5c72d2a2e400d652e9c61c6ada99284d109c",
-    "chapters/09_prepare_reference_genome_online.md": "1b0b59e5536e33380552b89f2a23267309afe980",
-    "chapters/10_tp53_isoform_architecture_online.md": "e57aad72219a01b2b6a9ed8cb26845b583d0cc2c",
-    "chapters/11_tp63_anchor_extension_online.md": "f56ed60d5aaad4a1184866d4f1fed82d4c896a61",
-    "chapters/12_tp53_multi_gene_sparse_mapping_online.md": "7512be7a480d2427d7f24cfbf109510b060bf211",
+    "chapters/09_prepare_reference_genome_online.md": "f06282cc990536f78a2a598449b33f2587ab349f",
+    "chapters/10_tp53_isoform_architecture_online.md": "3d832d29c3c3adb99c748983d821823ea05adbbd",
+    "chapters/11_tp63_anchor_extension_online.md": "69ee3ca472966fdc685efa6828af2a3442af2166",
+    "chapters/12_tp53_multi_gene_sparse_mapping_online.md": "5243175960573b1d869cdab3eadc57aba16bd572",
     "chapters/13_pcr_selection_batch_primer_pairs_offline.md": "27a2e17bdd236d33442c436fd8db23f557b5bf2b",
-    "chapters/14_tp73_cdna_genomic_dotplot_online.md": "e9ac7f473878bc3f583f4b1822d9d91e7c8a9d18",
+    "chapters/14_tp73_cdna_genomic_dotplot_online.md": "a76136cd11f3bcd4762a9a2cee325368fa230ff4",
     "chapters/15_gibson_specialist_testing_baseline.md": "7aa4805585055d3580920244be6bb95f26026e9e",
     "chapters/16_gibson_arrangements_baseline.md": "6e2d3b7fb1806cd6147d29ad6da43599b3dfa6bb",
-    "chapters/17_tp53_uniprot_projection_online.md": "7adc82d23fea71f57d75d6eb93219c5a1af1efea",
+    "chapters/17_tp53_uniprot_projection_online.md": "33da5d39bbf0b7705ce119c08d0b5c0441873476",
     "chapters/18_simple_pcr_selection_gui.md": "fa047196ff7e7061c5a42f123b7a342d60f0531f",
-    "chapters/19_tp73_uniprot_projection_audit_cli.md": "e3bf7afcf55de21c51d28a9e961a0b7d991921a0",
-    "chapters/24_promoter_design_artifact_slice_offline.md": "46d2d1b9916bd64af6dff5c6c44f08c95e43f2f5"
+    "chapters/19_tp73_uniprot_projection_audit_cli.md": "1690a89d9f528f3028ea86434b2d1ddf172165b0",
+    "chapters/24_promoter_design_artifact_slice_offline.md": "5fed42a5b60908ae9f1b2df9ff3102fde7b43128"
   },
   "chapters": [
     {
