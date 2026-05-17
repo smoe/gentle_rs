@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "GENtle"
-version = "0.1.0-internal.7"
+version = "0.1.0-internal.8"
 dependencies = [
  "anyhow",
  "bio",
@@ -2297,14 +2297,14 @@ dependencies = [
 
 [[package]]
 name = "gentle-engine"
-version = "0.1.0-internal.7"
+version = "0.1.0-internal.8"
 dependencies = [
  "gentle-protocol",
 ]
 
 [[package]]
 name = "gentle-gui"
-version = "0.1.0-internal.7"
+version = "0.1.0-internal.8"
 dependencies = [
  "egui",
  "serde",
@@ -2314,7 +2314,7 @@ dependencies = [
 
 [[package]]
 name = "gentle-protocol"
-version = "0.1.0-internal.7"
+version = "0.1.0-internal.8"
 dependencies = [
  "serde",
  "serde_json",
@@ -2322,7 +2322,7 @@ dependencies = [
 
 [[package]]
 name = "gentle-render"
-version = "0.1.0-internal.7"
+version = "0.1.0-internal.8"
 dependencies = [
  "gentle-protocol",
  "serde",
@@ -2332,7 +2332,7 @@ dependencies = [
 
 [[package]]
 name = "gentle-shell"
-version = "0.1.0-internal.7"
+version = "0.1.0-internal.8"
 dependencies = [
  "gentle-protocol",
  "serde",

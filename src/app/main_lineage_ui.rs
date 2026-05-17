@@ -6,6 +6,10 @@
 
 use super::*;
 
+fn lineage_graph_canvas_width(base_width: f32, graph_zoom: f32, viewport_width: f32) -> f32 {
+    (base_width * graph_zoom + 280.0 * graph_zoom).max(viewport_width.max(1.0))
+}
+
 impl GENtleApp {
     pub(super) fn render_lineage_node_rename_window(
         &mut self,
@@ -667,7 +671,7 @@ impl GENtleApp {
         }
 
         let mut splitter_dragging = false;
-        egui::ScrollArea::vertical()
+        egui::ScrollArea::both()
             .id_salt("lineage_main_scroll")
             .auto_shrink([false, false])
             .scroll_source(egui::containers::scroll_area::ScrollSource {
@@ -1005,17 +1009,16 @@ impl GENtleApp {
             let lineage_edges = &graph_view_edges;
             let op_label_by_id = &graph_view_op_label_by_id;
             let graph_panel_width = ui.available_width().max(1.0);
+            let graph_canvas_viewport_width = (graph_panel_width - 16.0).max(1.0);
             let graph_panel_height = graph_area_height.max(LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT);
             ui.allocate_ui_with_layout(
                 egui::vec2(graph_panel_width, graph_panel_height),
                 egui::Layout::top_down(egui::Align::Min),
                 |ui| {
-                    ui.set_min_width(graph_panel_width);
                     ui.set_max_width(graph_panel_width);
                     let dark_mode = ui.visuals().dark_mode;
                     theme::canvas_frame(dark_mode).show(ui, |ui| {
-                        ui.set_min_width((graph_panel_width - 16.0).max(1.0));
-                        ui.set_max_width((graph_panel_width - 16.0).max(1.0));
+                        ui.set_max_width(graph_canvas_viewport_width);
                         ui.small(
                             "Shift+scroll zooms (Cmd/Ctrl+scroll still works). Option+drag pans; Space+drag pans on background. Drag nodes to reposition.",
                         );
@@ -1031,11 +1034,14 @@ impl GENtleApp {
                             let base_width = (layer_count.max(1) as f32) * 220.0 + 220.0;
                             let base_height = (max_nodes_in_layer.max(1) as f32) * 110.0 + 300.0;
                             if request_fit_zoom {
-                                let available = ui.available_size();
-                                let fit_x = ((available.x - 24.0).max(120.0) / base_width.max(1.0))
+                                let available_height = ui.available_height();
+                                let fit_x =
+                                    ((graph_canvas_viewport_width - 24.0).max(120.0)
+                                        / base_width.max(1.0))
                                     .max(0.01);
                                 let fit_y =
-                                    ((available.y - 24.0).max(120.0) / base_height.max(1.0))
+                                    ((available_height - 24.0).max(120.0)
+                                        / base_height.max(1.0))
                                         .max(0.01);
                                 graph_zoom = fit_x.min(fit_y).clamp(0.35, 4.0);
                                 request_fit_zoom = false;
@@ -1045,8 +1051,11 @@ impl GENtleApp {
                                 self.lineage_graph_pan_origin = None;
                                 request_fit_origin = false;
                             }
-                            let width = (base_width * graph_zoom + 280.0 * graph_zoom)
-                                .max(ui.available_width());
+                            let width = lineage_graph_canvas_width(
+                                base_width,
+                                graph_zoom,
+                                graph_canvas_viewport_width,
+                            );
                             let height = base_height * graph_zoom;
                             let (resp, painter) = ui.allocate_painter(
                                 Vec2::new(width, height),
@@ -2711,7 +2720,6 @@ impl GENtleApp {
                         ui,
                         scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
                     );
-                    ui.set_min_width(1080.0);
                     egui::Grid::new("lineage_table_grid")
                         .striped(true)
                         .min_col_width(72.0)
@@ -4169,5 +4177,27 @@ impl GENtleApp {
         if let Some((representative, pool_members)) = open_pool {
             self.open_pool_window(&representative, pool_members);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::lineage_graph_canvas_width;
+
+    #[test]
+    fn lineage_graph_canvas_width_uses_parent_viewport_snapshot() {
+        let base_width = 440.0;
+        let zoom = 1.0;
+        let parent_viewport_width = 720.0;
+        let inflated_child_available_width = 1280.0;
+
+        assert_eq!(
+            lineage_graph_canvas_width(base_width, zoom, parent_viewport_width),
+            parent_viewport_width
+        );
+        assert_ne!(
+            lineage_graph_canvas_width(base_width, zoom, parent_viewport_width),
+            inflated_child_available_width
+        );
     }
 }

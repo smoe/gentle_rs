@@ -68,13 +68,11 @@ pub(crate) fn hosted_window_max_inner_size(
     min_size: egui::Vec2,
     drag_margin: egui::Vec2,
 ) -> egui::Vec2 {
+    let available_width = constrain_rect.width() - (drag_margin.x.max(0.0) * 2.0);
+    let available_height = constrain_rect.height() - (drag_margin.y.max(0.0) * 2.0);
     egui::vec2(
-        (constrain_rect.width() - (drag_margin.x.max(0.0) * 2.0))
-            .max(min_size.x)
-            .min(constrain_rect.width()),
-        (constrain_rect.height() - (drag_margin.y.max(0.0) * 2.0))
-            .max(min_size.y)
-            .min(constrain_rect.height()),
+        available_width.max(min_size.x),
+        available_height.max(min_size.y),
     )
 }
 
@@ -413,6 +411,40 @@ mod tests {
         let size = clamp_hosted_window_default_size(vec2(1360.0, 900.0), safe, vec2(720.0, 420.0));
         assert_eq!(size.x, safe.width());
         assert_eq!(size.y, safe.height());
+    }
+
+    #[test]
+    fn hosted_window_max_inner_size_never_drops_below_min_size() {
+        let safe = Rect::from_min_size(pos2(0.0, 0.0), vec2(898.0, 540.0));
+        let max_size = hosted_window_max_inner_size(safe, vec2(900.0, 560.0), vec2(0.0, 0.0));
+
+        assert_eq!(max_size, vec2(900.0, 560.0));
+    }
+
+    #[test]
+    fn show_hosted_window_tolerates_safe_rect_narrower_than_min_size() {
+        let ctx = egui::Context::default();
+        let mut open = true;
+        let stable_id = egui::Id::new("narrow_hosted_window");
+        let spec = HostedWindowSpec::new(
+            "Narrow Host",
+            stable_id,
+            vec2(1280.0, 860.0),
+            vec2(900.0, 560.0),
+        );
+
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(Rect::from_min_size(pos2(0.0, 0.0), vec2(954.0, 638.0))),
+            ..Default::default()
+        });
+        show_hosted_window(&ctx, &spec, &mut open, |ui| {
+            ui.label("content");
+        });
+        assert!(ctx.memory(|mem| {
+            mem.areas()
+                .is_visible(&egui::LayerId::new(egui::Order::Middle, stable_id))
+        }));
+        let _ = ctx.end_pass();
     }
 
     #[test]
