@@ -1,11 +1,14 @@
-# Guide practical filtering and oligo generation
+---
+chapter_id: "guides_filter_and_generate_oligos"
+title: "Guide practical filtering and oligo generation"
+tier: "core"
+example_id: "guides_filter_and_generate_oligos"
+source_example: "docs/examples/workflows/guides_filter_and_generate_oligos.json"
+example_test_mode: "always"
+executed_during_generation: true
+---
 
-- Chapter id: `guides_filter_and_generate_oligos`
-- Tier: `core`
-- Example id: `guides_filter_and_generate_oligos`
-- Source example: `docs/examples/workflows/guides_filter_and_generate_oligos.json`
-- Example test_mode: `always`
-- Executed during generation: `yes`
+# Guide practical filtering and oligo generation
 
 Apply practical guide constraints and produce cloning-ready oligo candidates.
 
@@ -23,14 +26,10 @@ For CRISPR-style cloning, guide quality control is where many downstream failure
 - Generate oligo records from filtered guide candidates.
 - Connect guide workflows to the same deterministic operation model used for cloning steps.
 
-## Concepts and Recurrence
+## Concepts
 
 - **Deterministic Workflows** (`deterministic_workflows`): Operation chains should produce stable IDs and comparable outputs across repeated runs.
-  - Status: reinforced from [Chapter 1: Load FASTA, branch, and reverse-complement](./01_load_branch_reverse_complement_pgex_fasta.md), [Chapter 2: Find and extend the right genomic target (local catalog)](./02_find_and_extend_genomic_target_local_catalog.md), [Chapter 3: Load pGEX and digest with BamHI/EcoRI](./03_load_and_digest_pgex.md), [Chapter 4: Gibson two-fragment overlap planning baseline](./04_gibson_two_fragment_overlap_preview.md).
-  - Reoccurs in: [Chapter 6: Digest -> Ligation -> ExtractRegion minimal slice](./06_digest_ligation_extract_region_minimal.md), [Chapter 9: Prepare a reference genome cache (online)](./09_prepare_reference_genome_online.md), [Chapter 12: Map TP53 locus reads with multi-gene sparse indexing (online)](./12_tp53_multi_gene_sparse_mapping_online.md), [Chapter 13: Selection-first PCR batch primer design (offline)](./13_pcr_selection_batch_primer_pairs_offline.md), [Chapter 14: Compare TP73 cDNA against TP73 genomic context via dotplot (online)](./14_tp73_cdna_genomic_dotplot_online.md), [Chapter 15: Gibson Specialist Starter Project (offline)](./15_gibson_specialist_testing_baseline.md), [Chapter 16: Gibson Arrangements Starter Project (offline)](./16_gibson_arrangements_baseline.md), [Chapter 18: Simple PCR From a Selected Core Region](./18_simple_pcr_selection_gui.md), [Chapter 24: Promoter Design Artifact Slice (Offline Synthetic TP73 Locus)](./24_promoter_design_artifact_slice_offline.md).
 - **Guide Design Pipeline** (`guide_design_pipeline`): Guide sets can be created, filtered, expanded to oligos, and exported with protocol context.
-  - Status: introduced in this chapter.
-  - Reoccurs in: [Chapter 7: Guide oligo export (CSV + protocol)](./07_guides_export_csv_and_protocol.md).
 
 ## GUI First
 
@@ -61,11 +60,12 @@ cargo run --bin gentle_cli -- shell 'workflow @docs/examples/workflows/guides_fi
 - Guide set and passed guide set are present in metadata.
 - Oligo set generation succeeds for passed guides.
 
-## Retained Outputs
-
-- None for this chapter.
-
 ## Canonical Source
 
+- Chapter id: `guides_filter_and_generate_oligos`
+- Tier: `core`
+- Example id: `guides_filter_and_generate_oligos`
 - Workflow file: `docs/examples/workflows/guides_filter_and_generate_oligos.json`
+- Example test_mode: `always`
+- Executed during generation: `yes`
 - Inspect this JSON file directly when you need full option-level detail.

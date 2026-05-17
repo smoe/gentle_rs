@@ -1,11 +1,14 @@
-# Promoter Design Artifact Slice (Offline Synthetic TP73 Locus)
+---
+chapter_id: "promoter_design_artifact_slice_offline"
+title: "Promoter Design Artifact Slice (Offline Synthetic TP73 Locus)"
+tier: "core"
+example_id: "promoter_design_artifact_slice_offline"
+source_example: "docs/examples/workflows/promoter_design_artifact_slice_offline.json"
+example_test_mode: "always"
+executed_during_generation: true
+---
 
-- Chapter id: `promoter_design_artifact_slice_offline`
-- Tier: `core`
-- Example id: `promoter_design_artifact_slice_offline`
-- Source example: `docs/examples/workflows/promoter_design_artifact_slice_offline.json`
-- Example test_mode: `always`
-- Executed during generation: `yes`
+# Promoter Design Artifact Slice (Offline Synthetic TP73 Locus)
 
 Run a tiny TP73-like promoter locus through the Promoter design artifact set: alternative-promoter grouping, promoter evidence matrix, isoform promoter comparison, promoter expression evidence, TFBS score-track SVG, TFBS similarity JSON, and a component manifest.
 
@@ -28,20 +31,25 @@ This chapter is a release-signoff slice rather than a biological claim. The inpu
 - Attach expression-level evidence to promoter groups through a structured report instead of free-text reasoning.
 - Use one synthetic input to exercise JSON and SVG exports deterministically.
 
-## Concepts and Recurrence
+## Concepts
 
 - **Shared Engine Contract** (`shared_engine_contract`): GUI, CLI, shell, and scripting interfaces execute the same operation semantics.
-  - Status: reinforced from [Chapter 1: Load FASTA, branch, and reverse-complement](./01_load_branch_reverse_complement_pgex_fasta.md), [Chapter 2: Find and extend the right genomic target (local catalog)](./02_find_and_extend_genomic_target_local_catalog.md), [Chapter 4: Gibson two-fragment overlap planning baseline](./04_gibson_two_fragment_overlap_preview.md), [Chapter 8: Contribute to GENtle development](./08_contribute_to_gentle_development.md), [Chapter 10: TP53 isoform architecture expert panel (online)](./10_tp53_isoform_architecture_online.md), [Chapter 11: Retrieve TP63 and extend the displayed region by +/-2 kb (online)](./11_tp63_anchor_extension_online.md), [Chapter 12: Map TP53 locus reads with multi-gene sparse indexing (online)](./12_tp53_multi_gene_sparse_mapping_online.md), [Chapter 13: Selection-first PCR batch primer design (offline)](./13_pcr_selection_batch_primer_pairs_offline.md), [Chapter 14: Compare TP73 cDNA against TP73 genomic context via dotplot (online)](./14_tp73_cdna_genomic_dotplot_online.md), [Chapter 15: Gibson Specialist Starter Project (offline)](./15_gibson_specialist_testing_baseline.md), [Chapter 16: Gibson Arrangements Starter Project (offline)](./16_gibson_arrangements_baseline.md), [Chapter 17: TP53 UniProt domain mapping and feature-coding DNA query (online)](./17_tp53_uniprot_projection_online.md), [Chapter 18: Simple PCR From a Selected Core Region](./18_simple_pcr_selection_gui.md), [Chapter 19: Audit a TP73 UniProt Projection Against Ensembl and Derived Coding Sequence (CLI Tutorial)](./19_tp73_uniprot_projection_audit_cli.md).
-  - Reoccurs in: no later chapter.
 - **Deterministic Workflows** (`deterministic_workflows`): Operation chains should produce stable IDs and comparable outputs across repeated runs.
-  - Status: reinforced from [Chapter 1: Load FASTA, branch, and reverse-complement](./01_load_branch_reverse_complement_pgex_fasta.md), [Chapter 2: Find and extend the right genomic target (local catalog)](./02_find_and_extend_genomic_target_local_catalog.md), [Chapter 3: Load pGEX and digest with BamHI/EcoRI](./03_load_and_digest_pgex.md), [Chapter 4: Gibson two-fragment overlap planning baseline](./04_gibson_two_fragment_overlap_preview.md), [Chapter 5: Guide practical filtering and oligo generation](./05_guides_filter_and_generate_oligos.md), [Chapter 6: Digest -> Ligation -> ExtractRegion minimal slice](./06_digest_ligation_extract_region_minimal.md), [Chapter 9: Prepare a reference genome cache (online)](./09_prepare_reference_genome_online.md), [Chapter 12: Map TP53 locus reads with multi-gene sparse indexing (online)](./12_tp53_multi_gene_sparse_mapping_online.md), [Chapter 13: Selection-first PCR batch primer design (offline)](./13_pcr_selection_batch_primer_pairs_offline.md), [Chapter 14: Compare TP73 cDNA against TP73 genomic context via dotplot (online)](./14_tp73_cdna_genomic_dotplot_online.md), [Chapter 15: Gibson Specialist Starter Project (offline)](./15_gibson_specialist_testing_baseline.md), [Chapter 16: Gibson Arrangements Starter Project (offline)](./16_gibson_arrangements_baseline.md), [Chapter 18: Simple PCR From a Selected Core Region](./18_simple_pcr_selection_gui.md).
-  - Reoccurs in: no later chapter.
 - **Artifact Exports** (`artifact_exports`): Representative outputs (CSV/protocol/SVG/text) are retained for auditability and sharing.
-  - Status: reinforced from [Chapter 7: Guide oligo export (CSV + protocol)](./07_guides_export_csv_and_protocol.md), [Chapter 10: TP53 isoform architecture expert panel (online)](./10_tp53_isoform_architecture_online.md), [Chapter 17: TP53 UniProt domain mapping and feature-coding DNA query (online)](./17_tp53_uniprot_projection_online.md), [Chapter 19: Audit a TP73 UniProt Projection Against Ensembl and Derived Coding Sequence (CLI Tutorial)](./19_tp73_uniprot_projection_audit_cli.md).
-  - Reoccurs in: no later chapter.
 - **Tutorial Drift Checks** (`tutorial_drift_checks`): Tutorial content is generated from executable examples and verified in automated checks.
-  - Status: reinforced from [Chapter 8: Contribute to GENtle development](./08_contribute_to_gentle_development.md).
-  - Reoccurs in: no later chapter.
+
+## At a Glance
+
+1. Open docs/examples/assets/tp73_promoter_artifact_demo.gb via File -> Open Seq...
+2. Open Promoter design from the TP73 gene or one of the TP73-demo-* mRNA features.
+3. Set Gene label to TP73, promoter upstream bp to 40, and promoter downstream b...
+4. Click Annotate promoter windows, then Compare alternative promoters; confirm ...
+5. Click Build evidence matrix; confirm the shared promoter row reports 2 tx and...
+6. Run the isoform promoter comparison; confirm that the shared TSS transcripts ...
+7. Load or paste expression rows for the TP73 demo transcripts; confirm that exp...
+8. Set TF motifs to SP1,TP53,TP63,TP73, run Show TF score tracks, then export TF...
+9. Set TFBS similarity anchor to SP1, compare against TP53,TP63,TP73,CTCF, run S...
+10. Inspect the component manifest to see which JSON/SVG artifacts were produced;...
 
 ## GUI First
 
@@ -101,17 +109,25 @@ cargo run --bin gentle_cli -- shell 'features tfbs-track-similarity tp73_promote
 - `tfbs_score_tracks.svg` is written and opens as a compact promoter score-track figure.
 - `tfbs_similarity.json` ranks four candidates against SP1 using `smoothed_spearman`.
 
-## Retained Outputs
+## What This Chapter Produces
 
-- [`artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.alternative_promoters.json`](../artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.alternative_promoters.json)
-- [`artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.evidence_matrix.json`](../artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.evidence_matrix.json)
-- [`artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.isoform_promoter_comparison.json`](../artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.isoform_promoter_comparison.json)
-- [`artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.promoter_artifact_manifest.json`](../artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.promoter_artifact_manifest.json)
-- [`artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.promoter_expression_evidence.json`](../artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.promoter_expression_evidence.json)
 - [`artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg`](../artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg)
-- [`artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_similarity.json`](../artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_similarity.json)
+
+![tp73_promoter_artifact_demo.tfbs_score_tracks.svg](../artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg)
+
+- [`artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.alternative_promoters.json`](../artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.alternative_promoters.json) - schema: `gentle.alternative_promoter_comparison.v1`
+- [`artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.evidence_matrix.json`](../artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.evidence_matrix.json) - schema: `gentle.promoter_evidence_matrix.v1`
+- [`artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.isoform_promoter_comparison.json`](../artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.isoform_promoter_comparison.json) - schema: `gentle.isoform_promoter_comparison.v1`
+- [`artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.promoter_artifact_manifest.json`](../artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.promoter_artifact_manifest.json) - schema: `gentle.promoter_artifact_manifest.v1`
+- [`artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.promoter_expression_evidence.json`](../artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.promoter_expression_evidence.json) - schema: `gentle.promoter_expression_evidence.v1`
+- [`artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_similarity.json`](../artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_similarity.json) - schema: `gentle.tfbs_track_similarity.v1`
 
 ## Canonical Source
 
+- Chapter id: `promoter_design_artifact_slice_offline`
+- Tier: `core`
+- Example id: `promoter_design_artifact_slice_offline`
 - Workflow file: `docs/examples/workflows/promoter_design_artifact_slice_offline.json`
+- Example test_mode: `always`
+- Executed during generation: `yes`
 - Inspect this JSON file directly when you need full option-level detail.

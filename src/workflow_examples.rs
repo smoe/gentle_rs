@@ -1836,45 +1836,225 @@ fn markdown_path_for_chapter(chapter: &TutorialChapter) -> String {
     chapter_markdown_filename(chapter.order, &chapter.id)
 }
 
+fn yaml_double_quote(value: &str) -> String {
+    format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
+fn normalize_markdown_one_line(value: &str) -> String {
+    value.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn truncate_markdown_one_line(value: &str, max_chars: usize) -> String {
+    let normalized = normalize_markdown_one_line(value);
+    if normalized.chars().count() <= max_chars {
+        return normalized;
+    }
+    let keep = max_chars.saturating_sub(3);
+    let mut truncated = normalized.chars().take(keep).collect::<String>();
+    truncated.push_str("...");
+    truncated
+}
+
+fn truncate_at_a_glance_step(value: &str) -> String {
+    truncate_markdown_one_line(&value.replace('`', ""), 80)
+}
+
+fn markdown_inline_code(value: &str) -> String {
+    format!("`{}`", value.replace('`', "'"))
+}
+
+fn retained_artifact_extension(path: &str) -> String {
+    Path::new(path)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase()
+}
+
+fn retained_artifact_file_name(path: &str) -> String {
+    Path::new(path)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(path)
+        .to_string()
+}
+
+fn retained_artifact_render_rank(path: &str) -> usize {
+    match retained_artifact_extension(path).as_str() {
+        "svg" => 0,
+        "png" => 1,
+        "json" => 2,
+        "csv" => 3,
+        "txt" | "md" => 4,
+        _ => 5,
+    }
+}
+
+fn retained_artifact_preview(path: &Path) -> Option<String> {
+    let text = fs::read_to_string(path).ok()?;
+    let extension = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if extension == "json" {
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
+            if let Some(schema) = value.get("schema").and_then(|schema| schema.as_str()) {
+                return Some(format!("schema: {}", markdown_inline_code(schema)));
+            }
+        }
+    }
+    let first_line = text.lines().find(|line| !line.trim().is_empty())?.trim();
+    if first_line.is_empty() {
+        return None;
+    }
+    Some(markdown_inline_code(&truncate_markdown_one_line(
+        first_line, 120,
+    )))
+}
+
+fn render_tutorial_front_matter(
+    chapter: &TutorialChapter,
+    loaded: &LoadedWorkflowExample,
+    source_path: &str,
+    executed: bool,
+) -> String {
+    let mut out = String::new();
+    out.push_str("---\n");
+    out.push_str("chapter_id: ");
+    out.push_str(&yaml_double_quote(&chapter.id));
+    out.push('\n');
+    out.push_str("title: ");
+    out.push_str(&yaml_double_quote(&chapter.title));
+    out.push('\n');
+    out.push_str("tier: ");
+    out.push_str(&yaml_double_quote(chapter.tier.as_str()));
+    out.push('\n');
+    out.push_str("example_id: ");
+    out.push_str(&yaml_double_quote(&chapter.example_id));
+    out.push('\n');
+    out.push_str("source_example: ");
+    out.push_str(&yaml_double_quote(source_path));
+    out.push('\n');
+    out.push_str("example_test_mode: ");
+    out.push_str(&yaml_double_quote(loaded.example.test_mode.as_str()));
+    out.push('\n');
+    out.push_str("executed_during_generation: ");
+    out.push_str(if executed { "true" } else { "false" });
+    out.push('\n');
+    out.push_str("---\n\n");
+    out
+}
+
+fn render_tutorial_concepts_compact(
+    chapter: &TutorialChapter,
+    concept_by_id: &HashMap<String, TutorialConcept>,
+) -> Result<String, String> {
+    let mut out = String::new();
+    out.push_str("\n## Concepts\n\n");
+    for concept_id in &chapter.concepts {
+        let concept = concept_by_id.get(concept_id).ok_or_else(|| {
+            format!(
+                "Tutorial chapter '{}' references unknown concept id '{}'",
+                chapter.id, concept_id
+            )
+        })?;
+        out.push_str("- **");
+        out.push_str(concept.name.trim());
+        out.push_str("** (`");
+        out.push_str(concept.id.trim());
+        out.push_str("`): ");
+        if concept.description.trim().is_empty() {
+            out.push_str("No description provided.");
+        } else {
+            out.push_str(concept.description.trim());
+        }
+        out.push('\n');
+    }
+    Ok(out)
+}
+
+fn render_tutorial_at_a_glance(chapter: &TutorialChapter) -> String {
+    if chapter.gui_steps.len() < 4 {
+        return String::new();
+    }
+    let mut out = String::new();
+    out.push_str("\n## At a Glance\n\n");
+    for (idx, step) in chapter.gui_steps.iter().enumerate() {
+        out.push_str(&format!(
+            "{}. {}\n",
+            idx + 1,
+            truncate_at_a_glance_step(step)
+        ));
+    }
+    out
+}
+
+fn render_tutorial_produced_artifacts(retained_artifacts: &[String], output_dir: &Path) -> String {
+    if retained_artifacts.is_empty() {
+        return String::new();
+    }
+    let mut out = String::new();
+    out.push_str("\n## What This Chapter Produces\n\n");
+    let mut ordered = retained_artifacts.to_vec();
+    ordered.sort_by(|a, b| {
+        retained_artifact_render_rank(a)
+            .cmp(&retained_artifact_render_rank(b))
+            .then_with(|| a.cmp(b))
+    });
+    for retained in &ordered {
+        let artifact_path = output_dir.join(retained);
+        let link_target = format!("../{}", retained);
+        let file_name = retained_artifact_file_name(retained);
+        let extension = retained_artifact_extension(retained);
+        if matches!(extension.as_str(), "svg" | "png") && artifact_path.is_file() {
+            out.push_str("- [`");
+            out.push_str(retained);
+            out.push_str("`](");
+            out.push_str(&link_target);
+            out.push_str(")\n\n");
+            out.push_str("![");
+            out.push_str(&file_name);
+            out.push_str("](");
+            out.push_str(&link_target);
+            out.push_str(")\n\n");
+            continue;
+        }
+        out.push_str("- [`");
+        out.push_str(retained);
+        out.push_str("`](");
+        out.push_str(&link_target);
+        out.push(')');
+        if let Some(preview) = retained_artifact_preview(&artifact_path) {
+            out.push_str(" - ");
+            out.push_str(&preview);
+        }
+        out.push('\n');
+    }
+    out
+}
+
 fn render_tutorial_chapter_markdown(
     chapter: &TutorialChapter,
     loaded: &LoadedWorkflowExample,
     executed: bool,
     retained_artifacts: &[String],
+    output_dir: &Path,
     online_enabled: bool,
-    chapter_index: usize,
-    sorted_chapters: &[TutorialChapter],
     concept_by_id: &HashMap<String, TutorialConcept>,
-    occurrences_by_concept: &HashMap<String, Vec<usize>>,
 ) -> Result<String, String> {
     let source_path = display_path(&loaded.path);
     let mut out = String::new();
+    out.push_str(&render_tutorial_front_matter(
+        chapter,
+        loaded,
+        &source_path,
+        executed,
+    ));
     out.push_str("# ");
     out.push_str(&chapter.title);
     out.push_str("\n\n");
-    out.push_str("- Chapter id: `");
-    out.push_str(&chapter.id);
-    out.push_str("`\n");
-    out.push_str("- Tier: `");
-    out.push_str(chapter.tier.as_str());
-    out.push_str("`\n");
-    out.push_str("- Example id: `");
-    out.push_str(&chapter.example_id);
-    out.push_str("`\n");
-    out.push_str("- Source example: `");
-    out.push_str(&source_path);
-    out.push_str("`\n");
-    out.push_str("- Example test_mode: `");
-    out.push_str(loaded.example.test_mode.as_str());
-    out.push_str("`\n");
-    out.push_str("- Executed during generation: `");
-    out.push_str(if executed { "yes" } else { "no" });
-    out.push_str("`\n");
-    if chapter.tier == TutorialTier::Online && !online_enabled {
-        out.push_str("- Execution note: set `GENTLE_TEST_ONLINE=1` before `tutorial-generate` to execute this chapter.\n");
-    }
     if !chapter.summary.trim().is_empty() {
-        out.push('\n');
         out.push_str(chapter.summary.trim());
         out.push_str("\n");
     }
@@ -1895,85 +2075,8 @@ fn render_tutorial_chapter_markdown(
         out.push_str(objective.trim());
         out.push('\n');
     }
-    out.push_str("\n## Concepts and Recurrence\n\n");
-    for concept_id in &chapter.concepts {
-        let concept = concept_by_id.get(concept_id).ok_or_else(|| {
-            format!(
-                "Tutorial chapter '{}' references unknown concept id '{}'",
-                chapter.id, concept_id
-            )
-        })?;
-        out.push_str("- **");
-        out.push_str(concept.name.trim());
-        out.push_str("** (`");
-        out.push_str(concept.id.trim());
-        out.push_str("`): ");
-        if concept.description.trim().is_empty() {
-            out.push_str("No description provided.");
-        } else {
-            out.push_str(concept.description.trim());
-        }
-        out.push('\n');
-        let positions = occurrences_by_concept.get(concept_id).ok_or_else(|| {
-            format!(
-                "No recurrence mapping found for concept id '{}'",
-                concept_id
-            )
-        })?;
-        let mut previous = vec![];
-        let mut upcoming = vec![];
-        for position in positions {
-            if *position < chapter_index {
-                previous.push(*position);
-            } else if *position > chapter_index {
-                upcoming.push(*position);
-            }
-        }
-        if previous.is_empty() {
-            out.push_str("  - Status: introduced in this chapter.\n");
-        } else {
-            out.push_str("  - Status: reinforced from ");
-            for (idx, prev_position) in previous.iter().enumerate() {
-                if idx > 0 {
-                    out.push_str(", ");
-                }
-                let prev = sorted_chapters.get(*prev_position).ok_or_else(|| {
-                    format!(
-                        "Invalid chapter index '{}' in recurrence map",
-                        prev_position
-                    )
-                })?;
-                out.push('[');
-                out.push_str(&chapter_link_label(prev));
-                out.push_str("](");
-                out.push_str(&chapter_link_target(prev, false));
-                out.push(')');
-            }
-            out.push_str(".\n");
-        }
-        if upcoming.is_empty() {
-            out.push_str("  - Reoccurs in: no later chapter.\n");
-        } else {
-            out.push_str("  - Reoccurs in: ");
-            for (idx, next_position) in upcoming.iter().enumerate() {
-                if idx > 0 {
-                    out.push_str(", ");
-                }
-                let next = sorted_chapters.get(*next_position).ok_or_else(|| {
-                    format!(
-                        "Invalid chapter index '{}' in recurrence map",
-                        next_position
-                    )
-                })?;
-                out.push('[');
-                out.push_str(&chapter_link_label(next));
-                out.push_str("](");
-                out.push_str(&chapter_link_target(next, false));
-                out.push(')');
-            }
-            out.push_str(".\n");
-        }
-    }
+    out.push_str(&render_tutorial_concepts_compact(chapter, concept_by_id)?);
+    out.push_str(&render_tutorial_at_a_glance(chapter));
     out.push_str("\n## GUI First\n\n");
     if chapter.gui_steps.is_empty() {
         out.push_str("- No GUI-first steps are required for this chapter.\n");
@@ -2042,22 +2145,34 @@ fn render_tutorial_chapter_markdown(
             out.push('\n');
         }
     }
-    out.push_str("\n## Retained Outputs\n\n");
-    if retained_artifacts.is_empty() {
-        out.push_str("- None for this chapter.\n");
-    } else {
-        for retained in retained_artifacts {
-            out.push_str("- [`");
-            out.push_str(retained);
-            out.push_str("`](../");
-            out.push_str(retained);
-            out.push_str(")\n");
-        }
-    }
+    out.push_str(&render_tutorial_produced_artifacts(
+        retained_artifacts,
+        output_dir,
+    ));
     out.push_str("\n## Canonical Source\n\n");
+    out.push_str("- Chapter id: `");
+    out.push_str(&chapter.id);
+    out.push_str("`\n");
+    out.push_str("- Tier: `");
+    out.push_str(chapter.tier.as_str());
+    out.push_str("`\n");
+    out.push_str("- Example id: `");
+    out.push_str(&chapter.example_id);
+    out.push_str("`\n");
     out.push_str("- Workflow file: `");
     out.push_str(&source_path);
     out.push_str("`\n");
+    out.push_str("- Example test_mode: `");
+    out.push_str(loaded.example.test_mode.as_str());
+    out.push_str("`\n");
+    out.push_str("- Executed during generation: `");
+    out.push_str(if executed { "yes" } else { "no" });
+    out.push_str("`\n");
+    if chapter.tier == TutorialTier::Online && !online_enabled {
+        out.push_str(
+            "- Execution note: set `GENTLE_TEST_ONLINE=1` before `tutorial-generate` to execute this chapter.\n",
+        );
+    }
     out.push_str("- Inspect this JSON file directly when you need full option-level detail.\n");
     Ok(out)
 }
@@ -2312,7 +2427,7 @@ pub fn generate_tutorial_docs(
     let online_enabled = online_example_tests_enabled();
     let mut chapter_reports: Vec<TutorialGenerationChapter> = vec![];
 
-    for (chapter_index, chapter) in sorted_chapters.iter().enumerate() {
+    for chapter in &sorted_chapters {
         let loaded = example_by_id
             .get(&chapter.example_id)
             .ok_or_else(|| {
@@ -2343,11 +2458,9 @@ pub fn generate_tutorial_docs(
             &loaded,
             executed,
             &retained_artifacts,
+            output_dir,
             online_enabled,
-            chapter_index,
-            &sorted_chapters,
             &concept_by_id,
-            &occurrences_by_concept,
         )?;
         let chapter_file = markdown_path_for_chapter(chapter);
         let chapter_out_path = chapters_dir.join(&chapter_file);
@@ -3087,10 +3200,23 @@ mod tests {
             .expect("tutorial generation should pass");
         let chapter = generated.join("chapters/01_load_branch_reverse_complement_pgex_fasta.md");
         let markdown = std::fs::read_to_string(&chapter).expect("read generated chapter markdown");
+        assert!(markdown.starts_with("---\nchapter_id: "));
         assert!(markdown.contains("## What You Learn"));
-        assert!(markdown.contains("## Concepts and Recurrence"));
+        assert!(markdown.contains("## Concepts"));
+        assert!(!markdown.contains("Reoccurs in:"));
         assert!(markdown.contains("## GUI First"));
         assert!(markdown.contains("## Parameters That Matter"));
+        assert!(markdown.contains("## Canonical Source"));
+
+        let promoter_chapter =
+            generated.join("chapters/24_promoter_design_artifact_slice_offline.md");
+        let promoter_markdown =
+            std::fs::read_to_string(&promoter_chapter).expect("read promoter chapter markdown");
+        assert!(promoter_markdown.contains("## What This Chapter Produces"));
+        assert!(promoter_markdown.contains(
+            "![tp73_promoter_artifact_demo.tfbs_score_tracks.svg](../artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg)"
+        ));
+        assert!(promoter_markdown.contains("schema: `gentle.promoter_artifact_manifest.v1`"));
     }
 
     #[test]
@@ -3311,11 +3437,8 @@ mod tests {
         let message = tutorial_generated_file_count_mismatch_message(&expected, &actual);
 
         assert!(message.contains("expected 1, got 2"));
-        assert!(
-            message.contains(
-                "generated-only files: artifacts/new_demo/artifacts/new_retained_output.md"
-            )
-        );
+        assert!(message
+            .contains("generated-only files: artifacts/new_demo/artifacts/new_retained_output.md"));
         assert!(message.contains("committed-only files: none"));
     }
 
@@ -3390,11 +3513,9 @@ mod tests {
 
         assert!(state.sequences.contains_key("gibson_destination_pgex"));
         assert!(state.sequences.contains_key("gibson_insert_demo"));
-        assert!(
-            state
-                .sequences
-                .contains_key("gibson_destination_pgex_with_gibson_insert_demo")
-        );
+        assert!(state
+            .sequences
+            .contains_key("gibson_destination_pgex_with_gibson_insert_demo"));
 
         let arrangement = state
             .container_state
