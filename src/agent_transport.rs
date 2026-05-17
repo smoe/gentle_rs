@@ -8,8 +8,10 @@
 use crate::agent_bridge::{
     AGENT_BASE_URL_ENV, AGENT_CONNECT_TIMEOUT_SECS_ENV, AGENT_MAX_RESPONSE_BYTES_ENV,
     AGENT_MAX_RETRIES_ENV, AGENT_MODEL_ENV, AGENT_READ_TIMEOUT_SECS_ENV, AGENT_TIMEOUT_SECS_ENV,
-    ANTHROPIC_API_KEY_ENV, OPENAI_API_KEY_ENV, extract_anthropic_error_code,
-    extract_models_from_openai_models_payload, extract_openai_error_code, redact_sensitive_text,
+    ANTHROPIC_API_KEY_AUTH_HINT, ANTHROPIC_API_KEY_ENV, OPENAI_API_KEY_ENV,
+    anthropic_api_key_is_known_non_api_token, anthropic_api_key_kind_warning,
+    extract_anthropic_error_code, extract_models_from_openai_models_payload,
+    extract_openai_error_code, redact_sensitive_text,
 };
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
@@ -364,9 +366,17 @@ fn classify_model_list_http_error(
     };
     let auth_ok = !matches!(status_class, AgentLiveProbeStatusClass::AuthFailed);
     let message = match status_class {
-        AgentLiveProbeStatusClass::AuthFailed => format!(
-            "{provider} model-list endpoint rejected authentication at {endpoint} (status={status}). Check the API key/token for this provider."
-        ),
+        AgentLiveProbeStatusClass::AuthFailed => {
+            if provider == "Anthropic" {
+                format!(
+                    "{provider} model-list endpoint rejected authentication at {endpoint} (status={status}). {ANTHROPIC_API_KEY_AUTH_HINT}"
+                )
+            } else {
+                format!(
+                    "{provider} model-list endpoint rejected authentication at {endpoint} (status={status}). Check the API key/token for this provider."
+                )
+            }
+        }
         AgentLiveProbeStatusClass::QuotaOrBilling => format!(
             "{provider} reported quota or billing trouble during model-list probe at {endpoint} (status={status}). The probe did not send a generation request. Response: {body_preview}"
         ),
@@ -574,6 +584,17 @@ fn build_agent_live_probe(
                     ),
                 );
             };
+            if anthropic_api_key_is_known_non_api_token(&api_key) {
+                return AgentSystemLiveProbe {
+                    enabled: true,
+                    status_class: AgentLiveProbeStatusClass::AuthFailed,
+                    message: anthropic_api_key_kind_warning(&api_key)
+                        .unwrap_or(ANTHROPIC_API_KEY_AUTH_HINT)
+                        .to_string(),
+                    provider_error_code: Some("wrong_key_kind".to_string()),
+                    ..Default::default()
+                };
+            }
             let Some(base_url) = preflight.base_url.as_deref() else {
                 return live_probe_with_status(
                     AgentLiveProbeStatusClass::ProviderError,
@@ -672,8 +693,13 @@ pub fn build_agent_system_preflight_with_live(
             model = Some(resolve_model(&system, ANTHROPIC_DEFAULT_MODEL));
             endpoint_candidates = vec![format!("{resolved}/messages")];
             discovery_endpoint_candidates = model_endpoint_candidates(&resolved);
-            if resolve_anthropic_api_key(&system).is_none() {
-                warnings.push(format!("{ANTHROPIC_API_KEY_ENV} is not set"));
+            match resolve_anthropic_api_key(&system) {
+                Some(api_key) => {
+                    if let Some(warning) = anthropic_api_key_kind_warning(&api_key) {
+                        warnings.push(warning.to_string());
+                    }
+                }
+                None => warnings.push(format!("{ANTHROPIC_API_KEY_ENV} is not set")),
             }
         }
         AgentSystemTransport::NativeOpenaiCompat => {
@@ -921,6 +947,58 @@ mod tests {
     }
 
     #[test]
+    fn live_probe_rejects_anthropic_oauth_token_without_endpoint_attempt() {
+        let system = AgentSystemSpec {
+            id: "claude".to_string(),
+            label: "Claude".to_string(),
+            transport: AgentSystemTransport::NativeAnthropic,
+            model: Some("claude-sonnet-4-6".to_string()),
+            base_url: Some("https://api.anthropic.com/v1".to_string()),
+            env: std::collections::HashMap::from([(
+                ANTHROPIC_API_KEY_ENV.to_string(),
+                "sk-ant-oat01-not-for-api".to_string(),
+            )]),
+            ..Default::default()
+        };
+        let availability = AgentSystemAvailability {
+            available: true,
+            reason: None,
+        };
+        let preflight = AgentSystemPreflight {
+            base_url: Some("https://api.anthropic.com/v1".to_string()),
+            model: Some("claude-sonnet-4-6".to_string()),
+            ..Default::default()
+        };
+        let probe = build_agent_live_probe(&system, &availability, &preflight);
+        assert_eq!(probe.status_class, AgentLiveProbeStatusClass::AuthFailed);
+        assert!(probe.attempted_endpoints.is_empty());
+        assert_eq!(probe.provider_error_code.as_deref(), Some("wrong_key_kind"));
+        assert!(probe.message.contains("Claude Code/Claude.ai OAuth token"));
+    }
+
+    #[test]
+    fn preflight_warns_for_anthropic_oauth_token_shape() {
+        let overrides = std::collections::HashMap::from([(
+            ANTHROPIC_API_KEY_ENV.to_string(),
+            "sk-ant-oat01-not-for-api".to_string(),
+        )]);
+        let preflight = build_agent_system_preflight_with_live(
+            None,
+            "anthropic_claude_sonnet_native",
+            Some(&overrides),
+            false,
+        )
+        .expect("preflight");
+
+        assert!(
+            preflight
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("Claude Code/Claude.ai OAuth token"))
+        );
+    }
+
+    #[test]
     fn live_probe_classifies_auth_failure() {
         let Some(base_url) = spawn_model_list_server(vec![(
             "/models",
@@ -1058,5 +1136,30 @@ mod tests {
         assert_eq!(probe.status_class, AgentLiveProbeStatusClass::Ok);
         assert!(probe.model_list_ok);
         assert!(probe.selected_model_seen);
+    }
+
+    #[test]
+    fn live_probe_anthropic_auth_failure_mentions_console_key() {
+        let Some(base_url) = spawn_model_list_server(vec![(
+            "/models",
+            401,
+            r#"{"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"}}"#,
+        )]) else {
+            return;
+        };
+        let probe = build_model_list_live_probe(
+            &base_url,
+            Some("not-a-console-api-key"),
+            Some("claude-sonnet-4-6"),
+            &test_runtime(),
+            ModelListAuth::Anthropic,
+        );
+        assert_eq!(probe.status_class, AgentLiveProbeStatusClass::AuthFailed);
+        assert_eq!(
+            probe.provider_error_code.as_deref(),
+            Some("authentication_error")
+        );
+        assert!(probe.message.contains("Anthropic Console API key"));
+        assert!(probe.message.contains("Claude Code/Claude.ai"));
     }
 }

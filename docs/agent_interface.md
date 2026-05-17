@@ -514,7 +514,8 @@ Key properties:
   API mode needs `OPENAI_API_KEY`; external MCP agents should connect through
   `gentle_mcp` instead of making GENtle spend OpenAI API usage.
 - Native Claude mode uses the Anthropic API directly and needs
-  `ANTHROPIC_API_KEY`; it is a separate first-run route from OpenAI.
+  `ANTHROPIC_API_KEY`; Claude Code or Claude.ai subscription/login tokens do
+  not authenticate direct Anthropic API calls.
 - `agents preflight` remains config-only by default. `--live` adds the optional
   `gentle.agent_preflight.v1.live_probe` model-list probe without sending a
   generation request.
