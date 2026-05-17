@@ -1,11 +1,14 @@
-# Guide oligo export (CSV + protocol)
+---
+chapter_id: "guides_export_csv_and_protocol"
+title: "Guide oligo export (CSV + protocol)"
+tier: "advanced"
+example_id: "guides_export_csv_and_protocol"
+source_example: "docs/examples/workflows/guides_export_csv_and_protocol.json"
+example_test_mode: "skip"
+executed_during_generation: true
+---
 
-- Chapter id: `guides_export_csv_and_protocol`
-- Tier: `advanced`
-- Example id: `guides_export_csv_and_protocol`
-- Source example: `docs/examples/workflows/guides_export_csv_and_protocol.json`
-- Example test_mode: `skip`
-- Executed during generation: `yes`
+# Guide oligo export (CSV + protocol)
 
 Export representative machine-readable and human-readable artifacts.
 
@@ -23,14 +26,10 @@ Operational work is only useful if outputs can be shared with collaborators and 
 - Understand selective artifact retention for tutorial readability.
 - Map retained artifacts back to the operation chain that produced them.
 
-## Concepts and Recurrence
+## Concepts
 
 - **Guide Design Pipeline** (`guide_design_pipeline`): Guide sets can be created, filtered, expanded to oligos, and exported with protocol context.
-  - Status: reinforced from [Chapter 5: Guide practical filtering and oligo generation](./05_guides_filter_and_generate_oligos.md).
-  - Reoccurs in: no later chapter.
 - **Artifact Exports** (`artifact_exports`): Representative outputs (CSV/protocol/SVG/text) are retained for auditability and sharing.
-  - Status: introduced in this chapter.
-  - Reoccurs in: [Chapter 10: TP53 isoform architecture expert panel (online)](./10_tp53_isoform_architecture_online.md), [Chapter 17: TP53 UniProt domain mapping and feature-coding DNA query (online)](./17_tp53_uniprot_projection_online.md), [Chapter 19: Audit a TP73 UniProt Projection Against Ensembl and Derived Coding Sequence (CLI Tutorial)](./19_tp73_uniprot_projection_audit_cli.md), [Chapter 24: Promoter Design Artifact Slice (Offline Synthetic TP73 Locus)](./24_promoter_design_artifact_slice_offline.md).
 
 ## GUI First
 
@@ -61,12 +60,17 @@ cargo run --bin gentle_cli -- shell 'workflow @docs/examples/workflows/guides_ex
 - CSV export file exists and contains guide rows.
 - Protocol text export exists and contains checklist content.
 
-## Retained Outputs
+## What This Chapter Produces
 
-- [`artifacts/guides_export_csv_and_protocol/exports/demo_guides.csv`](../artifacts/guides_export_csv_and_protocol/exports/demo_guides.csv)
-- [`artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt`](../artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt)
+- [`artifacts/guides_export_csv_and_protocol/exports/demo_guides.csv`](../artifacts/guides_export_csv_and_protocol/exports/demo_guides.csv) - `guide_id,rank,forward_oligo,reverse_oligo,notes`
+- [`artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt`](../artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt) - `GENtle Guide Oligo Protocol`
 
 ## Canonical Source
 
+- Chapter id: `guides_export_csv_and_protocol`
+- Tier: `advanced`
+- Example id: `guides_export_csv_and_protocol`
 - Workflow file: `docs/examples/workflows/guides_export_csv_and_protocol.json`
+- Example test_mode: `skip`
+- Executed during generation: `yes`
 - Inspect this JSON file directly when you need full option-level detail.

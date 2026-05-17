@@ -1,11 +1,14 @@
-# Gibson Specialist Starter Project (offline)
+---
+chapter_id: "gibson_specialist_testing_baseline"
+title: "Gibson Specialist Starter Project (offline)"
+tier: "core"
+example_id: "gibson_specialist_testing_baseline"
+source_example: "docs/examples/workflows/gibson_specialist_testing_baseline.json"
+example_test_mode: "always"
+executed_during_generation: true
+---
 
-- Chapter id: `gibson_specialist_testing_baseline`
-- Tier: `core`
-- Example id: `gibson_specialist_testing_baseline`
-- Source example: `docs/examples/workflows/gibson_specialist_testing_baseline.json`
-- Example test_mode: `always`
-- Executed during generation: `yes`
+# Gibson Specialist Starter Project (offline)
 
 Build a ready-to-open tutorial project with one circular destination and one linear insert so the Gibson specialist can be tested without setup drift.
 
@@ -23,17 +26,11 @@ This chapter exists to remove setup friction from Gibson specialist testing. The
 - Recognize the stable sequence IDs that the Gibson testing guide expects.
 - Replay the same baseline from GUI and CLI without changing biological setup.
 
-## Concepts and Recurrence
+## Concepts
 
 - **Shared Engine Contract** (`shared_engine_contract`): GUI, CLI, shell, and scripting interfaces execute the same operation semantics.
-  - Status: reinforced from [Chapter 1: Load FASTA, branch, and reverse-complement](./01_load_branch_reverse_complement_pgex_fasta.md), [Chapter 2: Find and extend the right genomic target (local catalog)](./02_find_and_extend_genomic_target_local_catalog.md), [Chapter 4: Gibson two-fragment overlap planning baseline](./04_gibson_two_fragment_overlap_preview.md), [Chapter 8: Contribute to GENtle development](./08_contribute_to_gentle_development.md), [Chapter 10: TP53 isoform architecture expert panel (online)](./10_tp53_isoform_architecture_online.md), [Chapter 11: Retrieve TP63 and extend the displayed region by +/-2 kb (online)](./11_tp63_anchor_extension_online.md), [Chapter 12: Map TP53 locus reads with multi-gene sparse indexing (online)](./12_tp53_multi_gene_sparse_mapping_online.md), [Chapter 13: Selection-first PCR batch primer design (offline)](./13_pcr_selection_batch_primer_pairs_offline.md), [Chapter 14: Compare TP73 cDNA against TP73 genomic context via dotplot (online)](./14_tp73_cdna_genomic_dotplot_online.md).
-  - Reoccurs in: [Chapter 16: Gibson Arrangements Starter Project (offline)](./16_gibson_arrangements_baseline.md), [Chapter 17: TP53 UniProt domain mapping and feature-coding DNA query (online)](./17_tp53_uniprot_projection_online.md), [Chapter 18: Simple PCR From a Selected Core Region](./18_simple_pcr_selection_gui.md), [Chapter 19: Audit a TP73 UniProt Projection Against Ensembl and Derived Coding Sequence (CLI Tutorial)](./19_tp73_uniprot_projection_audit_cli.md), [Chapter 24: Promoter Design Artifact Slice (Offline Synthetic TP73 Locus)](./24_promoter_design_artifact_slice_offline.md).
 - **Deterministic Workflows** (`deterministic_workflows`): Operation chains should produce stable IDs and comparable outputs across repeated runs.
-  - Status: reinforced from [Chapter 1: Load FASTA, branch, and reverse-complement](./01_load_branch_reverse_complement_pgex_fasta.md), [Chapter 2: Find and extend the right genomic target (local catalog)](./02_find_and_extend_genomic_target_local_catalog.md), [Chapter 3: Load pGEX and digest with BamHI/EcoRI](./03_load_and_digest_pgex.md), [Chapter 4: Gibson two-fragment overlap planning baseline](./04_gibson_two_fragment_overlap_preview.md), [Chapter 5: Guide practical filtering and oligo generation](./05_guides_filter_and_generate_oligos.md), [Chapter 6: Digest -> Ligation -> ExtractRegion minimal slice](./06_digest_ligation_extract_region_minimal.md), [Chapter 9: Prepare a reference genome cache (online)](./09_prepare_reference_genome_online.md), [Chapter 12: Map TP53 locus reads with multi-gene sparse indexing (online)](./12_tp53_multi_gene_sparse_mapping_online.md), [Chapter 13: Selection-first PCR batch primer design (offline)](./13_pcr_selection_batch_primer_pairs_offline.md), [Chapter 14: Compare TP73 cDNA against TP73 genomic context via dotplot (online)](./14_tp73_cdna_genomic_dotplot_online.md).
-  - Reoccurs in: [Chapter 16: Gibson Arrangements Starter Project (offline)](./16_gibson_arrangements_baseline.md), [Chapter 18: Simple PCR From a Selected Core Region](./18_simple_pcr_selection_gui.md), [Chapter 24: Promoter Design Artifact Slice (Offline Synthetic TP73 Locus)](./24_promoter_design_artifact_slice_offline.md).
 - **Sequence Lineage** (`sequence_lineage`): Derived sequences are explicit products linked to upstream inputs and operations.
-  - Status: reinforced from [Chapter 1: Load FASTA, branch, and reverse-complement](./01_load_branch_reverse_complement_pgex_fasta.md), [Chapter 2: Find and extend the right genomic target (local catalog)](./02_find_and_extend_genomic_target_local_catalog.md), [Chapter 3: Load pGEX and digest with BamHI/EcoRI](./03_load_and_digest_pgex.md), [Chapter 4: Gibson two-fragment overlap planning baseline](./04_gibson_two_fragment_overlap_preview.md), [Chapter 6: Digest -> Ligation -> ExtractRegion minimal slice](./06_digest_ligation_extract_region_minimal.md), [Chapter 11: Retrieve TP63 and extend the displayed region by +/-2 kb (online)](./11_tp63_anchor_extension_online.md), [Chapter 13: Selection-first PCR batch primer design (offline)](./13_pcr_selection_batch_primer_pairs_offline.md), [Chapter 14: Compare TP73 cDNA against TP73 genomic context via dotplot (online)](./14_tp73_cdna_genomic_dotplot_online.md).
-  - Reoccurs in: [Chapter 16: Gibson Arrangements Starter Project (offline)](./16_gibson_arrangements_baseline.md).
 
 ## GUI First
 
@@ -74,11 +71,12 @@ cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gibson_specialis
 - The destination remains circular and the insert remains linear before entering `Patterns -> Gibson...`.
 - The hand-written Gibson testing guide can start from this baseline without any additional sequence imports.
 
-## Retained Outputs
-
-- None for this chapter.
-
 ## Canonical Source
 
+- Chapter id: `gibson_specialist_testing_baseline`
+- Tier: `core`
+- Example id: `gibson_specialist_testing_baseline`
 - Workflow file: `docs/examples/workflows/gibson_specialist_testing_baseline.json`
+- Example test_mode: `always`
+- Executed during generation: `yes`
 - Inspect this JSON file directly when you need full option-level detail.

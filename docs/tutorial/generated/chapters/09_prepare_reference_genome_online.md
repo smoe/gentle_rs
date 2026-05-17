@@ -1,12 +1,14 @@
-# Prepare a reference genome cache (online)
+---
+chapter_id: "prepare_reference_genome_online"
+title: "Prepare a reference genome cache (online)"
+tier: "online"
+example_id: "prepare_reference_genome_online"
+source_example: "docs/examples/workflows/prepare_reference_genome_online.json"
+example_test_mode: "online"
+executed_during_generation: false
+---
 
-- Chapter id: `prepare_reference_genome_online`
-- Tier: `online`
-- Example id: `prepare_reference_genome_online`
-- Source example: `docs/examples/workflows/prepare_reference_genome_online.json`
-- Example test_mode: `online`
-- Executed during generation: `no`
-- Execution note: set `GENTLE_TEST_ONLINE=1` before `tutorial-generate` to execute this chapter.
+# Prepare a reference genome cache (online)
 
 Document network-dependent preparation without destabilizing offline default checks.
 
@@ -24,17 +26,11 @@ Reference-genome preparation is crucial for genome-anchored cloning interpretati
 - Use `GENTLE_TEST_ONLINE` to opt into online chapter execution.
 - Preserve offline CI reliability while still documenting online capabilities.
 
-## Concepts and Recurrence
+## Concepts
 
 - **Deterministic Workflows** (`deterministic_workflows`): Operation chains should produce stable IDs and comparable outputs across repeated runs.
-  - Status: reinforced from [Chapter 1: Load FASTA, branch, and reverse-complement](./01_load_branch_reverse_complement_pgex_fasta.md), [Chapter 2: Find and extend the right genomic target (local catalog)](./02_find_and_extend_genomic_target_local_catalog.md), [Chapter 3: Load pGEX and digest with BamHI/EcoRI](./03_load_and_digest_pgex.md), [Chapter 4: Gibson two-fragment overlap planning baseline](./04_gibson_two_fragment_overlap_preview.md), [Chapter 5: Guide practical filtering and oligo generation](./05_guides_filter_and_generate_oligos.md), [Chapter 6: Digest -> Ligation -> ExtractRegion minimal slice](./06_digest_ligation_extract_region_minimal.md).
-  - Reoccurs in: [Chapter 12: Map TP53 locus reads with multi-gene sparse indexing (online)](./12_tp53_multi_gene_sparse_mapping_online.md), [Chapter 13: Selection-first PCR batch primer design (offline)](./13_pcr_selection_batch_primer_pairs_offline.md), [Chapter 14: Compare TP73 cDNA against TP73 genomic context via dotplot (online)](./14_tp73_cdna_genomic_dotplot_online.md), [Chapter 15: Gibson Specialist Starter Project (offline)](./15_gibson_specialist_testing_baseline.md), [Chapter 16: Gibson Arrangements Starter Project (offline)](./16_gibson_arrangements_baseline.md), [Chapter 18: Simple PCR From a Selected Core Region](./18_simple_pcr_selection_gui.md), [Chapter 24: Promoter Design Artifact Slice (Offline Synthetic TP73 Locus)](./24_promoter_design_artifact_slice_offline.md).
 - **Online Opt-in Execution** (`online_opt_in`): Network-dependent chapters remain explicit opt-in and do not break offline default CI.
-  - Status: introduced in this chapter.
-  - Reoccurs in: [Chapter 10: TP53 isoform architecture expert panel (online)](./10_tp53_isoform_architecture_online.md), [Chapter 11: Retrieve TP63 and extend the displayed region by +/-2 kb (online)](./11_tp63_anchor_extension_online.md), [Chapter 12: Map TP53 locus reads with multi-gene sparse indexing (online)](./12_tp53_multi_gene_sparse_mapping_online.md), [Chapter 14: Compare TP73 cDNA against TP73 genomic context via dotplot (online)](./14_tp73_cdna_genomic_dotplot_online.md), [Chapter 17: TP53 UniProt domain mapping and feature-coding DNA query (online)](./17_tp53_uniprot_projection_online.md), [Chapter 19: Audit a TP73 UniProt Projection Against Ensembl and Derived Coding Sequence (CLI Tutorial)](./19_tp73_uniprot_projection_audit_cli.md).
 - **Genome Catalog Targeting** (`genome_catalog_targeting`): Prepared genome catalogs, annotation-based gene filters, and anchor extension connect imported entries to genomic context.
-  - Status: reinforced from [Chapter 2: Find and extend the right genomic target (local catalog)](./02_find_and_extend_genomic_target_local_catalog.md).
-  - Reoccurs in: [Chapter 10: TP53 isoform architecture expert panel (online)](./10_tp53_isoform_architecture_online.md), [Chapter 11: Retrieve TP63 and extend the displayed region by +/-2 kb (online)](./11_tp63_anchor_extension_online.md), [Chapter 12: Map TP53 locus reads with multi-gene sparse indexing (online)](./12_tp53_multi_gene_sparse_mapping_online.md), [Chapter 14: Compare TP73 cDNA against TP73 genomic context via dotplot (online)](./14_tp73_cdna_genomic_dotplot_online.md), [Chapter 17: TP53 UniProt domain mapping and feature-coding DNA query (online)](./17_tp53_uniprot_projection_online.md).
 
 ## GUI First
 
@@ -71,11 +67,13 @@ GENTLE_TEST_ONLINE=1 cargo run --bin gentle_examples_docs -- tutorial-generate
 - Genome preparation runs only when GENTLE_TEST_ONLINE is enabled.
 - Offline generation still emits the chapter with execution status noted.
 
-## Retained Outputs
-
-- None for this chapter.
-
 ## Canonical Source
 
+- Chapter id: `prepare_reference_genome_online`
+- Tier: `online`
+- Example id: `prepare_reference_genome_online`
 - Workflow file: `docs/examples/workflows/prepare_reference_genome_online.json`
+- Example test_mode: `online`
+- Executed during generation: `no`
+- Execution note: set `GENTLE_TEST_ONLINE=1` before `tutorial-generate` to execute this chapter.
 - Inspect this JSON file directly when you need full option-level detail.

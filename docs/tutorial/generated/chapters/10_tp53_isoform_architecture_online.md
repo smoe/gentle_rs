@@ -1,12 +1,14 @@
-# TP53 isoform architecture expert panel (online)
+---
+chapter_id: "tp53_isoform_architecture_online"
+title: "TP53 isoform architecture expert panel (online)"
+tier: "online"
+example_id: "tp53_isoform_architecture_online"
+source_example: "docs/examples/workflows/tp53_isoform_architecture_online.json"
+example_test_mode: "online"
+executed_during_generation: false
+---
 
-- Chapter id: `tp53_isoform_architecture_online`
-- Tier: `online`
-- Example id: `tp53_isoform_architecture_online`
-- Source example: `docs/examples/workflows/tp53_isoform_architecture_online.json`
-- Example test_mode: `online`
-- Executed during generation: `no`
-- Execution note: set `GENTLE_TEST_ONLINE=1` before `tutorial-generate` to execute this chapter.
+# TP53 isoform architecture expert panel (online)
 
 Build a TP53 locus project and export Figure-1-style transcript/protein isoform architecture from one deterministic engine route.
 
@@ -24,23 +26,13 @@ This chapter demonstrates a publication-oriented use case: derive TP53 from a pr
 - Understand how curated panel JSON joins genome-derived transcripts without GUI-only logic.
 - Export deterministic architecture SVG suitable for downstream figure styling.
 
-## Concepts and Recurrence
+## Concepts
 
 - **Shared Engine Contract** (`shared_engine_contract`): GUI, CLI, shell, and scripting interfaces execute the same operation semantics.
-  - Status: reinforced from [Chapter 1: Load FASTA, branch, and reverse-complement](./01_load_branch_reverse_complement_pgex_fasta.md), [Chapter 2: Find and extend the right genomic target (local catalog)](./02_find_and_extend_genomic_target_local_catalog.md), [Chapter 4: Gibson two-fragment overlap planning baseline](./04_gibson_two_fragment_overlap_preview.md), [Chapter 8: Contribute to GENtle development](./08_contribute_to_gentle_development.md).
-  - Reoccurs in: [Chapter 11: Retrieve TP63 and extend the displayed region by +/-2 kb (online)](./11_tp63_anchor_extension_online.md), [Chapter 12: Map TP53 locus reads with multi-gene sparse indexing (online)](./12_tp53_multi_gene_sparse_mapping_online.md), [Chapter 13: Selection-first PCR batch primer design (offline)](./13_pcr_selection_batch_primer_pairs_offline.md), [Chapter 14: Compare TP73 cDNA against TP73 genomic context via dotplot (online)](./14_tp73_cdna_genomic_dotplot_online.md), [Chapter 15: Gibson Specialist Starter Project (offline)](./15_gibson_specialist_testing_baseline.md), [Chapter 16: Gibson Arrangements Starter Project (offline)](./16_gibson_arrangements_baseline.md), [Chapter 17: TP53 UniProt domain mapping and feature-coding DNA query (online)](./17_tp53_uniprot_projection_online.md), [Chapter 18: Simple PCR From a Selected Core Region](./18_simple_pcr_selection_gui.md), [Chapter 19: Audit a TP73 UniProt Projection Against Ensembl and Derived Coding Sequence (CLI Tutorial)](./19_tp73_uniprot_projection_audit_cli.md), [Chapter 24: Promoter Design Artifact Slice (Offline Synthetic TP73 Locus)](./24_promoter_design_artifact_slice_offline.md).
 - **Genome Catalog Targeting** (`genome_catalog_targeting`): Prepared genome catalogs, annotation-based gene filters, and anchor extension connect imported entries to genomic context.
-  - Status: reinforced from [Chapter 2: Find and extend the right genomic target (local catalog)](./02_find_and_extend_genomic_target_local_catalog.md), [Chapter 9: Prepare a reference genome cache (online)](./09_prepare_reference_genome_online.md).
-  - Reoccurs in: [Chapter 11: Retrieve TP63 and extend the displayed region by +/-2 kb (online)](./11_tp63_anchor_extension_online.md), [Chapter 12: Map TP53 locus reads with multi-gene sparse indexing (online)](./12_tp53_multi_gene_sparse_mapping_online.md), [Chapter 14: Compare TP73 cDNA against TP73 genomic context via dotplot (online)](./14_tp73_cdna_genomic_dotplot_online.md), [Chapter 17: TP53 UniProt domain mapping and feature-coding DNA query (online)](./17_tp53_uniprot_projection_online.md).
 - **Isoform Architecture Panels** (`isoform_architecture_panels`): Curated transcript/protein architecture overlays can be imported and rendered as deterministic expert-view SVG outputs.
-  - Status: introduced in this chapter.
-  - Reoccurs in: no later chapter.
 - **Online Opt-in Execution** (`online_opt_in`): Network-dependent chapters remain explicit opt-in and do not break offline default CI.
-  - Status: reinforced from [Chapter 9: Prepare a reference genome cache (online)](./09_prepare_reference_genome_online.md).
-  - Reoccurs in: [Chapter 11: Retrieve TP63 and extend the displayed region by +/-2 kb (online)](./11_tp63_anchor_extension_online.md), [Chapter 12: Map TP53 locus reads with multi-gene sparse indexing (online)](./12_tp53_multi_gene_sparse_mapping_online.md), [Chapter 14: Compare TP73 cDNA against TP73 genomic context via dotplot (online)](./14_tp73_cdna_genomic_dotplot_online.md), [Chapter 17: TP53 UniProt domain mapping and feature-coding DNA query (online)](./17_tp53_uniprot_projection_online.md), [Chapter 19: Audit a TP73 UniProt Projection Against Ensembl and Derived Coding Sequence (CLI Tutorial)](./19_tp73_uniprot_projection_audit_cli.md).
 - **Artifact Exports** (`artifact_exports`): Representative outputs (CSV/protocol/SVG/text) are retained for auditability and sharing.
-  - Status: reinforced from [Chapter 7: Guide oligo export (CSV + protocol)](./07_guides_export_csv_and_protocol.md).
-  - Reoccurs in: [Chapter 17: TP53 UniProt domain mapping and feature-coding DNA query (online)](./17_tp53_uniprot_projection_online.md), [Chapter 19: Audit a TP73 UniProt Projection Against Ensembl and Derived Coding Sequence (CLI Tutorial)](./19_tp73_uniprot_projection_audit_cli.md), [Chapter 24: Promoter Design Artifact Slice (Offline Synthetic TP73 Locus)](./24_promoter_design_artifact_slice_offline.md).
 
 ## GUI First
 
@@ -79,11 +71,13 @@ cargo run --bin gentle_cli -- save-project tp53_isoform_architecture.project.gen
 - Isoform architecture SVG export succeeds with deterministic lane ordering.
 - Saved project contains TP53 sequence plus imported panel metadata for replay.
 
-## Retained Outputs
-
-- None for this chapter.
-
 ## Canonical Source
 
+- Chapter id: `tp53_isoform_architecture_online`
+- Tier: `online`
+- Example id: `tp53_isoform_architecture_online`
 - Workflow file: `docs/examples/workflows/tp53_isoform_architecture_online.json`
+- Example test_mode: `online`
+- Executed during generation: `no`
+- Execution note: set `GENTLE_TEST_ONLINE=1` before `tutorial-generate` to execute this chapter.
 - Inspect this JSON file directly when you need full option-level detail.

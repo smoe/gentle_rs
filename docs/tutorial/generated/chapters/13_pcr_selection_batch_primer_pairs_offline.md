@@ -1,11 +1,14 @@
-# Selection-first PCR batch primer design (offline)
+---
+chapter_id: "pcr_selection_batch_primer_pairs_offline"
+title: "Selection-first PCR batch primer design (offline)"
+tier: "core"
+example_id: "pcr_selection_batch_primer_pairs_offline"
+source_example: "docs/examples/workflows/pcr_selection_batch_primer_pairs_offline.json"
+example_test_mode: "always"
+executed_during_generation: true
+---
 
-- Chapter id: `pcr_selection_batch_primer_pairs_offline`
-- Tier: `core`
-- Example id: `pcr_selection_batch_primer_pairs_offline`
-- Source example: `docs/examples/workflows/pcr_selection_batch_primer_pairs_offline.json`
-- Example test_mode: `always`
-- Executed during generation: `yes`
+# Selection-first PCR batch primer design (offline)
 
 Use paint-first PCR Designer controls on local TP73 context to queue ROIs and run deterministic batch primer-pair reports, with optional extracted-region copies.
 
@@ -28,17 +31,22 @@ This chapter is PCR-focused and biology-anchored without requiring genome mappin
 - Run deterministic multi-region primer design in one batch action with stable `_rNN` report suffixes.
 - Use batch-results actions (`Show`, `Export`, `Open`) for validation and downstream handoff.
 
-## Concepts and Recurrence
+## Concepts
 
 - **Shared Engine Contract** (`shared_engine_contract`): GUI, CLI, shell, and scripting interfaces execute the same operation semantics.
-  - Status: reinforced from [Chapter 1: Load FASTA, branch, and reverse-complement](./01_load_branch_reverse_complement_pgex_fasta.md), [Chapter 2: Find and extend the right genomic target (local catalog)](./02_find_and_extend_genomic_target_local_catalog.md), [Chapter 4: Gibson two-fragment overlap planning baseline](./04_gibson_two_fragment_overlap_preview.md), [Chapter 8: Contribute to GENtle development](./08_contribute_to_gentle_development.md), [Chapter 10: TP53 isoform architecture expert panel (online)](./10_tp53_isoform_architecture_online.md), [Chapter 11: Retrieve TP63 and extend the displayed region by +/-2 kb (online)](./11_tp63_anchor_extension_online.md), [Chapter 12: Map TP53 locus reads with multi-gene sparse indexing (online)](./12_tp53_multi_gene_sparse_mapping_online.md).
-  - Reoccurs in: [Chapter 14: Compare TP73 cDNA against TP73 genomic context via dotplot (online)](./14_tp73_cdna_genomic_dotplot_online.md), [Chapter 15: Gibson Specialist Starter Project (offline)](./15_gibson_specialist_testing_baseline.md), [Chapter 16: Gibson Arrangements Starter Project (offline)](./16_gibson_arrangements_baseline.md), [Chapter 17: TP53 UniProt domain mapping and feature-coding DNA query (online)](./17_tp53_uniprot_projection_online.md), [Chapter 18: Simple PCR From a Selected Core Region](./18_simple_pcr_selection_gui.md), [Chapter 19: Audit a TP73 UniProt Projection Against Ensembl and Derived Coding Sequence (CLI Tutorial)](./19_tp73_uniprot_projection_audit_cli.md), [Chapter 24: Promoter Design Artifact Slice (Offline Synthetic TP73 Locus)](./24_promoter_design_artifact_slice_offline.md).
 - **Deterministic Workflows** (`deterministic_workflows`): Operation chains should produce stable IDs and comparable outputs across repeated runs.
-  - Status: reinforced from [Chapter 1: Load FASTA, branch, and reverse-complement](./01_load_branch_reverse_complement_pgex_fasta.md), [Chapter 2: Find and extend the right genomic target (local catalog)](./02_find_and_extend_genomic_target_local_catalog.md), [Chapter 3: Load pGEX and digest with BamHI/EcoRI](./03_load_and_digest_pgex.md), [Chapter 4: Gibson two-fragment overlap planning baseline](./04_gibson_two_fragment_overlap_preview.md), [Chapter 5: Guide practical filtering and oligo generation](./05_guides_filter_and_generate_oligos.md), [Chapter 6: Digest -> Ligation -> ExtractRegion minimal slice](./06_digest_ligation_extract_region_minimal.md), [Chapter 9: Prepare a reference genome cache (online)](./09_prepare_reference_genome_online.md), [Chapter 12: Map TP53 locus reads with multi-gene sparse indexing (online)](./12_tp53_multi_gene_sparse_mapping_online.md).
-  - Reoccurs in: [Chapter 14: Compare TP73 cDNA against TP73 genomic context via dotplot (online)](./14_tp73_cdna_genomic_dotplot_online.md), [Chapter 15: Gibson Specialist Starter Project (offline)](./15_gibson_specialist_testing_baseline.md), [Chapter 16: Gibson Arrangements Starter Project (offline)](./16_gibson_arrangements_baseline.md), [Chapter 18: Simple PCR From a Selected Core Region](./18_simple_pcr_selection_gui.md), [Chapter 24: Promoter Design Artifact Slice (Offline Synthetic TP73 Locus)](./24_promoter_design_artifact_slice_offline.md).
 - **Sequence Lineage** (`sequence_lineage`): Derived sequences are explicit products linked to upstream inputs and operations.
-  - Status: reinforced from [Chapter 1: Load FASTA, branch, and reverse-complement](./01_load_branch_reverse_complement_pgex_fasta.md), [Chapter 2: Find and extend the right genomic target (local catalog)](./02_find_and_extend_genomic_target_local_catalog.md), [Chapter 3: Load pGEX and digest with BamHI/EcoRI](./03_load_and_digest_pgex.md), [Chapter 4: Gibson two-fragment overlap planning baseline](./04_gibson_two_fragment_overlap_preview.md), [Chapter 6: Digest -> Ligation -> ExtractRegion minimal slice](./06_digest_ligation_extract_region_minimal.md), [Chapter 11: Retrieve TP63 and extend the displayed region by +/-2 kb (online)](./11_tp63_anchor_extension_online.md).
-  - Reoccurs in: [Chapter 14: Compare TP73 cDNA against TP73 genomic context via dotplot (online)](./14_tp73_cdna_genomic_dotplot_online.md), [Chapter 15: Gibson Specialist Starter Project (offline)](./15_gibson_specialist_testing_baseline.md), [Chapter 16: Gibson Arrangements Starter Project (offline)](./16_gibson_arrangements_baseline.md).
+
+## At a Glance
+
+1. Load test_files/tp73.ncbi.gb, then open Patterns -> PCR Designer... (or comma...
+2. Keep the map in linear mode. Choose paint role ROI (green) and drag over one ...
+3. Choose paint role Upstream (red) and drag one upstream primer-window interval...
+4. Use post-drag actions (Set PCR ROI, Add ROI to Queue, Open PCR Designer) or S...
+5. Add one annotation-driven queue row via DNA-window fallback (PCR ROI -> Add s...
+6. In Design primer pairs, set shared constraints and a report_id base (for exam...
+7. Optionally enable Also create extracted region copies, then run Design Primer...
+8. In PCR batch results, use Show for report summary, Export for JSON output, an...
 
 ## GUI First
 
@@ -98,11 +106,12 @@ cargo run --bin gentle_cli -- shell 'primers export-report tp73_as2_promoter_bat
 - If copy toggle is enabled, each batch-results row includes a copy ID and `Open` jumps to that extracted sequence.
 - At least one report can be shown and exported from the batch-results row actions without manual JSON editing.
 
-## Retained Outputs
-
-- None for this chapter.
-
 ## Canonical Source
 
+- Chapter id: `pcr_selection_batch_primer_pairs_offline`
+- Tier: `core`
+- Example id: `pcr_selection_batch_primer_pairs_offline`
 - Workflow file: `docs/examples/workflows/pcr_selection_batch_primer_pairs_offline.json`
+- Example test_mode: `always`
+- Executed during generation: `yes`
 - Inspect this JSON file directly when you need full option-level detail.
