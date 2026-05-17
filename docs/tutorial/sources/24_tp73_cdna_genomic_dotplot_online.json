@@ -1,5 +1,5 @@
 {
-  "schema": "gentle.tutorial_source.v2",
+  "schema": "gentle.tutorial_source.v3",
   "id": "tp73_cdna_genomic_dotplot_online",
   "title": "Compare TP73 cDNA against TP73 genomic context via dotplot (online)",
   "catalog": {
@@ -31,6 +31,7 @@
       "Prepare `Human GRCh38 Ensembl 116`, retrieve gene `TP73` as `tp73_genomic`.",
       "Open `tp73_cdna`, switch to `Dotplot map`, set pair mode against `tp73_genomic`, and compute with `word<=7`, `step=1`, `mismatches=0`."
     ],
+    "local_execution_note": "Set `GENTLE_TEST_ONLINE=1` and run from the repository root. This chapter fetches TP73 cDNA `NM_001126241.3` from NCBI/GenBank and prepares GRCh38 Ensembl 116 from Ensembl FTP before computing the local dotplot.",
     "learning_objectives": [
       "Use one deterministic route from accession retrieval to pairwise dotplot artifact generation.",
       "Understand why high-sensitivity seed sampling (`step=1`, low word size) improves cDNA-vs-genomic block visibility.",

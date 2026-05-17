@@ -1,5 +1,5 @@
 {
-  "schema": "gentle.tutorial_source.v2",
+  "schema": "gentle.tutorial_source.v3",
   "id": "tp63_anchor_extension_online",
   "title": "Retrieve TP63 and extend the displayed region by +/-2 kb (online)",
   "catalog": {
@@ -31,6 +31,7 @@
       "Open `File -> Retrieve Genome Sequence...`, set gene query/filter to `TP63`, review the displayed TP63 coordinate hit, and extract the first TP63 entry.",
       "In the resulting DNA sequence window (`grch38_tp63`), use `Extend 5'` with `2000 bp`, then `Extend 3'` with `2000 bp` to produce the +/-2 kb context sequence."
     ],
+    "local_execution_note": "Set `GENTLE_TEST_ONLINE=1` and run from the repository root. The workflow prepares `Human GRCh38 Ensembl 116` using Ensembl FTP FASTA/GTF endpoints from `assets/genomes.json`, then extracts TP63 and extends the anchored locus locally.",
     "learning_objectives": [
       "Use annotation-backed gene retrieval to inspect coordinates before extracting a sequence.",
       "Apply anchored-region extension from the DNA sequence viewer without losing genome-anchor provenance.",

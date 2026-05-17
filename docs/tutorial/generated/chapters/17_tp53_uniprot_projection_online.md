@@ -14,6 +14,9 @@ Build a TP53 locus project, fetch UniProt P04637, map its domains onto the locus
 
 This chapter demonstrates the UniProt projection workflow as an inspectable bridge from protein annotation back to genomic DNA. Instead of importing a curated protein panel JSON, you fetch the reviewed UniProt TP53 entry, project its reference-protein intervals onto one extracted TP53 locus, inspect the mapped domains through the shared expert canvas, and then query one mapped feature such as `DNA-binding` to recover the exact spliced genomic coding DNA, exon attribution, and an optional translation-speed-oriented coding alternative.
 
+> **How to Run This Locally**
+> Set `GENTLE_TEST_ONLINE=1` and run from the repository root. The workflow prepares/extracts GRCh38 Ensembl 116 from Ensembl FTP, fetches reviewed UniProt accession `P04637`, then performs projection and coding-DNA queries locally.
+
 ## When This Routine Is Useful
 
 - You want to compare one gene locus against reviewed UniProt domains or regions without opening a first-class protein sequence window.

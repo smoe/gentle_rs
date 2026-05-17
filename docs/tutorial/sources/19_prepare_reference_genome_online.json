@@ -1,5 +1,5 @@
 {
-  "schema": "gentle.tutorial_source.v2",
+  "schema": "gentle.tutorial_source.v3",
   "id": "prepare_reference_genome_online",
   "title": "Prepare a reference genome cache (online)",
   "catalog": {
@@ -31,6 +31,17 @@
       "Select the target genome and start preparation with explicit cache settings.",
       "Confirm prepared status in the GUI before attempting extraction workflows."
     ],
+    "cli_steps": [
+      "GENTLE_TEST_ONLINE=1 cargo run --bin gentle_cli -- workflow @docs/examples/workflows/prepare_reference_genome_online.json",
+      "cargo run --bin gentle_cli -- genomes status \"Human GRCh38 Ensembl 116\" --catalog assets/genomes.json --cache-dir data/genomes",
+      "cargo run --bin gentle_cli -- genomes status \"Human GRCh38 Ensembl 116\" --catalog assets/genomes.json --cache-dir data/genomes"
+    ],
+    "step_expectations": [
+      "The workflow starts only when `GENTLE_TEST_ONLINE=1` is set and prepares the selected cache target.",
+      "The status payload names `Human GRCh38 Ensembl 116` and reports the effective cache directory.",
+      "Prepared status becomes visible before extraction or promoter chapters depend on this reference."
+    ],
+    "local_execution_note": "Set `GENTLE_TEST_ONLINE=1` and run from the repository root. This chapter downloads the GRCh38 Ensembl 116 soft-masked FASTA and GTF from `https://ftp.ensembl.org/pub/release-116/vertebrates/`; make sure `data/genomes` has enough disk space and that interrupted downloads can be retried.",
     "learning_objectives": [
       "Recognize which tutorial flows require network access and external tools.",
       "Use `GENTLE_TEST_ONLINE` to opt into online chapter execution.",
