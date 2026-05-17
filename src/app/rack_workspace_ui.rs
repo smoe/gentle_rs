@@ -3087,6 +3087,21 @@ impl GENtleApp {
             Vec2::new(1000.0, 760.0),
             Vec2::new(760.0, 520.0),
         );
+        if ctx.embed_viewports() {
+            let mut close_requested = false;
+            crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                egui::ScrollArea::both()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        close_requested = self.render_rack_contents(ui);
+                    });
+            });
+            if close_requested || ctx.input(|i| i.key_pressed(Key::Escape)) {
+                open = false;
+            }
+            self.show_rack_dialog = open;
+            return;
+        }
         let builder = crate::egui_compat::viewport_builder_for_hosted_window(&spec);
         ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
             self.note_viewport_focus_if_active(ctx, viewport_id);

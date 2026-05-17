@@ -86,6 +86,7 @@ impl GENtleApp {
         self.agent_discovered_model_pick.clear();
         self.agent_model_discovery_status.clear();
         self.agent_model_discovery_source_key.clear();
+        self.agent_model_discovery_failed_source_key.clear();
     }
 
     pub(super) fn select_agent_system_and_reset_setup(&mut self, system_id: &str) {
@@ -247,11 +248,7 @@ impl GENtleApp {
         system: &AgentSystemSpec,
     ) -> Option<String> {
         let base_url = self.selected_agent_runtime_base_url(system)?;
-        let key_state = if self.agent_openai_api_key.trim().is_empty() {
-            "nokey"
-        } else {
-            "key"
-        };
+        let key_state = self.selected_agent_model_discovery_key_label();
         Some(format!(
             "{}|{}|{}|{}",
             system.id,
@@ -259,6 +256,59 @@ impl GENtleApp {
             base_url,
             key_state
         ))
+    }
+
+    pub(super) fn selected_agent_model_discovery_api_key(&self) -> Option<String> {
+        let session_key = self.agent_openai_api_key.trim();
+        if !session_key.is_empty() {
+            return Some(session_key.to_string());
+        }
+        std::env::var(OPENAI_API_KEY_ENV)
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+    }
+
+    pub(super) fn selected_agent_model_discovery_key_label(&self) -> &'static str {
+        if !self.agent_openai_api_key.trim().is_empty() {
+            "session-key"
+        } else if std::env::var(OPENAI_API_KEY_ENV)
+            .ok()
+            .map(|value| !value.trim().is_empty())
+            .unwrap_or(false)
+        {
+            "env-openai-api-key"
+        } else {
+            "no-key"
+        }
+    }
+
+    pub(super) fn agent_model_discovery_failure_hint(error: &str) -> Option<&'static str> {
+        let lower = error.to_ascii_lowercase();
+        if lower.contains("401")
+            || lower.contains("403")
+            || lower.contains("unauthorized")
+            || lower.contains("invalid_api_key")
+            || lower.contains("incorrect api key")
+        {
+            return Some(
+                "Authentication failed. Use an OpenAI Platform API key for OPENAI_API_KEY; ChatGPT/Codex subscription tokens are not OpenAI API keys.",
+            );
+        }
+        if lower.contains("timed out") || lower.contains("timeout") {
+            return Some(
+                "The endpoint did not answer before the model-list timeout; check the Base URL or local server.",
+            );
+        }
+        if lower.contains("connection refused")
+            || lower.contains("could not connect")
+            || lower.contains("dns")
+        {
+            return Some(
+                "The model-list endpoint could not be reached; check the Base URL or start the local OpenAI-compatible server.",
+            );
+        }
+        None
     }
 
     pub(super) fn agent_test_setup_uses_live_probe(system: &AgentSystemSpec) -> bool {
@@ -467,16 +517,18 @@ impl GENtleApp {
             {
                 return;
             }
+            if self.agent_model_discovery_failed_source_key == source_key {
+                return;
+            }
         }
+        self.agent_model_discovery_failed_source_key.clear();
         self.agent_model_discovery_source_key = source_key.clone();
-        self.agent_model_discovery_status = format!("Discovering models at {base_url} ...");
+        let key_label = self.selected_agent_model_discovery_key_label();
+        self.agent_model_discovery_status = format!(
+            "Discovering models at {base_url} (auth={key_label}; timeout about 20s per endpoint) ..."
+        );
         self.agent_model_discovery_task = None;
-        let api_key = self.agent_openai_api_key.trim().to_string();
-        let api_key = if api_key.is_empty() {
-            None
-        } else {
-            Some(api_key)
-        };
+        let api_key = self.selected_agent_model_discovery_api_key();
         let (tx, rx) = mpsc::channel::<AgentModelDiscoveryTaskMessage>();
         self.agent_model_discovery_task = Some(AgentModelDiscoveryTask {
             started: Instant::now(),
@@ -1019,6 +1071,7 @@ impl GENtleApp {
             }
             match result {
                 Ok(models) => {
+                    self.agent_model_discovery_failed_source_key.clear();
                     self.agent_discovered_models = models;
                     if self.agent_discovered_models.is_empty() {
                         self.agent_model_discovery_status =
@@ -1042,8 +1095,14 @@ impl GENtleApp {
                 Err(err) => {
                     self.agent_discovered_models.clear();
                     self.agent_discovered_model_pick.clear();
-                    self.agent_model_discovery_status =
-                        format!("Model discovery failed after {:.1}s: {}", elapsed, err);
+                    self.agent_model_discovery_failed_source_key = source_key;
+                    let hint = Self::agent_model_discovery_failure_hint(&err)
+                        .map(|hint| format!(" {hint}"))
+                        .unwrap_or_default();
+                    self.agent_model_discovery_status = format!(
+                        "Model discovery failed after {:.1}s: {}{}",
+                        elapsed, err, hint
+                    );
                 }
             }
         }
@@ -1739,6 +1798,24 @@ impl GENtleApp {
             Vec2::new(980.0, 720.0),
             Vec2::new(720.0, 480.0),
         );
+        if ctx.embed_viewports() {
+            let mut close_requested = false;
+            crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                close_requested = self.render_routine_assistant_contents(ui);
+            });
+            if close_requested {
+                open = false;
+            }
+            if ctx.input(|i| i.key_pressed(Key::Escape)) {
+                open = false;
+            }
+            if was_open && !open {
+                self.maybe_mark_routine_assistant_trace_aborted();
+            }
+            self.show_routine_assistant_dialog = open;
+            self.finalize_viewport_open_probe(viewport_id, "Routine Assistant");
+            return;
+        }
         let builder = crate::egui_compat::viewport_builder_for_hosted_window(&spec);
         ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
             self.note_viewport_focus_if_active(ctx, viewport_id);
@@ -2145,10 +2222,12 @@ impl GENtleApp {
                     }
                     if let Some(task) = &self.agent_model_discovery_task {
                         ui.add(egui::Spinner::new());
-                        ui.small(format!(
-                            "Discovering models ({:.1}s)",
-                            task.started.elapsed().as_secs_f32()
-                        ));
+                        let status = if self.agent_model_discovery_status.trim().is_empty() {
+                            "Discovering models".to_string()
+                        } else {
+                            self.agent_model_discovery_status.clone()
+                        };
+                        ui.small(format!("{status} ({:.1}s)", task.started.elapsed().as_secs_f32()));
                     }
                 }
             });
@@ -2551,19 +2630,49 @@ impl GENtleApp {
         }
         let mut open = self.show_agent_assistant_dialog;
         let viewport_id = Self::agent_assistant_viewport_id();
-        let spec = self.hosted_window_spec_for_viewport(
+        let spec = self
+            .hosted_window_spec_for_viewport(
+                "Agent Assistant",
+                Self::hosted_agent_assistant_window_id(),
+                viewport_id,
+                Vec2::new(980.0, 720.0),
+                Vec2::new(640.0, 420.0),
+            )
+            .legacy_layer_id(crate::egui_compat::hosted_window_title_layer_id(
+                "Agent Assistant",
+            ))
+            .legacy_layer_id(egui::LayerId::new(
+                egui::Order::Middle,
+                egui::Id::new(viewport_id),
+            ));
+        if ctx.embed_viewports() {
+            let mut close_requested = false;
+            crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                close_requested = self.render_agent_assistant_contents(ui);
+            });
+            if close_requested {
+                open = false;
+            }
+            if ctx.input(|i| i.key_pressed(Key::Escape)) {
+                open = false;
+            }
+            self.show_agent_assistant_dialog = open;
+            self.finalize_viewport_open_probe(viewport_id, "Agent Assistant");
+            return;
+        }
+        let viewport_spec = self.hosted_window_spec_for_viewport(
             "Agent Assistant",
             Self::hosted_agent_assistant_window_id(),
             viewport_id,
             Vec2::new(980.0, 720.0),
             Vec2::new(640.0, 420.0),
         );
-        let builder = crate::egui_compat::viewport_builder_for_hosted_window(&spec);
+        let builder = crate::egui_compat::viewport_builder_for_hosted_window(&viewport_spec);
         ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
             self.note_viewport_focus_if_active(ctx, viewport_id);
             if class == egui::ViewportClass::EmbeddedWindow {
                 let mut close_requested = false;
-                crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                crate::egui_compat::show_hosted_window(ctx, &viewport_spec, &mut open, |ui| {
                     close_requested = self.render_agent_assistant_contents(ui);
                 });
                 if close_requested {

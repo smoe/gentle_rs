@@ -63,9 +63,8 @@ use crate::{
         RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
         RackOccupant, RackPhysicalTemplateKind, RackProfileKind, ReadAcquisitionAnalysisFormat,
         ReadAcquisitionReadLayout, RenderSvgMode, RepeatAnnotationFilter,
-        RepeatEnvironmentCohortReport, RepeatEnvironmentGeometryMode,
-        ReporterConstraints, ReporterCorpusExportFormat, RestrictionCloningPcrHandoffMode,
-        ReverseTranslationReport,
+        RepeatEnvironmentCohortReport, RepeatEnvironmentGeometryMode, ReporterConstraints,
+        ReporterCorpusExportFormat, RestrictionCloningPcrHandoffMode, ReverseTranslationReport,
         ReverseTranslationReportSummary, RnaReadAlignConfig, RnaReadAlignmentDisplayBatch,
         RnaReadAlignmentInspectionEffectFilter, RnaReadAlignmentInspectionSortKey,
         RnaReadAlignmentInspectionSubsetSpec, RnaReadConcatemerInspectionSettings,
@@ -17570,8 +17569,7 @@ fn parse_reporters_command(tokens: &[String]) -> Result<ShellCommand, String> {
                         )?);
                     }
                     "--limit" => {
-                        let raw =
-                            parse_option_path(tokens, &mut idx, "--limit", "reporters list")?;
+                        let raw = parse_option_path(tokens, &mut idx, "--limit", "reporters list")?;
                         limit = Some(
                             raw.parse::<usize>()
                                 .map_err(|e| format!("Invalid --limit value '{raw}': {e}"))?,
@@ -17612,12 +17610,8 @@ fn parse_reporters_command(tokens: &[String]) -> Result<ShellCommand, String> {
                         )?);
                     }
                     "--limit" => {
-                        let raw = parse_option_path(
-                            tokens,
-                            &mut idx,
-                            "--limit",
-                            "reporters recommend",
-                        )?;
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--limit", "reporters recommend")?;
                         limit = Some(
                             raw.parse::<usize>()
                                 .map_err(|e| format!("Invalid --limit value '{raw}': {e}"))?,
@@ -17680,9 +17674,11 @@ fn parse_reporters_command(tokens: &[String]) -> Result<ShellCommand, String> {
                             "--excitation-nm",
                             "reporters recommend",
                         )?;
-                        constraints.available_excitation_nm.push(raw.parse::<u16>().map_err(
-                            |e| format!("Invalid --excitation-nm value '{raw}': {e}"),
-                        )?);
+                        constraints.available_excitation_nm.push(
+                            raw.parse::<u16>().map_err(|e| {
+                                format!("Invalid --excitation-nm value '{raw}': {e}")
+                            })?,
+                        );
                     }
                     "--emission-nm" => {
                         let raw = parse_option_path(
@@ -17691,9 +17687,11 @@ fn parse_reporters_command(tokens: &[String]) -> Result<ShellCommand, String> {
                             "--emission-nm",
                             "reporters recommend",
                         )?;
-                        constraints.available_emission_nm.push(raw.parse::<u16>().map_err(
-                            |e| format!("Invalid --emission-nm value '{raw}': {e}"),
-                        )?);
+                        constraints
+                            .available_emission_nm
+                            .push(raw.parse::<u16>().map_err(|e| {
+                                format!("Invalid --emission-nm value '{raw}': {e}")
+                            })?);
                     }
                     "--fusion" => {
                         constraints.fusion_mode = Some(parse_option_path(
@@ -17781,9 +17779,7 @@ fn parse_reporters_command(tokens: &[String]) -> Result<ShellCommand, String> {
                             "json" => ReporterCorpusExportFormat::Json,
                             "jsonl" => ReporterCorpusExportFormat::Jsonl,
                             _ => {
-                                return Err(format!(
-                                    "Invalid reporters export format '{raw}'"
-                                ));
+                                return Err(format!("Invalid reporters export format '{raw}'"));
                             }
                         };
                     }

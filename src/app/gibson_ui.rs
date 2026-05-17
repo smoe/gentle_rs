@@ -2678,6 +2678,22 @@ impl GENtleApp {
             Vec2::new(1040.0, 820.0),
             Vec2::new(760.0, 560.0),
         );
+        if ctx.embed_viewports() {
+            crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("gibson_embedded_scroll")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| cancel_clicked = self.render_gibson_contents(ui));
+            });
+            if cancel_clicked || ctx.input(|i| i.key_pressed(Key::Escape)) {
+                open = false;
+            }
+            if !open {
+                self.cancel_gibson_dialog();
+            }
+            self.show_gibson_dialog = open;
+            return;
+        }
         let builder = crate::egui_compat::viewport_builder_for_hosted_window(&spec);
         ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
             self.note_viewport_focus_if_active(ctx, viewport_id);
