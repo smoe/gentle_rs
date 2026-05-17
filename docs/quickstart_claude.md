@@ -35,10 +35,10 @@ cargo build
 - Have Claude ready as either a configured GENtle agent system, Claude Code in
   the checkout, or a browser/API surface for copy-paste one-offs.
 
-Important: `assets/agent_systems.json` does not currently ship a native Claude
-entry. Real internal Claude use needs a configured `external_json_stdio` bridge
-or a compatible local gateway that returns the Agent Assistant schema. The
-offline `builtin_echo` system proves the GENtle loop, but it is not Claude.
+Important: `assets/agent_systems.json` now ships a native Claude entry,
+`anthropic_claude_sonnet_native`. Real internal Claude use needs
+`ANTHROPIC_API_KEY` or a session key pasted in the GUI. The offline
+`builtin_echo` system proves the GENtle loop, but it is not Claude.
 
 Do not start by wiring `gentle_mcp` into `~/.claude.json`. That can be useful
 for a dedicated MCP agent, but it pins Claude to an installed binary. The
@@ -79,8 +79,9 @@ scripts/dev-gentle-cli agents preflight builtin_echo
 {"schema":"gentle.agent_preflight.v1","system_id":"builtin_echo","system_label":"Built-in Echo (demo)","transport":"builtin_echo","available":true,"catalog_path":"assets/agent_systems.json","warnings":[]}
 ```
 
-For a real Claude bridge, replace `builtin_echo` with that system's ID. A
-configuration-only preflight should succeed before trying live requests.
+For real Claude, use `anthropic_claude_sonnet_native` and provide
+`ANTHROPIC_API_KEY`. A configuration-only preflight should succeed before trying
+live requests.
 
 ## Scenario 1: Claude Inside GENtle
 

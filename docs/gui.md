@@ -2450,8 +2450,9 @@ Behavior:
 - loads systems from catalog JSON (default `assets/agent_systems.json`)
 - system selection is a dropdown from catalog entries
 - unavailable systems remain selectable and show the reason
-- `Quick start` buttons expose three common first-run routes:
+- `Quick start` buttons expose common first-run routes:
   - `Use OpenAI API`
+  - `Use Claude API`
   - `Use Local Model (no OpenAI API billing)`
   - `Use Demo Echo`
 - `External Agent / MCP` shows the `gentle_mcp` command for users whose
@@ -2461,21 +2462,26 @@ Behavior:
   - otherwise it shows the default MCP state path, `.gentle_state.json`
 - the OpenAI quick-start path uses `OPENAI_API_KEY` and talks to the API
   directly; it does not reuse a ChatGPT/Codex chat session as authentication
+- the Claude quick-start path uses `ANTHROPIC_API_KEY` and talks to the
+  Anthropic API directly
 - this window is intentionally the local chat-oriented assistant surface; the
   typed prose compiler/executor (`agents plan` / `agents execute-plan`) is the
   headless CLI/MCP/ClawBio route for machine-facing compile/execute loops
-- `OpenAI API key` field in this window is a session-only override
-  - enter your key as `sk-...`
+- `OpenAI API key` / `Anthropic API key` field in this window is a
+  session-only override for the selected native provider
+  - OpenAI keys usually begin with `sk-...`; Anthropic keys usually begin with
+    `sk-ant-...`
   - click `Clear Key` to remove it from current session
   - the key is not persisted to disk by GENtle settings
-- if set, GUI key overrides `OPENAI_API_KEY` for requests started from this window
+- if set, GUI key overrides `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` for
+  requests started from this window
 - `Base URL override` field is a session-only endpoint override for
-  `native_openai` and `native_openai_compat`
+  `native_openai`, `native_anthropic`, and `native_openai_compat`
   - use this for local endpoints such as `http://localhost:11964` or
     `http://localhost:11964/v1`
   - click `Clear URL` to remove it from current session
 - `Model override` field is a session-only model-name override for
-  `native_openai` and `native_openai_compat`
+  `native_openai`, `native_anthropic`, and `native_openai_compat`
   - use this to force a concrete model id
   - `unspecified` means no override
   - click `Clear Model` to remove it from current session
@@ -2495,10 +2501,10 @@ Behavior:
 - `Test Setup` runs an inline preflight against the currently selected system
   and session overrides before you send a prompt
   - shows availability, resolved base URL/model, endpoint candidates, runtime
-    limits, and warnings such as missing `OPENAI_API_KEY`
-  - for `native_openai` and `native_openai_compat`, it also runs a live
+    limits, and warnings such as missing `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`
+  - for `native_openai`, `native_anthropic`, and `native_openai_compat`, it also runs a live
     non-generating model-list probe (`GET /models`, with `/v1/models` fallback
-    for OpenAI-compatible roots)
+    for OpenAI-compatible or root provider URLs)
   - the live probe reports `status_class`, attempted/selected endpoints,
     reachability, authentication, model-list parsing, and whether the selected
     model was present
@@ -2532,6 +2538,22 @@ OpenAI setup (explicit):
 
 ```bash
 export OPENAI_API_KEY=sk-...
+cargo run --bin gentle
+```
+
+Claude setup (explicit):
+
+1. Open `File -> Agent Assistant...`.
+2. Click `Use Claude API` or choose `Claude Sonnet (native Anthropic HTTP)`.
+3. Paste your Anthropic API key into `Anthropic API key` (format `sk-ant-...`).
+4. Click `Test Setup` to confirm the key/base URL/model resolve correctly.
+   This checks model discovery only; it does not intentionally send a
+   token-generating request.
+5. Enter prompt text and click `Ask Agent`.
+6. If you prefer environment setup instead of GUI key field, launch GENtle with:
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
 cargo run --bin gentle
 ```
 

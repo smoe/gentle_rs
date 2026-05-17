@@ -3723,7 +3723,7 @@ Conceptual/tutorial companion:
     chat/planning request.
   - By default this is config-only and does not contact the provider.
   - `--live` adds `live_probe` to `gentle.agent_preflight.v1` for
-    `native_openai` and `native_openai_compat`.
+    `native_openai`, `native_anthropic`, and `native_openai_compat`.
   - The live probe only uses model-discovery endpoints (`GET /models`, with
     `/v1/models` fallback for OpenAI-compatible roots). It does not make a
     chat/completion/responses request and does not intentionally generate
@@ -3734,8 +3734,8 @@ Conceptual/tutorial companion:
   - Quota/billing is reported only when the provider returns that error during
     the model-list probe.
 - `agents discover-models SYSTEM_ID [--catalog PATH] [--base-url URL]`
-  - Discovers model ids for one `native_openai` or `native_openai_compat`
-    system using its effective endpoint configuration.
+  - Discovers model ids for one `native_openai`, `native_anthropic`, or
+    `native_openai_compat` system using its effective endpoint configuration.
 - `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]`
   - Invokes one configured agent system and returns message/questions/suggested shell commands.
   - `--base-url` sets a per-request runtime endpoint override (maps to
@@ -3770,6 +3770,8 @@ Conceptual/tutorial companion:
     - `builtin_echo` (offline/demo)
     - `external_json_stdio` (local bridge executable)
     - `native_openai` (built-in OpenAI HTTP adapter, requires `OPENAI_API_KEY`)
+    - `native_anthropic` (built-in Anthropic Claude HTTP adapter, requires
+      `ANTHROPIC_API_KEY`)
     - `native_openai_compat` (built-in local OpenAI-compatible adapter for
       Jan/Msty/Ollama-style `/chat/completions` endpoints; key optional)
       - endpoint host/port come from catalog `base_url` (or `--base-url` if set);

@@ -107,14 +107,15 @@ use crate::{
     agent_bridge::{
         AGENT_BASE_URL_ENV, AGENT_CONNECT_TIMEOUT_SECS_ENV, AGENT_MAX_RESPONSE_BYTES_ENV,
         AGENT_MAX_RETRIES_ENV, AGENT_MODEL_ENV, AGENT_READ_TIMEOUT_SECS_ENV,
-        AGENT_TIMEOUT_SECS_ENV, AgentExecutionIntent, AgentInvocationOutcome, AgentResponse,
-        AgentSystemSpec, AgentSystemTransport, DEFAULT_AGENT_SYSTEM_CATALOG_PATH,
-        ANTHROPIC_API_KEY_ENV, OPENAI_API_KEY_ENV, OPENAI_COMPAT_UNSPECIFIED_MODEL,
-        agent_system_availability, discover_models_for_agent_system,
-        invoke_agent_support_with_env_overrides, load_agent_system_catalog,
+        AGENT_TIMEOUT_SECS_ENV, ANTHROPIC_API_KEY_ENV, AgentExecutionIntent,
+        AgentInvocationOutcome, AgentResponse, AgentSystemSpec, AgentSystemTransport,
+        DEFAULT_AGENT_SYSTEM_CATALOG_PATH, OPENAI_API_KEY_ENV, OPENAI_COMPAT_UNSPECIFIED_MODEL,
+        agent_system_availability, invoke_agent_support_with_env_overrides,
+        load_agent_system_catalog,
     },
     agent_transport::{
         AgentLiveProbeStatusClass, AgentSystemPreflight, build_agent_system_preflight_with_live,
+        discover_models_for_agent_system,
     },
     dna_sequence::{self, DNAsequence},
     engine::{
@@ -202,8 +203,8 @@ use agent_assistant_config::{
     agent_prompt_template_text, default_agent_connect_timeout_secs_string,
     default_agent_max_response_bytes_string, default_agent_max_retries_string,
     default_agent_read_timeout_secs_string, default_agent_timeout_secs_string,
-    normalize_agent_model_name, preferred_anthropic_agent_system_id, preferred_local_agent_system_id,
-    preferred_openai_agent_system_id,
+    normalize_agent_model_name, preferred_anthropic_agent_system_id,
+    preferred_local_agent_system_id, preferred_openai_agent_system_id,
 };
 use anyhow::{Result, anyhow};
 use eframe::egui::{self, Key, KeyboardShortcut, Modifiers, Pos2, Ui, Vec2, ViewportId};
@@ -23199,7 +23200,7 @@ mod tests {
     use super::{
         AGENT_BASE_URL_ENV, AGENT_CONNECT_TIMEOUT_SECS_ENV, AGENT_MAX_RESPONSE_BYTES_ENV,
         AGENT_MAX_RETRIES_ENV, AGENT_MODEL_ENV, AGENT_READ_TIMEOUT_SECS_ENV,
-        AGENT_TIMEOUT_SECS_ENV, APP_CONFIGURATION_SCHEMA_VERSION,
+        AGENT_TIMEOUT_SECS_ENV, ANTHROPIC_API_KEY_ENV, APP_CONFIGURATION_SCHEMA_VERSION,
         BACKGROUND_JOB_HISTORY_METADATA_KEY, BACKGROUND_JOB_HISTORY_SCHEMA,
         BACKGROUND_JOBS_RECENT_JOB_EVENTS_SCROLL_ID, BACKGROUND_JOBS_RETRY_CLEANUP_AUDIT_SCROLL_ID,
         BACKGROUND_JOBS_RETRY_SNAPSHOTS_REMOVED_PREVIEW_SCROLL_ID,
@@ -23215,8 +23216,7 @@ mod tests {
         GibsonUiOpeningMode, HelpDoc, HelpSearchMatch, HelpTutorialDocEntry,
         LINEAGE_GRAPH_WORKSPACE_METADATA_KEY, LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT,
         LineageAnalysisKind, LineageCopyPayloadKind, LineageNodeKind, LineageRow,
-        ANTHROPIC_API_KEY_ENV, MAX_RECENT_PROJECTS, OPENAI_API_KEY_ENV,
-        OPERATION_HISTORY_SCROLL_ID,
+        MAX_RECENT_PROJECTS, OPENAI_API_KEY_ENV, OPERATION_HISTORY_SCROLL_ID,
         PendingEnsemblCatalogUpdateDialog, PendingEnsemblInstallableGenomeDialog,
         PendingEnsemblQuickInstallDialog, PersistedConfiguration, PersistedLineageGraphWorkspace,
         PersistedLineageNodeGroup, PersistedRackWorkspace, PrepareGenomeDialogPrimaryAction,
@@ -23789,14 +23789,29 @@ mod tests {
             .unwrap_or_else(|e| e.into_inner());
         let _guard = EnvVarGuard::set(OPENAI_API_KEY_ENV, "sk-test-from-env");
         let app = GENtleApp::default();
+        let system = test_agent_system("openai_gpt5_native", AgentSystemTransport::NativeOpenai);
 
         assert_eq!(
-            app.selected_agent_model_discovery_key_label(),
+            app.selected_agent_model_discovery_key_label(&system),
             "env-openai-api-key"
         );
+    }
+
+    #[test]
+    fn agent_model_discovery_labels_anthropic_env_key() {
+        let _lock = crate::genomes::genbank_env_lock()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let _guard = EnvVarGuard::set(ANTHROPIC_API_KEY_ENV, "sk-ant-test-from-env");
+        let app = GENtleApp::default();
+        let system = test_agent_system(
+            "anthropic_claude_sonnet_native",
+            AgentSystemTransport::NativeAnthropic,
+        );
+
         assert_eq!(
-            app.selected_agent_model_discovery_api_key().as_deref(),
-            Some("sk-test-from-env")
+            app.selected_agent_model_discovery_key_label(&system),
+            "env-anthropic-api-key"
         );
     }
 

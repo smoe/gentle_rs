@@ -265,7 +265,7 @@ impl GENtleApp {
         system: &AgentSystemSpec,
     ) -> Option<String> {
         let base_url = self.selected_agent_runtime_base_url(system)?;
-        let key_state = self.selected_agent_model_discovery_key_label();
+        let key_state = self.selected_agent_model_discovery_key_label(system);
         Some(format!(
             "{}|{}|{}|{}",
             system.id,
@@ -275,28 +275,28 @@ impl GENtleApp {
         ))
     }
 
-    pub(super) fn selected_agent_model_discovery_api_key(&self) -> Option<String> {
-        let session_key = self.agent_openai_api_key.trim();
-        if !session_key.is_empty() {
-            return Some(session_key.to_string());
-        }
-        std::env::var(OPENAI_API_KEY_ENV)
-            .ok()
-            .map(|value| value.trim().to_string())
-            .filter(|value| !value.is_empty())
-    }
-
-    pub(super) fn selected_agent_model_discovery_key_label(&self) -> &'static str {
+    pub(super) fn selected_agent_model_discovery_key_label(
+        &self,
+        system: &AgentSystemSpec,
+    ) -> &'static str {
         if !self.agent_openai_api_key.trim().is_empty() {
             "session-key"
-        } else if std::env::var(OPENAI_API_KEY_ENV)
-            .ok()
-            .map(|value| !value.trim().is_empty())
-            .unwrap_or(false)
-        {
-            "env-openai-api-key"
         } else {
-            "no-key"
+            let (env_key, label) = match system.transport {
+                AgentSystemTransport::NativeAnthropic => {
+                    (ANTHROPIC_API_KEY_ENV, "env-anthropic-api-key")
+                }
+                _ => (OPENAI_API_KEY_ENV, "env-openai-api-key"),
+            };
+            if std::env::var(env_key)
+                .ok()
+                .map(|value| !value.trim().is_empty())
+                .unwrap_or(false)
+            {
+                label
+            } else {
+                "no-key"
+            }
         }
     }
 
@@ -426,13 +426,9 @@ impl GENtleApp {
         }
 
         let mut actions = Vec::new();
-        if preflight
-            .warnings
-            .iter()
-            .any(|warning| {
-                warning.contains(OPENAI_API_KEY_ENV) || warning.contains(ANTHROPIC_API_KEY_ENV)
-            })
-        {
+        if preflight.warnings.iter().any(|warning| {
+            warning.contains(OPENAI_API_KEY_ENV) || warning.contains(ANTHROPIC_API_KEY_ENV)
+        }) {
             actions.push(key_hint);
         }
         if preflight
@@ -549,7 +545,7 @@ impl GENtleApp {
         }
         self.agent_model_discovery_failed_source_key.clear();
         self.agent_model_discovery_source_key = source_key.clone();
-        let key_label = self.selected_agent_model_discovery_key_label();
+        let key_label = self.selected_agent_model_discovery_key_label(system);
         self.agent_model_discovery_status = format!(
             "Discovering models at {base_url} (auth={key_label}; timeout about 20s per endpoint) ..."
         );

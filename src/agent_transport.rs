@@ -6,11 +6,10 @@
 //! preflight summaries, and OpenAI-compatible model discovery.
 
 use crate::agent_bridge::{
-    ANTHROPIC_API_KEY_ENV,
     AGENT_BASE_URL_ENV, AGENT_CONNECT_TIMEOUT_SECS_ENV, AGENT_MAX_RESPONSE_BYTES_ENV,
     AGENT_MAX_RETRIES_ENV, AGENT_MODEL_ENV, AGENT_READ_TIMEOUT_SECS_ENV, AGENT_TIMEOUT_SECS_ENV,
-    OPENAI_API_KEY_ENV, extract_anthropic_error_code, extract_models_from_openai_models_payload,
-    extract_openai_error_code, redact_sensitive_text,
+    ANTHROPIC_API_KEY_ENV, OPENAI_API_KEY_ENV, extract_anthropic_error_code,
+    extract_models_from_openai_models_payload, extract_openai_error_code, redact_sensitive_text,
 };
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
@@ -888,6 +887,40 @@ mod tests {
     }
 
     #[test]
+    fn live_probe_classifies_missing_anthropic_key_without_endpoint_attempt() {
+        let system = AgentSystemSpec {
+            id: "claude".to_string(),
+            label: "Claude".to_string(),
+            transport: AgentSystemTransport::NativeAnthropic,
+            model: Some("claude-sonnet-4-6".to_string()),
+            base_url: Some("https://api.anthropic.com/v1".to_string()),
+            ..Default::default()
+        };
+        let availability = AgentSystemAvailability {
+            available: false,
+            reason: Some(format!("{ANTHROPIC_API_KEY_ENV} is not set")),
+        };
+        let preflight = AgentSystemPreflight {
+            base_url: Some("https://api.anthropic.com/v1".to_string()),
+            model: Some("claude-sonnet-4-6".to_string()),
+            ..Default::default()
+        };
+        let previous_key = std::env::var(ANTHROPIC_API_KEY_ENV).ok();
+        unsafe {
+            std::env::remove_var(ANTHROPIC_API_KEY_ENV);
+        }
+        let probe = build_agent_live_probe(&system, &availability, &preflight);
+        if let Some(value) = previous_key {
+            unsafe {
+                std::env::set_var(ANTHROPIC_API_KEY_ENV, value);
+            }
+        }
+        assert_eq!(probe.status_class, AgentLiveProbeStatusClass::MissingKey);
+        assert!(probe.attempted_endpoints.is_empty());
+        assert!(!probe.auth_ok);
+    }
+
+    #[test]
     fn live_probe_classifies_auth_failure() {
         let Some(base_url) = spawn_model_list_server(vec![(
             "/models",
@@ -896,14 +929,13 @@ mod tests {
         )]) else {
             return;
         };
-        let probe =
-            build_model_list_live_probe(
-                &base_url,
-                Some("sk-test"),
-                Some("gpt-5"),
-                &test_runtime(),
-                ModelListAuth::OpenaiBearer,
-            );
+        let probe = build_model_list_live_probe(
+            &base_url,
+            Some("sk-test"),
+            Some("gpt-5"),
+            &test_runtime(),
+            ModelListAuth::OpenaiBearer,
+        );
         assert_eq!(probe.status_class, AgentLiveProbeStatusClass::AuthFailed);
         assert!(probe.reachable);
         assert!(!probe.auth_ok);
@@ -922,14 +954,13 @@ mod tests {
         )]) else {
             return;
         };
-        let probe =
-            build_model_list_live_probe(
-                &base_url,
-                Some("sk-test"),
-                Some("gpt-5"),
-                &test_runtime(),
-                ModelListAuth::OpenaiBearer,
-            );
+        let probe = build_model_list_live_probe(
+            &base_url,
+            Some("sk-test"),
+            Some("gpt-5"),
+            &test_runtime(),
+            ModelListAuth::OpenaiBearer,
+        );
         assert_eq!(
             probe.status_class,
             AgentLiveProbeStatusClass::QuotaOrBilling
@@ -969,14 +1000,13 @@ mod tests {
         )]) else {
             return;
         };
-        let probe =
-            build_model_list_live_probe(
-                &base_url,
-                None,
-                Some("missing-model"),
-                &test_runtime(),
-                ModelListAuth::OpenaiBearer,
-            );
+        let probe = build_model_list_live_probe(
+            &base_url,
+            None,
+            Some("missing-model"),
+            &test_runtime(),
+            ModelListAuth::OpenaiBearer,
+        );
         assert_eq!(probe.status_class, AgentLiveProbeStatusClass::ModelMissing);
         assert!(probe.model_list_ok);
         assert!(!probe.selected_model_seen);
@@ -1006,6 +1036,27 @@ mod tests {
                 .unwrap_or_default()
                 .ends_with("/v1/models")
         );
+        assert!(probe.selected_model_seen);
+    }
+
+    #[test]
+    fn live_probe_supports_anthropic_model_list_shape() {
+        let Some(base_url) = spawn_model_list_server(vec![(
+            "/models",
+            200,
+            r#"{"data":[{"id":"claude-sonnet-4-6","type":"model"}]}"#,
+        )]) else {
+            return;
+        };
+        let probe = build_model_list_live_probe(
+            &base_url,
+            Some("sk-ant-test"),
+            Some("claude-sonnet-4-6"),
+            &test_runtime(),
+            ModelListAuth::Anthropic,
+        );
+        assert_eq!(probe.status_class, AgentLiveProbeStatusClass::Ok);
+        assert!(probe.model_list_ok);
         assert!(probe.selected_model_seen);
     }
 }
