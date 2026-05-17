@@ -2712,6 +2712,23 @@ impl GENtleApp {
         close_requested
     }
 
+    pub(super) fn render_agent_assistant_contents_scrollable(
+        &mut self,
+        ui: &mut Ui,
+        id_salt: &'static str,
+    ) -> egui::containers::scroll_area::ScrollAreaOutput<bool> {
+        egui::ScrollArea::vertical()
+            .id_salt(id_salt)
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                    ui,
+                    scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                );
+                self.render_agent_assistant_contents(ui)
+            })
+    }
+
     pub(super) fn render_agent_assistant_dialog(&mut self, ctx: &egui::Context) {
         if !self.show_agent_assistant_dialog {
             return;
@@ -2736,7 +2753,9 @@ impl GENtleApp {
         if ctx.embed_viewports() {
             let mut close_requested = false;
             crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
-                close_requested = self.render_agent_assistant_contents(ui);
+                close_requested = self
+                    .render_agent_assistant_contents_scrollable(ui, "agent_assistant_main_scroll")
+                    .inner;
             });
             if close_requested {
                 open = false;
@@ -2761,7 +2780,12 @@ impl GENtleApp {
             if class == egui::ViewportClass::EmbeddedWindow {
                 let mut close_requested = false;
                 crate::egui_compat::show_hosted_window(ctx, &viewport_spec, &mut open, |ui| {
-                    close_requested = self.render_agent_assistant_contents(ui);
+                    close_requested = self
+                        .render_agent_assistant_contents_scrollable(
+                            ui,
+                            "agent_assistant_main_scroll",
+                        )
+                        .inner;
                 });
                 if close_requested {
                     open = false;
@@ -2769,7 +2793,12 @@ impl GENtleApp {
             } else {
                 let mut close_requested = false;
                 crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
-                    close_requested = self.render_agent_assistant_contents(ui);
+                    close_requested = self
+                        .render_agent_assistant_contents_scrollable(
+                            ui,
+                            "agent_assistant_main_scroll",
+                        )
+                        .inner;
                 });
 
                 if close_requested || Self::viewport_close_requested_or_shortcut(ctx) {
