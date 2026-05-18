@@ -120,6 +120,24 @@ References:
 ## Documentation and Handoff
 
 - Update docs when user-visible behavior changes.
+- Treat tutorials as an active user-contract layer, not passive afterthoughts:
+  when tutorial files, examples, command behavior, or generated tutorial docs
+  are touched, proactively check whether tutorial prose still matches the
+  implementation and whether the language is understandable for an experienced
+  wet-lab biologist.
+- During recurring maintenance, inspect tutorials for implementation drift,
+  readability, and biological teaching depth without waiting for an explicit
+  user reminder. Tutorials are intentionally close to the leaves of the system,
+  so small wording and teaching improvements are acceptable when they preserve
+  the underlying workflow contract and stay scoped to tutorial material.
+- Codex may record a `codex` tutorial review/sign-off for readability,
+  pedagogy, workflow clarity, and machine/human reproducibility. Such a review
+  does not replace human scientific approval and must not claim biological
+  correctness beyond repository evidence.
+- Tutorial review records should live in tutorial source/catalog metadata, not
+  in this policy file. Prefer reviewer identifiers such as `codex` and GitHub
+  handles such as `smoe`, plus review date, reviewed source-version date, target
+  audience, review kind, and verdict.
 - In handoff notes, list:
   - files changed,
   - tests run,

@@ -14,6 +14,24 @@ Use paint-first PCR Designer controls on local TP73 context to queue ROIs and ru
 
 This chapter is PCR-focused and biology-anchored without requiring genome mapping mechanics. You work directly on local TP73 locus sequence (`test_files/tp73.ncbi.gb`), open the dedicated PCR Designer, paint semantic regions on the linear map (`ROI` green, upstream primer window red, downstream primer window blue), queue promoter-proximal targets around TP73-AS2, and run one shared primer-constraint set across queued regions. Results remain deterministic (`..._r01`, `..._r02`) and can be shown/exported for handoff before entering the separate luciferase cloning tutorial.
 
+## Parameters That Matter
+
+- `TP73-AS2 promoter-proximal ROI window (for example `61720..62120`)` (where used: painted ROI role and Design primer pairs ROI fields around TP73-AS2)
+  - Why it matters: Keeps PCR targets tied to a biologically meaningful promoter-proximal context that can later feed luciferase planning.
+  - How to derive it: Anchor on TP73-AS2 annotation in `test_files/tp73.ncbi.gb` (gene/ncRNA at lines ~1257-1270), then choose a local promoter-proximal window around the antisense 5' boundary.
+- `Paint roles (`ROI` green, `Upstream` red, `Downstream` blue)` (where used: PCR Designer map interaction + live pair-PCR cartoon geometry)
+  - Why it matters: Separates biological target interval from allowed primer-placement windows and makes constraint intent visible before design execution.
+  - How to derive it: Paint ROI over the target biology first, then paint upstream/downstream windows that bound forward/reverse primer search space.
+- `DesignPrimerPairs.report_id base` (where used: batch execution in Design primer pairs form)
+  - Why it matters: Batch runs derive deterministic report IDs from this base with `_rNN` suffixes.
+  - How to derive it: Pick one short base tied to experiment context (for example `tp73_as2_promoter_batch`).
+- `PCR queue copy toggle (`Also create extracted region copies`)` (where used: batch execution in Design primer pairs form)
+  - Why it matters: Enables per-region `ExtractRegion` artifacts before/alongside primer report generation.
+  - How to derive it: Enable when downstream steps need sequence artifacts; leave off for report-only planning (default off).
+- `Queue source mode (`painted ROI` vs `selected feature` fallback)` (where used: queue rows before batch execution)
+  - Why it matters: Preserves coordinate provenance for each batch row and keeps mixed ad hoc + annotation flows inspectable.
+  - How to derive it: Use paint-first for custom windows; use selected-feature fallback for annotation-defined intervals.
+
 ## When This Routine Is Useful
 
 - You want a mouse-first way to assign PCR ROI and primer-window coordinates with immediate visual feedback.
@@ -31,7 +49,7 @@ This chapter is PCR-focused and biology-anchored without requiring genome mappin
 - Run deterministic multi-region primer design in one batch action with stable `_rNN` report suffixes.
 - Use batch-results actions (`Show`, `Export`, `Open`) for validation and downstream handoff.
 
-## Concepts
+## Applied Concepts
 
 - **Shared Engine Contract** (`shared_engine_contract`): GUI, CLI, shell, and scripting interfaces execute the same operation semantics.
 - **Deterministic Workflows** (`deterministic_workflows`): Operation chains should produce stable IDs and comparable outputs across repeated runs.
@@ -67,24 +85,6 @@ Run the same routine non-interactively once the GUI flow is clear:
 cargo run --bin gentle_cli -- workflow @docs/examples/workflows/pcr_selection_batch_primer_pairs_offline.json
 cargo run --bin gentle_cli -- shell 'workflow @docs/examples/workflows/pcr_selection_batch_primer_pairs_offline.json'
 ```
-
-## Parameters That Matter
-
-- `TP73-AS2 promoter-proximal ROI window (for example `61720..62120`)` (where used: painted ROI role and Design primer pairs ROI fields around TP73-AS2)
-  - Why it matters: Keeps PCR targets tied to a biologically meaningful promoter-proximal context that can later feed luciferase planning.
-  - How to derive it: Anchor on TP73-AS2 annotation in `test_files/tp73.ncbi.gb` (gene/ncRNA at lines ~1257-1270), then choose a local promoter-proximal window around the antisense 5' boundary.
-- `Paint roles (`ROI` green, `Upstream` red, `Downstream` blue)` (where used: PCR Designer map interaction + live pair-PCR cartoon geometry)
-  - Why it matters: Separates biological target interval from allowed primer-placement windows and makes constraint intent visible before design execution.
-  - How to derive it: Paint ROI over the target biology first, then paint upstream/downstream windows that bound forward/reverse primer search space.
-- `DesignPrimerPairs.report_id base` (where used: batch execution in Design primer pairs form)
-  - Why it matters: Batch runs derive deterministic report IDs from this base with `_rNN` suffixes.
-  - How to derive it: Pick one short base tied to experiment context (for example `tp73_as2_promoter_batch`).
-- `PCR queue copy toggle (`Also create extracted region copies`)` (where used: batch execution in Design primer pairs form)
-  - Why it matters: Enables per-region `ExtractRegion` artifacts before/alongside primer report generation.
-  - How to derive it: Enable when downstream steps need sequence artifacts; leave off for report-only planning (default off).
-- `Queue source mode (`painted ROI` vs `selected feature` fallback)` (where used: queue rows before batch execution)
-  - Why it matters: Preserves coordinate provenance for each batch row and keeps mixed ad hoc + annotation flows inspectable.
-  - How to derive it: Use paint-first for custom windows; use selected-feature fallback for annotation-defined intervals.
 
 ## Follow-up Commands
 

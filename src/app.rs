@@ -3188,8 +3188,9 @@ impl GENtleApp {
             };
 
             let span = &markdown[range.clone()];
+            let image_path = Self::help_image_render_path(&abs_path);
             let Some(rewritten_span) =
-                Self::rewrite_inline_image_destination(span, abs_path.as_path())
+                Self::rewrite_inline_image_destination(span, image_path.as_path())
             else {
                 continue;
             };
@@ -3209,7 +3210,8 @@ impl GENtleApp {
     }
 
     fn help_display_markdown(markdown: &str) -> String {
-        Self::rewrite_markdown_inline_code_soft_breaks(markdown)
+        let markdown = Self::summarize_markdown_front_matter_for_help(markdown);
+        Self::rewrite_markdown_inline_code_soft_breaks(&markdown)
     }
 
     fn help_markdown_hash(markdown: &str) -> u64 {
@@ -6630,12 +6632,16 @@ Error: `{err}`"
         }
     }
 
+    fn tutorial_project_scale_workflow_percent(percent: Option<f32>) -> Option<f32> {
+        percent.map(|value| 0.15 + value.clamp(0.0, 1.0) * 0.75)
+    }
+
     fn tutorial_project_progress_from_operation(
         chapter_id: &str,
         chapter_title: &str,
         progress: &OperationProgress,
     ) -> TutorialProjectTaskProgress {
-        match progress {
+        let mut message = match progress {
             OperationProgress::PrimerDesign(p) => {
                 let percent = match (p.pair_evaluated, p.pair_evaluation_limit) {
                     (Some(done), Some(total)) if total > 0 => Some(done as f32 / total as f32),
@@ -6717,7 +6723,11 @@ Error: `{err}`"
                     percent,
                 )
             }
+        };
+        if message.phase == "execute_workflow" {
+            message.percent = Self::tutorial_project_scale_workflow_percent(message.percent);
         }
+        message
     }
 
     fn tutorial_project_cancelled_message(context: &str) -> String {
@@ -6946,9 +6956,9 @@ Error: `{err}`"
             send_progress(Self::tutorial_project_progress_message(
                 &entry.chapter_id,
                 &entry.chapter_title,
-                "ready",
-                "Tutorial project built and ready to open",
-                Some(1.0),
+                "open_project",
+                "Tutorial project built; opening the project and guide",
+                Some(0.98),
             ));
             let _ = tx.send(TutorialProjectTaskMessage::Done {
                 job_id,
@@ -27799,6 +27809,22 @@ mod tests {
     }
 
     #[test]
+    fn help_display_markdown_summarizes_generated_tutorial_front_matter() {
+        let markdown = "---\nchapter_id: \"load_branch_reverse_complement_pgex_fasta\"\nsource_example: \"docs/examples/workflows/load_branch_reverse_complement_pgex_fasta.json\"\n---\n\n# Load FASTA\n\nBody line.\n";
+        let rendered = GENtleApp::help_display_markdown(markdown);
+        let normalized = rendered.replace('\u{200B}', "");
+
+        assert!(!normalized.starts_with("---"));
+        assert!(normalized.starts_with("# Load FASTA\n\n_Provenance note:"));
+        assert!(normalized.contains("chapter `load_branch_reverse_complement_pgex_fasta`"));
+        assert!(normalized.contains(
+            "workflow `docs/examples/workflows/load_branch_reverse_complement_pgex_fasta.json`"
+        ));
+        assert!(normalized.contains("the hands-on walkthrough starts here"));
+        assert!(normalized.contains("\n\nBody line."));
+    }
+
+    #[test]
     fn open_help_tutorial_doc_switches_to_tutorial_view_and_loads_markdown() {
         let temp = tempdir().expect("tempdir");
         let tutorial_path = temp.path().join("tutorial.md");
@@ -31387,6 +31413,18 @@ mod tests {
             .expect("tutorial task remains active");
         assert_eq!(task.chapter_id, "tp73_audit");
         assert_eq!(task.chapter_title, "TP73 Audit Tutorial");
+    }
+
+    #[test]
+    fn tutorial_project_workflow_progress_is_capped_before_opening_phase() {
+        assert_eq!(
+            GENtleApp::tutorial_project_scale_workflow_percent(Some(0.0)),
+            Some(0.15)
+        );
+        assert_eq!(
+            GENtleApp::tutorial_project_scale_workflow_percent(Some(1.0)),
+            Some(0.9)
+        );
     }
 
     #[test]

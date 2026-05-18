@@ -121,6 +121,8 @@ Evidence to inspect:
 - Changed files under `tests/`, `test_files/`, and nearby fixture manifests.
 - Diffs touching `docs/protocol.md`, `docs/gui.md`, `docs/cli.md`, and
   `docs/architecture.md`.
+- Tutorial source files, generated chapters, tutorial catalog/manifest metadata,
+  and workflow examples that define user-facing tutorial behavior.
 - New command routes, operation records, report records, workflow examples,
   generated artifacts, or runbooks.
 
@@ -136,6 +138,11 @@ Findings to report:
 - Tests depending on live network resources without an offline or skipped
   deterministic path.
 - Generated artifacts committed without documented source commands.
+- Tutorials whose prose drifted from the implementation, whose workflow steps
+  omit important biological interpretation, or whose wording is unnecessarily
+  hard for an experienced wet-lab biologist to follow.
+- Tutorial review/sign-off metadata that is stale relative to the tutorial
+  source-version date, or missing when a tutorial was materially rewritten.
 - Stack-hardening workarounds that should move from active to superseded in
   [`decisions.md`](decisions.md).
 
@@ -148,6 +155,9 @@ Pass criteria:
 - Every committed fixture has provenance.
 - Every completed behavior claim has a deterministic test path or an explicit
   documented test gap.
+- Tutorials touched by the scan are either confirmed current/readable or have a
+  minimal follow-up/fix recorded with evidence. Codex readability reviews may be
+  recorded as `codex` sign-offs, but human scientific approval remains distinct.
 
 ## Chore 4: Release-Gate Readiness Scan
 

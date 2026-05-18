@@ -12,7 +12,17 @@ executed_during_generation: true
 
 Start with a simple cloning-prep routine to learn product IDs and sequence lineage.
 
-In real cloning projects, the first question is often whether a sequence in hand is represented correctly and whether you can derive alternative views without losing provenance. This routine is the smallest possible example of that practice: load one sequence, create an explicit branch, and generate the reverse complement as a separate product.
+In real cloning projects, people often say "the sequence" even when they mean different biological records: the sequence as downloaded from a public database or read from a local sample, versus a derivative changed by an operation such as introducing a nonsense mutation. GENtle keeps those records apart. Each conceptual or hands-on sequence is represented as a vial node in a lineage graph, and each operation is represented as a transaction node connecting biological inputs to outputs. Even this small routine can branch: the original FASTA remains the provenance-preserving input, while the branch and reverse-complement become separate products. Larger projects can branch one product into several downstream operations or merge independent products into one process.
+
+## Parameters That Matter
+
+- `LoadFile.path` (where used: operation 1)
+  - Why it matters: Defines the exact source sequence. Wrong file path means a different biological starting point.
+  - How to derive it: Use the file you just loaded in the GUI for this routine (`test_files/pGEX_3X.fa`).
+- `Branch.output_id / ReverseComplement.output_id` (where used: operations 2 and 3)
+  - Why it matters: Stable IDs make downstream commands unambiguous.
+  - How to derive it: Pick short descriptive IDs tied to intent (e.g., branch copy vs reverse-complement product).
+  - Omit when: You can omit IDs only when you accept auto-generated names.
 
 ## When This Routine Is Useful
 
@@ -26,7 +36,7 @@ In real cloning projects, the first question is often whether a sequence in hand
 - Understand that branch and reverse-complement operations create explicit derivative sequences.
 - Recognize the shared-engine contract across GUI, CLI, and shell entry points.
 
-## Concepts
+## Applied Concepts
 
 - **Shared Engine Contract** (`shared_engine_contract`): GUI, CLI, shell, and scripting interfaces execute the same operation semantics.
 - **Deterministic Workflows** (`deterministic_workflows`): Operation chains should produce stable IDs and comparable outputs across repeated runs.
@@ -46,16 +56,6 @@ Run the same routine non-interactively once the GUI flow is clear:
 cargo run --bin gentle_cli -- workflow @docs/examples/workflows/load_branch_reverse_complement_pgex_fasta.json
 cargo run --bin gentle_cli -- shell 'workflow @docs/examples/workflows/load_branch_reverse_complement_pgex_fasta.json'
 ```
-
-## Parameters That Matter
-
-- `LoadFile.path` (where used: operation 1)
-  - Why it matters: Defines the exact source sequence. Wrong file path means a different biological starting point.
-  - How to derive it: Use the file you just loaded in the GUI for this routine (`test_files/pGEX_3X.fa`).
-- `Branch.output_id / ReverseComplement.output_id` (where used: operations 2 and 3)
-  - Why it matters: Stable IDs make downstream commands unambiguous.
-  - How to derive it: Pick short descriptive IDs tied to intent (e.g., branch copy vs reverse-complement product).
-  - Omit when: You can omit IDs only when you accept auto-generated names.
 
 ## Checkpoints
 

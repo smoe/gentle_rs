@@ -14,6 +14,15 @@ Apply practical guide constraints and produce cloning-ready oligo candidates.
 
 For CRISPR-style cloning, guide quality control is where many downstream failures are prevented. This routine demonstrates how to encode practical constraints directly in operations, then generate oligos from the passed candidates.
 
+## Parameters That Matter
+
+- `FilterGuidesPractical.config.gc_min / gc_max` (where used: operation 2)
+  - Why it matters: GC bounds trade off stability and synthesis/efficiency behavior.
+  - How to derive it: Start with literature-typical bounds (e.g., 0.3-0.7) and tighten per assay constraints.
+- `GenerateGuideOligos.template_id` (where used: operation 3)
+  - Why it matters: Template controls overhang/adaptor context for your cloning backbone.
+  - How to derive it: Select the template matching your vector and cloning strategy.
+
 ## When This Routine Is Useful
 
 - You need a transparent guide filtering step before oligo ordering.
@@ -26,7 +35,7 @@ For CRISPR-style cloning, guide quality control is where many downstream failure
 - Generate oligo records from filtered guide candidates.
 - Connect guide workflows to the same deterministic operation model used for cloning steps.
 
-## Concepts
+## Applied Concepts
 
 - **Deterministic Workflows** (`deterministic_workflows`): Operation chains should produce stable IDs and comparable outputs across repeated runs.
 - **Guide Design Pipeline** (`guide_design_pipeline`): Guide sets can be created, filtered, expanded to oligos, and exported with protocol context.
@@ -45,15 +54,6 @@ Run the same routine non-interactively once the GUI flow is clear:
 cargo run --bin gentle_cli -- workflow @docs/examples/workflows/guides_filter_and_generate_oligos.json
 cargo run --bin gentle_cli -- shell 'workflow @docs/examples/workflows/guides_filter_and_generate_oligos.json'
 ```
-
-## Parameters That Matter
-
-- `FilterGuidesPractical.config.gc_min / gc_max` (where used: operation 2)
-  - Why it matters: GC bounds trade off stability and synthesis/efficiency behavior.
-  - How to derive it: Start with literature-typical bounds (e.g., 0.3-0.7) and tighten per assay constraints.
-- `GenerateGuideOligos.template_id` (where used: operation 3)
-  - Why it matters: Template controls overhang/adaptor context for your cloning backbone.
-  - How to derive it: Select the template matching your vector and cloning strategy.
 
 ## Checkpoints
 

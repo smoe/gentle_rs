@@ -16,6 +16,18 @@ This chapter exists to remove setup friction from Gibson specialist testing. The
 
 See also: guided walkthrough [docs/tutorial/gibson_specialist_testing_gui.md](../../gibson_specialist_testing_gui.md). Use that page first when you want a human-led path; this chapter is the executable reference.
 
+## Parameters That Matter
+
+- `destination seq_id = gibson_destination_pgex` (where used: Gibson specialist destination selection after tutorial project open)
+  - Why it matters: Keeps the circular vector choice stable across tutorial-project, GUI, and CLI replay paths.
+  - How to derive it: This workflow assigns the ID directly during `LoadFile`.
+- `insert seq_id = gibson_insert_demo` (where used: Gibson specialist insert selection after tutorial project open)
+  - Why it matters: Provides one deterministic linear insert for overlap and primer derivation checks.
+  - How to derive it: This workflow assigns the ID directly during `LoadFile`.
+- `workflow example = gibson_specialist_testing_baseline` (where used: `Open Tutorial Project...` and CLI workflow replay)
+  - Why it matters: This is the canonical executable setup layer behind the hand-written Gibson testing walkthrough.
+  - How to derive it: Select the chapter from `Open Tutorial Project...` or run the canonical workflow JSON directly.
+
 ## When This Routine Is Useful
 
 - You want to test `Patterns -> Gibson...` without manually importing files first.
@@ -28,7 +40,7 @@ See also: guided walkthrough [docs/tutorial/gibson_specialist_testing_gui.md](..
 - Recognize the stable sequence IDs that the Gibson testing guide expects.
 - Replay the same baseline from GUI and CLI without changing biological setup.
 
-## Concepts
+## Applied Concepts
 
 - **Shared Engine Contract** (`shared_engine_contract`): GUI, CLI, shell, and scripting interfaces execute the same operation semantics.
 - **Deterministic Workflows** (`deterministic_workflows`): Operation chains should produce stable IDs and comparable outputs across repeated runs.
@@ -48,18 +60,6 @@ Run the same routine non-interactively once the GUI flow is clear:
 cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gibson_specialist_testing_baseline.json
 cargo run --bin gentle_cli -- shell 'workflow @docs/examples/workflows/gibson_specialist_testing_baseline.json'
 ```
-
-## Parameters That Matter
-
-- `destination seq_id = gibson_destination_pgex` (where used: Gibson specialist destination selection after tutorial project open)
-  - Why it matters: Keeps the circular vector choice stable across tutorial-project, GUI, and CLI replay paths.
-  - How to derive it: This workflow assigns the ID directly during `LoadFile`.
-- `insert seq_id = gibson_insert_demo` (where used: Gibson specialist insert selection after tutorial project open)
-  - Why it matters: Provides one deterministic linear insert for overlap and primer derivation checks.
-  - How to derive it: This workflow assigns the ID directly during `LoadFile`.
-- `workflow example = gibson_specialist_testing_baseline` (where used: `Open Tutorial Project...` and CLI workflow replay)
-  - Why it matters: This is the canonical executable setup layer behind the hand-written Gibson testing walkthrough.
-  - How to derive it: Select the chapter from `Open Tutorial Project...` or run the canonical workflow JSON directly.
 
 ## Follow-up Commands
 

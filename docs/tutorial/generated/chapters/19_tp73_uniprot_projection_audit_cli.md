@@ -19,6 +19,21 @@ See also: guided walkthrough [docs/tutorial/tp73_uniprot_projection_audit_cli.md
 > **How to Run This Locally**
 > Set `GENTLE_TEST_ONLINE=1` and run from the repository root. This workflow prepares/extracts GRCh38 Ensembl 116 from Ensembl FTP, fetches UniProt `Q9H3D4`, queries Ensembl protein evidence for `ENSP00000264724`, and then writes the audit/parity reports plus SVG locally.
 
+## Parameters That Matter
+
+- `FetchUniprotSwissProt.query / entry_id` (where used: operation 3)
+  - Why it matters: Pins the reviewed UniProt TP73 entry that drives the protein-coordinate system for projection and audit.
+  - How to derive it: Use the stable reviewed TP73 accession `Q9H3D4` for this canonical chapter.
+- `FetchEnsemblProtein.query / entry_id` (where used: operation 4)
+  - Why it matters: Keeps the Ensembl protein evidence explicit and reusable for exon/CDS and peptide comparison during audit.
+  - How to derive it: Use `ENSP00000264724` with a stable project-local id such as `TP73_ENS`.
+- `ProjectUniprotToGenome.projection_id` (where used: operation 5)
+  - Why it matters: The stored projection id is the durable handle reused by the expert SVG export, the integrated audit, and the parity report.
+  - How to derive it: Use a stable intent-bearing id such as `tp73_uniprot_q9h3d4`.
+- `AuditUniprotProjectionConsistency.report_id / AuditUniprotProjectionParity.report_id` (where used: operations 7 and 8)
+  - Why it matters: Stable report ids make the saved audit/parity artifacts easy to reopen from GUI, CLI, or future AI orchestration.
+  - How to derive it: Use descriptive ids like `tp73_projection_audit` and `tp73_projection_audit_parity`.
+
 ## When This Routine Is Useful
 
 - You want one canonical online starter project that proves the TP73 UniProt/Ensembl audit path still runs end to end.
@@ -31,7 +46,7 @@ See also: guided walkthrough [docs/tutorial/tp73_uniprot_projection_audit_cli.md
 - Understand that the high-level audit and parity report are built on the same reusable primitive record families exposed to shell/CLI and future AI callers.
 - Preserve both the persisted audit reports and one shared expert SVG artifact so the TP73 workflow can be inspected visually and programmatically.
 
-## Concepts
+## Applied Concepts
 
 - **Shared Engine Contract** (`shared_engine_contract`): GUI, CLI, shell, and scripting interfaces execute the same operation semantics.
 - **UniProt Projection Mapping** (`uniprot_projection_mapping`): Reviewed UniProt protein annotations can be projected onto transcript/CDS geometry and reopened as one persisted expert-view artifact.
@@ -64,21 +79,6 @@ Run the same routine non-interactively once the GUI flow is clear:
 cargo run --bin gentle_cli -- workflow @docs/examples/workflows/tp73_uniprot_projection_audit_online.json
 cargo run --bin gentle_cli -- shell 'workflow @docs/examples/workflows/tp73_uniprot_projection_audit_online.json'
 ```
-
-## Parameters That Matter
-
-- `FetchUniprotSwissProt.query / entry_id` (where used: operation 3)
-  - Why it matters: Pins the reviewed UniProt TP73 entry that drives the protein-coordinate system for projection and audit.
-  - How to derive it: Use the stable reviewed TP73 accession `Q9H3D4` for this canonical chapter.
-- `FetchEnsemblProtein.query / entry_id` (where used: operation 4)
-  - Why it matters: Keeps the Ensembl protein evidence explicit and reusable for exon/CDS and peptide comparison during audit.
-  - How to derive it: Use `ENSP00000264724` with a stable project-local id such as `TP73_ENS`.
-- `ProjectUniprotToGenome.projection_id` (where used: operation 5)
-  - Why it matters: The stored projection id is the durable handle reused by the expert SVG export, the integrated audit, and the parity report.
-  - How to derive it: Use a stable intent-bearing id such as `tp73_uniprot_q9h3d4`.
-- `AuditUniprotProjectionConsistency.report_id / AuditUniprotProjectionParity.report_id` (where used: operations 7 and 8)
-  - Why it matters: Stable report ids make the saved audit/parity artifacts easy to reopen from GUI, CLI, or future AI orchestration.
-  - How to derive it: Use descriptive ids like `tp73_projection_audit` and `tp73_projection_audit_parity`.
 
 ## Follow-up Commands
 

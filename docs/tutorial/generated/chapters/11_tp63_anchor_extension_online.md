@@ -17,6 +17,15 @@ This chapter focuses on day-to-day genome-anchored sequence inspection: identify
 > **How to Run This Locally**
 > Set `GENTLE_TEST_ONLINE=1` and run from the repository root. The workflow prepares `Human GRCh38 Ensembl 116` using Ensembl FTP FASTA/GTF endpoints from `assets/genomes.json`, then extracts TP63 and extends the anchored locus locally.
 
+## Parameters That Matter
+
+- `ExtractGenomeGene.gene_query / occurrence` (where used: operation 2 and Retrieve Genome Sequence dialog)
+  - Why it matters: Controls which TP63 transcript/gene match is selected when multiple annotation entries exist.
+  - How to derive it: Start with `gene_query=TP63` and `occurrence=1`; inspect coordinate listing first and adjust occurrence only if you need a non-primary hit.
+- `ExtendGenomeAnchor.side / length_bp` (where used: operations 3 and 4 + DNA window Extend controls)
+  - Why it matters: Defines biological flank direction and exact context length added around the anchored region.
+  - How to derive it: Use `five_prime,2000` then `three_prime,2000` for symmetric +/-2 kb context expansion.
+
 ## When This Routine Is Useful
 
 - You want to inspect promoter-proximal and downstream context around TP63 without manually typing coordinates.
@@ -29,7 +38,7 @@ This chapter focuses on day-to-day genome-anchored sequence inspection: identify
 - Apply anchored-region extension from the DNA sequence viewer without losing genome-anchor provenance.
 - Map GUI actions to equivalent deterministic `ExtendGenomeAnchor` operations.
 
-## Concepts
+## Applied Concepts
 
 - **Shared Engine Contract** (`shared_engine_contract`): GUI, CLI, shell, and scripting interfaces execute the same operation semantics.
 - **Genome Catalog Targeting** (`genome_catalog_targeting`): Prepared genome catalogs, annotation-based gene filters, and anchor extension connect imported entries to genomic context.
@@ -50,15 +59,6 @@ Run the same routine non-interactively once the GUI flow is clear:
 cargo run --bin gentle_cli -- workflow @docs/examples/workflows/tp63_extend_anchor_online.json
 cargo run --bin gentle_cli -- shell 'workflow @docs/examples/workflows/tp63_extend_anchor_online.json'
 ```
-
-## Parameters That Matter
-
-- `ExtractGenomeGene.gene_query / occurrence` (where used: operation 2 and Retrieve Genome Sequence dialog)
-  - Why it matters: Controls which TP63 transcript/gene match is selected when multiple annotation entries exist.
-  - How to derive it: Start with `gene_query=TP63` and `occurrence=1`; inspect coordinate listing first and adjust occurrence only if you need a non-primary hit.
-- `ExtendGenomeAnchor.side / length_bp` (where used: operations 3 and 4 + DNA window Extend controls)
-  - Why it matters: Defines biological flank direction and exact context length added around the anchored region.
-  - How to derive it: Use `five_prime,2000` then `three_prime,2000` for symmetric +/-2 kb context expansion.
 
 ## Follow-up Commands
 

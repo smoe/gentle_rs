@@ -17,6 +17,15 @@ This chapter captures a practical cDNA-vs-genomic verification route for transcr
 > **How to Run This Locally**
 > Set `GENTLE_TEST_ONLINE=1` and run from the repository root. This chapter fetches TP73 cDNA `NM_001126241.3` from NCBI/GenBank and prepares GRCh38 Ensembl 116 from Ensembl FTP before computing the local dotplot.
 
+## Parameters That Matter
+
+- `ComputeDotplot.word_size / step_bp / max_mismatches` (where used: operation 4)
+  - Why it matters: These settings control sensitivity for dispersed exon-aligned signal in long genomic spans.
+  - How to derive it: Start with `word=7`, `step=1`, `max_mismatches=0`; reduce to `word=6` only if additional sensitivity is needed.
+- `ComputeDotplot.reference_seq_id` (where used: operation 4)
+  - Why it matters: Pairwise mode requires explicit reference identity for y-axis mapping.
+  - How to derive it: Use the exact ID emitted by the gene-extraction step (`tp73_genomic` in this chapter).
+
 ## When This Routine Is Useful
 
 - You want a deterministic cDNA-vs-genomic control for exon/intron-aware interpretation.
@@ -29,7 +38,7 @@ This chapter captures a practical cDNA-vs-genomic verification route for transcr
 - Understand why high-sensitivity seed sampling (`step=1`, low word size) improves cDNA-vs-genomic block visibility.
 - Trace parity between GUI actions and canonical workflow JSON execution.
 
-## Concepts
+## Applied Concepts
 
 - **Shared Engine Contract** (`shared_engine_contract`): GUI, CLI, shell, and scripting interfaces execute the same operation semantics.
 - **Deterministic Workflows** (`deterministic_workflows`): Operation chains should produce stable IDs and comparable outputs across repeated runs.
@@ -51,15 +60,6 @@ Run the same routine non-interactively once the GUI flow is clear:
 cargo run --bin gentle_cli -- workflow @docs/examples/workflows/tp73_cdna_genomic_dotplot_online.json
 cargo run --bin gentle_cli -- shell 'workflow @docs/examples/workflows/tp73_cdna_genomic_dotplot_online.json'
 ```
-
-## Parameters That Matter
-
-- `ComputeDotplot.word_size / step_bp / max_mismatches` (where used: operation 4)
-  - Why it matters: These settings control sensitivity for dispersed exon-aligned signal in long genomic spans.
-  - How to derive it: Start with `word=7`, `step=1`, `max_mismatches=0`; reduce to `word=6` only if additional sensitivity is needed.
-- `ComputeDotplot.reference_seq_id` (where used: operation 4)
-  - Why it matters: Pairwise mode requires explicit reference identity for y-axis mapping.
-  - How to derive it: Use the exact ID emitted by the gene-extraction step (`tp73_genomic` in this chapter).
 
 ## Follow-up Commands
 

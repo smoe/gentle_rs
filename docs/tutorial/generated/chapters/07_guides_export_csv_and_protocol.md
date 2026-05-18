@@ -14,6 +14,15 @@ Export representative machine-readable and human-readable artifacts.
 
 Operational work is only useful if outputs can be shared with collaborators and ordering pipelines. This routine keeps one representative CSV and one protocol text file so the tutorial remains readable while still proving export behavior.
 
+## Parameters That Matter
+
+- `ExportGuideOligos.format` (where used: operation 3)
+  - Why it matters: Format must match the receiving workflow (spreadsheet import, plate workflow, or FASTA).
+  - How to derive it: Pick `csv_table` for review/order sheets, `plate_csv` for plate automation, `fasta` for sequence-oriented tools.
+- `ExportGuideProtocolText.include_qc_checklist` (where used: operation 4)
+  - Why it matters: Controls whether QC reminders are embedded in the generated protocol text.
+  - How to derive it: Enable for handoff to wet-lab execution; disable only for compact machine-only summaries.
+
 ## When This Routine Is Useful
 
 - You need oligo tables for ordering and a protocol summary for bench execution.
@@ -26,7 +35,7 @@ Operational work is only useful if outputs can be shared with collaborators and 
 - Understand selective artifact retention for tutorial readability.
 - Map retained artifacts back to the operation chain that produced them.
 
-## Concepts
+## Applied Concepts
 
 - **Guide Design Pipeline** (`guide_design_pipeline`): Guide sets can be created, filtered, expanded to oligos, and exported with protocol context.
 - **Artifact Exports** (`artifact_exports`): Representative outputs (CSV/protocol/SVG/text) are retained for auditability and sharing.
@@ -45,15 +54,6 @@ Run the same routine non-interactively once the GUI flow is clear:
 cargo run --bin gentle_cli -- workflow @docs/examples/workflows/guides_export_csv_and_protocol.json
 cargo run --bin gentle_cli -- shell 'workflow @docs/examples/workflows/guides_export_csv_and_protocol.json'
 ```
-
-## Parameters That Matter
-
-- `ExportGuideOligos.format` (where used: operation 3)
-  - Why it matters: Format must match the receiving workflow (spreadsheet import, plate workflow, or FASTA).
-  - How to derive it: Pick `csv_table` for review/order sheets, `plate_csv` for plate automation, `fasta` for sequence-oriented tools.
-- `ExportGuideProtocolText.include_qc_checklist` (where used: operation 4)
-  - Why it matters: Controls whether QC reminders are embedded in the generated protocol text.
-  - How to derive it: Enable for handoff to wet-lab execution; disable only for compact machine-only summaries.
 
 ## Checkpoints
 

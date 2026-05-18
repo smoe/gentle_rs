@@ -14,6 +14,19 @@ Use assets/genomes.json + annotation-driven gene targeting, then extend the anch
 
 Many investigations start with "which exact genomic interval should I look at" rather than "which cloning operation should I run". This chapter introduces the practical sequence-selection loop: choose a prepared genome from `assets/genomes.json`, narrow candidates with annotation-backed gene filtering, extract the target interval, and then widen context with 5'/3' anchor extension as needed for promoter/splice/regulatory interpretation. The same workflow also clarifies where GenBank/EMBL imports fit: exported GenBank/EMBL records are loadable directly, and GenBank entries carrying NCBI `ACCESSION ... REGION:` metadata can be mapped to genome coordinates and extended by the same anchor controls.
 
+## Parameters That Matter
+
+- `PrepareGenome.genome_id / catalog_path / cache_dir` (where used: operation 1)
+  - Why it matters: These fields define which reference source is prepared and where deterministic cache/index files are written.
+  - How to derive it: Start with `assets/genomes.json`; use `LocalProject` for offline walkthroughs, then switch to your organism/build.
+- `Retrieve dialog Gene filter (regex) and Top matches` (where used: GUI extraction step)
+  - Why it matters: Filtering keeps candidate lists interpretable on large annotations and avoids selecting the wrong locus.
+  - How to derive it: Use exact regex (`^GENE$`) when known; broaden (`^GENE_PREFIX`) when exploring families.
+  - Omit when: Only omit filtering for tiny local annotations where the candidate list is already small.
+- `ExtendGenomeAnchor.side / length_bp / output_id` (where used: operation 3 and DNA-window anchor controls)
+  - Why it matters: Defines which biological flank is added and by how much; output IDs keep downstream comparisons clear.
+  - How to derive it: Choose `5p` for upstream-context questions and `3p` for downstream-context questions; start with 200-2000 bp and iterate.
+
 ## When This Routine Is Useful
 
 - You need to start from a biologically relevant gene locus instead of an arbitrary coordinate slice.
@@ -26,7 +39,7 @@ Many investigations start with "which exact genomic interval should I look at" r
 - Use annotation-backed gene filtering to find target regions reproducibly.
 - Extend anchored sequences in GUI/CLI without losing provenance or sequence lineage.
 
-## Concepts
+## Applied Concepts
 
 - **Shared Engine Contract** (`shared_engine_contract`): GUI, CLI, shell, and scripting interfaces execute the same operation semantics.
 - **Deterministic Workflows** (`deterministic_workflows`): Operation chains should produce stable IDs and comparable outputs across repeated runs.
@@ -47,19 +60,6 @@ Run the same routine non-interactively once the GUI flow is clear:
 cargo run --bin gentle_cli -- workflow @docs/examples/workflows/prepare_extract_extend_localproject_gene.json
 cargo run --bin gentle_cli -- shell 'workflow @docs/examples/workflows/prepare_extract_extend_localproject_gene.json'
 ```
-
-## Parameters That Matter
-
-- `PrepareGenome.genome_id / catalog_path / cache_dir` (where used: operation 1)
-  - Why it matters: These fields define which reference source is prepared and where deterministic cache/index files are written.
-  - How to derive it: Start with `assets/genomes.json`; use `LocalProject` for offline walkthroughs, then switch to your organism/build.
-- `Retrieve dialog Gene filter (regex) and Top matches` (where used: GUI extraction step)
-  - Why it matters: Filtering keeps candidate lists interpretable on large annotations and avoids selecting the wrong locus.
-  - How to derive it: Use exact regex (`^GENE$`) when known; broaden (`^GENE_PREFIX`) when exploring families.
-  - Omit when: Only omit filtering for tiny local annotations where the candidate list is already small.
-- `ExtendGenomeAnchor.side / length_bp / output_id` (where used: operation 3 and DNA-window anchor controls)
-  - Why it matters: Defines which biological flank is added and by how much; output IDs keep downstream comparisons clear.
-  - How to derive it: Choose `5p` for upstream-context questions and `3p` for downstream-context questions; start with 200-2000 bp and iterate.
 
 ## Follow-up Commands
 

@@ -20,7 +20,7 @@
     "example_id": "load_branch_reverse_complement_pgex_fasta",
     "tier": "core",
     "summary": "Start with a simple cloning-prep routine to learn product IDs and sequence lineage.",
-    "narrative": "In real cloning projects, the first question is often whether a sequence in hand is represented correctly and whether you can derive alternative views without losing provenance. This routine is the smallest possible example of that practice: load one sequence, create an explicit branch, and generate the reverse complement as a separate product.",
+    "narrative": "In real cloning projects, people often say \"the sequence\" even when they mean different biological records: the sequence as downloaded from a public database or read from a local sample, versus a derivative changed by an operation such as introducing a nonsense mutation. GENtle keeps those records apart. Each conceptual or hands-on sequence is represented as a vial node in a lineage graph, and each operation is represented as a transaction node connecting biological inputs to outputs. Even this small routine can branch: the original FASTA remains the provenance-preserving input, while the branch and reverse-complement become separate products. Larger projects can branch one product into several downstream operations or merge independent products into one process.",
     "use_cases": [
       "You received a FASTA plasmid or amplicon sequence and want a reproducible project starting point.",
       "You need a reverse-complemented working copy but want to preserve the original sequence identity.",
