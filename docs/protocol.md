@@ -3366,7 +3366,8 @@ Adapter-equivalence guarantee for UI-intent tools:
   - Returns read-only transport/runtime metadata as `gentle.agent_preflight.v1`.
   - Default behavior is config-only for CLI/MCP compatibility.
   - `--live` adds a non-generating model-discovery probe for
-    `native_openai` and `native_openai_compat`.
+    `native_openai`, `native_anthropic`, `native_mistral`, and
+    `native_openai_compat`.
   - `live_probe` fields:
     - `enabled`
     - `attempted_endpoints`
@@ -3381,6 +3382,8 @@ Adapter-equivalence guarantee for UI-intent tools:
     - `provider_error_code`
   - Endpoint policy:
     - OpenAI: `GET /models` with bearer auth
+    - Anthropic: `GET /models` with `x-api-key` and `anthropic-version`
+    - Mistral: `GET /models` with bearer auth
     - OpenAI-compatible: `/models`, then `/v1/models` fallback when the base
       URL is not already `/v1`
     - no chat/completion/responses request is made
@@ -3393,9 +3396,11 @@ Adapter-equivalence guarantee for UI-intent tools:
 - `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]`
   - Invokes one configured agent system via catalog transport.
   - `--base-url` applies a per-request runtime base URL override for native
-    transports (`native_openai`, `native_openai_compat`).
+    transports (`native_openai`, `native_anthropic`, `native_mistral`,
+    `native_openai_compat`).
   - `--model` applies a per-request runtime model override for native
-    transports (`native_openai`, `native_openai_compat`).
+    transports (`native_openai`, `native_anthropic`, `native_mistral`,
+    `native_openai_compat`).
   - `--timeout-secs` applies a per-request timeout override for stdio/native
     transports (maps to `GENTLE_AGENT_TIMEOUT_SECS`).
   - `--connect-timeout-secs` applies a per-request HTTP connect timeout override
@@ -3498,6 +3503,14 @@ Agent bridge catalog schema (`gentle.agent_systems.v1`):
       "model": "claude-sonnet-4-6",
       "base_url": "https://api.anthropic.com/v1",
       "env": {}
+    },
+    {
+      "id": "mistral_large_native",
+      "label": "Mistral Large (native Mistral HTTP)",
+      "transport": "native_mistral",
+      "model": "mistral-large-latest",
+      "base_url": "https://api.mistral.ai/v1",
+      "env": {}
     }
   ]
 }
@@ -3512,13 +3525,18 @@ Transport notes:
 - `native_anthropic`: built-in Anthropic Claude HTTP adapter; requires
   `ANTHROPIC_API_KEY` (environment or system-level `env` override in catalog
   entry).
+- `native_mistral`: built-in Mistral HTTP adapter; requires
+  `MISTRAL_API_KEY` (environment or system-level `env` override in catalog
+  entry).
 - `native_openai_compat`: built-in OpenAI-compatible local HTTP adapter
   (`/chat/completions`), intended for local services such as Jan/Msty/Ollama
   when they expose an OpenAI-compatible endpoint. API key is optional.
 - `GENTLE_AGENT_BASE_URL` (or CLI `--base-url`) overrides catalog `base_url`
-  per request for `native_openai` and `native_openai_compat`.
+  per request for `native_openai`, `native_anthropic`, `native_mistral`, and
+  `native_openai_compat`.
 - `GENTLE_AGENT_MODEL` (or CLI `--model`) overrides catalog `model` per request
-  for `native_openai` and `native_openai_compat`.
+  for `native_openai`, `native_anthropic`, `native_mistral`, and
+  `native_openai_compat`.
 - `GENTLE_AGENT_TIMEOUT_SECS` (or CLI `--timeout-secs`) overrides request
   timeout per attempt for agent transports.
 - `GENTLE_AGENT_CONNECT_TIMEOUT_SECS` (or CLI `--connect-timeout-secs`)

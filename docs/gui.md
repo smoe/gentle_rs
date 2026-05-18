@@ -2453,6 +2453,7 @@ Behavior:
 - `Quick start` buttons expose common first-run routes:
   - `Use OpenAI API`
   - `Use Claude API`
+  - `Use Mistral API`
   - `Use Local Model (no OpenAI API billing)`
   - `Use Demo Echo`
 - `External Agent / MCP` shows the `gentle_mcp` command for users whose
@@ -2464,24 +2465,28 @@ Behavior:
   directly; it does not reuse a ChatGPT/Codex chat session as authentication
 - the Claude quick-start path uses `ANTHROPIC_API_KEY` and talks to the
   Anthropic API directly
+- the Mistral quick-start path uses `MISTRAL_API_KEY` and talks to the Mistral
+  API directly
 - this window is intentionally the local chat-oriented assistant surface; the
   typed prose compiler/executor (`agents plan` / `agents execute-plan`) is the
   headless CLI/MCP/ClawBio route for machine-facing compile/execute loops
-- `OpenAI API key` / `Anthropic API key` field in this window is a
+- `OpenAI API key` / `Anthropic API key` / `Mistral API key` field in this window is a
   session-only override for the selected native provider
   - OpenAI keys usually begin with `sk-...`; Anthropic keys usually begin with
-    `sk-ant-...`
+    `sk-ant-...`; Mistral keys should be generated in La Plateforme
   - click `Clear Key` to remove it from current session
   - the key is not persisted to disk by GENtle settings
-- if set, GUI key overrides `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` for
-  requests started from this window
+- if set, GUI key overrides `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or
+  `MISTRAL_API_KEY` for requests started from this window
 - `Base URL override` field is a session-only endpoint override for
-  `native_openai`, `native_anthropic`, and `native_openai_compat`
+  `native_openai`, `native_anthropic`, `native_mistral`, and
+  `native_openai_compat`
   - use this for local endpoints such as `http://localhost:11964` or
     `http://localhost:11964/v1`
   - click `Clear URL` to remove it from current session
 - `Model override` field is a session-only model-name override for
-  `native_openai`, `native_anthropic`, and `native_openai_compat`
+  `native_openai`, `native_anthropic`, `native_mistral`, and
+  `native_openai_compat`
   - use this to force a concrete model id
   - `unspecified` means no override
   - click `Clear Model` to remove it from current session
@@ -2502,9 +2507,11 @@ Behavior:
   and session overrides before you send a prompt
   - shows availability, resolved base URL/model, endpoint candidates, runtime
     limits, and warnings such as missing `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`
-  - for `native_openai`, `native_anthropic`, and `native_openai_compat`, it also runs a live
-    non-generating model-list probe (`GET /models`, with `/v1/models` fallback
-    for OpenAI-compatible or root provider URLs)
+    or `MISTRAL_API_KEY`
+  - for `native_openai`, `native_anthropic`, `native_mistral`, and
+    `native_openai_compat`, it also runs a live non-generating model-list probe
+    (`GET /models`, with `/v1/models` fallback for OpenAI-compatible or root
+    provider URLs)
   - the live probe reports `status_class`, attempted/selected endpoints,
     reachability, authentication, model-list parsing, and whether the selected
     model was present
@@ -2558,6 +2565,23 @@ Claude setup (explicit):
 
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-...
+cargo run --bin gentle
+```
+
+Mistral setup (explicit):
+
+1. Open `File -> Agent Assistant...`.
+2. Click `Use Mistral API` or choose `Mistral Large (native Mistral HTTP)`.
+3. Paste your Mistral La Plateforme API key into `Mistral API key`. Le Chat or
+   Mistral account login tokens are not Mistral API keys.
+4. Click `Test Setup` to confirm the key/base URL/model resolve correctly.
+   This checks model discovery only; it does not intentionally send a
+   token-generating request.
+5. Enter prompt text and click `Ask Agent`.
+6. If you prefer environment setup instead of GUI key field, launch GENtle with:
+
+```bash
+export MISTRAL_API_KEY=...
 cargo run --bin gentle
 ```
 

@@ -516,6 +516,9 @@ Key properties:
 - Native Claude mode uses the Anthropic API directly and needs
   `ANTHROPIC_API_KEY`; Claude Code or Claude.ai subscription/login tokens do
   not authenticate direct Anthropic API calls.
+- Native Mistral mode uses the Mistral API directly and needs
+  `MISTRAL_API_KEY`; Le Chat or Mistral account login tokens do not
+  authenticate direct Mistral API calls.
 - `agents preflight` remains config-only by default. `--live` adds the optional
   `gentle.agent_preflight.v1.live_probe` model-list probe without sending a
   generation request.

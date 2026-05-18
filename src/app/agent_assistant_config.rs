@@ -46,6 +46,18 @@ pub(super) fn preferred_anthropic_agent_system_id(systems: &[AgentSystemSpec]) -
         .map(|system| system.id.clone())
 }
 
+pub(super) fn preferred_mistral_agent_system_id(systems: &[AgentSystemSpec]) -> Option<String> {
+    for preferred_id in ["mistral_large_native", "mistral_native"] {
+        if systems.iter().any(|system| system.id == preferred_id) {
+            return Some(preferred_id.to_string());
+        }
+    }
+    systems
+        .iter()
+        .find(|system| matches!(system.transport, AgentSystemTransport::NativeMistral))
+        .map(|system| system.id.clone())
+}
+
 pub(super) fn preferred_local_agent_system_id(systems: &[AgentSystemSpec]) -> Option<String> {
     for preferred_id in [
         "local_llama_compat",

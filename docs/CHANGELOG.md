@@ -17,6 +17,9 @@ Maintenance rule:
 - Split the tutorial hub into hand-written guided walkthroughs versus
   machine-generated executable reference chapters, with reciprocal links for
   generated chapters that have guided counterparts.
+- Added native Mistral Agent Assistant integration with a quick-start GUI route,
+  `MISTRAL_API_KEY` session/env handling, model discovery, and live setup
+  preflight parity.
 
 ## 2026-05-17
 

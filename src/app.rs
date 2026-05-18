@@ -109,9 +109,10 @@ use crate::{
         AGENT_MAX_RETRIES_ENV, AGENT_MODEL_ENV, AGENT_READ_TIMEOUT_SECS_ENV,
         AGENT_TIMEOUT_SECS_ENV, ANTHROPIC_API_KEY_AUTH_HINT, ANTHROPIC_API_KEY_ENV,
         AgentExecutionIntent, AgentInvocationOutcome, AgentResponse, AgentSystemSpec,
-        AgentSystemTransport, DEFAULT_AGENT_SYSTEM_CATALOG_PATH, OPENAI_API_KEY_ENV,
-        OPENAI_COMPAT_UNSPECIFIED_MODEL, agent_system_availability,
-        invoke_agent_support_with_env_overrides, load_agent_system_catalog,
+        AgentSystemTransport, DEFAULT_AGENT_SYSTEM_CATALOG_PATH, MISTRAL_API_KEY_AUTH_HINT,
+        MISTRAL_API_KEY_ENV, OPENAI_API_KEY_ENV, OPENAI_COMPAT_UNSPECIFIED_MODEL,
+        agent_system_availability, invoke_agent_support_with_env_overrides,
+        load_agent_system_catalog,
     },
     agent_transport::{
         AgentLiveProbeStatusClass, AgentSystemPreflight, build_agent_system_preflight_with_live,
@@ -204,7 +205,8 @@ use agent_assistant_config::{
     default_agent_max_response_bytes_string, default_agent_max_retries_string,
     default_agent_read_timeout_secs_string, default_agent_timeout_secs_string,
     normalize_agent_model_name, preferred_anthropic_agent_system_id,
-    preferred_local_agent_system_id, preferred_openai_agent_system_id,
+    preferred_local_agent_system_id, preferred_mistral_agent_system_id,
+    preferred_openai_agent_system_id,
 };
 use anyhow::{Result, anyhow};
 use eframe::egui::{self, Key, KeyboardShortcut, Modifiers, Pos2, Ui, Vec2, ViewportId};
@@ -256,6 +258,8 @@ const RACK_HELP_AUTO_MINIMIZE_MOVE_THRESHOLD: u32 = 3;
 const GUI_OPENAI_DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
 const GUI_ANTHROPIC_DEFAULT_MODEL: &str = "claude-sonnet-4-6";
 const GUI_ANTHROPIC_DEFAULT_BASE_URL: &str = "https://api.anthropic.com/v1";
+const GUI_MISTRAL_DEFAULT_MODEL: &str = "mistral-large-latest";
+const GUI_MISTRAL_DEFAULT_BASE_URL: &str = "https://api.mistral.ai/v1";
 const GUI_OPENAI_COMPAT_DEFAULT_BASE_URL: &str = "http://127.0.0.1:11434/v1";
 const WINDOW_OPEN_SLOW_THRESHOLD_MS: u128 = 400;
 const EMBEDDED_SEQUENCE_WINDOW_DRAG_MARGIN_X_PX: f32 = 140.0;
@@ -23202,8 +23206,8 @@ mod tests {
         AGENT_MAX_RETRIES_ENV, AGENT_MODEL_ENV, AGENT_READ_TIMEOUT_SECS_ENV,
         AGENT_TIMEOUT_SECS_ENV, ANTHROPIC_API_KEY_AUTH_HINT, ANTHROPIC_API_KEY_ENV,
         APP_CONFIGURATION_SCHEMA_VERSION, BACKGROUND_JOB_HISTORY_METADATA_KEY,
-        BACKGROUND_JOB_HISTORY_SCHEMA,
-        BACKGROUND_JOBS_RECENT_JOB_EVENTS_SCROLL_ID, BACKGROUND_JOBS_RETRY_CLEANUP_AUDIT_SCROLL_ID,
+        BACKGROUND_JOB_HISTORY_SCHEMA, BACKGROUND_JOBS_RECENT_JOB_EVENTS_SCROLL_ID,
+        BACKGROUND_JOBS_RETRY_CLEANUP_AUDIT_SCROLL_ID,
         BACKGROUND_JOBS_RETRY_SNAPSHOTS_REMOVED_PREVIEW_SCROLL_ID,
         BACKGROUND_JOBS_RETRY_SNAPSHOTS_RETAINED_PREVIEW_SCROLL_ID,
         BACKGROUND_JOBS_RETRY_SNAPSHOTS_SCROLL_ID, BackgroundJobEventPhase, BackgroundJobKind,
@@ -23217,20 +23221,21 @@ mod tests {
         GibsonUiOpeningMode, HelpDoc, HelpSearchMatch, HelpTutorialDocEntry,
         LINEAGE_GRAPH_WORKSPACE_METADATA_KEY, LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT,
         LineageAnalysisKind, LineageCopyPayloadKind, LineageNodeKind, LineageRow,
-        MAX_RECENT_PROJECTS, OPENAI_API_KEY_ENV, OPERATION_HISTORY_SCROLL_ID,
-        PendingEnsemblCatalogUpdateDialog, PendingEnsemblInstallableGenomeDialog,
-        PendingEnsemblQuickInstallDialog, PersistedConfiguration, PersistedLineageGraphWorkspace,
-        PersistedLineageNodeGroup, PersistedRackWorkspace, PrepareGenomeDialogPrimaryAction,
-        PrepareGenomeFailureRecovery, PrepareGenomeUiStepState, PrepareGenomeUiStepStatus,
-        PreparedGenomeReinstallDialogHost, PreparedGenomeReinstallRequest, ProjectAction,
-        ProjectOverviewMetric, ProjectOverviewTarget, RACK_HELP_AUTO_MINIMIZE_MOVE_THRESHOLD,
-        RACK_WORKSPACE_METADATA_KEY, ROUTINE_DECISION_TRACE_SCHEMA,
-        ROUTINE_DECISION_TRACE_STORE_SCHEMA, ROUTINE_DECISION_TRACES_METADATA_KEY, RackDragState,
-        RetryCleanupAuditActionFilter, RetrySnapshotKindFilter, RetrySnapshotPendingCleanupAction,
-        RoutineAssistantStage, TutorialProjectOpenOutcome, TutorialProjectTask,
-        TutorialProjectTaskMessage, TutorialProjectTaskProgress, gui_prominent_glossary_entries,
+        MAX_RECENT_PROJECTS, MISTRAL_API_KEY_AUTH_HINT, MISTRAL_API_KEY_ENV, OPENAI_API_KEY_ENV,
+        OPERATION_HISTORY_SCROLL_ID, PendingEnsemblCatalogUpdateDialog,
+        PendingEnsemblInstallableGenomeDialog, PendingEnsemblQuickInstallDialog,
+        PersistedConfiguration, PersistedLineageGraphWorkspace, PersistedLineageNodeGroup,
+        PersistedRackWorkspace, PrepareGenomeDialogPrimaryAction, PrepareGenomeFailureRecovery,
+        PrepareGenomeUiStepState, PrepareGenomeUiStepStatus, PreparedGenomeReinstallDialogHost,
+        PreparedGenomeReinstallRequest, ProjectAction, ProjectOverviewMetric,
+        ProjectOverviewTarget, RACK_HELP_AUTO_MINIMIZE_MOVE_THRESHOLD, RACK_WORKSPACE_METADATA_KEY,
+        ROUTINE_DECISION_TRACE_SCHEMA, ROUTINE_DECISION_TRACE_STORE_SCHEMA,
+        ROUTINE_DECISION_TRACES_METADATA_KEY, RackDragState, RetryCleanupAuditActionFilter,
+        RetrySnapshotKindFilter, RetrySnapshotPendingCleanupAction, RoutineAssistantStage,
+        TutorialProjectOpenOutcome, TutorialProjectTask, TutorialProjectTaskMessage,
+        TutorialProjectTaskProgress, gui_prominent_glossary_entries,
         preferred_anthropic_agent_system_id, preferred_local_agent_system_id,
-        preferred_openai_agent_system_id,
+        preferred_mistral_agent_system_id, preferred_openai_agent_system_id,
     };
     use crate::{
         agent_bridge::{AgentSystemSpec, AgentSystemTransport},
@@ -23647,6 +23652,7 @@ mod tests {
                 "anthropic_claude_sonnet_native",
                 AgentSystemTransport::NativeAnthropic,
             ),
+            test_agent_system("mistral_large_native", AgentSystemTransport::NativeMistral),
             test_agent_system("openai_gpt5_native", AgentSystemTransport::NativeOpenai),
         ];
         assert_eq!(
@@ -23656,6 +23662,10 @@ mod tests {
         assert_eq!(
             preferred_anthropic_agent_system_id(&systems).as_deref(),
             Some("anthropic_claude_sonnet_native")
+        );
+        assert_eq!(
+            preferred_mistral_agent_system_id(&systems).as_deref(),
+            Some("mistral_large_native")
         );
         assert_eq!(
             preferred_local_agent_system_id(&systems).as_deref(),
@@ -23688,6 +23698,32 @@ mod tests {
         assert_eq!(
             overrides.get(AGENT_MODEL_ENV).map(String::as_str),
             Some("claude-sonnet-4-6")
+        );
+    }
+
+    #[test]
+    fn selected_agent_session_env_overrides_use_mistral_key_for_mistral() {
+        let mut app = GENtleApp::default();
+        let system = test_agent_system("mistral_large_native", AgentSystemTransport::NativeMistral);
+        app.agent_openai_api_key = "mistral-test-key".to_string();
+        app.agent_base_url_override = "https://api.mistral.ai/v1".to_string();
+        app.agent_model_override = "mistral-large-latest".to_string();
+        let overrides = app
+            .selected_agent_session_env_overrides(&system)
+            .expect("agent overrides");
+        assert_eq!(
+            overrides.get(MISTRAL_API_KEY_ENV).map(String::as_str),
+            Some("mistral-test-key")
+        );
+        assert_eq!(overrides.get(OPENAI_API_KEY_ENV), None);
+        assert_eq!(overrides.get(ANTHROPIC_API_KEY_ENV), None);
+        assert_eq!(
+            overrides.get(AGENT_BASE_URL_ENV).map(String::as_str),
+            Some("https://api.mistral.ai/v1")
+        );
+        assert_eq!(
+            overrides.get(AGENT_MODEL_ENV).map(String::as_str),
+            Some("mistral-large-latest")
         );
     }
 
@@ -23764,6 +23800,8 @@ mod tests {
             "anthropic_claude_sonnet_native",
             AgentSystemTransport::NativeAnthropic,
         );
+        let mistral =
+            test_agent_system("mistral_large_native", AgentSystemTransport::NativeMistral);
         let compat = test_agent_system(
             "msty_local_compat_template",
             AgentSystemTransport::NativeOpenaiCompat,
@@ -23771,6 +23809,7 @@ mod tests {
         let echo = test_agent_system("builtin_echo", AgentSystemTransport::BuiltinEcho);
         assert!(GENtleApp::agent_test_setup_uses_live_probe(&native));
         assert!(GENtleApp::agent_test_setup_uses_live_probe(&anthropic));
+        assert!(GENtleApp::agent_test_setup_uses_live_probe(&mistral));
         assert!(GENtleApp::agent_test_setup_uses_live_probe(&compat));
         assert!(!GENtleApp::agent_test_setup_uses_live_probe(&echo));
     }
@@ -23789,6 +23828,22 @@ mod tests {
 
         let actions = GENtleApp::agent_preflight_next_actions(&preflight);
         assert_eq!(actions, vec![ANTHROPIC_API_KEY_AUTH_HINT.to_string()]);
+    }
+
+    #[test]
+    fn agent_preflight_next_actions_explain_mistral_auth_tokens() {
+        let preflight = crate::agent_transport::AgentSystemPreflight {
+            transport: AgentSystemTransport::NativeMistral.as_str().to_string(),
+            live_probe: Some(crate::agent_transport::AgentSystemLiveProbe {
+                enabled: true,
+                status_class: crate::agent_transport::AgentLiveProbeStatusClass::AuthFailed,
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let actions = GENtleApp::agent_preflight_next_actions(&preflight);
+        assert_eq!(actions, vec![MISTRAL_API_KEY_AUTH_HINT.to_string()]);
     }
 
     #[test]
@@ -23829,6 +23884,21 @@ mod tests {
         assert_eq!(
             app.selected_agent_model_discovery_key_label(&system),
             "env-anthropic-api-key"
+        );
+    }
+
+    #[test]
+    fn agent_model_discovery_labels_mistral_env_key() {
+        let _lock = crate::genomes::genbank_env_lock()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let _guard = EnvVarGuard::set(MISTRAL_API_KEY_ENV, "mistral-test-from-env");
+        let app = GENtleApp::default();
+        let system = test_agent_system("mistral_large_native", AgentSystemTransport::NativeMistral);
+
+        assert_eq!(
+            app.selected_agent_model_discovery_key_label(&system),
+            "env-mistral-api-key"
         );
     }
 
@@ -23876,6 +23946,17 @@ mod tests {
 
         assert!(hint.contains("Anthropic Console API key"));
         assert!(hint.contains("Claude Code/Claude.ai"));
+    }
+
+    #[test]
+    fn agent_model_discovery_auth_failure_hint_mentions_mistral_api_key() {
+        let hint = GENtleApp::agent_model_discovery_failure_hint(
+            "Mistral model discovery failed at https://api.mistral.ai/v1/models (status=401 Unauthorized): authentication_error",
+        )
+        .expect("auth hint");
+
+        assert!(hint.contains("Mistral La Plateforme API key"));
+        assert!(hint.contains("Le Chat"));
     }
 
     #[test]
