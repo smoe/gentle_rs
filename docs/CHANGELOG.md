@@ -41,6 +41,9 @@ Maintenance rule:
   Assistant and Agent Interfaces tutorial, from `File -> Open Tutorial
   Project...` so readers can find them from the tutorial-opening menu as well
   as `Help -> Tutorials`.
+- Fixed `File -> Open Tutorial Project... -> Guided walkthroughs` to read all
+  `manual/reference` tutorial entries from `docs/tutorial/catalog.json`
+  instead of showing only the hard-coded agent tutorial entry.
 
 ## 2026-05-17
 

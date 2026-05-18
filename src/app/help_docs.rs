@@ -20,6 +20,33 @@ status: manual/reference\n\
 Practical guide for the in-app Agent Assistant, provider quick starts, reviewed shared-shell suggestions, CLI/shared shell, MCP, and external coding agents.";
 
 impl GENtleApp {
+    fn help_tutorial_entry_from_catalog_entry(
+        entry: crate::workflow_examples::TutorialCatalogEntry,
+    ) -> Option<HelpTutorialDocEntry> {
+        let resolved_path = Self::resolve_runtime_doc_path(&entry.path)?;
+        let markdown = Self::load_help_markdown_from_path(&resolved_path).unwrap_or_default();
+        let title = Self::markdown_first_heading(&markdown).unwrap_or_else(|| {
+            if entry.title.trim().is_empty() {
+                Self::markdown_title_from_path(&resolved_path)
+            } else {
+                entry.title.clone()
+            }
+        });
+        let mut summary = format!(
+            "{}\ntype: {}\nstatus: {}",
+            entry.path, entry.entry_type, entry.status
+        );
+        if !entry.notes.trim().is_empty() {
+            summary.push('\n');
+            summary.push_str(entry.notes.trim());
+        }
+        Some(HelpTutorialDocEntry {
+            title,
+            path: resolved_path.to_string_lossy().to_string(),
+            summary,
+        })
+    }
+
     pub(super) fn split_leading_markdown_front_matter(markdown: &str) -> Option<(&str, &str)> {
         let start = if markdown.starts_with("---\n") {
             "---\n".len()
@@ -553,31 +580,7 @@ impl GENtleApp {
                 let mut catalog_entries = catalog
                     .entries
                     .into_iter()
-                    .filter_map(|entry| {
-                        let resolved_path = Self::resolve_runtime_doc_path(&entry.path)?;
-                        let markdown =
-                            Self::load_help_markdown_from_path(&resolved_path).unwrap_or_default();
-                        let title = Self::markdown_first_heading(&markdown).unwrap_or_else(|| {
-                            if entry.title.trim().is_empty() {
-                                Self::markdown_title_from_path(&resolved_path)
-                            } else {
-                                entry.title.clone()
-                            }
-                        });
-                        let mut summary = format!(
-                            "{}\ntype: {}\nstatus: {}",
-                            entry.path, entry.entry_type, entry.status
-                        );
-                        if !entry.notes.trim().is_empty() {
-                            summary.push('\n');
-                            summary.push_str(entry.notes.trim());
-                        }
-                        Some(HelpTutorialDocEntry {
-                            title,
-                            path: resolved_path.to_string_lossy().to_string(),
-                            summary,
-                        })
-                    })
+                    .filter_map(Self::help_tutorial_entry_from_catalog_entry)
                     .collect::<Vec<_>>();
                 Self::ensure_agent_interfaces_tutorial_entry(&mut catalog_entries);
                 if !catalog_entries.is_empty() {
@@ -619,6 +622,26 @@ impl GENtleApp {
                 }
             })
             .collect::<Vec<_>>();
+        Self::ensure_agent_interfaces_tutorial_entry(&mut entries);
+        entries
+    }
+
+    pub(super) fn discover_guided_walkthrough_entries() -> Vec<HelpTutorialDocEntry> {
+        if let Some(catalog_path) = Self::resolve_runtime_doc_path(DEFAULT_TUTORIAL_CATALOG_PATH) {
+            if let Ok(catalog) = load_tutorial_catalog(&catalog_path) {
+                let mut entries = catalog
+                    .entries
+                    .into_iter()
+                    .filter(|entry| entry.status == "manual/reference")
+                    .filter_map(Self::help_tutorial_entry_from_catalog_entry)
+                    .collect::<Vec<_>>();
+                Self::ensure_agent_interfaces_tutorial_entry(&mut entries);
+                if !entries.is_empty() {
+                    return entries;
+                }
+            }
+        }
+        let mut entries = vec![];
         Self::ensure_agent_interfaces_tutorial_entry(&mut entries);
         entries
     }
