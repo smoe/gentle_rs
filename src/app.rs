@@ -6610,9 +6610,7 @@ Error: `{err}`"
     }
 
     fn tutorial_project_guided_walkthrough_entries() -> Vec<HelpTutorialDocEntry> {
-        let mut entries = vec![];
-        Self::ensure_agent_interfaces_tutorial_entry(&mut entries);
-        entries
+        Self::discover_guided_walkthrough_entries()
     }
 
     fn tutorial_project_generated_chapter_path(entry: &TutorialProjectEntry) -> String {
@@ -31384,6 +31382,24 @@ mod tests {
                     && entry.path.ends_with("docs/agent_interfaces_tutorial.md")
             }),
             "Expected Open Tutorial Project guided walkthroughs to surface the agent interfaces tutorial"
+        );
+    }
+
+    #[test]
+    fn tutorial_project_guided_walkthroughs_follow_catalog_reference_entries() {
+        let entries = GENtleApp::tutorial_project_guided_walkthrough_entries();
+        assert!(
+            entries.iter().any(|entry| {
+                entry.title == "GENtle Tutorial Landscape Overview"
+                    && entry.path.ends_with("docs/tutorial/landscape_overview.md")
+            }),
+            "Expected Open Tutorial Project guided walkthroughs to include tutorial landscape overview from the catalog"
+        );
+        assert!(
+            entries
+                .iter()
+                .all(|entry| entry.summary.contains("status: manual/reference")),
+            "Expected guided walkthrough entries to stay limited to documentation-only catalog entries"
         );
     }
 
