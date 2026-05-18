@@ -31302,7 +31302,7 @@ mod tests {
         assert!(
             entries
                 .iter()
-                .any(|entry| entry.title == "GENtle Agent Interfaces Tutorial"),
+                .any(|entry| entry.title == "GENtle Agent Assistant and Agent Interfaces Tutorial"),
             "Expected curated tutorial help entries to include the agent interfaces tutorial"
         );
     }

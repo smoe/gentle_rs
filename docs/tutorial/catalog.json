@@ -151,7 +151,7 @@
     },
     {
       "id": "agent_interfaces",
-      "title": "GENtle Agent Interfaces Tutorial",
+      "title": "GENtle Agent Assistant and Agent Interfaces Tutorial",
       "path": "docs/agent_interfaces_tutorial.md",
       "type": "operational_reference",
       "status": "manual/reference",
@@ -162,7 +162,7 @@
         "mcp_users",
         "contributors"
       ],
-      "notes": "Conceptual and operational guide for GUI assistant, CLI/shared shell, MCP, and external coding agents."
+      "notes": "Practical guide for the in-app Agent Assistant, provider quick starts, reviewed shared-shell suggestions, CLI/shared shell, MCP, and external coding agents."
     },
     {
       "id": "metabion_external_service_handoff_gui_cli",

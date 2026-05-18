@@ -1,7 +1,7 @@
 {
   "schema": "gentle.tutorial_source.v2",
   "id": "agent_interfaces",
-  "title": "GENtle Agent Interfaces Tutorial",
+  "title": "GENtle Agent Assistant and Agent Interfaces Tutorial",
   "catalog": {
     "order": 11,
     "path": "docs/agent_interfaces_tutorial.md",
@@ -14,6 +14,6 @@
       "mcp_users",
       "contributors"
     ],
-    "notes": "Conceptual and operational guide for GUI assistant, CLI/shared shell, MCP, and external coding agents."
+    "notes": "Practical guide for the in-app Agent Assistant, provider quick starts, reviewed shared-shell suggestions, CLI/shared shell, MCP, and external coding agents."
   }
 }

@@ -47,7 +47,7 @@ bench-user narrative before running the exact workflow.
 ### Orientation And Interfaces
 
 - [`docs/tutorial/landscape_overview.md`](./landscape_overview.md) - Use this when: you want the tutorial map, dependencies, and suggested learning order before choosing a path.
-- [`docs/agent_interfaces_tutorial.md`](../agent_interfaces_tutorial.md) - Use this when: you want to operate GENtle through CLI, MCP, the in-app assistant, or external coding agents.
+- [`docs/agent_interfaces_tutorial.md`](../agent_interfaces_tutorial.md) - Use this when: you want to work through the in-app Agent Assistant, provider quick starts, reviewed command suggestions, CLI/shared shell, MCP, or external coding agents.
 
 ### PCR, qPCR, And Direct Sequence Inspection
 

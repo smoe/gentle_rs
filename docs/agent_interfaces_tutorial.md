@@ -1,381 +1,309 @@
-# GENtle Agent Interfaces Tutorial
+# GENtle Agent Assistant and Agent Interfaces Tutorial
 
 > Type: `operational reference tutorial`
 > Status: `manual/reference`
-> Audience: users operating GENtle through GUI assistant, CLI/shared shell, MCP,
-> or external coding agents.
+> Audience: users operating GENtle through the in-app Agent Assistant, CLI/shared shell, MCP, or external coding agents.
 
-Last updated: 2026-03-07
+Last updated: 2026-05-18
 
-This is a self-standing tutorial for using GENtle with AI/agent systems.
+This tutorial explains how to let an AI assistant help with GENtle without
+giving up reproducibility. The most important idea is simple:
 
-Goal: make it explicit who runs what, where, for which purpose, and how the
-interfaces differ:
+- the model proposes or selects GENtle commands
+- GENtle executes reviewed commands through the shared shell or engine
+- replayability comes from those concrete commands, not from the free-form chat
 
-- deterministic CLI/shared shell
-- MCP (`gentle_mcp`)
-- in-app Agent Assistant
-- external coding agents (for example OpenAI Codex asked to "use GENtle")
+You can open this page inside GENtle from:
 
-This document is conceptual + operational. Protocol-level details remain in
-`docs/protocol.md`.
+1. `Help -> Tutorials -> Agent Assistant and Agent Interfaces Tutorial`
+2. `Help -> Agent Interface` for the shorter protocol overview
 
-Plain-language note used in this file:
+Protocol-level details live in `docs/agent_interface.md` and
+`docs/protocol.md`. This page is the practical walk-through.
 
-- "fixed command format" means a command/tool with defined inputs and
-  predictable outputs (usually JSON).
+## 1) The mental model
 
-## 1) One mental model first
+GENtle has one deterministic execution core.
 
-GENtle has one deterministic execution core (engine + shared shell commands).
+The same command should mean the same thing when it is reached from:
 
-Agent interfaces are wrappers around that core.
+- GUI Shell
+- `gentle_cli shell "..."`
+- MCP tools that delegate to shared shell or engine operations
+- Agent Assistant suggested commands
+- JavaScript/Lua shell wrappers
 
-- deterministic layer:
-  - `gentle_cli ...`
-  - `gentle_cli shell '...'`
-  - GUI `Shell` panel
-  - MCP tools calling shared engine commands
-- conversational layer:
-  - Agent Assistant (GUI or `agents ask`)
-  - external coding agents (Codex, etc.) that decide what commands to run
+An agent can help you find, combine, or explain commands. It should not become
+a second biology implementation.
 
-Important: reproducibility comes from fixed commands with explicit arguments, not
-from free-form prompting.
+## 2) The internal path: Agent Assistant
 
-## 2) Who runs what where (exact role map)
+Use this when you are already in GENtle and want the assistant to propose next
+steps.
 
-### A) Bench scientist in GENtle GUI
+Open it from:
 
-Runs in: GENtle desktop app window.
-
-Uses:
-
-- GUI controls/windows
-- GUI `Shell` for deterministic commands
-- Agent Assistant window for planning + command suggestions
-
-Purpose:
-
-- interactive exploration and visualization
-- human-in-the-loop command execution
-
-### B) Analyst/engineer in terminal
-
-Runs in: terminal (bash/zsh/etc.).
-
-Uses:
-
-- `gentle_cli` direct commands
-- `gentle_cli shell '...'` shared parser
-
-Purpose:
-
-- scripts, CI, reproducible pipelines, explicit state files
-
-### C) External AI orchestrator with MCP support
-
-Runs in: MCP-capable client/runner.
-
-Uses:
-
-- `gentle_mcp` JSON-RPC `tools/list` and `tools/call`
-
-Purpose:
-
-- controlled tool-calling loops with structured envelopes
-- capability discovery/negotiation before execution (`tools/list`,
-  `capabilities`, `help`)
-- integration with tool-based agent frameworks
-
-### D) External coding agent (for example Codex) asked to "use GENtle"
-
-Runs in: coding-agent environment (editor/terminal automation context), not
-inside GENtle itself.
-
-Uses:
-
-- shell commands (`cargo`, `gentle_cli`, file edits)
-- optionally MCP if explicitly wired by user
-
-Purpose:
-
-- automate repo tasks, run commands, patch docs/code, orchestrate workflows
-
-Note: this is not the same as GENtle Agent Assistant. It is a separate agent
-runtime controlling your environment.
-
-## 3) How AI environments discover GENtle functionality
-
-This question has two parts: static discovery and runtime discovery.
-
-Static discovery (what exists and how it is intended to be used):
-
-- repository instructions and architecture docs:
-  - `AGENTS.md`
-  - `docs/architecture.md`
-  - `docs/protocol.md`
-  - `docs/cli.md`
-  - `docs/gui.md`
-  - `docs/glossary.json` (canonical command catalog source)
-
-Runtime discovery (what this build can do right now):
-
-- CLI/shared shell discovery:
-  - `gentle_cli capabilities`
-  - `gentle_cli help --format markdown --interface cli-direct`
-  - `gentle_cli help --format json --interface all`
-  - `gentle_cli agents list`
-- MCP discovery:
-  - `tools/list` against `gentle_mcp`
-  - `tools/call(name="capabilities", ...)`
-  - `tools/call(name="help", arguments={...})`
-
-For Codex-style coding agents specifically:
-
-- in-repo: they usually learn first from `AGENTS.md` + docs, then verify using
-  CLI/MCP discovery calls above.
-- outside repo context: they only know what you provide at runtime, so include
-  explicit commands and state paths in prompts.
-
-## 4) Local LLMs (Msty, Jan, Ollama/OpenAI-compatible)
-
-Local models are deployment choices, not a separate GENtle operation model. They
-use the same interfaces as hosted models.
-
-Primary route (recommended for most users):
-
-- Agent Assistant (GUI) or `gentle_cli agents ask ...`
-- transport: `native_openai_compat`
-- endpoint: local OpenAI-compatible HTTP base URL (for example Jan/Msty/Ollama
-  gateway)
-- model: concrete local model id (for example `deepseek-r1:8b`)
-
-GUI flow:
-
-1. Open `Tools -> Agent Assistant...`.
-2. Select local system template (for example `Msty Local (template)`).
-3. Set/confirm base URL.
-4. Click `Discover models`.
-5. Pick one discovered model (model `unspecified` is intentionally blocked for
-   execution).
-6. Ask the assistant as usual.
-
-CLI example:
-
-```bash
-gentle_cli agents ask local_llama_compat --prompt "summarize current project and suggest next command" --base-url http://localhost:11964 --model deepseek-r1:8b
+```text
+File -> Agent Assistant...
 ```
 
-Alternative route for tool-calling stacks:
+The in-app Agent Assistant sends a request to one configured agent system and
+expects a `gentle.agent_response.v1` reply:
 
-- If your local-agent runtime supports MCP, connect it to `gentle_mcp` and use
-  `tools/list`/`tools/call`.
-- If it does not support MCP tools, use chat/planning mode and have it emit
-  explicit `gentle_cli` commands for you to run.
-
-## 4b) ClawBio/OpenClaw skill runtime
-
-ClawBio/OpenClaw can run GENtle through a dedicated wrapper skill scaffold:
-
-- `integrations/clawbio/skills/gentle-cloning/`
-
-Execution model:
-
-1. ClawBio skill receives a structured request JSON.
-2. Wrapper maps request mode to one deterministic `gentle_cli` command.
-3. Wrapper executes command (with timeout) and writes reproducibility bundle.
-
-This differs from MCP:
-
-- MCP exposes GENtle tools directly over JSON-RPC.
-- ClawBio skill wraps CLI process execution and report packaging.
-
-This differs from `agents ask`:
-
-- `agents ask` is conversational planning/suggestion inside GENtle.
-- ClawBio skill is command-runner style integration for external orchestration.
-
-## 5) Fast comparison matrix
-
-| Topic | CLI/shared shell | MCP | Agent Assistant (GUI/`agents ask`) | External coding agent (Codex-style) |
-|---|---|---|---|---|
-| Where it runs | Terminal or GUI Shell | MCP client + `gentle_mcp` server | Inside GENtle (or CLI `agents ask`) | External agent runtime |
-| Primary unit | command | tool call (`tools/call`) | prompt + suggestions | free-form tasks, then commands |
-| Output form | direct JSON/text/markdown | JSON-RPC envelope + structured content | assistant text/questions/suggested commands | whatever the agent emits |
-| Determinism | high | high | medium for planning, high once commands are executed | depends on how strictly it uses commands |
-| Safety gate | command intent | `confirm=true` on mutating tools | per-suggestion execution (`ask`/`auto`) | governed by that runtime/user policy |
-| Best use | scripts/reproducibility | tool ecosystems | user guidance + quick planning | code/docs automation + orchestration |
-
-## 6) Tutorial flow: same task through each interface
-
-Task example: prepare a helper genome and run BLAST for one query sequence.
-
-### Path A: deterministic CLI/shared shell
-
-Run directly:
-
-```bash
-gentle_cli helpers prepare "Plasmid pUC19 (online)" --cache-dir data/helper_genomes --timeout-secs 600
-gentle_cli helpers blast "Plasmid pUC19 (online)" ACGTACGT --task blastn-short --max-hits 20 --cache-dir data/helper_genomes
+```json
+{
+  "schema": "gentle.agent_response.v1",
+  "assistant_message": "Short explanation for the user.",
+  "questions": [],
+  "suggested_commands": [
+    {
+      "title": "Inspect restriction sites",
+      "rationale": "This is a read-only check.",
+      "command": "features restriction-scan --sequence-text GAATTC... --enzyme EcoRI",
+      "execution": "ask"
+    }
+  ]
+}
 ```
 
-Or via shared shell route:
+Important: `suggested_commands[].command` contains GENtle shared-shell
+commands, not operating-system shell commands. GENtle runs them internally after
+you review them.
 
-```bash
-gentle_cli shell 'helpers prepare "Plasmid pUC19 (online)" --cache-dir data/helper_genomes --timeout-secs 600'
-gentle_cli shell 'helpers blast "Plasmid pUC19 (online)" ACGTACGT --task blastn-short --max-hits 20 --cache-dir data/helper_genomes'
+## 3) First internal test: offline demo
+
+This does not contact any provider.
+
+1. Open `File -> Agent Assistant...`.
+2. Click `Use Demo Echo`.
+3. Click `Test Setup`.
+4. Enter a prompt such as:
+
+```text
+ask: features restriction-scan --sequence-text GAATTCGGGCCCGGGCCCGAGCTCGAATTC --enzyme EcoRI --enzyme SmaI
 ```
 
-Who executes: you (or script/CI).
+5. Click `Ask Agent`.
+6. Review the suggested command.
+7. Run it only if the command is the GENtle command you intended.
 
-### Path B: MCP tool-calling
+The demo echo is not intelligent. It is useful because it exercises the same
+response and command-review loop without requiring an API key.
 
-Client calls `gentle_mcp` tools (abbreviated concept flow):
+## 4) Provider quick starts
+
+The quick-start buttons configure the built-in native HTTP transports.
+
+### OpenAI
+
+1. Click `Use OpenAI API`.
+2. Paste an OpenAI Platform API key into `OpenAI API key`, or set
+   `OPENAI_API_KEY` before launching GENtle.
+3. Click `Test Setup`.
+
+ChatGPT or Codex subscriptions are not OpenAI API keys.
+
+### Claude
+
+1. Click `Use Claude API`.
+2. Paste an Anthropic Console API key into `Anthropic API key`, or set
+   `ANTHROPIC_API_KEY`.
+3. Click `Test Setup`.
+
+Claude Code or Claude.ai subscription/login tokens are not Anthropic API keys.
+GENtle tries to catch obvious wrong-token shapes before contacting Anthropic,
+but the live model-list probe is the final check.
+
+### Mistral
+
+1. Click `Use Mistral API`.
+2. Paste a Mistral La Plateforme API key into `Mistral API key`, or set
+   `MISTRAL_API_KEY`.
+3. Click `Test Setup`.
+
+Le Chat or Mistral account login tokens are not Mistral API keys.
+
+### Local model
+
+1. Click `Use Local Model (no OpenAI API billing)`.
+2. Set `Base URL override` to the local OpenAI-compatible endpoint, for example
+   `http://localhost:11964`.
+3. Click `Discover Models`.
+4. Pick a concrete discovered model.
+5. Click `Test Setup`.
+
+Local roots may expose `/chat/completions` or `/v1/chat/completions`; GENtle
+tries both for OpenAI-compatible local services.
+
+## 5) What Test Setup actually tests
+
+`Test Setup` is intentionally non-generating for native HTTP transports.
+
+It checks:
+
+- catalog system selection
+- provider/key availability
+- resolved base URL
+- resolved model
+- runtime limits
+- model-list endpoint reachability
+- whether the selected model appears in the returned model list
+
+It does not intentionally send a chat/completion/responses request. Quota or
+billing is reported only if the provider returns that error during model-list
+probing.
+
+Common outcomes:
+
+| Status | Meaning | Next action |
+|---|---|---|
+| `ok` | Endpoint, auth, model list, and selected model are consistent. | Ask the assistant. |
+| `missing_key` | GENtle has no provider API key. | Paste a session key or set the provider env var. |
+| `auth_failed` | Provider rejected the key. | Check key type and provider account. |
+| `model_missing` | Model list worked but the selected model was absent or unspecified. | Discover/pick a model or set model override. |
+| `endpoint_unreachable` | Base URL could not be reached. | Start the local server or correct Base URL. |
+| `provider_error` | Model-list response was malformed or unexpected. | Inspect the provider message. |
+
+## 6) A safe first real prompt
+
+Use a read-only request first:
+
+```text
+Please inspect this short sequence for EcoRI and SmaI sites. Return one GENtle
+shared-shell command only. Use execution "ask".
+
+Sequence:
+GAATTCGGGCCCGGGCCCGAGCTCGAATTC
+```
+
+A good command suggestion looks like:
+
+```text
+features restriction-scan --sequence-text GAATTCGGGCCCGGGCCCGAGCTCGAATTC --enzyme EcoRI --enzyme SmaI
+```
+
+The command is read-only and uses inline sequence text. You can run it from the
+Agent Assistant suggestion row, the GUI Shell, or the terminal:
+
+```bash
+cargo run --quiet --bin gentle_cli -- shell 'features restriction-scan --sequence-text GAATTCGGGCCCGGGCCCGAGCTCGAATTC --enzyme EcoRI --enzyme SmaI'
+```
+
+That replay command is the audit trail. The model prompt is only how you got
+there.
+
+## 7) Execution policy
+
+Prefer this policy while learning:
+
+- keep `Auto-run suggestions marked as 'auto'` off
+- ask the model for `execution: "ask"`
+- run one suggestion at a time
+- read the command before running it
+- copy important commands into lab notes or issue comments
+
+GENtle blocks recursive agent execution. Suggested commands may not silently run
+`agents ask`, `agents plan`, or `agents execute-plan` again.
+
+## 8) The external path: Claude, Codex, or another coding agent
+
+Use this when the assistant is outside GENtle and can run terminal commands or
+edit the checkout.
+
+Recommended discovery commands:
+
+```bash
+scripts/dev-gentle-cli doctor --agent
+scripts/dev-gentle-cli capabilities
+scripts/dev-gentle-cli shell "help"
+```
+
+For persistent project state, give the external agent an explicit state file:
+
+```bash
+scripts/dev-gentle-cli --state path/to/project.gentle.json shell "state-summary"
+```
+
+External coding agents are useful for:
+
+- testing documented workflows
+- patching docs or source
+- adding missing CLI/shared-shell routes
+- comparing GUI, CLI, and MCP behavior
+
+They are not the same as the in-app Agent Assistant. They operate your
+development environment; the in-app assistant operates through GENtle's agent
+catalog and reviewed shared-shell suggestions.
+
+## 9) The MCP path
+
+Use MCP when your external assistant supports typed tools.
+
+Start the server with an explicit state path:
+
+```bash
+gentle_mcp --state .gentle_state.json
+```
+
+The MCP client should first call:
 
 1. `tools/list`
-2. `tools/call(name="capabilities", arguments={...})`
-3. `tools/call(name="helper_catalog_entries", arguments={...})`, `tools/call(name="helper_semantics_vocabulary", arguments={...})`, `tools/call(name="host_profile_catalog_entries", arguments={...})`, `tools/call(name="ensembl_installable_genomes", arguments={...})`, or `tools/call(name="helper_interpretation", arguments={...})` for structured catalog/discovery queries
-4. `tools/call(name="op", arguments={..., "confirm": true})` for mutating ops
-5. `tools/call(name="blast_async_start", ...)`
-6. poll `blast_async_status`
+2. `capabilities`
+3. the specific read-only or mutating tool
 
-Who executes: MCP client orchestrator.
+Mutating operation/workflow routes require explicit confirmation. MCP is best
+when the outside agent should see a typed tool palette instead of inventing
+plain text commands.
 
-Where state lives: resolved MCP `state_path` and engine persistence rules.
+## 10) Choosing the right interface
 
-### Path C: GENtle Agent Assistant
+| Need | Use |
+|---|---|
+| Human asks for help inside GENtle | Agent Assistant |
+| Human knows exact command | GUI Shell or `gentle_cli shell` |
+| Script or CI | `gentle_cli` / `scripts/dev-gentle-cli` |
+| Tool-calling external agent | `gentle_mcp` |
+| Repository edits or missing route implementation | Codex/Claude Code-style external agent |
+| Private/local inference | Local OpenAI-compatible Agent Assistant profile |
 
-1. Open `Tools -> Agent Assistant...`
-2. Select system from catalog.
-3. Optionally set API key/base URL/model/timeouts.
-4. Paste a structured prompt (or use `Insert` template).
-5. Review suggestions.
-6. Execute selected suggestions (`Run` per row or explicit execute options).
+## 11) Troubleshooting
 
-Who executes:
+`auth_failed` for OpenAI:
 
-- model generates suggestions
-- GENtle executes only selected/allowed suggestions through shared shell
+- Use an OpenAI Platform API key.
+- A ChatGPT/Codex subscription is not enough.
 
-### Path D: external coding agent (Codex-style) asked to use GENtle
+`auth_failed` for Claude:
 
-Typical user request:
+- Use an Anthropic Console API key.
+- A Claude Code/Claude.ai login token is not enough.
 
-- "Run helper BLAST via gentle_cli and summarize top hits."
+`auth_failed` for Mistral:
 
-Agent behavior:
+- Use a Mistral La Plateforme API key.
+- A Le Chat login token is not enough.
 
-- chooses terminal commands (for example `gentle_cli ...`)
-- runs them in your environment
-- summarizes outputs / edits files
+Local model says `model_missing`:
 
-Key distinction:
+- Run `Discover Models`.
+- Pick a returned model.
+- Or set `Model override` to an exact model id.
 
-- this is outside GENtle’s own assistant transport and governance UI
-- reliability depends on how strictly the coding agent is instructed to use
-  deterministic commands and explicit state paths
+The assistant suggests an OS shell command:
 
-## 7) MCP vs command line (practical difference)
+- Do not run it through the Agent Assistant suggestion row.
+- Ask again for a GENtle shared-shell command only.
 
-Both can be deterministic and adapter-equivalent. The difference is integration
-style.
+MCP and CLI disagree:
 
-- command line:
-  - best for humans/scripts/CI using plain process invocations
-  - minimal envelope overhead
-- MCP:
-  - best for tool-calling systems that already use JSON-RPC (the standard MCP
-    request/response format)
-  - explicit mutating gate (`confirm=true`) and typed tool names
+- Treat that as a parity bug.
+- Record the exact command/tool call and state path.
 
-If you already have shell automation, CLI is simpler.
-If you are integrating into an MCP-native agent stack, MCP is simpler.
+## 12) Related docs
 
-## 8) MCP vs "ask Codex to use GENtle"
-
-MCP:
-
-- GENtle is a declared tool endpoint
-- narrow, explicit input/output format per tool
-- easier to bound and audit tool invocations
-
-Codex-style external agent:
-
-- general-purpose environment automation
-- can do much more than GENtle (file edits, build/test/docs, etc.)
-- not inherently constrained to GENtle tool schemas unless you enforce it
-
-Use MCP when you want strict tool interface discipline.
-Use external coding agent when you want broader repo/system automation.
-
-## 9) Agent Assistant vs "GENtle Shell" vs "prompting in Agent Assistant"
-
-These are often conflated:
-
-- GUI `Shell`:
-  - deterministic command executor
-  - you type exact command syntax
-- Agent Assistant prompt box:
-  - conversational planning input to a model
-  - model returns text/questions/suggested commands
-- Agent Assistant execution:
-  - optional step that runs selected suggestions via shared shell commands
-
-So:
-
-- prompting in Agent Assistant is not the same as executing shell commands
-- execution determinism starts when concrete commands are run
-
-## 10) Minimal-success guidance for colleagues
-
-For internal preview, default to this policy:
-
-1. Ask Assistant for explicit commands only.
-2. Keep execution mode at `ask-before-run`.
-3. Run one suggestion at a time.
-4. Keep a state file/project path explicit for reproducibility.
-5. If a run matters, re-run same command through `gentle_cli` and record output.
-
-## 11) Common confusion checklist
-
-- "I used Agent Assistant, why is this less reproducible?"
-  - Because prompt text is not a stable execution format; commands are.
-- "MCP and CLI gave different results."
-  - They should not for equivalent routed commands; this indicates a parity bug.
-- "Codex succeeded but I cannot replay."
-  - Ask for explicit final `gentle_cli` commands and state path, then rerun.
-- "My local LLM cannot execute tool calls."
-  - Use Agent Assistant/`agents ask` with `native_openai_compat`, or have the
-    model output explicit `gentle_cli` commands.
-
-## 12) When to choose which interface
-
-Choose CLI/shared shell when:
-
-- you need exact replayability and scripts.
-
-Choose MCP when:
-
-- your orchestrator is tool-calling-first and expects JSON-RPC envelopes.
-
-Choose Agent Assistant when:
-
-- you need help translating goals into concrete GENtle commands.
-
-Choose external coding agent (Codex-style) when:
-
-- you want broader engineering automation around GENtle, not only GENtle tool
-  calls.
-
-Choose local OpenAI-compatible Agent Assistant when:
-
-- you want private/local inference while keeping the same GENtle execution
-  routes.
-
-## Related docs
-
-- `docs/agent_interface.md` (concise route overview)
-- `docs/gui.md` (Agent Assistant UI operations)
-- `docs/cli.md` (command syntax and examples)
-- `docs/protocol.md` (schemas and field definitions)
+- `docs/agent_interface.md` - concise interface overview and schema notes
+- `docs/quickstart_claude.md` - Claude-specific internal/external loop notes
+- `docs/gui.md` - Agent Assistant UI details
+- `docs/cli.md` - CLI and shared-shell command syntax
+- `docs/protocol.md` - schemas and adapter contracts
+- `docs/gui_cli_mcp_parity.md` - current parity matrix
