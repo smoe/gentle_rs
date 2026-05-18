@@ -23,6 +23,9 @@ Maintenance rule:
 - Added tutorial stewardship rules so recurring maintenance checks tutorial
   implementation drift, wet-lab readability, biological teaching depth, and
   Codex-versus-human review sign-off boundaries.
+- Kept the Agent Assistant and Agent Interfaces tutorial pinned in the
+  in-app `Help -> Tutorials` picker even if catalog discovery falls back to
+  markdown scanning.
 - Polished generated tutorial rendering with quieter provenance in Help,
   applied-concept wording, earlier parameter explanation, CLI state guidance,
   SVG label fallbacks, and capped tutorial-project progress before final open.

@@ -11,6 +11,8 @@
 
 use super::*;
 
+const AGENT_INTERFACES_TUTORIAL_PATH: &str = "docs/agent_interfaces_tutorial.md";
+
 impl GENtleApp {
     pub(super) fn split_leading_markdown_front_matter(markdown: &str) -> Option<(&str, &str)> {
         let start = if markdown.starts_with("---\n") {
@@ -542,7 +544,7 @@ impl GENtleApp {
     pub(super) fn discover_help_tutorial_entries() -> Vec<HelpTutorialDocEntry> {
         if let Some(catalog_path) = Self::resolve_runtime_doc_path(DEFAULT_TUTORIAL_CATALOG_PATH) {
             if let Ok(catalog) = load_tutorial_catalog(&catalog_path) {
-                let catalog_entries = catalog
+                let mut catalog_entries = catalog
                     .entries
                     .into_iter()
                     .filter_map(|entry| {
@@ -571,6 +573,7 @@ impl GENtleApp {
                         })
                     })
                     .collect::<Vec<_>>();
+                Self::ensure_agent_interfaces_tutorial_entry(&mut catalog_entries);
                 if !catalog_entries.is_empty() {
                     return catalog_entries;
                 }
@@ -593,7 +596,7 @@ impl GENtleApp {
             left_depth.cmp(&right_depth).then_with(|| left.cmp(right))
         });
 
-        markdown_paths
+        let mut entries = markdown_paths
             .into_iter()
             .map(|path| {
                 let markdown = Self::load_help_markdown_from_path(&path).unwrap_or_default();
@@ -609,7 +612,34 @@ impl GENtleApp {
                     summary: format!("docs/tutorial/{relative}"),
                 }
             })
-            .collect()
+            .collect::<Vec<_>>();
+        Self::ensure_agent_interfaces_tutorial_entry(&mut entries);
+        entries
+    }
+
+    pub(super) fn ensure_agent_interfaces_tutorial_entry(
+        entries: &mut Vec<HelpTutorialDocEntry>,
+    ) {
+        let Some(resolved_path) = Self::resolve_runtime_doc_path(AGENT_INTERFACES_TUTORIAL_PATH)
+        else {
+            return;
+        };
+        let resolved_string = resolved_path.to_string_lossy().to_string();
+        if entries.iter().any(|entry| entry.path == resolved_string) {
+            return;
+        }
+        let markdown = Self::load_help_markdown_from_path(&resolved_path).unwrap_or_default();
+        let title = Self::markdown_first_heading(&markdown)
+            .unwrap_or_else(|| "GENtle Agent Assistant and Agent Interfaces Tutorial".to_string());
+        entries.push(HelpTutorialDocEntry {
+            title,
+            path: resolved_string,
+            summary: "docs/agent_interfaces_tutorial.md\n\
+type: operational_reference\n\
+status: manual/reference\n\
+Practical guide for the in-app Agent Assistant, provider quick starts, reviewed shared-shell suggestions, CLI/shared shell, MCP, and external coding agents."
+                .to_string(),
+        });
     }
 
     pub(super) fn set_help_tutorial_selected(&mut self, tutorial_index: usize) -> bool {

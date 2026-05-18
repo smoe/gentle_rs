@@ -31334,6 +31334,24 @@ mod tests {
     }
 
     #[test]
+    fn agent_interfaces_tutorial_is_pinned_when_catalog_fallback_is_used() {
+        let mut entries = vec![];
+        GENtleApp::ensure_agent_interfaces_tutorial_entry(&mut entries);
+        GENtleApp::ensure_agent_interfaces_tutorial_entry(&mut entries);
+
+        let matches = entries
+            .iter()
+            .filter(|entry| entry.path.ends_with("docs/agent_interfaces_tutorial.md"))
+            .collect::<Vec<_>>();
+        assert_eq!(matches.len(), 1);
+        assert_eq!(
+            matches[0].title,
+            "GENtle Agent Assistant and Agent Interfaces Tutorial"
+        );
+        assert!(matches[0].summary.contains("operational_reference"));
+    }
+
+    #[test]
     fn open_tutorial_project_chapter_opens_linked_guide() {
         let mut app = GENtleApp::default();
 
