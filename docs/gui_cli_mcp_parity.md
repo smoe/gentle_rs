@@ -17,11 +17,11 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 
 | Adapter | prominent | shell-only | gap |
 |---|---:|---:|---:|
-| GUI | 20 | 537 | 0 |
-| gentle_cli | 320 | 262 | 0 |
-| MCP | 67 | 400 | 21 |
-| JS | 78 | 381 | 21 |
-| Lua | 77 | 382 | 21 |
+| GUI | 20 | 538 | 0 |
+| gentle_cli | 320 | 263 | 0 |
+| MCP | 67 | 401 | 21 |
+| JS | 78 | 382 | 21 |
+| Lua | 77 | 383 | 21 |
 | ClawBio | 0 | 0 | 0 |
 
 ## Glossary Commands
@@ -606,6 +606,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | ListReporterCatalog | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | RecommendReporters | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | ExportReporterCorpus | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
+| PlanReporterConstructHandoff | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | ScanTfbsHits | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | InspectJasparEntry | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | SummarizeJasparEntries | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
