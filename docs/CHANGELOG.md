@@ -37,6 +37,10 @@ Maintenance rule:
 - Polished generated tutorial rendering with quieter provenance in Help,
   applied-concept wording, earlier parameter explanation, CLI state guidance,
   SVG label fallbacks, and capped tutorial-project progress before final open.
+- Surfaced documentation-only guided walkthroughs, including the Agent
+  Assistant and Agent Interfaces tutorial, from `File -> Open Tutorial
+  Project...` so readers can find them from the tutorial-opening menu as well
+  as `Help -> Tutorials`.
 
 ## 2026-05-17
 

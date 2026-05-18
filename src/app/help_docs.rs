@@ -11,7 +11,13 @@
 
 use super::*;
 
-const AGENT_INTERFACES_TUTORIAL_PATH: &str = "docs/agent_interfaces_tutorial.md";
+pub(super) const AGENT_INTERFACES_TUTORIAL_PATH: &str = "docs/agent_interfaces_tutorial.md";
+pub(super) const AGENT_INTERFACES_TUTORIAL_TITLE: &str =
+    "GENtle Agent Assistant and Agent Interfaces Tutorial";
+pub(super) const AGENT_INTERFACES_TUTORIAL_SUMMARY: &str = "docs/agent_interfaces_tutorial.md\n\
+type: operational_reference\n\
+status: manual/reference\n\
+Practical guide for the in-app Agent Assistant, provider quick starts, reviewed shared-shell suggestions, CLI/shared shell, MCP, and external coding agents.";
 
 impl GENtleApp {
     pub(super) fn split_leading_markdown_front_matter(markdown: &str) -> Option<(&str, &str)> {
@@ -617,9 +623,7 @@ impl GENtleApp {
         entries
     }
 
-    pub(super) fn ensure_agent_interfaces_tutorial_entry(
-        entries: &mut Vec<HelpTutorialDocEntry>,
-    ) {
+    pub(super) fn ensure_agent_interfaces_tutorial_entry(entries: &mut Vec<HelpTutorialDocEntry>) {
         let Some(resolved_path) = Self::resolve_runtime_doc_path(AGENT_INTERFACES_TUTORIAL_PATH)
         else {
             return;
@@ -630,15 +634,11 @@ impl GENtleApp {
         }
         let markdown = Self::load_help_markdown_from_path(&resolved_path).unwrap_or_default();
         let title = Self::markdown_first_heading(&markdown)
-            .unwrap_or_else(|| "GENtle Agent Assistant and Agent Interfaces Tutorial".to_string());
+            .unwrap_or_else(|| AGENT_INTERFACES_TUTORIAL_TITLE.to_string());
         entries.push(HelpTutorialDocEntry {
             title,
             path: resolved_string,
-            summary: "docs/agent_interfaces_tutorial.md\n\
-type: operational_reference\n\
-status: manual/reference\n\
-Practical guide for the in-app Agent Assistant, provider quick starts, reviewed shared-shell suggestions, CLI/shared shell, MCP, and external coding agents."
-                .to_string(),
+            summary: AGENT_INTERFACES_TUTORIAL_SUMMARY.to_string(),
         });
     }
 
