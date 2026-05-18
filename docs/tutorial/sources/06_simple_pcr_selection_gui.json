@@ -1,5 +1,5 @@
 {
-  "schema": "gentle.tutorial_source.v2",
+  "schema": "gentle.tutorial_source.v3",
   "id": "simple_pcr_selection_gui",
   "title": "Simple PCR From a Selected Core Region",
   "catalog": {
@@ -33,6 +33,23 @@
       "Right-click the selection and choose `Simple PCR from selection`.",
       "In `PCR Designer`, adjust `max primer distance from core` and `max amplicon`, then click `Apply simple flank windows` if you changed the distance.",
       "Run `Design Primer Pairs` and inspect the in-panel primer report preview for left/right distance from the core ROI and whether the pair cleanly flanks the core."
+    ],
+    "cli_steps": [
+      "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/simple_pcr_selection_gui.json",
+      "# GUI-only selection gesture. For a fully scripted primer-design payload, use Chapter 13's batch PCR route.",
+      "cargo run --bin gentle_cli -- shell 'ui open pcr-design'",
+      "# The scripted equivalent is a DesignPrimerPairs request with explicit core_start/core_end and flank limits.",
+      "cargo run --bin gentle_cli -- shell 'primers list-reports'"
+    ],
+    "step_expectations": [
+      "The starter project loads local TP73 context as `tp73_locus` and pins the primer backend to the deterministic internal implementation.",
+      "The selected core ROI is the biological interval that must be included; scripted users should encode the same interval explicitly in a primer-design request.",
+      "The PCR Designer opens from the same shared UI-intent route used by agent and shell callers.",
+      "The primer-design request should carry flank-window and maximum-amplicon constraints derived from the selected core ROI.",
+      "After primer design, report rows expose amplicon length plus left/right distance from the core ROI."
+    ],
+    "prerequisites": [
+      "load_branch_reverse_complement_pgex_fasta"
     ],
     "learning_objectives": [
       "Start a simple PCR directly from one sequence selection.",

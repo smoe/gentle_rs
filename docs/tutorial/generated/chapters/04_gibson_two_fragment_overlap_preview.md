@@ -14,6 +14,8 @@ Use the built-in Gibson routine baseline to validate overlap assumptions and gen
 
 Gibson assembly in practice depends on overlap design quality. This chapter anchors that design logic in GENtle through one repeatable workflow: build two overlapping fragments, run Gibson-specific preflight checks on overlap compatibility, and produce forward-order preview sequences for review and communication.
 
+**Prerequisites:** Read [Chapter 1: Load FASTA, branch, and reverse-complement](./01_load_branch_reverse_complement_pgex_fasta.md) first.
+
 ## Parameters That Matter
 
 - `left_seq_id / right_seq_id` (where used: template preflight + run)
@@ -47,18 +49,44 @@ Gibson assembly in practice depends on overlap design quality. This chapter anch
 
 ## GUI First
 
-1. Load `test_files/pGEX_3X.fa` and create two overlapping fragments (`gibson_left`, `gibson_right`) using region extraction.
-2. Open `Patterns -> Routine catalog`, locate `Gibson Two-Fragment Overlap Preview`, and import it.
-3. Run from `Shell`: `macros template-run gibson_two_fragment_overlap_preview --bind left_seq_id=gibson_left --bind right_seq_id=gibson_right --bind overlap_bp=20 --bind assembly_prefix=gibson_demo --bind output_id=gibson_demo_forward --validate-only`, then execute without `--validate-only`.
+CLI snippets use GENtle's default `.gentle_state.json` state unless they say otherwise. Add `--state PATH` or `--project PATH` when you want an explicit sandboxed state file for copied commands.
 
-## Command Equivalent (After GUI)
+### Step 1: Create two overlapping pGEX fragments (gibson_left, gibson_right) from test_f...
 
-Run the same routine non-interactively once the GUI flow is clear:
+GUI: Create two overlapping pGEX fragments (`gibson_left`, `gibson_right`) from `test_files/pGEX_3X.fa` using region extraction.
+
+CLI:
 
 ```bash
 cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gibson_two_fragment_overlap_preview.json
-cargo run --bin gentle_cli -- shell 'workflow @docs/examples/workflows/gibson_two_fragment_overlap_preview.json'
 ```
+
+> Expected: The workflow loads `pgex_fasta`, extracts `gibson_left` and `gibson_right`, and leaves deterministic preview IDs for inspection.
+
+### Step 2: Import the Gibson two-fragment overlap preview routine from Patterns -> Routi...
+
+GUI: Import the Gibson two-fragment overlap preview routine from `Patterns -> Routine catalog`.
+
+CLI:
+
+```bash
+cargo run --bin gentle_cli -- shell 'macros template-import assets/cloning_patterns_catalog/gibson/overlap_assembly/gibson_two_fragment_overlap_preview.json'
+```
+
+> Expected: The routine catalog registers `gibson_two_fragment_overlap_preview`, so the next shell command can validate that specific fragment order.
+
+### Step 3: Validate the Gibson overlap preview from Shell, then rerun the same template ...
+
+GUI: Validate the Gibson overlap preview from `Shell`, then rerun the same template without `--validate-only` to create outputs.
+
+CLI:
+
+```bash
+cargo run --bin gentle_cli -- shell 'macros template-run gibson_two_fragment_overlap_preview --bind left_seq_id=gibson_left --bind right_seq_id=gibson_right --bind overlap_bp=20 --bind assembly_prefix=gibson_demo --bind output_id=gibson_demo_forward --validate-only'
+```
+
+> Expected: The validate-only run reports executable bindings for the chosen overlap; rerun with `--transactional` to create the named preview assembly.
+
 
 ## Follow-up Commands
 

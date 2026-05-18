@@ -28,6 +28,12 @@ Maintenance rule:
   markdown scanning.
 - Enriched the first generated tutorial batch with v3 per-step CLI snippets,
   expected-result callouts, and prerequisite links.
+- Enriched the Gibson generated tutorial batch with v3 per-step CLI snippets,
+  expected-result callouts, and prerequisite links.
+- Enriched the online generated tutorial batch with v3 per-step CLI snippets,
+  expected-result callouts, and prerequisite links to reference preparation.
+- Completed generated tutorial-source enrichment so every executable chapter
+  now has v3 per-step CLI/expected-result teaching fields.
 - Polished generated tutorial rendering with quieter provenance in Help,
   applied-concept wording, earlier parameter explanation, CLI state guidance,
   SVG label fallbacks, and capped tutorial-project progress before final open.

@@ -16,6 +16,8 @@ This chapter now uses its own deterministic workflow example instead of reusing 
 
 See also: guided walkthrough [docs/tutorial/gibson_arrangements_gui.md](../../gibson_arrangements_gui.md). Use that page first when you want a human-led path; this chapter is the executable reference.
 
+**Prerequisites:** Read [Chapter 15: Gibson Specialist Starter Project (offline)](./15_gibson_specialist_testing_baseline.md) first.
+
 ## Parameters That Matter
 
 - `destination seq_id = gibson_destination_pgex` (where used: Stored vector lane in the arrangement walkthrough)
@@ -56,18 +58,44 @@ See also: guided walkthrough [docs/tutorial/gibson_arrangements_gui.md](../../gi
 
 ## GUI First
 
-1. Open `File -> Open Tutorial Project...` and choose `Gibson Arrangements Starter Project (offline)`.
-2. Confirm the opened project contains `gibson_destination_pgex` (circular), `gibson_insert_demo` (linear), and the assembled product `gibson_destination_pgex_with_gibson_insert_demo`.
-3. The Help window should open automatically on `Gibson Arrangements Tutorial`; continue there from `Step 1` onward.
+CLI snippets use GENtle's default `.gentle_state.json` state unless they say otherwise. Add `--state PATH` or `--project PATH` when you want an explicit sandboxed state file for copied commands.
 
-## Command Equivalent (After GUI)
+### Step 1: Open the Gibson arrangements starter project from File -> Open Tutorial Proje...
 
-Run the same routine non-interactively once the GUI flow is clear:
+GUI: Open the Gibson arrangements starter project from `File -> Open Tutorial Project...`.
+
+CLI:
 
 ```bash
 cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gibson_arrangements_baseline.json
-cargo run --bin gentle_cli -- shell 'workflow @docs/examples/workflows/gibson_arrangements_baseline.json'
 ```
+
+> Expected: The workflow builds the same arrangement-ready starter state that the GUI tutorial-project menu opens.
+
+### Step 2: Confirm the starter contains gibson_destination_pgex (circular), gibson_inser...
+
+GUI: Confirm the starter contains `gibson_destination_pgex` (circular), `gibson_insert_demo` (linear), and the assembled product `gibson_destination_pgex_with_gibson_insert_demo`.
+
+CLI:
+
+```bash
+cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gibson_arrangements_baseline.json
+```
+
+> Expected: The workflow result includes the vector, insert, assembled Gibson product, stored arrangement context, and the retained handoff artifact.
+
+### Step 3: Continue in the automatically opened Gibson Arrangements Tutorial from Step 1...
+
+GUI: Continue in the automatically opened `Gibson Arrangements Tutorial` from `Step 1` onward.
+
+CLI:
+
+```bash
+cargo run --bin gentle_examples_docs -- tutorial-catalog-check
+```
+
+> Expected: The tutorial catalog remains linked so the generated arrangement starter points readers to the hand-written Gibson Arrangements walkthrough.
+
 
 ## Follow-up Commands
 

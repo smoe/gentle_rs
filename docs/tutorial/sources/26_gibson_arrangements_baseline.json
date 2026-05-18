@@ -1,5 +1,5 @@
 {
-  "schema": "gentle.tutorial_source.v2",
+  "schema": "gentle.tutorial_source.v3",
   "id": "gibson_arrangements_baseline",
   "title": "Gibson Arrangements Starter Project (offline)",
   "catalog": {
@@ -29,9 +29,22 @@
       "You want one offline tutorial-project entry that opens directly on the arrangement guide in Help/Tutorial."
     ],
     "gui_steps": [
-      "Open `File -> Open Tutorial Project...` and choose `Gibson Arrangements Starter Project (offline)`.",
-      "Confirm the opened project contains `gibson_destination_pgex` (circular), `gibson_insert_demo` (linear), and the assembled product `gibson_destination_pgex_with_gibson_insert_demo`.",
-      "The Help window should open automatically on `Gibson Arrangements Tutorial`; continue there from `Step 1` onward."
+      "Open the Gibson arrangements starter project from `File -> Open Tutorial Project...`.",
+      "Confirm the starter contains `gibson_destination_pgex` (circular), `gibson_insert_demo` (linear), and the assembled product `gibson_destination_pgex_with_gibson_insert_demo`.",
+      "Continue in the automatically opened `Gibson Arrangements Tutorial` from `Step 1` onward."
+    ],
+    "cli_steps": [
+      "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gibson_arrangements_baseline.json",
+      "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gibson_arrangements_baseline.json",
+      "cargo run --bin gentle_examples_docs -- tutorial-catalog-check"
+    ],
+    "step_expectations": [
+      "The workflow builds the same arrangement-ready starter state that the GUI tutorial-project menu opens.",
+      "The workflow result includes the vector, insert, assembled Gibson product, stored arrangement context, and the retained handoff artifact.",
+      "The tutorial catalog remains linked so the generated arrangement starter points readers to the hand-written Gibson Arrangements walkthrough."
+    ],
+    "prerequisites": [
+      "gibson_specialist_testing_baseline"
     ],
     "learning_objectives": [
       "Use one executable starter project to reach an arrangement-ready walkthrough directly.",

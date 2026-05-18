@@ -16,6 +16,8 @@ This chapter exists to remove setup friction from Gibson specialist testing. The
 
 See also: guided walkthrough [docs/tutorial/gibson_specialist_testing_gui.md](../../gibson_specialist_testing_gui.md). Use that page first when you want a human-led path; this chapter is the executable reference.
 
+**Prerequisites:** Read [Chapter 4: Gibson two-fragment overlap planning baseline](./04_gibson_two_fragment_overlap_preview.md) first.
+
 ## Parameters That Matter
 
 - `destination seq_id = gibson_destination_pgex` (where used: Gibson specialist destination selection after tutorial project open)
@@ -48,18 +50,44 @@ See also: guided walkthrough [docs/tutorial/gibson_specialist_testing_gui.md](..
 
 ## GUI First
 
-1. Open `File -> Open Tutorial Project...` and choose `Gibson Specialist Starter Project (offline)`.
-2. Confirm the opened project contains `gibson_destination_pgex` (circular) and `gibson_insert_demo` (linear).
-3. The Help window should open automatically on `Gibson Specialist Testing Tutorial`; continue there from `Step 3` onward to exercise the Gibson specialist itself.
+CLI snippets use GENtle's default `.gentle_state.json` state unless they say otherwise. Add `--state PATH` or `--project PATH` when you want an explicit sandboxed state file for copied commands.
 
-## Command Equivalent (After GUI)
+### Step 1: Open the Gibson specialist starter project from File -> Open Tutorial Project...
 
-Run the same routine non-interactively once the GUI flow is clear:
+GUI: Open the Gibson specialist starter project from `File -> Open Tutorial Project...`.
+
+CLI:
 
 ```bash
 cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gibson_specialist_testing_baseline.json
-cargo run --bin gentle_cli -- shell 'workflow @docs/examples/workflows/gibson_specialist_testing_baseline.json'
 ```
+
+> Expected: The workflow loads the same starter inputs that the GUI tutorial-project menu opens, without requiring manual sequence import.
+
+### Step 2: Confirm the starter contains gibson_destination_pgex (circular) and gibson_in...
+
+GUI: Confirm the starter contains `gibson_destination_pgex` (circular) and `gibson_insert_demo` (linear).
+
+CLI:
+
+```bash
+cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gibson_specialist_testing_baseline.json
+```
+
+> Expected: The workflow result contains `gibson_destination_pgex` from `test_files/pGEX-3X.gb` and `gibson_insert_demo` from the tutorial insert FASTA.
+
+### Step 3: Continue in the automatically opened Gibson Specialist Testing Tutorial from ...
+
+GUI: Continue in the automatically opened `Gibson Specialist Testing Tutorial` from `Step 3` onward.
+
+CLI:
+
+```bash
+cargo run --bin gentle_examples_docs -- tutorial-catalog-check
+```
+
+> Expected: The tutorial catalog remains linked so the generated starter chapter points readers to the hand-written Gibson specialist walkthrough.
+
 
 ## Follow-up Commands
 

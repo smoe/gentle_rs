@@ -33,6 +33,23 @@
       "In `Feature coding DNA query`, enter `DNA-binding`, leave `feature transcript` empty unless you want to pin one isoform, choose `mode=both`, and press `Query Coding DNA`.",
       "Read the result panel to see the amino-acid span, genomic coding DNA, optional translation-speed optimized DNA, and the reported exon or exon pair for each matching transcript feature span."
     ],
+    "cli_steps": [
+      "GENTLE_TEST_ONLINE=1 cargo run --bin gentle_cli -- genomes prepare \"Human GRCh38 Ensembl 116\" --catalog assets/genomes.json --cache-dir data/genomes --timeout-secs 3600\ncargo run --bin gentle_cli -- genomes extract-gene \"Human GRCh38 Ensembl 116\" TP53 --occurrence 1 --output-id grch38_tp53 --catalog assets/genomes.json --cache-dir data/genomes",
+      "cargo run --bin gentle_cli -- shell 'uniprot fetch P04637 --entry-id P04637'\ncargo run --bin gentle_cli -- shell 'uniprot map P04637 grch38_tp53 --projection-id tp53_uniprot_p04637'",
+      "cargo run --bin gentle_cli -- inspect-feature-expert grch38_tp53 uniprot-projection tp53_uniprot_p04637\ncargo run --bin gentle_cli -- render-feature-expert-svg grch38_tp53 uniprot-projection tp53_uniprot_p04637 exports/tp53_uniprot_projection.svg",
+      "cargo run --bin gentle_cli -- shell 'uniprot feature-coding-dna tp53_uniprot_p04637 DNA-binding --mode both --speed-profile human'",
+      "cargo run --bin gentle_cli -- shell 'uniprot projection-show tp53_uniprot_p04637'"
+    ],
+    "step_expectations": [
+      "The reference is prepared if needed and TP53 is extracted into the anchored sequence id `grch38_tp53`.",
+      "The reviewed UniProt entry is stored as `P04637`, then projected onto TP53 as `tp53_uniprot_p04637`.",
+      "The shared expert inspection and SVG export expose the same projected domain geometry used by the GUI Protein Expert.",
+      "The coding-DNA query reports genomic-as-encoded and optimized alternatives for mapped `DNA-binding` feature spans.",
+      "Projection inspection keeps the transcript, feature, and evidence metadata available for audit after the GUI panel is closed."
+    ],
+    "prerequisites": [
+      "prepare_reference_genome_online"
+    ],
     "local_execution_note": "Set `GENTLE_TEST_ONLINE=1` and run from the repository root. The workflow prepares/extracts GRCh38 Ensembl 116 from Ensembl FTP, fetches reviewed UniProt accession `P04637`, then performs projection and coding-DNA queries locally.",
     "learning_objectives": [
       "Use one persisted UniProt projection as the canonical bridge from reviewed protein annotation to locus-level transcript/CDS geometry and back to coding DNA.",

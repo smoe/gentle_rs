@@ -31,6 +31,19 @@
       "Open `File -> Retrieve Genome Sequence...`, set gene query/filter to `TP63`, review the displayed TP63 coordinate hit, and extract the first TP63 entry.",
       "In the resulting DNA sequence window (`grch38_tp63`), use `Extend 5'` with `2000 bp`, then `Extend 3'` with `2000 bp` to produce the +/-2 kb context sequence."
     ],
+    "cli_steps": [
+      "GENTLE_TEST_ONLINE=1 cargo run --bin gentle_cli -- genomes prepare \"Human GRCh38 Ensembl 116\" --catalog assets/genomes.json --cache-dir data/genomes --timeout-secs 3600",
+      "cargo run --bin gentle_cli -- genomes genes \"Human GRCh38 Ensembl 116\" --catalog assets/genomes.json --cache-dir data/genomes --filter \"^TP63$\" --limit 20\ncargo run --bin gentle_cli -- genomes extract-gene \"Human GRCh38 Ensembl 116\" TP63 --occurrence 1 --output-id grch38_tp63 --catalog assets/genomes.json --cache-dir data/genomes",
+      "cargo run --bin gentle_cli -- genomes extend-anchor grch38_tp63 5p 2000 --output-id grch38_tp63_ext5_2kb --catalog assets/genomes.json --cache-dir data/genomes\ncargo run --bin gentle_cli -- genomes extend-anchor grch38_tp63_ext5_2kb 3p 2000 --output-id grch38_tp63_ext5_ext3_2kb --catalog assets/genomes.json --cache-dir data/genomes"
+    ],
+    "step_expectations": [
+      "The reference-preparation status becomes ready or reports a reusable prepared cache for GRCh38.",
+      "The gene listing shows the TP63 coordinate candidate(s), and extraction creates the anchored sequence id `grch38_tp63`.",
+      "The final extension step creates or refreshes `grch38_tp63_ext5_ext3_2kb` while preserving genome-anchor provenance."
+    ],
+    "prerequisites": [
+      "prepare_reference_genome_online"
+    ],
     "local_execution_note": "Set `GENTLE_TEST_ONLINE=1` and run from the repository root. The workflow prepares `Human GRCh38 Ensembl 116` using Ensembl FTP FASTA/GTF endpoints from `assets/genomes.json`, then extracts TP63 and extends the anchored locus locally.",
     "learning_objectives": [
       "Use annotation-backed gene retrieval to inspect coordinates before extracting a sequence.",

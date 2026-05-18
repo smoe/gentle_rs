@@ -16,6 +16,8 @@ This executable chapter turns the TP73 UniProt/Ensembl audit into a reproducible
 
 See also: guided walkthrough [docs/tutorial/tp73_uniprot_projection_audit_cli.md](../../tp73_uniprot_projection_audit_cli.md). Use that page first when you want a human-led path; this chapter is the executable reference.
 
+**Prerequisites:** Read [Chapter 17: TP53 UniProt domain mapping and feature-coding DNA query (online)](./17_tp53_uniprot_projection_online.md) first.
+
 > **How to Run This Locally**
 > Set `GENTLE_TEST_ONLINE=1` and run from the repository root. This workflow prepares/extracts GRCh38 Ensembl 116 from Ensembl FTP, fetches UniProt `Q9H3D4`, queries Ensembl protein evidence for `ENSP00000264724`, and then writes the audit/parity reports plus SVG locally.
 
@@ -65,20 +67,76 @@ See also: guided walkthrough [docs/tutorial/tp73_uniprot_projection_audit_cli.md
 
 ## GUI First
 
-1. Prepare `Human GRCh38 Ensembl 116` and extract gene `TP73` into `grch38_tp73`.
-2. Fetch UniProt `Q9H3D4` and Ensembl protein `ENSP00000264724` from `Protein Evidence...`, then project the UniProt entry onto the TP73 locus.
-3. Run the high-level audit and parity actions from `Protein Evidence...` so the stored audit rows and local unsent email draft are persisted.
-4. Open the saved projection in the Protein Expert or inspect the exported SVG artifact to verify the projected feature geometry.
-5. Use the companion CLI tutorial to rebuild the same result from `resolve-ensembl-links`, `transcript-accounting`, `compare-ensembl-exons`, and `compare-ensembl-peptide`.
+CLI snippets use GENtle's default `.gentle_state.json` state unless they say otherwise. Add `--state PATH` or `--project PATH` when you want an explicit sandboxed state file for copied commands.
 
-## Command Equivalent (After GUI)
+### Step 1: Prepare Human GRCh38 Ensembl 116 and extract gene TP73 into grch38_tp73
 
-Run the same routine non-interactively once the GUI flow is clear:
+GUI: Prepare `Human GRCh38 Ensembl 116` and extract gene `TP73` into `grch38_tp73`.
+
+CLI:
 
 ```bash
-cargo run --bin gentle_cli -- workflow @docs/examples/workflows/tp73_uniprot_projection_audit_online.json
-cargo run --bin gentle_cli -- shell 'workflow @docs/examples/workflows/tp73_uniprot_projection_audit_online.json'
+GENTLE_TEST_ONLINE=1 cargo run --bin gentle_cli -- genomes prepare "Human GRCh38 Ensembl 116" --catalog assets/genomes.json --cache-dir data/genomes --timeout-secs 3600
+cargo run --bin gentle_cli -- genomes extract-gene "Human GRCh38 Ensembl 116" TP73 --occurrence 1 --output-id grch38_tp73 --catalog assets/genomes.json --cache-dir data/genomes
 ```
+
+> Expected: The reference is prepared if needed and TP73 is extracted into the anchored sequence id `grch38_tp73`.
+
+### Step 2: Fetch UniProt Q9H3D4 and Ensembl protein ENSP00000264724 from Protein Evidenc...
+
+GUI: Fetch UniProt `Q9H3D4` and Ensembl protein `ENSP00000264724` from `Protein Evidence...`, then project the UniProt entry onto the TP73 locus.
+
+CLI:
+
+```bash
+cargo run --bin gentle_cli -- shell 'uniprot fetch Q9H3D4 --entry-id Q9H3D4'
+cargo run --bin gentle_cli -- shell 'ensembl-protein fetch ENSP00000264724 --entry-id TP73_ENS'
+cargo run --bin gentle_cli -- shell 'uniprot map Q9H3D4 grch38_tp73 --projection-id tp73_uniprot_q9h3d4'
+```
+
+> Expected: The UniProt, Ensembl protein, and projection records persist under the ids used by the audit workflow.
+
+### Step 3: Run the high-level audit and parity actions from Protein Evidence... so the s...
+
+GUI: Run the high-level audit and parity actions from `Protein Evidence...` so the stored audit rows and local unsent email draft are persisted.
+
+CLI:
+
+```bash
+cargo run --bin gentle_cli -- shell 'uniprot audit-projection tp73_uniprot_q9h3d4 --ensembl-entry TP73_ENS --report-id tp73_projection_audit'
+cargo run --bin gentle_cli -- shell 'uniprot audit-parity tp73_uniprot_q9h3d4 --ensembl-entry TP73_ENS --report-id tp73_projection_audit_parity'
+```
+
+> Expected: The integrated audit and parity reports are stored as `tp73_projection_audit` and `tp73_projection_audit_parity`.
+
+### Step 4: Open the saved projection in the Protein Expert or inspect the exported SVG a...
+
+GUI: Open the saved projection in the Protein Expert or inspect the exported SVG artifact to verify the projected feature geometry.
+
+CLI:
+
+```bash
+cargo run --bin gentle_cli -- inspect-feature-expert grch38_tp73 uniprot-projection tp73_uniprot_q9h3d4
+cargo run --bin gentle_cli -- render-feature-expert-svg grch38_tp73 uniprot-projection tp73_uniprot_q9h3d4 exports/tp73_uniprot_projection.svg
+```
+
+> Expected: Expert inspection and SVG export show the same projected TP73 feature geometry used by the GUI.
+
+### Step 5: Use the companion CLI tutorial to rebuild the same result from resolve-ensemb...
+
+GUI: Use the companion CLI tutorial to rebuild the same result from `resolve-ensembl-links`, `transcript-accounting`, `compare-ensembl-exons`, and `compare-ensembl-peptide`.
+
+CLI:
+
+```bash
+cargo run --bin gentle_cli -- shell 'uniprot resolve-ensembl-links tp73_uniprot_q9h3d4'
+cargo run --bin gentle_cli -- shell 'uniprot transcript-accounting tp73_uniprot_q9h3d4'
+cargo run --bin gentle_cli -- shell 'uniprot compare-ensembl-exons tp73_uniprot_q9h3d4 --ensembl-entry TP73_ENS'
+cargo run --bin gentle_cli -- shell 'uniprot compare-ensembl-peptide tp73_uniprot_q9h3d4 --ensembl-entry TP73_ENS'
+```
+
+> Expected: The primitive CLI commands rebuild the audit evidence path behind the integrated reports.
+
 
 ## Follow-up Commands
 
