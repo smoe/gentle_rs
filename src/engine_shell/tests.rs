@@ -290,7 +290,7 @@ fn sample_value_for_usage_token(flag: &str, token: &str) -> String {
             "i,j,k" => "1,2".to_string(),
             "+" | "-" => token.to_string(),
             "KEY=VALUE" => "key=value".to_string(),
-            "N" | "M" | "ROWS" | "COLUMNS" | "START" | "END" | "START_0BASED" | "END_0BASED"
+            "N" | "M" | "NM" | "ROWS" | "COLUMNS" | "START" | "END" | "START_0BASED" | "END_0BASED"
             | "START_1BASED" | "END_1BASED" | "FEATURE_ID" | "CUT_POS_1BASED" | "RESIDUE_START"
             | "RESIDUE_END" | "LENGTH_BP" | "LEFT_END_0BASED" | "RECORD_INDEX" => "1".to_string(),
             "START..END" | "RANGE" => "1..10".to_string(),
