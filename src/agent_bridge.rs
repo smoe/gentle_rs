@@ -34,17 +34,18 @@ const OPENAI_DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
 const ANTHROPIC_DEFAULT_MODEL: &str = "claude-sonnet-4-6";
 const ANTHROPIC_DEFAULT_BASE_URL: &str = "https://api.anthropic.com/v1";
 const ANTHROPIC_API_VERSION: &str = "2023-06-01";
+const MISTRAL_DEFAULT_MODEL: &str = "mistral-large-latest";
+const MISTRAL_DEFAULT_BASE_URL: &str = "https://api.mistral.ai/v1";
 pub const OPENAI_COMPAT_UNSPECIFIED_MODEL: &str = "unspecified";
 const OPENAI_COMPAT_DEFAULT_MODEL: &str = OPENAI_COMPAT_UNSPECIFIED_MODEL;
 const OPENAI_COMPAT_DEFAULT_BASE_URL: &str = "http://127.0.0.1:11434/v1";
 pub const OPENAI_API_KEY_ENV: &str = "OPENAI_API_KEY";
 pub const ANTHROPIC_API_KEY_ENV: &str = "ANTHROPIC_API_KEY";
-pub(crate) const ANTHROPIC_API_KEY_AUTH_HINT: &str =
-    "Use an Anthropic Console API key for ANTHROPIC_API_KEY; Claude Code/Claude.ai subscription or OAuth tokens are not Anthropic API keys.";
-const ANTHROPIC_API_KEY_WRONG_KIND_HINT: &str =
-    "This looks like a Claude Code/Claude.ai OAuth token, not an Anthropic Console API key. Use an Anthropic Console API key for ANTHROPIC_API_KEY instead.";
-const ANTHROPIC_API_KEY_UNUSUAL_SHAPE_HINT: &str =
-    "This does not look like an Anthropic Console API key. Current Anthropic API keys usually begin with sk-ant-api; Test Setup can still verify the key live.";
+pub const MISTRAL_API_KEY_ENV: &str = "MISTRAL_API_KEY";
+pub(crate) const ANTHROPIC_API_KEY_AUTH_HINT: &str = "Use an Anthropic Console API key for ANTHROPIC_API_KEY; Claude Code/Claude.ai subscription or OAuth tokens are not Anthropic API keys.";
+pub(crate) const MISTRAL_API_KEY_AUTH_HINT: &str = "Use a Mistral La Plateforme API key for MISTRAL_API_KEY; Le Chat or Mistral account login tokens are not Mistral API keys.";
+const ANTHROPIC_API_KEY_WRONG_KIND_HINT: &str = "This looks like a Claude Code/Claude.ai OAuth token, not an Anthropic Console API key. Use an Anthropic Console API key for ANTHROPIC_API_KEY instead.";
+const ANTHROPIC_API_KEY_UNUSUAL_SHAPE_HINT: &str = "This does not look like an Anthropic Console API key. Current Anthropic API keys usually begin with sk-ant-api; Test Setup can still verify the key live.";
 pub const AGENT_BASE_URL_ENV: &str = "GENTLE_AGENT_BASE_URL";
 pub const AGENT_MODEL_ENV: &str = "GENTLE_AGENT_MODEL";
 pub const AGENT_TIMEOUT_SECS_ENV: &str = "GENTLE_AGENT_TIMEOUT_SECS";
@@ -106,6 +107,10 @@ pub(crate) fn redact_sensitive_text(raw: &str) -> String {
         (
             r"(?i)(ANTHROPIC_API_KEY\s*=\s*)([^\s,;]+)",
             "$1[REDACTED_ANTHROPIC_API_KEY]",
+        ),
+        (
+            r"(?i)(MISTRAL_API_KEY\s*=\s*)([^\s,;]+)",
+            "$1[REDACTED_MISTRAL_API_KEY]",
         ),
         (r"(?i)(x-api-key\s*:\s*)([^\s,;]+)", "$1[REDACTED_API_KEY]"),
         (
@@ -250,6 +255,10 @@ fn resolve_openai_api_key(system: &AgentSystemSpec) -> Option<String> {
 
 fn resolve_anthropic_api_key(system: &AgentSystemSpec) -> Option<String> {
     resolve_env_key(system, ANTHROPIC_API_KEY_ENV)
+}
+
+fn resolve_mistral_api_key(system: &AgentSystemSpec) -> Option<String> {
+    resolve_env_key(system, MISTRAL_API_KEY_ENV)
 }
 
 pub(crate) fn anthropic_api_key_kind_warning(raw: &str) -> Option<&'static str> {
@@ -595,6 +604,19 @@ fn anthropic_endpoint_candidates(base_url: &str) -> Vec<String> {
     endpoints
 }
 
+fn mistral_endpoint_candidates(base_url: &str) -> Vec<String> {
+    let normalized =
+        normalize_base_url(base_url).unwrap_or_else(|| base_url.trim_end_matches('/').to_string());
+    let mut endpoints = vec![format!("{normalized}/chat/completions")];
+    if !normalized.ends_with("/v1") {
+        let v1 = format!("{normalized}/v1/chat/completions");
+        if !endpoints.contains(&v1) {
+            endpoints.push(v1);
+        }
+    }
+    endpoints
+}
+
 fn openai_compat_endpoint_candidates_for_system(
     system: &AgentSystemSpec,
 ) -> Result<Vec<String>, String> {
@@ -787,6 +809,71 @@ pub fn discover_anthropic_models(
     }))
 }
 
+pub fn discover_mistral_models(
+    base_url: &str,
+    api_key: Option<&str>,
+) -> Result<Vec<String>, String> {
+    let endpoints =
+        openai_model_list_endpoint_candidates(base_url).map_err(|e| redact_sensitive_text(&e))?;
+    let api_key = api_key
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| format!("{MISTRAL_API_KEY_ENV} is required for Mistral model discovery"))?;
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(20))
+        .build()
+        .map_err(|e| format!("could not build Mistral model-discovery client: {e}"))?;
+    let mut first_error: Option<String> = None;
+    for endpoint in endpoints {
+        match client.get(&endpoint).bearer_auth(api_key).send() {
+            Ok(response) => {
+                let status = response.status();
+                let body = response
+                    .text()
+                    .map_err(|e| format!("could not read model discovery response body: {e}"))?;
+                if !status.is_success() {
+                    if (status.as_u16() == 404 || status.as_u16() == 405) && first_error.is_none() {
+                        first_error = Some(format!(
+                            "model discovery endpoint not supported at {endpoint} (status={status})"
+                        ));
+                        continue;
+                    }
+                    let hint = if status.as_u16() == 401 || status.as_u16() == 403 {
+                        format!(" Hint: {MISTRAL_API_KEY_AUTH_HINT}")
+                    } else {
+                        String::new()
+                    };
+                    return Err(redact_sensitive_text(&format!(
+                        "Mistral model discovery failed at {endpoint} (status={status}): {}{}",
+                        body.trim(),
+                        hint
+                    )));
+                }
+                let value = serde_json::from_str::<Value>(&body).map_err(|e| {
+                    format!(
+                        "Mistral model discovery endpoint returned invalid JSON at {endpoint}: {e}"
+                    )
+                })?;
+                let models = extract_models_from_openai_models_payload(&value);
+                if models.is_empty() {
+                    return Err(format!(
+                        "Mistral model discovery at {endpoint} succeeded but returned no model ids"
+                    ));
+                }
+                return Ok(models);
+            }
+            Err(e) => {
+                if first_error.is_none() {
+                    first_error = Some(format!("request failed at {endpoint}: {e}"));
+                }
+            }
+        }
+    }
+    Err(first_error.unwrap_or_else(|| {
+        "Mistral model discovery failed: no endpoint candidate succeeded".to_string()
+    }))
+}
+
 pub fn agent_system_availability(system: &AgentSystemSpec) -> AgentSystemAvailability {
     match system.transport {
         AgentSystemTransport::BuiltinEcho => AgentSystemAvailability {
@@ -835,6 +922,18 @@ pub fn agent_system_availability(system: &AgentSystemSpec) -> AgentSystemAvailab
                 return AgentSystemAvailability {
                     available: false,
                     reason: Some(format!("{ANTHROPIC_API_KEY_ENV} is not set")),
+                };
+            }
+            AgentSystemAvailability {
+                available: true,
+                reason: None,
+            }
+        }
+        AgentSystemTransport::NativeMistral => {
+            if resolve_mistral_api_key(system).is_none() {
+                return AgentSystemAvailability {
+                    available: false,
+                    reason: Some(format!("{MISTRAL_API_KEY_ENV} is not set")),
                 };
             }
             AgentSystemAvailability {
@@ -896,6 +995,7 @@ pub enum AgentSystemTransport {
     ExternalJsonStdio,
     NativeOpenai,
     NativeAnthropic,
+    NativeMistral,
     NativeOpenaiCompat,
     BuiltinEcho,
 }
@@ -906,6 +1006,7 @@ impl AgentSystemTransport {
             Self::ExternalJsonStdio => "external_json_stdio",
             Self::NativeOpenai => "native_openai",
             Self::NativeAnthropic => "native_anthropic",
+            Self::NativeMistral => "native_mistral",
             Self::NativeOpenaiCompat => "native_openai_compat",
             Self::BuiltinEcho => "builtin_echo",
         }
@@ -1819,6 +1920,22 @@ pub(crate) fn extract_anthropic_error_code(body: &str) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
+pub(crate) fn extract_mistral_error_code(body: &str) -> Option<String> {
+    let value = serde_json::from_str::<Value>(body).ok()?;
+    value
+        .get("error")
+        .and_then(|error| {
+            error
+                .get("code")
+                .and_then(Value::as_str)
+                .or_else(|| error.get("type").and_then(Value::as_str))
+        })
+        .or_else(|| value.get("code").and_then(Value::as_str))
+        .or_else(|| value.get("type").and_then(Value::as_str))
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
 fn classify_openai_http_error(status: reqwest::StatusCode, body: &str) -> ExternalAttemptError {
     let message_prefix = format!("OpenAI API error (status={}): {}", status, body.trim());
     let error_code = extract_openai_error_code(body).unwrap_or_default();
@@ -1866,10 +1983,33 @@ fn classify_anthropic_http_error(status: reqwest::StatusCode, body: &str) -> Ext
     } else {
         message_prefix
     };
-    ExternalAttemptError {
-        kind,
-        message,
-    }
+    ExternalAttemptError { kind, message }
+}
+
+fn classify_mistral_http_error(status: reqwest::StatusCode, body: &str) -> ExternalAttemptError {
+    let message_prefix = format!("Mistral API error (status={}): {}", status, body.trim());
+    let error_code = extract_mistral_error_code(body).unwrap_or_default();
+    let lower = format!("{error_code} {body}").to_ascii_lowercase();
+    let kind = if status.as_u16() == 401 || status.as_u16() == 403 {
+        ExternalAttemptErrorKind::Unavailable
+    } else if status.as_u16() == 429
+        && (lower.contains("credit")
+            || lower.contains("quota")
+            || lower.contains("billing")
+            || lower.contains("balance"))
+    {
+        ExternalAttemptErrorKind::Unavailable
+    } else if status.is_server_error() || status.as_u16() == 429 {
+        ExternalAttemptErrorKind::Transient
+    } else {
+        ExternalAttemptErrorKind::Fatal
+    };
+    let message = if status.as_u16() == 401 || status.as_u16() == 403 {
+        format!("{message_prefix}\nHint: {MISTRAL_API_KEY_AUTH_HINT}")
+    } else {
+        message_prefix
+    };
+    ExternalAttemptError { kind, message }
 }
 
 fn invoke_native_openai_once(
@@ -2020,6 +2160,83 @@ fn invoke_native_anthropic_once(
             kind: ExternalAttemptErrorKind::Fatal,
             message: "Anthropic API response did not contain content text".to_string(),
         })?;
+    Ok(NativeHttpInvokeResult {
+        text,
+        raw_body: body,
+        attempted_endpoints: vec![endpoint.clone()],
+        selected_endpoint: Some(endpoint),
+    })
+}
+
+fn invoke_native_mistral_once(
+    system: &AgentSystemSpec,
+    request_json: &str,
+) -> Result<NativeHttpInvokeResult, ExternalAttemptError> {
+    let runtime = resolve_agent_runtime_config(system);
+    let api_key = resolve_mistral_api_key(system).ok_or_else(|| ExternalAttemptError {
+        kind: ExternalAttemptErrorKind::Unavailable,
+        message: format!("{MISTRAL_API_KEY_ENV} is not set"),
+    })?;
+    let model = resolve_model(system, MISTRAL_DEFAULT_MODEL);
+    let base_url = resolve_base_url(system, MISTRAL_DEFAULT_BASE_URL);
+    let endpoints = mistral_endpoint_candidates(&base_url);
+    let endpoint = endpoints
+        .first()
+        .cloned()
+        .unwrap_or_else(|| format!("{base_url}/chat/completions"));
+    let system_prompt = "You are a GENtle agent bridge.\nReturn STRICT JSON only with this schema:\n{\"schema\":\"gentle.agent_response.v1\",\"assistant_message\":\"string\",\"questions\":[\"string\"],\"suggested_commands\":[{\"title\":\"string\",\"rationale\":\"string\",\"command\":\"string\",\"execution\":\"chat|ask|auto\"}]}\nUse only keys from the schema. Extensions may use x_ prefix. Do not include markdown fences.";
+    let payload = json!({
+        "model": model,
+        "messages": [
+            {
+                "role": "system",
+                "content": system_prompt
+            },
+            {
+                "role": "user",
+                "content": format!("GENtle agent request JSON:\n{request_json}")
+            }
+        ],
+        "temperature": 0.2
+    });
+    let client = reqwest::blocking::Client::builder()
+        .connect_timeout(Duration::from_secs(runtime.connect_timeout_secs))
+        .timeout(Duration::from_secs(runtime.read_timeout_secs))
+        .build()
+        .map_err(|e| ExternalAttemptError {
+            kind: ExternalAttemptErrorKind::Fatal,
+            message: format!("could not build Mistral client: {e}"),
+        })?;
+    let response = client
+        .post(&endpoint)
+        .bearer_auth(api_key)
+        .header("Content-Type", "application/json")
+        .json(&payload)
+        .send()
+        .map_err(|e| ExternalAttemptError {
+            kind: if e.is_timeout() || e.is_connect() || e.is_request() {
+                ExternalAttemptErrorKind::Transient
+            } else {
+                ExternalAttemptErrorKind::Fatal
+            },
+            message: format!("Mistral request failed: {e}"),
+        })?;
+    let status = response.status();
+    let body =
+        read_response_body_limited(response, runtime.max_response_bytes, "Mistral response")?;
+    if !status.is_success() {
+        return Err(classify_mistral_http_error(status, &body));
+    }
+    let response_json = serde_json::from_str::<Value>(&body).map_err(|e| ExternalAttemptError {
+        kind: ExternalAttemptErrorKind::Fatal,
+        message: format!("Mistral API returned invalid JSON: {e}"),
+    })?;
+    let text = extract_openai_chat_completions_text(&response_json).ok_or_else(|| {
+        ExternalAttemptError {
+            kind: ExternalAttemptErrorKind::Fatal,
+            message: "Mistral response did not contain choices[0].message.content".to_string(),
+        }
+    })?;
     Ok(NativeHttpInvokeResult {
         text,
         raw_body: body,
@@ -2518,6 +2735,86 @@ pub fn invoke_agent_support_with_env_overrides(
                 runtime: runtime_summary,
             }
         }
+        AgentSystemTransport::NativeMistral => {
+            let mut stdout: Option<String> = None;
+            let mut raw_body: Option<String> = None;
+            let mut attempted_endpoints: Vec<String> = vec![];
+            let mut selected_endpoint: Option<String> = None;
+            let mut last_transient_message: Option<String> = None;
+            for attempt in 1..=attempt_limit {
+                match invoke_native_mistral_once(&system, &request_json) {
+                    Ok(result) => {
+                        stdout = Some(result.text);
+                        raw_body = Some(result.raw_body);
+                        attempted_endpoints = result.attempted_endpoints;
+                        selected_endpoint = result.selected_endpoint;
+                        break;
+                    }
+                    Err(error) => match error.kind {
+                        ExternalAttemptErrorKind::Unavailable => {
+                            return Err(agent_err(
+                                AgentBridgeErrorCode::AdapterUnavailable,
+                                error.message,
+                            ));
+                        }
+                        ExternalAttemptErrorKind::Fatal => {
+                            return Err(agent_err(
+                                AgentBridgeErrorCode::AdapterFailed,
+                                error.message,
+                            ));
+                        }
+                        ExternalAttemptErrorKind::Transient => {
+                            last_transient_message = Some(error.message.clone());
+                            if attempt >= attempt_limit {
+                                return Err(agent_err(
+                                    AgentBridgeErrorCode::AdapterTransient,
+                                    format!(
+                                        "native Mistral call remained transiently unavailable after {} attempts (max_retries={}): {}",
+                                        attempt_limit, runtime.max_retries, error.message
+                                    ),
+                                ));
+                            }
+                            thread::sleep(retry_backoff_duration(attempt));
+                        }
+                    },
+                }
+            }
+            if stdout.is_none() {
+                return Err(agent_err(
+                    AgentBridgeErrorCode::AdapterTransient,
+                    format!(
+                        "native Mistral call did not complete after {} attempts (max_retries={}){}",
+                        attempt_limit,
+                        runtime.max_retries,
+                        last_transient_message
+                            .as_ref()
+                            .map(|value| format!(": {value}"))
+                            .unwrap_or_default()
+                    ),
+                ));
+            }
+            let stdout = stdout.expect("checked is_some above");
+            let response = parse_agent_response(&stdout)?;
+            let mut runtime_summary = runtime_summary(&runtime);
+            runtime_summary.endpoint_candidates =
+                mistral_endpoint_candidates(&resolve_base_url(&system, MISTRAL_DEFAULT_BASE_URL));
+            runtime_summary.attempted_endpoints = attempted_endpoints;
+            runtime_summary.selected_endpoint = selected_endpoint;
+            AgentInvocationOutcome {
+                catalog_path: resolved_catalog_path,
+                system_id: system.id,
+                system_label: system.label,
+                transport: system.transport.as_str().to_string(),
+                command: vec![],
+                request: request_value,
+                response,
+                raw_stdout: stdout,
+                raw_stderr: raw_body.unwrap_or_default(),
+                exit_code: Some(0),
+                elapsed_ms: start.elapsed().as_millis(),
+                runtime: runtime_summary,
+            }
+        }
         AgentSystemTransport::NativeOpenaiCompat => {
             let mut stdout: Option<String> = None;
             let mut raw_body: Option<String> = None;
@@ -2731,6 +3028,44 @@ mod tests {
     }
 
     #[test]
+    fn availability_native_mistral_uses_system_env_override() {
+        let mut system = AgentSystemSpec {
+            id: "mistral_native".to_string(),
+            label: "Mistral Native".to_string(),
+            description: None,
+            transport: AgentSystemTransport::NativeMistral,
+            command: vec![],
+            model: Some("mistral-large-latest".to_string()),
+            base_url: None,
+            env: HashMap::new(),
+            working_dir: None,
+        };
+        let _lock = crate::genomes::genbank_env_lock()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let previous_key = std::env::var(MISTRAL_API_KEY_ENV).ok();
+        unsafe {
+            std::env::remove_var(MISTRAL_API_KEY_ENV);
+        }
+        let unavailable = agent_system_availability(&system);
+        if let Some(value) = previous_key {
+            unsafe {
+                std::env::set_var(MISTRAL_API_KEY_ENV, value);
+            }
+        }
+        assert!(!unavailable.available);
+        assert_eq!(
+            unavailable.reason.as_deref(),
+            Some("MISTRAL_API_KEY is not set")
+        );
+        system
+            .env
+            .insert(MISTRAL_API_KEY_ENV.to_string(), "mistral-test".to_string());
+        let available = agent_system_availability(&system);
+        assert!(available.available);
+    }
+
+    #[test]
     fn availability_external_stdio_requires_command() {
         let system = AgentSystemSpec {
             id: "stdio".to_string(),
@@ -2890,6 +3225,21 @@ mod tests {
         assert_eq!(err.kind, ExternalAttemptErrorKind::Unavailable);
         assert!(err.message.contains("Anthropic API error (status=401"));
         assert!(err.message.contains("Claude Code/Claude.ai"));
+    }
+
+    #[test]
+    fn classify_mistral_auth_error_is_unavailable() {
+        let body = r#"{
+  "object": "error",
+  "message": "Unauthorized",
+  "type": "authentication_error",
+  "code": "authentication_error"
+}"#;
+        let err = classify_mistral_http_error(reqwest::StatusCode::UNAUTHORIZED, body);
+        assert_eq!(err.kind, ExternalAttemptErrorKind::Unavailable);
+        assert!(err.message.contains("Mistral API error (status=401"));
+        assert!(err.message.contains("Mistral La Plateforme API key"));
+        assert!(err.message.contains("Le Chat"));
     }
 
     #[test]

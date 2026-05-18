@@ -3,14 +3,15 @@
 //! This module exposes the machine-facing transport metadata needed by both the
 //! local assistant UX and external orchestrators. It intentionally keeps the
 //! public surface read-only and deterministic: catalog loading, availability,
-//! preflight summaries, and OpenAI-compatible model discovery.
+//! preflight summaries, and native HTTP model discovery.
 
 use crate::agent_bridge::{
     AGENT_BASE_URL_ENV, AGENT_CONNECT_TIMEOUT_SECS_ENV, AGENT_MAX_RESPONSE_BYTES_ENV,
     AGENT_MAX_RETRIES_ENV, AGENT_MODEL_ENV, AGENT_READ_TIMEOUT_SECS_ENV, AGENT_TIMEOUT_SECS_ENV,
-    ANTHROPIC_API_KEY_AUTH_HINT, ANTHROPIC_API_KEY_ENV, OPENAI_API_KEY_ENV,
-    anthropic_api_key_is_known_non_api_token, anthropic_api_key_kind_warning,
-    extract_anthropic_error_code, extract_models_from_openai_models_payload,
+    ANTHROPIC_API_KEY_AUTH_HINT, ANTHROPIC_API_KEY_ENV, MISTRAL_API_KEY_AUTH_HINT,
+    MISTRAL_API_KEY_ENV, OPENAI_API_KEY_ENV, anthropic_api_key_is_known_non_api_token,
+    anthropic_api_key_kind_warning, discover_mistral_models, extract_anthropic_error_code,
+    extract_mistral_error_code, extract_models_from_openai_models_payload,
     extract_openai_error_code, redact_sensitive_text,
 };
 use serde::{Deserialize, Serialize};
@@ -31,6 +32,8 @@ const OPENAI_DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
 const ANTHROPIC_DEFAULT_MODEL: &str = "claude-sonnet-4-6";
 const ANTHROPIC_DEFAULT_BASE_URL: &str = "https://api.anthropic.com/v1";
 const ANTHROPIC_API_VERSION: &str = "2023-06-01";
+const MISTRAL_DEFAULT_MODEL: &str = "mistral-large-latest";
+const MISTRAL_DEFAULT_BASE_URL: &str = "https://api.mistral.ai/v1";
 const OPENAI_COMPAT_DEFAULT_MODEL: &str = "unspecified";
 const OPENAI_COMPAT_DEFAULT_BASE_URL: &str = "http://127.0.0.1:11434/v1";
 
@@ -232,6 +235,10 @@ fn resolve_anthropic_api_key(system: &AgentSystemSpec) -> Option<String> {
     resolve_env_key(system, ANTHROPIC_API_KEY_ENV)
 }
 
+fn resolve_mistral_api_key(system: &AgentSystemSpec) -> Option<String> {
+    resolve_env_key(system, MISTRAL_API_KEY_ENV)
+}
+
 fn openai_compat_endpoint_candidates(base_url: &str) -> Vec<String> {
     let normalized =
         normalize_base_url(base_url).unwrap_or_else(|| base_url.trim_end_matches('/').to_string());
@@ -311,6 +318,7 @@ fn live_probe_with_status(
 enum ModelListAuth {
     OpenaiBearer,
     Anthropic,
+    MistralBearer,
 }
 
 fn read_live_probe_body(
@@ -339,10 +347,10 @@ fn classify_model_list_http_error(
     body: &str,
     provider: &str,
 ) -> (AgentLiveProbeStatusClass, bool, String, Option<String>) {
-    let provider_error_code = if provider == "Anthropic" {
-        extract_anthropic_error_code(body)
-    } else {
-        extract_openai_error_code(body)
+    let provider_error_code = match provider {
+        "Anthropic" => extract_anthropic_error_code(body),
+        "Mistral" => extract_mistral_error_code(body),
+        _ => extract_openai_error_code(body),
     };
     let body_preview = clipped_message(body);
     let lower_body = body_preview.to_ascii_lowercase();
@@ -370,6 +378,10 @@ fn classify_model_list_http_error(
             if provider == "Anthropic" {
                 format!(
                     "{provider} model-list endpoint rejected authentication at {endpoint} (status={status}). {ANTHROPIC_API_KEY_AUTH_HINT}"
+                )
+            } else if provider == "Mistral" {
+                format!(
+                    "{provider} model-list endpoint rejected authentication at {endpoint} (status={status}). {MISTRAL_API_KEY_AUTH_HINT}"
                 )
             } else {
                 format!(
@@ -434,7 +446,9 @@ fn build_model_list_live_probe(
         let mut request = client.get(endpoint);
         if let Some(key) = api_key.map(str::trim).filter(|value| !value.is_empty()) {
             request = match auth {
-                ModelListAuth::OpenaiBearer => request.bearer_auth(key),
+                ModelListAuth::OpenaiBearer | ModelListAuth::MistralBearer => {
+                    request.bearer_auth(key)
+                }
                 ModelListAuth::Anthropic => request
                     .header("x-api-key", key)
                     .header("anthropic-version", ANTHROPIC_API_VERSION),
@@ -478,6 +492,7 @@ fn build_model_list_live_probe(
                     match auth {
                         ModelListAuth::OpenaiBearer => "Provider",
                         ModelListAuth::Anthropic => "Anthropic",
+                        ModelListAuth::MistralBearer => "Mistral",
                     },
                 );
             probe.auth_ok = auth_ok;
@@ -547,7 +562,7 @@ fn build_agent_live_probe(
             live_probe_with_status(
                 AgentLiveProbeStatusClass::UnsupportedTransport,
                 format!(
-                    "Live endpoint probing is only supported for native_openai, native_anthropic, and native_openai_compat transports, not '{}'",
+                    "Live endpoint probing is only supported for native_openai, native_anthropic, native_mistral, and native_openai_compat transports, not '{}'",
                     system.transport.as_str()
                 ),
             )
@@ -607,6 +622,29 @@ fn build_agent_live_probe(
                 preflight.model.as_deref(),
                 &agent_runtime(system),
                 ModelListAuth::Anthropic,
+            )
+        }
+        AgentSystemTransport::NativeMistral => {
+            let Some(api_key) = resolve_mistral_api_key(system) else {
+                return live_probe_with_status(
+                    AgentLiveProbeStatusClass::MissingKey,
+                    format!(
+                        "{MISTRAL_API_KEY_ENV} is required for native Mistral live setup probing"
+                    ),
+                );
+            };
+            let Some(base_url) = preflight.base_url.as_deref() else {
+                return live_probe_with_status(
+                    AgentLiveProbeStatusClass::ProviderError,
+                    "No base URL resolved for native Mistral live setup probing",
+                );
+            };
+            build_model_list_live_probe(
+                base_url,
+                Some(api_key.as_str()),
+                preflight.model.as_deref(),
+                &agent_runtime(system),
+                ModelListAuth::MistralBearer,
             )
         }
         AgentSystemTransport::NativeOpenaiCompat => {
@@ -702,6 +740,16 @@ pub fn build_agent_system_preflight_with_live(
                 None => warnings.push(format!("{ANTHROPIC_API_KEY_ENV} is not set")),
             }
         }
+        AgentSystemTransport::NativeMistral => {
+            let resolved = resolve_base_url(&system, MISTRAL_DEFAULT_BASE_URL);
+            base_url = Some(resolved.clone());
+            model = Some(resolve_model(&system, MISTRAL_DEFAULT_MODEL));
+            endpoint_candidates = vec![format!("{resolved}/chat/completions")];
+            discovery_endpoint_candidates = model_endpoint_candidates(&resolved);
+            if resolve_mistral_api_key(&system).is_none() {
+                warnings.push(format!("{MISTRAL_API_KEY_ENV} is not set"));
+            }
+        }
         AgentSystemTransport::NativeOpenaiCompat => {
             let resolved = resolve_base_url(&system, OPENAI_COMPAT_DEFAULT_BASE_URL);
             base_url = Some(resolved.clone());
@@ -772,6 +820,7 @@ pub fn discover_models_for_agent_system(
         AgentSystemTransport::NativeAnthropic => {
             resolve_base_url(&system, ANTHROPIC_DEFAULT_BASE_URL)
         }
+        AgentSystemTransport::NativeMistral => resolve_base_url(&system, MISTRAL_DEFAULT_BASE_URL),
         AgentSystemTransport::NativeOpenaiCompat => {
             resolve_base_url(&system, OPENAI_COMPAT_DEFAULT_BASE_URL)
         }
@@ -787,6 +836,10 @@ pub fn discover_models_for_agent_system(
         AgentSystemTransport::NativeAnthropic => {
             let api_key = resolve_anthropic_api_key(&system);
             discover_anthropic_models(&base_url, api_key.as_deref())
+        }
+        AgentSystemTransport::NativeMistral => {
+            let api_key = resolve_mistral_api_key(&system);
+            discover_mistral_models(&base_url, api_key.as_deref())
         }
         _ => {
             let api_key = resolve_openai_api_key(&system);
@@ -939,6 +992,43 @@ mod tests {
         if let Some(value) = previous_key {
             unsafe {
                 std::env::set_var(ANTHROPIC_API_KEY_ENV, value);
+            }
+        }
+        assert_eq!(probe.status_class, AgentLiveProbeStatusClass::MissingKey);
+        assert!(probe.attempted_endpoints.is_empty());
+        assert!(!probe.auth_ok);
+    }
+
+    #[test]
+    fn live_probe_classifies_missing_mistral_key_without_endpoint_attempt() {
+        let system = AgentSystemSpec {
+            id: "mistral".to_string(),
+            label: "Mistral".to_string(),
+            transport: AgentSystemTransport::NativeMistral,
+            model: Some("mistral-large-latest".to_string()),
+            base_url: Some("https://api.mistral.ai/v1".to_string()),
+            ..Default::default()
+        };
+        let availability = AgentSystemAvailability {
+            available: false,
+            reason: Some(format!("{MISTRAL_API_KEY_ENV} is not set")),
+        };
+        let preflight = AgentSystemPreflight {
+            base_url: Some("https://api.mistral.ai/v1".to_string()),
+            model: Some("mistral-large-latest".to_string()),
+            ..Default::default()
+        };
+        let _lock = crate::genomes::genbank_env_lock()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let previous_key = std::env::var(MISTRAL_API_KEY_ENV).ok();
+        unsafe {
+            std::env::remove_var(MISTRAL_API_KEY_ENV);
+        }
+        let probe = build_agent_live_probe(&system, &availability, &preflight);
+        if let Some(value) = previous_key {
+            unsafe {
+                std::env::set_var(MISTRAL_API_KEY_ENV, value);
             }
         }
         assert_eq!(probe.status_class, AgentLiveProbeStatusClass::MissingKey);
@@ -1139,6 +1229,27 @@ mod tests {
     }
 
     #[test]
+    fn live_probe_supports_mistral_model_list_shape() {
+        let Some(base_url) = spawn_model_list_server(vec![(
+            "/models",
+            200,
+            r#"{"object":"list","data":[{"id":"mistral-large-latest","object":"model"}]}"#,
+        )]) else {
+            return;
+        };
+        let probe = build_model_list_live_probe(
+            &base_url,
+            Some("mistral-test"),
+            Some("mistral-large-latest"),
+            &test_runtime(),
+            ModelListAuth::MistralBearer,
+        );
+        assert_eq!(probe.status_class, AgentLiveProbeStatusClass::Ok);
+        assert!(probe.model_list_ok);
+        assert!(probe.selected_model_seen);
+    }
+
+    #[test]
     fn live_probe_anthropic_auth_failure_mentions_console_key() {
         let Some(base_url) = spawn_model_list_server(vec![(
             "/models",
@@ -1161,5 +1272,30 @@ mod tests {
         );
         assert!(probe.message.contains("Anthropic Console API key"));
         assert!(probe.message.contains("Claude Code/Claude.ai"));
+    }
+
+    #[test]
+    fn live_probe_mistral_auth_failure_mentions_api_key_kind() {
+        let Some(base_url) = spawn_model_list_server(vec![(
+            "/models",
+            401,
+            r#"{"object":"error","type":"authentication_error","message":"Unauthorized","code":"authentication_error"}"#,
+        )]) else {
+            return;
+        };
+        let probe = build_model_list_live_probe(
+            &base_url,
+            Some("not-a-mistral-api-key"),
+            Some("mistral-large-latest"),
+            &test_runtime(),
+            ModelListAuth::MistralBearer,
+        );
+        assert_eq!(probe.status_class, AgentLiveProbeStatusClass::AuthFailed);
+        assert_eq!(
+            probe.provider_error_code.as_deref(),
+            Some("authentication_error")
+        );
+        assert!(probe.message.contains("Mistral La Plateforme API key"));
+        assert!(probe.message.contains("Le Chat"));
     }
 }

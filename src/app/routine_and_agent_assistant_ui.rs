@@ -107,6 +107,7 @@ impl GENtleApp {
         if !session_api_key.is_empty() {
             let key_env = match system.transport {
                 AgentSystemTransport::NativeAnthropic => ANTHROPIC_API_KEY_ENV,
+                AgentSystemTransport::NativeMistral => MISTRAL_API_KEY_ENV,
                 _ => OPENAI_API_KEY_ENV,
             };
             overrides.insert(key_env.to_string(), session_api_key.to_string());
@@ -117,6 +118,7 @@ impl GENtleApp {
                 system.transport,
                 AgentSystemTransport::NativeOpenai
                     | AgentSystemTransport::NativeAnthropic
+                    | AgentSystemTransport::NativeMistral
                     | AgentSystemTransport::NativeOpenaiCompat
             )
         {
@@ -138,6 +140,7 @@ impl GENtleApp {
                 system.transport,
                 AgentSystemTransport::NativeOpenai
                     | AgentSystemTransport::NativeAnthropic
+                    | AgentSystemTransport::NativeMistral
                     | AgentSystemTransport::NativeOpenaiCompat
             )
         {
@@ -149,6 +152,7 @@ impl GENtleApp {
                 AgentSystemTransport::ExternalJsonStdio
                     | AgentSystemTransport::NativeOpenai
                     | AgentSystemTransport::NativeAnthropic
+                    | AgentSystemTransport::NativeMistral
                     | AgentSystemTransport::NativeOpenaiCompat
             )
         {
@@ -162,6 +166,7 @@ impl GENtleApp {
                 system.transport,
                 AgentSystemTransport::NativeOpenai
                     | AgentSystemTransport::NativeAnthropic
+                    | AgentSystemTransport::NativeMistral
                     | AgentSystemTransport::NativeOpenaiCompat
             )
         {
@@ -176,6 +181,7 @@ impl GENtleApp {
                 AgentSystemTransport::ExternalJsonStdio
                     | AgentSystemTransport::NativeOpenai
                     | AgentSystemTransport::NativeAnthropic
+                    | AgentSystemTransport::NativeMistral
                     | AgentSystemTransport::NativeOpenaiCompat
             )
         {
@@ -190,6 +196,7 @@ impl GENtleApp {
                 AgentSystemTransport::ExternalJsonStdio
                     | AgentSystemTransport::NativeOpenai
                     | AgentSystemTransport::NativeAnthropic
+                    | AgentSystemTransport::NativeMistral
                     | AgentSystemTransport::NativeOpenaiCompat
             )
         {
@@ -204,6 +211,7 @@ impl GENtleApp {
                 AgentSystemTransport::ExternalJsonStdio
                     | AgentSystemTransport::NativeOpenai
                     | AgentSystemTransport::NativeAnthropic
+                    | AgentSystemTransport::NativeMistral
                     | AgentSystemTransport::NativeOpenaiCompat
             )
         {
@@ -234,6 +242,7 @@ impl GENtleApp {
             system.transport,
             AgentSystemTransport::NativeOpenai
                 | AgentSystemTransport::NativeAnthropic
+                | AgentSystemTransport::NativeMistral
                 | AgentSystemTransport::NativeOpenaiCompat
         ) {
             return None;
@@ -253,6 +262,7 @@ impl GENtleApp {
         Some(match system.transport {
             AgentSystemTransport::NativeOpenai => GUI_OPENAI_DEFAULT_BASE_URL.to_string(),
             AgentSystemTransport::NativeAnthropic => GUI_ANTHROPIC_DEFAULT_BASE_URL.to_string(),
+            AgentSystemTransport::NativeMistral => GUI_MISTRAL_DEFAULT_BASE_URL.to_string(),
             AgentSystemTransport::NativeOpenaiCompat => {
                 GUI_OPENAI_COMPAT_DEFAULT_BASE_URL.to_string()
             }
@@ -286,6 +296,7 @@ impl GENtleApp {
                 AgentSystemTransport::NativeAnthropic => {
                     (ANTHROPIC_API_KEY_ENV, "env-anthropic-api-key")
                 }
+                AgentSystemTransport::NativeMistral => (MISTRAL_API_KEY_ENV, "env-mistral-api-key"),
                 _ => (OPENAI_API_KEY_ENV, "env-openai-api-key"),
             };
             if std::env::var(env_key)
@@ -308,6 +319,9 @@ impl GENtleApp {
             || lower.contains("invalid_api_key")
             || lower.contains("incorrect api key")
             || lower.contains("authentication_error");
+        if auth_failed && (lower.contains("mistral") || lower.contains("la plateforme")) {
+            return Some(MISTRAL_API_KEY_AUTH_HINT);
+        }
         if auth_failed
             && (lower.contains("anthropic")
                 || lower.contains("x-api-key")
@@ -320,7 +334,9 @@ impl GENtleApp {
             return Some(ANTHROPIC_API_KEY_AUTH_HINT);
         }
         if auth_failed {
-            return Some("Authentication failed. Use an OpenAI Platform API key for OPENAI_API_KEY; ChatGPT/Codex subscription tokens are not OpenAI API keys.");
+            return Some(
+                "Authentication failed. Use an OpenAI Platform API key for OPENAI_API_KEY; ChatGPT/Codex subscription tokens are not OpenAI API keys.",
+            );
         }
         if lower.contains("timed out") || lower.contains("timeout") {
             return Some(
@@ -343,6 +359,7 @@ impl GENtleApp {
             system.transport,
             AgentSystemTransport::NativeOpenai
                 | AgentSystemTransport::NativeAnthropic
+                | AgentSystemTransport::NativeMistral
                 | AgentSystemTransport::NativeOpenaiCompat
         )
     }
@@ -380,12 +397,16 @@ impl GENtleApp {
     }
 
     pub(super) fn agent_preflight_next_actions(preflight: &AgentSystemPreflight) -> Vec<String> {
-        let key_hint = if preflight.transport == AgentSystemTransport::NativeAnthropic.as_str() {
-            format!("Paste an Anthropic API key or set {ANTHROPIC_API_KEY_ENV}.")
-        } else {
-            format!(
+        let key_hint = match preflight.transport.as_str() {
+            transport if transport == AgentSystemTransport::NativeAnthropic.as_str() => {
+                format!("Paste an Anthropic API key or set {ANTHROPIC_API_KEY_ENV}.")
+            }
+            transport if transport == AgentSystemTransport::NativeMistral.as_str() => {
+                format!("Paste a Mistral API key or set {MISTRAL_API_KEY_ENV}.")
+            }
+            _ => format!(
                 "Paste a session key or set {OPENAI_API_KEY_ENV}; ChatGPT/Codex subscriptions are not OpenAI API keys."
-            )
+            ),
         };
         if let Some(live) = &preflight.live_probe {
             let model_is_unspecified = preflight
@@ -402,6 +423,8 @@ impl GENtleApp {
                 AgentLiveProbeStatusClass::AuthFailed => {
                     if preflight.transport == AgentSystemTransport::NativeAnthropic.as_str() {
                         vec![ANTHROPIC_API_KEY_AUTH_HINT.to_string()]
+                    } else if preflight.transport == AgentSystemTransport::NativeMistral.as_str() {
+                        vec![MISTRAL_API_KEY_AUTH_HINT.to_string()]
                     } else {
                         vec![
                             "Check the API key/token for this endpoint, then run Test Setup again."
@@ -443,7 +466,9 @@ impl GENtleApp {
 
         let mut actions = Vec::new();
         if preflight.warnings.iter().any(|warning| {
-            warning.contains(OPENAI_API_KEY_ENV) || warning.contains(ANTHROPIC_API_KEY_ENV)
+            warning.contains(OPENAI_API_KEY_ENV)
+                || warning.contains(ANTHROPIC_API_KEY_ENV)
+                || warning.contains(MISTRAL_API_KEY_ENV)
         }) {
             actions.push(key_hint);
         }
@@ -534,6 +559,7 @@ impl GENtleApp {
             system.transport,
             AgentSystemTransport::NativeOpenai
                 | AgentSystemTransport::NativeAnthropic
+                | AgentSystemTransport::NativeMistral
                 | AgentSystemTransport::NativeOpenaiCompat
         ) {
             return;
@@ -1971,7 +1997,7 @@ impl GENtleApp {
             ui.group(|ui| {
                 ui.strong("Quick start");
                 ui.small(
-                    "Choose whether GENtle should talk to OpenAI, Claude, a local OpenAI-compatible model, or the offline demo.",
+                    "Choose whether GENtle should talk to OpenAI, Claude, Mistral, a local OpenAI-compatible model, or the offline demo.",
                 );
                 ui.horizontal_wrapped(|ui| {
                     if let Some(openai_system_id) =
@@ -2006,6 +2032,23 @@ impl GENtleApp {
                             self.agent_model_override.clear();
                             self.agent_discovered_model_pick.clear();
                             self.agent_status = "Selected Claude API quick start. Add ANTHROPIC_API_KEY or paste an Anthropic API key, then run Test Setup.".to_string();
+                        }
+                    }
+                    if let Some(mistral_system_id) =
+                        preferred_mistral_agent_system_id(&self.agent_systems)
+                    {
+                        if ui
+                            .button("Use Mistral API")
+                            .on_hover_text(
+                                "Select the native Mistral profile and use MISTRAL_API_KEY for requests",
+                            )
+                            .clicked()
+                        {
+                            self.select_agent_system_and_reset_setup(&mistral_system_id);
+                            self.agent_base_url_override.clear();
+                            self.agent_model_override.clear();
+                            self.agent_discovered_model_pick.clear();
+                            self.agent_status = "Selected Mistral API quick start. Add MISTRAL_API_KEY or paste a Mistral API key, then run Test Setup.".to_string();
                         }
                     }
                     if let Some(local_system_id) =
@@ -2080,6 +2123,7 @@ impl GENtleApp {
                 system.transport,
                 AgentSystemTransport::NativeOpenai
                     | AgentSystemTransport::NativeAnthropic
+                    | AgentSystemTransport::NativeMistral
                     | AgentSystemTransport::NativeOpenaiCompat
             ) {
                 if let Some(source_key) = self.selected_agent_model_discovery_source_key(&system) {
@@ -2117,6 +2161,9 @@ impl GENtleApp {
                     .unwrap_or_else(|| match system.transport {
                         AgentSystemTransport::NativeAnthropic => {
                             GUI_ANTHROPIC_DEFAULT_MODEL.to_string()
+                        }
+                        AgentSystemTransport::NativeMistral => {
+                            GUI_MISTRAL_DEFAULT_MODEL.to_string()
                         }
                         _ => OPENAI_COMPAT_UNSPECIFIED_MODEL.to_string(),
                     });
@@ -2157,6 +2204,7 @@ impl GENtleApp {
             .unwrap_or_default();
         let (key_label, key_hint) = match selected_transport {
             AgentSystemTransport::NativeAnthropic => ("Anthropic API key", "sk-ant-..."),
+            AgentSystemTransport::NativeMistral => ("Mistral API key", "api key"),
             _ => ("OpenAI API key", "sk-..."),
         };
         ui.horizontal(|ui| {
@@ -2297,6 +2345,7 @@ impl GENtleApp {
                     system.transport,
                     AgentSystemTransport::NativeOpenai
                         | AgentSystemTransport::NativeAnthropic
+                        | AgentSystemTransport::NativeMistral
                         | AgentSystemTransport::NativeOpenaiCompat
                 ) {
                     if ui
@@ -2321,6 +2370,7 @@ impl GENtleApp {
                 system.transport,
                 AgentSystemTransport::NativeOpenai
                     | AgentSystemTransport::NativeAnthropic
+                    | AgentSystemTransport::NativeMistral
                     | AgentSystemTransport::NativeOpenaiCompat
             ) {
                 self.clear_agent_model_discovery_snapshot();
@@ -2464,13 +2514,13 @@ impl GENtleApp {
             });
         }
         ui.small(
-            "Session only: if set, this key overrides OPENAI_API_KEY for agent requests started from this GUI window.",
+            "Session only: if set, this key overrides the selected provider API key env var for agent requests started from this GUI window.",
         );
         ui.small(
-            "Session only: Base URL override applies to native_openai/native_openai_compat. For local roots (e.g. http://localhost:11964), GENtle tries /chat/completions and /v1/chat/completions on that same base URL.",
+            "Session only: Base URL override applies to native_openai/native_anthropic/native_mistral/native_openai_compat. For local roots (e.g. http://localhost:11964), GENtle tries /chat/completions and /v1/chat/completions on that same base URL.",
         );
         ui.small(
-            "Session only: Model override applies to native_openai/native_openai_compat and maps to GENTLE_AGENT_MODEL. Value 'unspecified' means no override.",
+            "Session only: Model override applies to native_openai/native_anthropic/native_mistral/native_openai_compat and maps to GENTLE_AGENT_MODEL. Value 'unspecified' means no override.",
         );
         ui.small(
             "Session only: timeout_sec maps to GENTLE_AGENT_TIMEOUT_SECS and applies to agent requests (stdio and native transports).",
