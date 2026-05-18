@@ -250,8 +250,8 @@ Tabs:
     map overlays and SVG export.
   - Configure optional `Window Styling (experimental)`:
     - enable subtle themed backdrops
-    - per-window tint color picker (`main`, `sequence`, `splicing`, `pool`, `configuration`, `help`)
-    - optional per-window image watermark paths (`main`, `sequence`, `splicing`, `pool`, `configuration`, `help`)
+    - per-window tint color picker (`main`, `sequence`, `splicing`, `pool`, `configuration`, `help`, `agent assistant`)
+    - optional per-window image watermark paths (`main`, `sequence`, `splicing`, `pool`, `configuration`, `help`, `agent assistant`)
     - styling editor is a table (`Window`, `Tint`, `Path`, `Actions`)
     - row actions include `Browse...`, `Clear`, and `Reset Color`
     - tint/image opacity controls
@@ -678,6 +678,8 @@ Feature tree grouping:
   the terminal and mirrors it into the sequence-window status line.
 - The splicing expert window uses its own window-styling slot (`splicing`) so
   tint/image backdrop can be configured separately from DNA and pool windows.
+- The Agent Assistant window uses its own window-styling slot (`agent assistant`)
+  with `assets/backgrounds/AI_AgentInterface.png` as the default image.
 - Splicing support frequencies are shown explicitly:
   - hovering exon glyphs in the lane canvas shows transcript/exon coordinates,
     support, `len%3`, and CDS flank phase details (when available)
