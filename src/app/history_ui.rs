@@ -113,6 +113,7 @@ impl GENtleApp {
             )
             .foreground(render_history_in_foreground);
             crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| render_contents(ui));
+            self.clear_viewport_foreground_request_after_render(viewport_id);
             self.history_ui.show_panel = open;
             return;
         }

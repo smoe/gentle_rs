@@ -5233,6 +5233,17 @@ Error: `{err}`"
             .foreground(self.viewport_foreground_requested(viewport_id))
     }
 
+    /// Clear the one-frame foreground request after an embedded hosted window
+    /// has rendered. This mirrors `note_viewport_focus_if_active` for native
+    /// viewports while letting the hosted window spec observe the request first.
+    fn clear_viewport_foreground_request_after_render(&mut self, viewport_id: ViewportId) {
+        if self.viewport_foreground_requested(viewport_id) {
+            self.set_active_window_viewport(viewport_id);
+            self.pending_focus_viewports.retain(|id| *id != viewport_id);
+            self.finalize_viewport_focus_probe(viewport_id);
+        }
+    }
+
     fn note_slow_phase(&mut self, label: &str, elapsed_ms: u128) {
         if elapsed_ms >= WINDOW_OPEN_SLOW_THRESHOLD_MS {
             self.app_status = format!("{label} took {elapsed_ms} ms");
@@ -12923,6 +12934,7 @@ Error: `{err}`"
                         close_requested = self.render_arrangement_gel_preview_contents(ui);
                     });
             });
+            self.clear_viewport_foreground_request_after_render(viewport_id);
             if close_requested || ctx.input(|i| i.key_pressed(Key::Escape)) {
                 open = false;
             }
@@ -13087,6 +13099,7 @@ Error: `{err}`"
                         close_requested = self.render_rack_labels_preview_contents(ui);
                     });
             });
+            self.clear_viewport_foreground_request_after_render(viewport_id);
             if close_requested || ctx.input(|i| i.key_pressed(Key::Escape)) {
                 open = false;
             }
@@ -13217,6 +13230,7 @@ Error: `{err}`"
                         close_requested = self.render_pcr_design_contents(ui, ctx)
                     });
             });
+            self.clear_viewport_foreground_request_after_render(viewport_id);
             if close_requested || ctx.input(|i| i.key_pressed(Key::Escape)) {
                 open = false;
             }
@@ -13356,6 +13370,7 @@ Error: `{err}`"
                         close_requested = self.render_sequencing_confirmation_contents(ui, ctx)
                     });
             });
+            self.clear_viewport_foreground_request_after_render(viewport_id);
             if close_requested || ctx.input(|i| i.key_pressed(Key::Escape)) {
                 open = false;
             }
@@ -13914,6 +13929,7 @@ Error: `{err}`"
             crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
                 close_requested = self.render_planning_contents(ui)
             });
+            self.clear_viewport_foreground_request_after_render(viewport_id);
             if close_requested || ctx.input(|i| i.key_pressed(Key::Escape)) {
                 open = false;
             }
@@ -15583,7 +15599,7 @@ Error: `{err}`"
     }
 
     fn show_window(
-        &self,
+        &mut self,
         ctx: &egui::Context,
         id: ViewportId,
         window: Arc<RwLock<Window>>,
@@ -15594,8 +15610,7 @@ Error: `{err}`"
             .read()
             .map(|w| w.name())
             .unwrap_or_else(|_| "GENtle".to_string());
-        let render_hosted_sequence_in_foreground = self.pending_focus_viewports.contains(&id)
-            || self.pending_viewport_focus_timestamps.contains_key(&id);
+        let render_hosted_sequence_in_foreground = self.viewport_foreground_requested(id);
         let builder = egui::ViewportBuilder::default().with_title(window_title.clone());
         let initial_commands = Self::deferred_window_initial_commands(initial_position);
         if ctx.embed_viewports() {
@@ -15619,6 +15634,7 @@ Error: `{err}`"
                     crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
                         w.update_embedded(ui);
                     });
+                    self.clear_viewport_foreground_request_after_render(id);
                     w.update_auxiliary_windows_only(ctx);
                     if !open {
                         w.take_close_requested();
@@ -20581,6 +20597,7 @@ Error: `{err}`"
             )
             .foreground(render_command_palette_in_foreground);
             crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| render_contents(ui));
+            self.clear_viewport_foreground_request_after_render(viewport_id);
 
             if let Some(action) = execute_action {
                 self.execute_command_palette_action(ctx, action);
@@ -21529,11 +21546,7 @@ Error: `{err}`"
                     }
                 });
         });
-        if self.viewport_foreground_requested(viewport_id) {
-            self.set_active_window_viewport(viewport_id);
-            self.pending_focus_viewports.retain(|id| *id != viewport_id);
-            self.finalize_viewport_focus_probe(viewport_id);
-        }
+        self.clear_viewport_foreground_request_after_render(viewport_id);
         self.finalize_viewport_open_probe(viewport_id, "Background Jobs");
         self.show_jobs_panel = open;
     }
@@ -21619,10 +21632,7 @@ Error: `{err}`"
             let render_started = Instant::now();
             let min_size = Vec2::new(420.0, 320.0);
             let mut open = self.show_help_dialog;
-            let render_help_in_foreground = self.pending_focus_viewports.contains(&viewport_id)
-                || self
-                    .pending_viewport_focus_timestamps
-                    .contains_key(&viewport_id);
+            let render_help_in_foreground = self.viewport_foreground_requested(viewport_id);
             let spec = crate::egui_compat::HostedWindowSpec::new(
                 "Help",
                 Self::hosted_help_window_id(),
@@ -21640,6 +21650,7 @@ Error: `{err}`"
             crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
                 self.render_help_contents(ui);
             });
+            self.clear_viewport_foreground_request_after_render(viewport_id);
             self.note_slow_open_phase(
                 viewport_id,
                 "Help first-frame render",
@@ -28789,6 +28800,38 @@ mod tests {
     }
 
     #[test]
+    fn embedded_window_foreground_request_is_one_shot_per_render() {
+        let mut app = GENtleApp::default();
+        for viewport_id in [
+            GENtleApp::help_viewport_id(),
+            GENtleApp::agent_assistant_viewport_id(),
+        ] {
+            app.queue_focus_viewport(viewport_id);
+            assert!(app.viewport_foreground_requested(viewport_id));
+
+            app.clear_viewport_foreground_request_after_render(viewport_id);
+
+            assert!(
+                !app.viewport_foreground_requested(viewport_id),
+                "foreground request must clear after one embedded render for {viewport_id:?}"
+            );
+        }
+
+        let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+        let viewport_id =
+            app.register_window(Window::new_dna(dna, "seq1".to_string(), app.engine.clone()));
+        app.queue_focus_viewport(viewport_id);
+        assert!(app.viewport_foreground_requested(viewport_id));
+
+        app.clear_viewport_foreground_request_after_render(viewport_id);
+
+        assert!(
+            !app.viewport_foreground_requested(viewport_id),
+            "sequence-window foreground request must clear after one embedded render"
+        );
+    }
+
+    #[test]
     fn mark_window_open_or_focus_marks_open_and_queues_focus_for_closed_window() {
         let mut app = GENtleApp::default();
         let viewport_id = GENtleApp::planning_viewport_id();
@@ -30575,6 +30618,7 @@ mod tests {
             Some(sequence_layer_id),
             "a newly focused sequence window should cover the project window at overlapping points"
         );
+        assert!(!app.viewport_foreground_requested(viewport_id));
         let _ = ctx.end_pass();
     }
 
@@ -30974,6 +31018,7 @@ mod tests {
         app.render_help_dialog(&ctx);
         assert!(ctx.memory(|mem| mem.areas().is_visible(&foreground_help_layer_id)));
         assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_viewport_layer_id)));
+        assert!(!app.viewport_foreground_requested(GENtleApp::help_viewport_id()));
         let _ = ctx.end_pass();
     }
 
@@ -30997,6 +31042,7 @@ mod tests {
         app.render_agent_assistant_dialog(&ctx);
         assert!(ctx.memory(|mem| mem.areas().is_visible(&hosted_layer_id)));
         assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_viewport_layer_id)));
+        assert!(!app.viewport_foreground_requested(GENtleApp::agent_assistant_viewport_id()));
         let _ = ctx.end_pass();
     }
 

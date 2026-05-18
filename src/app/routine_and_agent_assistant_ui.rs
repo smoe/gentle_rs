@@ -1883,6 +1883,7 @@ impl GENtleApp {
             crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
                 close_requested = self.render_routine_assistant_contents(ui);
             });
+            self.clear_viewport_foreground_request_after_render(viewport_id);
             if close_requested {
                 open = false;
             }
@@ -2807,6 +2808,7 @@ impl GENtleApp {
                     .render_agent_assistant_contents_scrollable(ui, "agent_assistant_main_scroll")
                     .inner;
             });
+            self.clear_viewport_foreground_request_after_render(viewport_id);
             if close_requested {
                 open = false;
             }

@@ -2268,6 +2268,7 @@ impl GENtleApp {
                 ui.monospace(self.dbsnp_status.clone());
             }
         });
+        self.clear_viewport_foreground_request_after_render(viewport_id);
         if close_requested {
             open = false;
         }
@@ -3376,6 +3377,7 @@ impl GENtleApp {
                         close_requested = self.render_uniprot_dialog_contents(ui);
                     });
             });
+            self.clear_viewport_foreground_request_after_render(viewport_id);
             if close_requested {
                 open = false;
             }
