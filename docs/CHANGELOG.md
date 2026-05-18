@@ -26,6 +26,8 @@ Maintenance rule:
 - Kept the Agent Assistant and Agent Interfaces tutorial pinned in the
   in-app `Help -> Tutorials` picker even if catalog discovery falls back to
   markdown scanning.
+- Enriched the first generated tutorial batch with v3 per-step CLI snippets,
+  expected-result callouts, and prerequisite links.
 - Polished generated tutorial rendering with quieter provenance in Help,
   applied-concept wording, earlier parameter explanation, CLI state guidance,
   SVG label fallbacks, and capped tutorial-project progress before final open.

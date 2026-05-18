@@ -88,6 +88,16 @@
         "In the DNA window, create a branch copy from the loaded sequence (Branch action).",
         "Apply reverse-complement to the branch and confirm a new sequence entry appears in lineage/table views."
       ],
+      "cli_steps": [
+        "cargo run --bin gentle_cli -- op '{\"LoadFile\":{\"path\":\"test_files/pGEX_3X.fa\",\"as_id\":\"pgex_fasta\"}}'",
+        "cargo run --bin gentle_cli -- op '{\"Branch\":{\"input\":\"pgex_fasta\",\"output_id\":\"pgex_fasta_branch\"}}'",
+        "cargo run --bin gentle_cli -- op '{\"ReverseComplement\":{\"input\":\"pgex_fasta_branch\",\"output_id\":\"pgex_fasta_branch_rc\"}}'"
+      ],
+      "step_expectations": [
+        "The project state contains the loaded source sequence `pgex_fasta` while preserving its file provenance.",
+        "A separate derivative sequence `pgex_fasta_branch` appears without replacing the original FASTA record.",
+        "A new sequence `pgex_fasta_branch_rc` appears as the reverse-complement product linked to the branch input."
+      ],
       "learning_objectives": [
         "Run one canonical workflow from source JSON and interpret the result IDs.",
         "Understand that branch and reverse-complement operations create explicit derivative sequences.",
@@ -205,6 +215,19 @@
         "Run Digest from the DNA window using enzymes `BamHI` and `EcoRI`.",
         "Review created fragment entries and confirm they are stored as independent sequence products."
       ],
+      "cli_steps": [
+        "cargo run --bin gentle_cli -- op '{\"LoadFile\":{\"path\":\"test_files/pGEX-3X.gb\",\"as_id\":\"pgex\"}}'",
+        "cargo run --bin gentle_cli -- op '{\"Digest\":{\"input\":\"pgex\",\"enzymes\":[\"BamHI\",\"EcoRI\"],\"output_prefix\":\"frag\"}}'",
+        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/load_and_digest_pgex.json"
+      ],
+      "step_expectations": [
+        "The state contains the annotated pGEX sequence as `pgex`.",
+        "The digest operation creates deterministic fragment sequence IDs using the `frag` prefix.",
+        "Replaying the workflow reproduces the same loaded sequence and fragment-product lineage."
+      ],
+      "prerequisites": [
+        "load_branch_reverse_complement_pgex_fasta"
+      ],
       "learning_objectives": [
         "Execute digest operations and inspect created fragment IDs.",
         "Reason about multi-product lineage from one parent sequence.",
@@ -320,6 +343,19 @@
         "Apply practical filters (GC range, homopolymer limits, U6 terminator avoidance).",
         "Generate oligos from passed guides and inspect the resulting oligo set IDs."
       ],
+      "cli_steps": [
+        "cargo run --bin gentle_cli -- guides put tp73_guides --json '[{\"guide_id\":\"g1\",\"seq_id\":\"tp73\",\"start_0based\":100,\"end_0based_exclusive\":120,\"strand\":\"+\",\"protospacer\":\"GACCTGTTGACGATGTTCCA\",\"pam\":\"AGG\",\"nuclease\":\"SpCas9\",\"cut_offset_from_protospacer_start\":17,\"rank\":1},{\"guide_id\":\"g2\",\"seq_id\":\"tp73\",\"start_0based\":220,\"end_0based_exclusive\":240,\"strand\":\"+\",\"protospacer\":\"TTTTGCCATGTTGACCTGAA\",\"pam\":\"TGG\",\"nuclease\":\"SpCas9\",\"cut_offset_from_protospacer_start\":17,\"rank\":2},{\"guide_id\":\"g3\",\"seq_id\":\"tp73\",\"start_0based\":340,\"end_0based_exclusive\":360,\"strand\":\"-\",\"protospacer\":\"GGTACCGATGTTGCCAGTAA\",\"pam\":\"CGG\",\"nuclease\":\"SpCas9\",\"cut_offset_from_protospacer_start\":17,\"rank\":3}]'",
+        "cargo run --bin gentle_cli -- guides filter tp73_guides --config '{\"gc_min\":0.3,\"gc_max\":0.7,\"max_homopolymer_run\":4,\"reject_ambiguous_bases\":true,\"avoid_u6_terminator_tttt\":true,\"u6_terminator_window\":\"spacer_plus_tail\",\"required_5prime_base\":\"G\",\"allow_5prime_g_extension\":true}' --output-set tp73_guides_pass",
+        "cargo run --bin gentle_cli -- guides oligos-generate tp73_guides lenti_bsmbi_u6_default --apply-5prime-g-extension --output-oligo-set tp73_lenti --passed-only"
+      ],
+      "step_expectations": [
+        "The guide registry contains `tp73_guides` with three ranked guide candidates.",
+        "The filter report records pass/fail decisions and writes the passing subset as `tp73_guides_pass`.",
+        "The oligo registry contains `tp73_lenti`, generated only from guides that passed the practical filter."
+      ],
+      "prerequisites": [
+        "load_branch_reverse_complement_pgex_fasta"
+      ],
       "learning_objectives": [
         "Create and filter guide sets through explicit engine operations.",
         "Generate oligo records from filtered guide candidates.",
@@ -370,6 +406,19 @@
         "Start from the loaded FASTA/plasmid sequence in the GUI.",
         "Run digest with selected enzymes and inspect available products.",
         "Run ligation with the intended inputs, then extract a focused region from the ligation result."
+      ],
+      "cli_steps": [
+        "cargo run --bin gentle_cli -- op '{\"LoadFile\":{\"path\":\"test_files/pGEX_3X.fa\",\"as_id\":\"pgex_fasta\"}}'",
+        "cargo run --bin gentle_cli -- op '{\"Digest\":{\"input\":\"pgex_fasta\",\"enzymes\":[\"BamHI\",\"EcoRI\"],\"output_prefix\":\"d\"}}'",
+        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/digest_ligation_extract_region_minimal.json"
+      ],
+      "step_expectations": [
+        "The source sequence is loaded as `pgex_fasta`, ready to feed cloning operations.",
+        "The digest step creates deterministic fragment IDs with the `d` prefix.",
+        "The full workflow creates ligation product `lig_1` and extracted handoff sequence `lig_extract`."
+      ],
+      "prerequisites": [
+        "load_and_digest_pgex"
       ],
       "learning_objectives": [
         "Execute a minimal end-to-end cloning chain.",
@@ -790,6 +839,29 @@
         "Optionally enable `Also create extracted region copies`, then run `Design Primer Pairs for queued regions`.",
         "In `PCR batch results`, use `Show` for report summary, `Export` for JSON output, and `Open` to jump to the extracted copy (or template when copy mode is off)."
       ],
+      "cli_steps": [
+        "cargo run --bin gentle_cli -- op '{\"LoadFile\":{\"path\":\"test_files/tp73.ncbi.gb\",\"as_id\":\"tp73_locus\"}}'",
+        "cargo run --bin gentle_cli -- op '{\"ExtractRegion\":{\"input\":\"tp73_locus\",\"from\":61720,\"to\":62120,\"output_id\":\"tp73_as2_promoter_roi_1\"}}'",
+        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/pcr_selection_batch_primer_pairs_offline.json",
+        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/pcr_selection_batch_primer_pairs_offline.json",
+        "cargo run --bin gentle_cli -- op '{\"ExtractRegion\":{\"input\":\"tp73_locus\",\"from\":61940,\"to\":62340,\"output_id\":\"tp73_as2_promoter_roi_2\"}}'",
+        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/pcr_selection_batch_primer_pairs_offline.json",
+        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/pcr_selection_batch_primer_pairs_offline.json",
+        "cargo run --bin gentle_cli -- shell 'primers show-report tp73_as2_promoter_batch_r01'"
+      ],
+      "step_expectations": [
+        "The local TP73 GenBank record is available as `tp73_locus`, and the PCR Designer can use the same state.",
+        "The CLI materializes the first painted ROI as `tp73_as2_promoter_roi_1`, mirroring the green target interval.",
+        "The canonical workflow records the upstream/downstream primer-window geometry used for the first primer-pair report.",
+        "The canonical workflow preserves deterministic queue semantics even when the GUI path uses post-drag queue actions.",
+        "The second ROI copy `tp73_as2_promoter_roi_2` represents the annotation-driven queue row.",
+        "Reports `tp73_as2_promoter_batch_r01` and `tp73_as2_promoter_batch_r02` are produced with the shared constraint set.",
+        "Extracted-region copies and primer reports are present after the workflow replay.",
+        "`primers show-report` prints the selected report so it can be reviewed or exported without hand-editing JSON."
+      ],
+      "prerequisites": [
+        "load_branch_reverse_complement_pgex_fasta"
+      ],
       "learning_objectives": [
         "Capture PCR queue regions from paint-first map interaction and selected-feature fallback actions.",
         "Use semantic painted intervals to preview pair-PCR geometry before execution.",
@@ -803,14 +875,14 @@
       ],
       "parameter_notes": [
         {
-          "parameter": "TP73-AS2 promoter-proximal ROI window (for example `61720..62120`)",
+          "parameter": "TP73-AS2 promoter-proximal ROI window, for example 61720..62120",
           "where_used": "painted ROI role and Design primer pairs ROI fields around TP73-AS2",
           "why_it_matters": "Keeps PCR targets tied to a biologically meaningful promoter-proximal context that can later feed luciferase planning.",
           "how_to_derive": "Anchor on TP73-AS2 annotation in `test_files/tp73.ncbi.gb` (gene/ncRNA at lines ~1257-1270), then choose a local promoter-proximal window around the antisense 5' boundary.",
           "omit_when": ""
         },
         {
-          "parameter": "Paint roles (`ROI` green, `Upstream` red, `Downstream` blue)",
+          "parameter": "Paint roles: ROI green, Upstream red, Downstream blue",
           "where_used": "PCR Designer map interaction + live pair-PCR cartoon geometry",
           "why_it_matters": "Separates biological target interval from allowed primer-placement windows and makes constraint intent visible before design execution.",
           "how_to_derive": "Paint ROI over the target biology first, then paint upstream/downstream windows that bound forward/reverse primer search space.",
@@ -824,14 +896,14 @@
           "omit_when": ""
         },
         {
-          "parameter": "PCR queue copy toggle (`Also create extracted region copies`)",
+          "parameter": "PCR queue copy toggle: Also create extracted region copies",
           "where_used": "batch execution in Design primer pairs form",
           "why_it_matters": "Enables per-region `ExtractRegion` artifacts before/alongside primer report generation.",
           "how_to_derive": "Enable when downstream steps need sequence artifacts; leave off for report-only planning (default off).",
           "omit_when": ""
         },
         {
-          "parameter": "Queue source mode (`painted ROI` vs `selected feature` fallback)",
+          "parameter": "Queue source mode: painted ROI vs selected feature fallback",
           "where_used": "queue rows before batch execution",
           "why_it_matters": "Preserves coordinate provenance for each batch row and keeps mixed ad hoc + annotation flows inspectable.",
           "how_to_derive": "Use paint-first for custom windows; use selected-feature fallback for annotation-defined intervals.",

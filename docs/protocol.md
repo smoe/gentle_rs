@@ -76,6 +76,7 @@ Tutorial manifest + generated outputs:
   - `docs/tutorial/sources/*.json`
 - source-unit schemas:
   - `gentle.tutorial_catalog_meta.v1`
+  - `gentle.tutorial_source.v3`
   - `gentle.tutorial_source.v2`
 - generated runtime manifest: `docs/tutorial/manifest.json`
 - runtime manifest schema: `gentle.tutorial_manifest.v1`

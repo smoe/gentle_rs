@@ -14,6 +14,8 @@ Introduce restriction digest planning and deterministic fragment products.
 
 Restriction digest is a core molecular cloning routine used for vector linearization, insert release, and diagnostic fragment checks. This chapter focuses on how digest parameters map to reproducible fragment sets that can later feed ligation or analysis steps.
 
+**Prerequisites:** Read [Chapter 1: Load FASTA, branch, and reverse-complement](./01_load_branch_reverse_complement_pgex_fasta.md) first.
+
 ## Parameters That Matter
 
 - `Digest.enzymes` (where used: operation 2)
@@ -43,18 +45,44 @@ Restriction digest is a core molecular cloning routine used for vector lineariza
 
 ## GUI First
 
-1. Load `test_files/pGEX-3X.gb` in the GUI and inspect annotated features.
-2. Run Digest from the DNA window using enzymes `BamHI` and `EcoRI`.
-3. Review created fragment entries and confirm they are stored as independent sequence products.
+CLI snippets use GENtle's default `.gentle_state.json` state unless they say otherwise. Add `--state PATH` or `--project PATH` when you want an explicit sandboxed state file for copied commands.
 
-## Command Equivalent (After GUI)
+### Step 1: Load test_files/pGEX-3X.gb in the GUI and inspect annotated features
 
-Run the same routine non-interactively once the GUI flow is clear:
+GUI: Load `test_files/pGEX-3X.gb` in the GUI and inspect annotated features.
+
+CLI:
+
+```bash
+cargo run --bin gentle_cli -- op '{"LoadFile":{"path":"test_files/pGEX-3X.gb","as_id":"pgex"}}'
+```
+
+> Expected: The state contains the annotated pGEX sequence as `pgex`.
+
+### Step 2: Run Digest from the DNA window using enzymes BamHI and EcoRI
+
+GUI: Run Digest from the DNA window using enzymes `BamHI` and `EcoRI`.
+
+CLI:
+
+```bash
+cargo run --bin gentle_cli -- op '{"Digest":{"input":"pgex","enzymes":["BamHI","EcoRI"],"output_prefix":"frag"}}'
+```
+
+> Expected: The digest operation creates deterministic fragment sequence IDs using the `frag` prefix.
+
+### Step 3: Review created fragment entries and confirm they are stored as independent se...
+
+GUI: Review created fragment entries and confirm they are stored as independent sequence products.
+
+CLI:
 
 ```bash
 cargo run --bin gentle_cli -- workflow @docs/examples/workflows/load_and_digest_pgex.json
-cargo run --bin gentle_cli -- shell 'workflow @docs/examples/workflows/load_and_digest_pgex.json'
 ```
+
+> Expected: Replaying the workflow reproduces the same loaded sequence and fragment-product lineage.
+
 
 ## Checkpoints
 

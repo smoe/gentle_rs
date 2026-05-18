@@ -1,5 +1,5 @@
 {
-  "schema": "gentle.tutorial_source.v2",
+  "schema": "gentle.tutorial_source.v3",
   "id": "digest_ligation_extract_region_minimal",
   "title": "Digest -> Ligation -> ExtractRegion minimal slice",
   "catalog": {
@@ -30,6 +30,19 @@
       "Start from the loaded FASTA/plasmid sequence in the GUI.",
       "Run digest with selected enzymes and inspect available products.",
       "Run ligation with the intended inputs, then extract a focused region from the ligation result."
+    ],
+    "cli_steps": [
+      "cargo run --bin gentle_cli -- op '{\"LoadFile\":{\"path\":\"test_files/pGEX_3X.fa\",\"as_id\":\"pgex_fasta\"}}'",
+      "cargo run --bin gentle_cli -- op '{\"Digest\":{\"input\":\"pgex_fasta\",\"enzymes\":[\"BamHI\",\"EcoRI\"],\"output_prefix\":\"d\"}}'",
+      "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/digest_ligation_extract_region_minimal.json"
+    ],
+    "step_expectations": [
+      "The source sequence is loaded as `pgex_fasta`, ready to feed cloning operations.",
+      "The digest step creates deterministic fragment IDs with the `d` prefix.",
+      "The full workflow creates ligation product `lig_1` and extracted handoff sequence `lig_extract`."
+    ],
+    "prerequisites": [
+      "load_and_digest_pgex"
     ],
     "learning_objectives": [
       "Execute a minimal end-to-end cloning chain.",

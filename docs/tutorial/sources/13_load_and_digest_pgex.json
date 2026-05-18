@@ -1,5 +1,5 @@
 {
-  "schema": "gentle.tutorial_source.v2",
+  "schema": "gentle.tutorial_source.v3",
   "id": "load_and_digest_pgex",
   "title": "Load pGEX and digest with BamHI/EcoRI",
   "catalog": {
@@ -30,6 +30,19 @@
       "Load `test_files/pGEX-3X.gb` in the GUI and inspect annotated features.",
       "Run Digest from the DNA window using enzymes `BamHI` and `EcoRI`.",
       "Review created fragment entries and confirm they are stored as independent sequence products."
+    ],
+    "cli_steps": [
+      "cargo run --bin gentle_cli -- op '{\"LoadFile\":{\"path\":\"test_files/pGEX-3X.gb\",\"as_id\":\"pgex\"}}'",
+      "cargo run --bin gentle_cli -- op '{\"Digest\":{\"input\":\"pgex\",\"enzymes\":[\"BamHI\",\"EcoRI\"],\"output_prefix\":\"frag\"}}'",
+      "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/load_and_digest_pgex.json"
+    ],
+    "step_expectations": [
+      "The state contains the annotated pGEX sequence as `pgex`.",
+      "The digest operation creates deterministic fragment sequence IDs using the `frag` prefix.",
+      "Replaying the workflow reproduces the same loaded sequence and fragment-product lineage."
+    ],
+    "prerequisites": [
+      "load_branch_reverse_complement_pgex_fasta"
     ],
     "learning_objectives": [
       "Execute digest operations and inspect created fragment IDs.",

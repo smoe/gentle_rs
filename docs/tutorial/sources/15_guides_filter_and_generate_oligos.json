@@ -1,5 +1,5 @@
 {
-  "schema": "gentle.tutorial_source.v2",
+  "schema": "gentle.tutorial_source.v3",
   "id": "guides_filter_and_generate_oligos",
   "title": "Guide practical filtering and oligo generation",
   "catalog": {
@@ -30,6 +30,19 @@
       "Open the guides workflow controls in GENtle and create/import a guide set for a target region.",
       "Apply practical filters (GC range, homopolymer limits, U6 terminator avoidance).",
       "Generate oligos from passed guides and inspect the resulting oligo set IDs."
+    ],
+    "cli_steps": [
+      "cargo run --bin gentle_cli -- guides put tp73_guides --json '[{\"guide_id\":\"g1\",\"seq_id\":\"tp73\",\"start_0based\":100,\"end_0based_exclusive\":120,\"strand\":\"+\",\"protospacer\":\"GACCTGTTGACGATGTTCCA\",\"pam\":\"AGG\",\"nuclease\":\"SpCas9\",\"cut_offset_from_protospacer_start\":17,\"rank\":1},{\"guide_id\":\"g2\",\"seq_id\":\"tp73\",\"start_0based\":220,\"end_0based_exclusive\":240,\"strand\":\"+\",\"protospacer\":\"TTTTGCCATGTTGACCTGAA\",\"pam\":\"TGG\",\"nuclease\":\"SpCas9\",\"cut_offset_from_protospacer_start\":17,\"rank\":2},{\"guide_id\":\"g3\",\"seq_id\":\"tp73\",\"start_0based\":340,\"end_0based_exclusive\":360,\"strand\":\"-\",\"protospacer\":\"GGTACCGATGTTGCCAGTAA\",\"pam\":\"CGG\",\"nuclease\":\"SpCas9\",\"cut_offset_from_protospacer_start\":17,\"rank\":3}]'",
+      "cargo run --bin gentle_cli -- guides filter tp73_guides --config '{\"gc_min\":0.3,\"gc_max\":0.7,\"max_homopolymer_run\":4,\"reject_ambiguous_bases\":true,\"avoid_u6_terminator_tttt\":true,\"u6_terminator_window\":\"spacer_plus_tail\",\"required_5prime_base\":\"G\",\"allow_5prime_g_extension\":true}' --output-set tp73_guides_pass",
+      "cargo run --bin gentle_cli -- guides oligos-generate tp73_guides lenti_bsmbi_u6_default --apply-5prime-g-extension --output-oligo-set tp73_lenti --passed-only"
+    ],
+    "step_expectations": [
+      "The guide registry contains `tp73_guides` with three ranked guide candidates.",
+      "The filter report records pass/fail decisions and writes the passing subset as `tp73_guides_pass`.",
+      "The oligo registry contains `tp73_lenti`, generated only from guides that passed the practical filter."
+    ],
+    "prerequisites": [
+      "load_branch_reverse_complement_pgex_fasta"
     ],
     "learning_objectives": [
       "Create and filter guide sets through explicit engine operations.",
