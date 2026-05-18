@@ -14,6 +14,8 @@ Apply practical guide constraints and produce cloning-ready oligo candidates.
 
 For CRISPR-style cloning, guide quality control is where many downstream failures are prevented. This routine demonstrates how to encode practical constraints directly in operations, then generate oligos from the passed candidates.
 
+**Prerequisites:** Read [Chapter 1: Load FASTA, branch, and reverse-complement](./01_load_branch_reverse_complement_pgex_fasta.md) first.
+
 ## Parameters That Matter
 
 - `FilterGuidesPractical.config.gc_min / gc_max` (where used: operation 2)
@@ -42,18 +44,44 @@ For CRISPR-style cloning, guide quality control is where many downstream failure
 
 ## GUI First
 
-1. Open the guides workflow controls in GENtle and create/import a guide set for a target region.
-2. Apply practical filters (GC range, homopolymer limits, U6 terminator avoidance).
-3. Generate oligos from passed guides and inspect the resulting oligo set IDs.
+CLI snippets use GENtle's default `.gentle_state.json` state unless they say otherwise. Add `--state PATH` or `--project PATH` when you want an explicit sandboxed state file for copied commands.
 
-## Command Equivalent (After GUI)
+### Step 1: Open the guides workflow controls in GENtle and create/import a guide set for...
 
-Run the same routine non-interactively once the GUI flow is clear:
+GUI: Open the guides workflow controls in GENtle and create/import a guide set for a target region.
+
+CLI:
 
 ```bash
-cargo run --bin gentle_cli -- workflow @docs/examples/workflows/guides_filter_and_generate_oligos.json
-cargo run --bin gentle_cli -- shell 'workflow @docs/examples/workflows/guides_filter_and_generate_oligos.json'
+cargo run --bin gentle_cli -- guides put tp73_guides --json '[{"guide_id":"g1","seq_id":"tp73","start_0based":100,"end_0based_exclusive":120,"strand":"+","protospacer":"GACCTGTTGACGATGTTCCA","pam":"AGG","nuclease":"SpCas9","cut_offset_from_protospacer_start":17,"rank":1},{"guide_id":"g2","seq_id":"tp73","start_0based":220,"end_0based_exclusive":240,"strand":"+","protospacer":"TTTTGCCATGTTGACCTGAA","pam":"TGG","nuclease":"SpCas9","cut_offset_from_protospacer_start":17,"rank":2},{"guide_id":"g3","seq_id":"tp73","start_0based":340,"end_0based_exclusive":360,"strand":"-","protospacer":"GGTACCGATGTTGCCAGTAA","pam":"CGG","nuclease":"SpCas9","cut_offset_from_protospacer_start":17,"rank":3}]'
 ```
+
+> Expected: The guide registry contains `tp73_guides` with three ranked guide candidates.
+
+### Step 2: Apply practical filters (GC range, homopolymer limits, U6 terminator avoidance)
+
+GUI: Apply practical filters (GC range, homopolymer limits, U6 terminator avoidance).
+
+CLI:
+
+```bash
+cargo run --bin gentle_cli -- guides filter tp73_guides --config '{"gc_min":0.3,"gc_max":0.7,"max_homopolymer_run":4,"reject_ambiguous_bases":true,"avoid_u6_terminator_tttt":true,"u6_terminator_window":"spacer_plus_tail","required_5prime_base":"G","allow_5prime_g_extension":true}' --output-set tp73_guides_pass
+```
+
+> Expected: The filter report records pass/fail decisions and writes the passing subset as `tp73_guides_pass`.
+
+### Step 3: Generate oligos from passed guides and inspect the resulting oligo set IDs
+
+GUI: Generate oligos from passed guides and inspect the resulting oligo set IDs.
+
+CLI:
+
+```bash
+cargo run --bin gentle_cli -- guides oligos-generate tp73_guides lenti_bsmbi_u6_default --apply-5prime-g-extension --output-oligo-set tp73_lenti --passed-only
+```
+
+> Expected: The oligo registry contains `tp73_lenti`, generated only from guides that passed the practical filter.
+
 
 ## Checkpoints
 

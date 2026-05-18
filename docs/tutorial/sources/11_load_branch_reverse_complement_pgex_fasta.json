@@ -1,5 +1,5 @@
 {
-  "schema": "gentle.tutorial_source.v2",
+  "schema": "gentle.tutorial_source.v3",
   "id": "load_branch_reverse_complement_pgex_fasta",
   "title": "Load FASTA, branch, and reverse-complement",
   "catalog": {
@@ -30,6 +30,16 @@
       "Open GENtle and load `test_files/pGEX_3X.fa` via `File -> Open`.",
       "In the DNA window, create a branch copy from the loaded sequence (Branch action).",
       "Apply reverse-complement to the branch and confirm a new sequence entry appears in lineage/table views."
+    ],
+    "cli_steps": [
+      "cargo run --bin gentle_cli -- op '{\"LoadFile\":{\"path\":\"test_files/pGEX_3X.fa\",\"as_id\":\"pgex_fasta\"}}'",
+      "cargo run --bin gentle_cli -- op '{\"Branch\":{\"input\":\"pgex_fasta\",\"output_id\":\"pgex_fasta_branch\"}}'",
+      "cargo run --bin gentle_cli -- op '{\"ReverseComplement\":{\"input\":\"pgex_fasta_branch\",\"output_id\":\"pgex_fasta_branch_rc\"}}'"
+    ],
+    "step_expectations": [
+      "The project state contains the loaded source sequence `pgex_fasta` while preserving its file provenance.",
+      "A separate derivative sequence `pgex_fasta_branch` appears without replacing the original FASTA record.",
+      "A new sequence `pgex_fasta_branch_rc` appears as the reverse-complement product linked to the branch input."
     ],
     "learning_objectives": [
       "Run one canonical workflow from source JSON and interpret the result IDs.",

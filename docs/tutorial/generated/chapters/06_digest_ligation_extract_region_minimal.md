@@ -14,6 +14,8 @@ Run a full mini-loop from fragment production to assembled product extraction.
 
 This chapter models a compact molecular cloning routine in one chain: digest source material, produce a ligation product, and extract a target segment for subsequent validation or design. It is the smallest end-to-end routine that still reflects real bench-side reasoning.
 
+**Prerequisites:** Read [Chapter 3: Load pGEX and digest with BamHI/EcoRI](./03_load_and_digest_pgex.md) first.
+
 ## Parameters That Matter
 
 - `Ligation.protocol` (where used: operation 3)
@@ -42,18 +44,44 @@ This chapter models a compact molecular cloning routine in one chain: digest sou
 
 ## GUI First
 
-1. Start from the loaded FASTA/plasmid sequence in the GUI.
-2. Run digest with selected enzymes and inspect available products.
-3. Run ligation with the intended inputs, then extract a focused region from the ligation result.
+CLI snippets use GENtle's default `.gentle_state.json` state unless they say otherwise. Add `--state PATH` or `--project PATH` when you want an explicit sandboxed state file for copied commands.
 
-## Command Equivalent (After GUI)
+### Step 1: Start from the loaded FASTA/plasmid sequence in the GUI
 
-Run the same routine non-interactively once the GUI flow is clear:
+GUI: Start from the loaded FASTA/plasmid sequence in the GUI.
+
+CLI:
+
+```bash
+cargo run --bin gentle_cli -- op '{"LoadFile":{"path":"test_files/pGEX_3X.fa","as_id":"pgex_fasta"}}'
+```
+
+> Expected: The source sequence is loaded as `pgex_fasta`, ready to feed cloning operations.
+
+### Step 2: Run digest with selected enzymes and inspect available products
+
+GUI: Run digest with selected enzymes and inspect available products.
+
+CLI:
+
+```bash
+cargo run --bin gentle_cli -- op '{"Digest":{"input":"pgex_fasta","enzymes":["BamHI","EcoRI"],"output_prefix":"d"}}'
+```
+
+> Expected: The digest step creates deterministic fragment IDs with the `d` prefix.
+
+### Step 3: Run ligation with the intended inputs, then extract a focused region from the...
+
+GUI: Run ligation with the intended inputs, then extract a focused region from the ligation result.
+
+CLI:
 
 ```bash
 cargo run --bin gentle_cli -- workflow @docs/examples/workflows/digest_ligation_extract_region_minimal.json
-cargo run --bin gentle_cli -- shell 'workflow @docs/examples/workflows/digest_ligation_extract_region_minimal.json'
 ```
+
+> Expected: The full workflow creates ligation product `lig_1` and extracted handoff sequence `lig_extract`.
+
 
 ## Checkpoints
 

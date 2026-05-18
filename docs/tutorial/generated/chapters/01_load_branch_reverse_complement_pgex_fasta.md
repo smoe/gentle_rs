@@ -44,18 +44,44 @@ In real cloning projects, people often say "the sequence" even when they mean di
 
 ## GUI First
 
-1. Open GENtle and load `test_files/pGEX_3X.fa` via `File -> Open`.
-2. In the DNA window, create a branch copy from the loaded sequence (Branch action).
-3. Apply reverse-complement to the branch and confirm a new sequence entry appears in lineage/table views.
+CLI snippets use GENtle's default `.gentle_state.json` state unless they say otherwise. Add `--state PATH` or `--project PATH` when you want an explicit sandboxed state file for copied commands.
 
-## Command Equivalent (After GUI)
+### Step 1: Open GENtle and load test_files/pGEX_3X.fa via File -> Open
 
-Run the same routine non-interactively once the GUI flow is clear:
+GUI: Open GENtle and load `test_files/pGEX_3X.fa` via `File -> Open`.
+
+CLI:
 
 ```bash
-cargo run --bin gentle_cli -- workflow @docs/examples/workflows/load_branch_reverse_complement_pgex_fasta.json
-cargo run --bin gentle_cli -- shell 'workflow @docs/examples/workflows/load_branch_reverse_complement_pgex_fasta.json'
+cargo run --bin gentle_cli -- op '{"LoadFile":{"path":"test_files/pGEX_3X.fa","as_id":"pgex_fasta"}}'
 ```
+
+> Expected: The project state contains the loaded source sequence `pgex_fasta` while preserving its file provenance.
+
+### Step 2: In the DNA window, create a branch copy from the loaded sequence (Branch action)
+
+GUI: In the DNA window, create a branch copy from the loaded sequence (Branch action).
+
+CLI:
+
+```bash
+cargo run --bin gentle_cli -- op '{"Branch":{"input":"pgex_fasta","output_id":"pgex_fasta_branch"}}'
+```
+
+> Expected: A separate derivative sequence `pgex_fasta_branch` appears without replacing the original FASTA record.
+
+### Step 3: Apply reverse-complement to the branch and confirm a new sequence entry appea...
+
+GUI: Apply reverse-complement to the branch and confirm a new sequence entry appears in lineage/table views.
+
+CLI:
+
+```bash
+cargo run --bin gentle_cli -- op '{"ReverseComplement":{"input":"pgex_fasta_branch","output_id":"pgex_fasta_branch_rc"}}'
+```
+
+> Expected: A new sequence `pgex_fasta_branch_rc` appears as the reverse-complement product linked to the branch input.
+
 
 ## Checkpoints
 

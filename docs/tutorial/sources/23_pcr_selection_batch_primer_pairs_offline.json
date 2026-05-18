@@ -1,5 +1,5 @@
 {
-  "schema": "gentle.tutorial_source.v2",
+  "schema": "gentle.tutorial_source.v3",
   "id": "pcr_selection_batch_primer_pairs_offline",
   "title": "Selection-first PCR batch primer design (offline)",
   "catalog": {
@@ -40,6 +40,29 @@
       "Optionally enable `Also create extracted region copies`, then run `Design Primer Pairs for queued regions`.",
       "In `PCR batch results`, use `Show` for report summary, `Export` for JSON output, and `Open` to jump to the extracted copy (or template when copy mode is off)."
     ],
+    "cli_steps": [
+      "cargo run --bin gentle_cli -- op '{\"LoadFile\":{\"path\":\"test_files/tp73.ncbi.gb\",\"as_id\":\"tp73_locus\"}}'",
+      "cargo run --bin gentle_cli -- op '{\"ExtractRegion\":{\"input\":\"tp73_locus\",\"from\":61720,\"to\":62120,\"output_id\":\"tp73_as2_promoter_roi_1\"}}'",
+      "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/pcr_selection_batch_primer_pairs_offline.json",
+      "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/pcr_selection_batch_primer_pairs_offline.json",
+      "cargo run --bin gentle_cli -- op '{\"ExtractRegion\":{\"input\":\"tp73_locus\",\"from\":61940,\"to\":62340,\"output_id\":\"tp73_as2_promoter_roi_2\"}}'",
+      "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/pcr_selection_batch_primer_pairs_offline.json",
+      "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/pcr_selection_batch_primer_pairs_offline.json",
+      "cargo run --bin gentle_cli -- shell 'primers show-report tp73_as2_promoter_batch_r01'"
+    ],
+    "step_expectations": [
+      "The local TP73 GenBank record is available as `tp73_locus`, and the PCR Designer can use the same state.",
+      "The CLI materializes the first painted ROI as `tp73_as2_promoter_roi_1`, mirroring the green target interval.",
+      "The canonical workflow records the upstream/downstream primer-window geometry used for the first primer-pair report.",
+      "The canonical workflow preserves deterministic queue semantics even when the GUI path uses post-drag queue actions.",
+      "The second ROI copy `tp73_as2_promoter_roi_2` represents the annotation-driven queue row.",
+      "Reports `tp73_as2_promoter_batch_r01` and `tp73_as2_promoter_batch_r02` are produced with the shared constraint set.",
+      "Extracted-region copies and primer reports are present after the workflow replay.",
+      "`primers show-report` prints the selected report so it can be reviewed or exported without hand-editing JSON."
+    ],
+    "prerequisites": [
+      "load_branch_reverse_complement_pgex_fasta"
+    ],
     "learning_objectives": [
       "Capture PCR queue regions from paint-first map interaction and selected-feature fallback actions.",
       "Use semantic painted intervals to preview pair-PCR geometry before execution.",
@@ -53,13 +76,13 @@
     ],
     "parameter_notes": [
       {
-        "parameter": "TP73-AS2 promoter-proximal ROI window (for example `61720..62120`)",
+        "parameter": "TP73-AS2 promoter-proximal ROI window, for example 61720..62120",
         "where_used": "painted ROI role and Design primer pairs ROI fields around TP73-AS2",
         "why_it_matters": "Keeps PCR targets tied to a biologically meaningful promoter-proximal context that can later feed luciferase planning.",
         "how_to_derive": "Anchor on TP73-AS2 annotation in `test_files/tp73.ncbi.gb` (gene/ncRNA at lines ~1257-1270), then choose a local promoter-proximal window around the antisense 5' boundary."
       },
       {
-        "parameter": "Paint roles (`ROI` green, `Upstream` red, `Downstream` blue)",
+        "parameter": "Paint roles: ROI green, Upstream red, Downstream blue",
         "where_used": "PCR Designer map interaction + live pair-PCR cartoon geometry",
         "why_it_matters": "Separates biological target interval from allowed primer-placement windows and makes constraint intent visible before design execution.",
         "how_to_derive": "Paint ROI over the target biology first, then paint upstream/downstream windows that bound forward/reverse primer search space."
@@ -71,13 +94,13 @@
         "how_to_derive": "Pick one short base tied to experiment context (for example `tp73_as2_promoter_batch`)."
       },
       {
-        "parameter": "PCR queue copy toggle (`Also create extracted region copies`)",
+        "parameter": "PCR queue copy toggle: Also create extracted region copies",
         "where_used": "batch execution in Design primer pairs form",
         "why_it_matters": "Enables per-region `ExtractRegion` artifacts before/alongside primer report generation.",
         "how_to_derive": "Enable when downstream steps need sequence artifacts; leave off for report-only planning (default off)."
       },
       {
-        "parameter": "Queue source mode (`painted ROI` vs `selected feature` fallback)",
+        "parameter": "Queue source mode: painted ROI vs selected feature fallback",
         "where_used": "queue rows before batch execution",
         "why_it_matters": "Preserves coordinate provenance for each batch row and keeps mixed ad hoc + annotation flows inspectable.",
         "how_to_derive": "Use paint-first for custom windows; use selected-feature fallback for annotation-defined intervals."

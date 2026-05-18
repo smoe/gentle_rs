@@ -751,7 +751,7 @@ Practical rule:
     - `docs/tutorial/sources/catalog_meta.json`
       (`gentle.tutorial_catalog_meta.v1`)
     - `docs/tutorial/sources/*.json`
-      (`gentle.tutorial_source.v2`)
+      (`gentle.tutorial_source.v3`; legacy `gentle.tutorial_source.v2` remains readable)
     - generated outputs:
       - `docs/tutorial/catalog.json`
       - `docs/tutorial/manifest.json`
