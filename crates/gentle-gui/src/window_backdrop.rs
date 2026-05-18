@@ -15,6 +15,7 @@ const DEFAULT_SPLICING_IMAGE_PATH: &str = "assets/backgrounds/Lab_Hood.jpg";
 const DEFAULT_POOL_IMAGE_PATH: &str = "assets/backgrounds/Lab_Plates_Piles.jpg";
 const DEFAULT_CONFIGURATION_IMAGE_PATH: &str = "assets/backgrounds/Lab_Glas_Dry.jpg";
 const DEFAULT_HELP_IMAGE_PATH: &str = "assets/backgrounds/Lab_Tubes.jpg";
+const DEFAULT_AGENT_ASSISTANT_IMAGE_PATH: &str = "assets/backgrounds/AI_AgentInterface.png";
 
 const DEFAULT_MAIN_TINT_RGB: [u8; 3] = [158, 108, 66];
 const DEFAULT_SEQUENCE_TINT_RGB: [u8; 3] = [176, 116, 72];
@@ -22,6 +23,7 @@ const DEFAULT_SPLICING_TINT_RGB: [u8; 3] = [113, 135, 86];
 const DEFAULT_POOL_TINT_RGB: [u8; 3] = [148, 95, 58];
 const DEFAULT_CONFIGURATION_TINT_RGB: [u8; 3] = [169, 118, 79];
 const DEFAULT_HELP_TINT_RGB: [u8; 3] = [141, 92, 56];
+const DEFAULT_AGENT_ASSISTANT_TINT_RGB: [u8; 3] = [158, 122, 83];
 const BACKDROP_TEXTURE_HINT_PX: f32 = 1024.0;
 const BACKDROP_IMAGE_TINT_RGB: [u8; 3] = [255, 252, 214];
 const BACKDROP_TINT_BRIGHTEN_GAMMA: f32 = 1.18;
@@ -59,6 +61,10 @@ fn default_help_image_path() -> String {
     DEFAULT_HELP_IMAGE_PATH.to_string()
 }
 
+fn default_agent_assistant_image_path() -> String {
+    DEFAULT_AGENT_ASSISTANT_IMAGE_PATH.to_string()
+}
+
 fn default_main_tint_rgb() -> [u8; 3] {
     DEFAULT_MAIN_TINT_RGB
 }
@@ -83,6 +89,10 @@ fn default_help_tint_rgb() -> [u8; 3] {
     DEFAULT_HELP_TINT_RGB
 }
 
+fn default_agent_assistant_tint_rgb() -> [u8; 3] {
+    DEFAULT_AGENT_ASSISTANT_TINT_RGB
+}
+
 pub fn default_tint_rgb_for_kind(kind: WindowBackdropKind) -> [u8; 3] {
     match kind {
         WindowBackdropKind::Main => DEFAULT_MAIN_TINT_RGB,
@@ -91,6 +101,7 @@ pub fn default_tint_rgb_for_kind(kind: WindowBackdropKind) -> [u8; 3] {
         WindowBackdropKind::Pool => DEFAULT_POOL_TINT_RGB,
         WindowBackdropKind::Configuration => DEFAULT_CONFIGURATION_TINT_RGB,
         WindowBackdropKind::Help => DEFAULT_HELP_TINT_RGB,
+        WindowBackdropKind::AgentAssistant => DEFAULT_AGENT_ASSISTANT_TINT_RGB,
     }
 }
 
@@ -110,6 +121,7 @@ pub enum WindowBackdropKind {
     Pool,
     Configuration,
     Help,
+    AgentAssistant,
 }
 
 impl WindowBackdropKind {
@@ -121,6 +133,7 @@ impl WindowBackdropKind {
             Self::Pool => "POOL",
             Self::Configuration => "SETTINGS",
             Self::Help => "HELP",
+            Self::AgentAssistant => "AGENT",
         }
     }
 }
@@ -145,6 +158,8 @@ pub struct WindowBackdropSettings {
     pub configuration_image_path: String,
     #[serde(default = "default_help_image_path")]
     pub help_image_path: String,
+    #[serde(default = "default_agent_assistant_image_path")]
+    pub agent_assistant_image_path: String,
     #[serde(default = "default_main_tint_rgb")]
     pub main_tint_rgb: [u8; 3],
     #[serde(default = "default_sequence_tint_rgb")]
@@ -157,6 +172,8 @@ pub struct WindowBackdropSettings {
     pub configuration_tint_rgb: [u8; 3],
     #[serde(default = "default_help_tint_rgb")]
     pub help_tint_rgb: [u8; 3],
+    #[serde(default = "default_agent_assistant_tint_rgb")]
+    pub agent_assistant_tint_rgb: [u8; 3],
 }
 
 impl Default for WindowBackdropSettings {
@@ -173,12 +190,14 @@ impl Default for WindowBackdropSettings {
             pool_image_path: default_pool_image_path(),
             configuration_image_path: default_configuration_image_path(),
             help_image_path: default_help_image_path(),
+            agent_assistant_image_path: default_agent_assistant_image_path(),
             main_tint_rgb: default_main_tint_rgb(),
             sequence_tint_rgb: default_sequence_tint_rgb(),
             splicing_tint_rgb: default_splicing_tint_rgb(),
             pool_tint_rgb: default_pool_tint_rgb(),
             configuration_tint_rgb: default_configuration_tint_rgb(),
             help_tint_rgb: default_help_tint_rgb(),
+            agent_assistant_tint_rgb: default_agent_assistant_tint_rgb(),
         }
     }
 }
@@ -192,6 +211,7 @@ impl WindowBackdropSettings {
             WindowBackdropKind::Pool => self.pool_image_path.as_str(),
             WindowBackdropKind::Configuration => self.configuration_image_path.as_str(),
             WindowBackdropKind::Help => self.help_image_path.as_str(),
+            WindowBackdropKind::AgentAssistant => self.agent_assistant_image_path.as_str(),
         }
     }
 
@@ -203,6 +223,7 @@ impl WindowBackdropSettings {
             WindowBackdropKind::Pool => self.pool_tint_rgb,
             WindowBackdropKind::Configuration => self.configuration_tint_rgb,
             WindowBackdropKind::Help => self.help_tint_rgb,
+            WindowBackdropKind::AgentAssistant => self.agent_assistant_tint_rgb,
         };
         Color32::from_rgb(r, g, b)
     }
@@ -214,6 +235,8 @@ impl WindowBackdropSettings {
         self.pool_image_path = migrate_legacy_image_path(&self.pool_image_path);
         self.configuration_image_path = migrate_legacy_image_path(&self.configuration_image_path);
         self.help_image_path = migrate_legacy_image_path(&self.help_image_path);
+        self.agent_assistant_image_path =
+            migrate_legacy_image_path(&self.agent_assistant_image_path);
 
         self.tint_opacity = sanitize_opacity(self.tint_opacity, 0.16);
         self.image_opacity = sanitize_opacity(self.image_opacity, 0.22);
@@ -232,6 +255,7 @@ impl WindowBackdropSettings {
             self.pool_image_path = default_pool_image_path();
             self.configuration_image_path = default_configuration_image_path();
             self.help_image_path = default_help_image_path();
+            self.agent_assistant_image_path = default_agent_assistant_image_path();
         }
 
         if legacy_rows_empty && !self.enabled {
@@ -291,6 +315,7 @@ fn kind_image_opacity_scale(kind: WindowBackdropKind) -> f32 {
         WindowBackdropKind::Pool => 0.35,
         WindowBackdropKind::Configuration => 0.48,
         WindowBackdropKind::Help => 0.44,
+        WindowBackdropKind::AgentAssistant => 0.50,
     }
 }
 
@@ -302,6 +327,7 @@ fn kind_tint_opacity_scale(kind: WindowBackdropKind) -> f32 {
         WindowBackdropKind::Pool => 0.38,
         WindowBackdropKind::Configuration => 0.50,
         WindowBackdropKind::Help => 0.46,
+        WindowBackdropKind::AgentAssistant => 0.48,
     }
 }
 
@@ -313,6 +339,7 @@ fn kind_content_veil_opacity(kind: WindowBackdropKind) -> f32 {
         WindowBackdropKind::Pool => 0.50,
         WindowBackdropKind::Configuration => 0.40,
         WindowBackdropKind::Help => 0.38,
+        WindowBackdropKind::AgentAssistant => 0.42,
     }
 }
 
@@ -407,6 +434,7 @@ pub fn preload_window_backdrop_images(ctx: &egui::Context, settings: &WindowBack
         WindowBackdropKind::Pool,
         WindowBackdropKind::Configuration,
         WindowBackdropKind::Help,
+        WindowBackdropKind::AgentAssistant,
     ] {
         let Some(resolved_uri) = resolve_runtime_asset_uri(settings.image_path_for_kind(kind))
         else {
@@ -464,6 +492,7 @@ pub fn window_backdrop_preload_status(
         WindowBackdropKind::Pool,
         WindowBackdropKind::Configuration,
         WindowBackdropKind::Help,
+        WindowBackdropKind::AgentAssistant,
     ] {
         if let Some(uri) = resolve_runtime_asset_uri(settings.image_path_for_kind(kind)) {
             configured_uris.insert(uri);
@@ -671,10 +700,10 @@ pub fn with_window_content_inset<R>(ui: &mut Ui, add_contents: impl FnOnce(&mut 
 #[cfg(test)]
 mod tests {
     use super::{
-        DEFAULT_SEQUENCE_IMAGE_PATH, DEFAULT_SPLICING_IMAGE_PATH, WindowBackdropKind,
-        WindowBackdropSettings, cover_uv_rect, default_tint_rgb_for_kind,
-        kind_content_veil_opacity, kind_image_opacity_scale, kind_tint_opacity_scale,
-        resolve_runtime_asset_uri, resolve_window_backdrop_paint_rect,
+        DEFAULT_AGENT_ASSISTANT_IMAGE_PATH, DEFAULT_SEQUENCE_IMAGE_PATH,
+        DEFAULT_SPLICING_IMAGE_PATH, WindowBackdropKind, WindowBackdropSettings, cover_uv_rect,
+        default_tint_rgb_for_kind, kind_content_veil_opacity, kind_image_opacity_scale,
+        kind_tint_opacity_scale, resolve_runtime_asset_uri, resolve_window_backdrop_paint_rect,
     };
     use egui::{Rect, Vec2};
 
@@ -753,6 +782,15 @@ mod tests {
     }
 
     #[test]
+    fn default_settings_include_agent_assistant_backdrop_path() {
+        let settings = WindowBackdropSettings::default();
+        assert_eq!(
+            settings.image_path_for_kind(WindowBackdropKind::AgentAssistant),
+            DEFAULT_AGENT_ASSISTANT_IMAGE_PATH
+        );
+    }
+
+    #[test]
     fn default_settings_include_distinct_splicing_tint() {
         let settings = WindowBackdropSettings::default();
         let sequence = settings.tint_color_for_kind(WindowBackdropKind::Sequence);
@@ -792,6 +830,7 @@ mod tests {
             WindowBackdropKind::Pool,
             WindowBackdropKind::Configuration,
             WindowBackdropKind::Help,
+            WindowBackdropKind::AgentAssistant,
         ] {
             let expected = default_tint_rgb_for_kind(kind);
             let actual = settings.tint_color_for_kind(kind);

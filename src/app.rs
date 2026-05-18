@@ -19486,6 +19486,12 @@ Error: `{err}`"
                 &mut settings.help_tint_rgb,
                 &mut settings.help_image_path,
             ),
+            6 => (
+                WindowBackdropKind::AgentAssistant,
+                "Agent Assistant",
+                &mut settings.agent_assistant_tint_rgb,
+                &mut settings.agent_assistant_image_path,
+            ),
             _ => (
                 WindowBackdropKind::Main,
                 "Unknown",
@@ -19532,7 +19538,7 @@ Error: `{err}`"
         changed: &mut bool,
         path_status_cache: &mut HashMap<String, (egui::Color32, String)>,
     ) {
-        const ROW_COUNT: usize = 6;
+        const ROW_COUNT: usize = 7;
         ui.label("Per-window tint and image paths");
         egui::Grid::new("window_backdrop_path_grid")
             .num_columns(4)
