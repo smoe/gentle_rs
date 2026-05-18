@@ -2685,6 +2685,7 @@ impl GENtleApp {
                     .auto_shrink([false, false])
                     .show(ui, |ui| cancel_clicked = self.render_gibson_contents(ui));
             });
+            self.clear_viewport_foreground_request_after_render(viewport_id);
             if cancel_clicked || ctx.input(|i| i.key_pressed(Key::Escape)) {
                 open = false;
             }

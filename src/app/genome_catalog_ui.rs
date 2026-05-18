@@ -866,6 +866,7 @@ impl GENtleApp {
                     )
                     .inner;
             });
+            self.clear_viewport_foreground_request_after_render(viewport_id);
             if close_requested {
                 open = false;
                 self.dismiss_pending_prepared_genome_reinstall_for_host(
@@ -2037,6 +2038,7 @@ impl GENtleApp {
             crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
                 close_requested = self.render_reference_genome_retrieve_contents(ui);
             });
+            self.clear_viewport_foreground_request_after_render(viewport_id);
             if close_requested {
                 open = false;
             }
@@ -2724,6 +2726,7 @@ impl GENtleApp {
             crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
                 close_requested = self.render_reference_genome_blast_contents(ui);
             });
+            self.clear_viewport_foreground_request_after_render(viewport_id);
             if close_requested {
                 open = false;
             }
@@ -3580,6 +3583,7 @@ impl GENtleApp {
             crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
                 close_requested = self.render_genome_bed_track_contents(ui)
             });
+            self.clear_viewport_foreground_request_after_render(viewport_id);
             if close_requested {
                 open = false;
             }

@@ -126,6 +126,7 @@ impl GENtleApp {
             crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
                 self.render_configuration_contents(ui)
             });
+            self.clear_viewport_foreground_request_after_render(viewport_id);
             self.note_slow_open_phase(
                 viewport_id,
                 "Configuration first-frame render",

@@ -697,11 +697,7 @@ impl GENtleApp {
         crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
             self.render_external_services_contents(ui);
         });
-        if self.viewport_foreground_requested(viewport_id) {
-            self.set_active_window_viewport(viewport_id);
-            self.pending_focus_viewports.retain(|id| *id != viewport_id);
-            self.finalize_viewport_focus_probe(viewport_id);
-        }
+        self.clear_viewport_foreground_request_after_render(viewport_id);
         self.finalize_viewport_open_probe(viewport_id, "External Services");
         self.external_services_ui.show_panel = open && self.external_services_ui.show_panel;
     }

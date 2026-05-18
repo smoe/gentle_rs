@@ -21885,7 +21885,7 @@ fn execute_shell_command_default(
             | ShellCommand::RacksSetCustomProfile { .. }
             | ShellCommand::RacksSetBlocked { .. }
     ) {
-        return execute_rack_mutation_command(engine, command);
+        return execute_rack_mutation_command_with_expanded_stack(engine, command);
     }
     if matches!(
         command,
@@ -23624,6 +23624,45 @@ fn execute_rack_mutation_command(
         }),
         _ => unreachable!("non-rack-mutation command passed to helper"),
     }
+}
+
+#[inline(never)]
+fn execute_rack_mutation_command_with_expanded_stack(
+    engine: &mut GentleEngine,
+    command: &ShellCommand,
+) -> Result<ShellRunResult, String> {
+    if SHELL_EXPANDED_STACK_ACTIVE.with(|active| active.get()) {
+        return execute_rack_mutation_command(engine, command);
+    }
+
+    let engine_ptr = engine as *mut GentleEngine as usize;
+    let command = command.clone();
+    let worker = thread::Builder::new()
+        .name("gentle-shell-rack-command".to_string())
+        .stack_size(SHELL_EXPANDED_STACK_SIZE)
+        .spawn(move || {
+            SHELL_EXPANDED_STACK_ACTIVE.with(|active| {
+                let was_active = active.replace(true);
+                // SAFETY: the caller synchronously joins this worker before
+                // returning and does not access `engine` while the worker runs.
+                // Rack mutations still enter the broad engine dispatcher, so
+                // use the same expanded stack budget as other stack-sensitive
+                // shell families without splitting behavior.
+                let engine = unsafe { &mut *(engine_ptr as *mut GentleEngine) };
+                let result = execute_rack_mutation_command(engine, &command);
+                active.set(was_active);
+                result
+            })
+        })
+        .map_err(|error| format!("Could not start shell rack worker thread: {error}"))?;
+    worker.join().map_err(|panic_payload| {
+        let message = panic_payload
+            .downcast_ref::<&str>()
+            .map(|value| (*value).to_string())
+            .or_else(|| panic_payload.downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "unknown panic payload".to_string());
+        format!("Shell rack worker thread panicked: {message}")
+    })?
 }
 
 #[inline(never)]
