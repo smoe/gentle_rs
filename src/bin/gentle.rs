@@ -2,7 +2,12 @@
 
 use eframe::{NativeOptions, egui};
 use gentle::{
-    about, app,
+    about,
+    agent_bridge::{
+        AGENT_BASE_URL_ENV, AGENT_MODEL_ENV, ANTHROPIC_API_KEY_ENV, MISTRAL_API_KEY_ENV,
+        OPENAI_API_KEY_ENV,
+    },
+    app,
     cli_support::{SingleProjectCliOptions, parse_single_project_cli_args},
 };
 use std::{
@@ -126,13 +131,31 @@ fn install_panic_logging() {
     }));
 }
 
-fn print_help() {
-    println!(
+fn help_text() -> String {
+    format!(
         "Usage:\n  \
 gentle [--help|-h] [--version|-V]\n  \
 gentle [--project PATH] [PATH]\n\n  \
-PATH can be a project file such as 'project.gentle.json'."
-    );
+PATH can be a project file such as 'project.gentle.json'.\n\n\
+Related GENtle executables:\n  \
+gentle_cli              automation, JSON operations/workflows, and shared shell commands\n  \
+gentle_mcp              MCP stdio server for external agents and tool clients\n  \
+gentle_js               JavaScript shell, when built with js-interface\n  \
+gentle_lua              Lua shell, when built with lua-interface\n  \
+gentle_examples_docs    regenerate examples and tutorial artifacts\n\n\
+If you expected a terminal command surface, try: gentle_cli --help\n\n\
+Agent Assistant API environment:\n  \
+{OPENAI_API_KEY_ENV}       OpenAI Platform API key for native OpenAI transport\n  \
+{ANTHROPIC_API_KEY_ENV}    Anthropic Console API key for native Claude transport\n  \
+{MISTRAL_API_KEY_ENV}      Mistral La Plateforme API key for native Mistral transport\n  \
+{AGENT_BASE_URL_ENV}  optional native/OpenAI-compatible base URL override\n  \
+{AGENT_MODEL_ENV}     optional model override\n\n  \
+ChatGPT, Claude.ai/Claude Code, and Le Chat subscription/login tokens are not API keys."
+    )
+}
+
+fn print_help() {
+    println!("{}", help_text());
 }
 
 fn main() -> eframe::Result<()> {
@@ -180,7 +203,7 @@ fn main() -> eframe::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{load_icon, resolve_runtime_asset_path_from};
+    use super::{help_text, load_icon, resolve_runtime_asset_path_from};
     use std::path::Path;
 
     #[test]
@@ -227,5 +250,18 @@ mod tests {
             repo_icon.display()
         );
         assert!(load_icon("assets/icon.png").is_some());
+    }
+
+    #[test]
+    fn help_text_points_to_cli_and_agent_api_environment() {
+        let help = help_text();
+        assert!(help.contains("gentle_cli --help"));
+        assert!(help.contains("gentle_mcp"));
+        assert!(help.contains("gentle_js"));
+        assert!(help.contains("gentle_lua"));
+        assert!(help.contains(gentle::agent_bridge::OPENAI_API_KEY_ENV));
+        assert!(help.contains(gentle::agent_bridge::ANTHROPIC_API_KEY_ENV));
+        assert!(help.contains(gentle::agent_bridge::MISTRAL_API_KEY_ENV));
+        assert!(help.contains("subscription/login tokens are not API keys"));
     }
 }
