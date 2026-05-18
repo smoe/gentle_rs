@@ -6609,6 +6609,12 @@ Error: `{err}`"
         Ok(entries)
     }
 
+    fn tutorial_project_guided_walkthrough_entries() -> Vec<HelpTutorialDocEntry> {
+        let mut entries = vec![];
+        Self::ensure_agent_interfaces_tutorial_entry(&mut entries);
+        entries
+    }
+
     fn tutorial_project_generated_chapter_path(entry: &TutorialProjectEntry) -> String {
         format!(
             "docs/tutorial/generated/chapters/{:02}_{}.md",
@@ -14894,10 +14900,46 @@ Error: `{err}`"
                         return;
                     }
 
+                    let guided_entries = Self::tutorial_project_guided_walkthrough_entries();
+                    let mut selected_guided_tutorial: Option<HelpTutorialDocEntry> = None;
+                    if !guided_entries.is_empty() {
+                        ui.menu_button(
+                            format!("Guided walkthroughs ({})", guided_entries.len()),
+                            |ui| {
+                                ui.small(
+                                    "Documentation tutorials open in Help; executable chapters build project state.",
+                                );
+                                ui.separator();
+                                for entry in &guided_entries {
+                                    if ui
+                                        .button(entry.title.as_str())
+                                        .on_hover_text(format!(
+                                            "Open this tutorial guide in Help\n{}",
+                                            entry.summary
+                                        ))
+                                        .clicked()
+                                    {
+                                        selected_guided_tutorial = Some(entry.clone());
+                                    }
+                                }
+                            },
+                        );
+                        ui.separator();
+                    }
+                    if let Some(entry) = selected_guided_tutorial {
+                        if let Err(err) =
+                            self.open_help_tutorial_path(&entry.path, &entry.title, &entry.summary)
+                        {
+                            self.app_status = err;
+                        }
+                        ui.close();
+                        return;
+                    }
+
                     let entries = match Self::load_tutorial_project_entries() {
                         Ok(entries) => entries,
                         Err(err) => {
-                            ui.label("Tutorial catalog unavailable");
+                            ui.label("Executable tutorial catalog unavailable");
                             ui.small(err);
                             return;
                         }
@@ -31330,6 +31372,18 @@ mod tests {
                 .iter()
                 .any(|entry| entry.title == "GENtle Agent Assistant and Agent Interfaces Tutorial"),
             "Expected curated tutorial help entries to include the agent interfaces tutorial"
+        );
+    }
+
+    #[test]
+    fn tutorial_project_guided_walkthroughs_include_agent_interfaces() {
+        let entries = GENtleApp::tutorial_project_guided_walkthrough_entries();
+        assert!(
+            entries.iter().any(|entry| {
+                entry.title == "GENtle Agent Assistant and Agent Interfaces Tutorial"
+                    && entry.path.ends_with("docs/agent_interfaces_tutorial.md")
+            }),
+            "Expected Open Tutorial Project guided walkthroughs to surface the agent interfaces tutorial"
         );
     }
 

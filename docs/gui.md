@@ -4437,6 +4437,10 @@ Tutorial projects:
 - `Open Tutorial Project...` builds a project from canonical tutorial workflow
   examples (`docs/examples/workflows`) in the background and opens the finished
   project for inspection when the build completes.
+- The same menu also starts with a `Guided walkthroughs` submenu for
+  documentation-only tutorials, such as the Agent Assistant and Agent
+  Interfaces tutorial; those entries open the Help tutorial page directly
+  instead of building project state.
 - When a tutorial chapter declares a matching guide, the Help window opens that
   tutorial page automatically so the next GUI steps are visible right away.
 - tutorial project discovery now consults `docs/tutorial/catalog.json` first and
