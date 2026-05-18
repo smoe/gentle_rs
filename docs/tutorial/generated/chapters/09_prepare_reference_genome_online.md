@@ -17,6 +17,15 @@ Reference-genome preparation is crucial for genome-anchored cloning interpretati
 > **How to Run This Locally**
 > Set `GENTLE_TEST_ONLINE=1` and run from the repository root. This chapter downloads the GRCh38 Ensembl 116 soft-masked FASTA and GTF from `https://ftp.ensembl.org/pub/release-116/vertebrates/`; make sure `data/genomes` has enough disk space and that interrupted downloads can be retried.
 
+## Parameters That Matter
+
+- `PrepareGenome.genome_id` (where used: operation 1)
+  - Why it matters: Selects the exact reference build and annotation set.
+  - How to derive it: Choose the genome build matching your experimental system and downstream coordinate system.
+- `PrepareGenome.catalog_path / cache_dir` (where used: operation 1)
+  - Why it matters: Controls source catalog and local cache destination.
+  - How to derive it: Use repository defaults unless your environment requires custom catalogs or cache locations.
+
 ## When This Routine Is Useful
 
 - You need genome-anchored extraction around gene/promoter context.
@@ -29,13 +38,15 @@ Reference-genome preparation is crucial for genome-anchored cloning interpretati
 - Use `GENTLE_TEST_ONLINE` to opt into online chapter execution.
 - Preserve offline CI reliability while still documenting online capabilities.
 
-## Concepts
+## Applied Concepts
 
 - **Deterministic Workflows** (`deterministic_workflows`): Operation chains should produce stable IDs and comparable outputs across repeated runs.
 - **Online Opt-in Execution** (`online_opt_in`): Network-dependent chapters remain explicit opt-in and do not break offline default CI.
 - **Genome Catalog Targeting** (`genome_catalog_targeting`): Prepared genome catalogs, annotation-based gene filters, and anchor extension connect imported entries to genomic context.
 
 ## GUI First
+
+CLI snippets use GENtle's default `.gentle_state.json` state unless they say otherwise. Add `--state PATH` or `--project PATH` when you want an explicit sandboxed state file for copied commands.
 
 ### Step 1: Open prepared-reference controls from the GUI menus
 
@@ -73,15 +84,6 @@ cargo run --bin gentle_cli -- genomes status "Human GRCh38 Ensembl 116" --catalo
 
 > Expected: Prepared status becomes visible before extraction or promoter chapters depend on this reference.
 
-
-## Parameters That Matter
-
-- `PrepareGenome.genome_id` (where used: operation 1)
-  - Why it matters: Selects the exact reference build and annotation set.
-  - How to derive it: Choose the genome build matching your experimental system and downstream coordinate system.
-- `PrepareGenome.catalog_path / cache_dir` (where used: operation 1)
-  - Why it matters: Controls source catalog and local cache destination.
-  - How to derive it: Use repository defaults unless your environment requires custom catalogs or cache locations.
 
 ## Follow-up Commands
 

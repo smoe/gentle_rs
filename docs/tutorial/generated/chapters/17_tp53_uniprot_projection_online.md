@@ -17,6 +17,24 @@ This chapter demonstrates the UniProt projection workflow as an inspectable brid
 > **How to Run This Locally**
 > Set `GENTLE_TEST_ONLINE=1` and run from the repository root. The workflow prepares/extracts GRCh38 Ensembl 116 from Ensembl FTP, fetches reviewed UniProt accession `P04637`, then performs projection and coding-DNA queries locally.
 
+## Parameters That Matter
+
+- `FetchUniprotSwissProt.query / entry_id` (where used: operation 3)
+  - Why it matters: Pins the reviewed UniProt entry that will contribute the protein coordinate system and interval annotations.
+  - How to derive it: Use a stable accession or reviewed UniProt id. For the canonical TP53 example, `P04637` is the expected reviewed entry.
+- `ProjectUniprotToGenome.projection_id / transcript_id` (where used: operation 4)
+  - Why it matters: The projection id becomes the durable handle reused by the GUI recent-projection list and the shared expert-render route. Leaving `transcript_id=null` lets the UniProt Ensembl transcript xrefs drive the full TP53 projection set.
+  - How to derive it: Use a stable project-specific id such as `tp53_uniprot_p04637`. Supply `transcript_id` later only when you intentionally want a single-transcript projection.
+- `RenderFeatureExpertSvg.target / path` (where used: operation 5)
+  - Why it matters: Confirms that the projection can be reopened through the shared feature-expert route and exported reproducibly.
+  - How to derive it: Use `UniprotProjection` with the stored projection id and a stable project-relative output path such as `exports/tp53_uniprot_projection.svg`.
+- `query_uniprot_feature_coding_dna.feature_query / transcript_id` (where used: GUI follow-up or shell follow-up after projection)
+  - Why it matters: The feature query chooses which mapped UniProt interval you want to trace back to coding DNA, while `transcript_id` narrows the report to one isoform when the projection stored multiple TP53 transcripts.
+  - How to derive it: Use a case-insensitive mapped feature substring such as `DNA-binding`, `activation`, or `DOMAIN`. Leave `transcript_id` empty until you need to pin one transcript.
+- `query_uniprot_feature_coding_dna.mode / translation_speed_profile` (where used: GUI follow-up or shell follow-up after projection)
+  - Why it matters: Controls whether you inspect only the exact genomic coding DNA or also a preferred-codon translation-speed-oriented alternative for the same amino-acid interval.
+  - How to derive it: Use `mode=both` for this tutorial so you can compare the genomic sequence with the optimized alternative. Keep the speed profile on `Auto` in the GUI or choose `human` explicitly in shell/CLI for TP53.
+
 ## When This Routine Is Useful
 
 - You want to compare one gene locus against reviewed UniProt domains or regions without opening a first-class protein sequence window.
@@ -29,7 +47,7 @@ This chapter demonstrates the UniProt projection workflow as an inspectable brid
 - Understand that both the protein expert and the feature-coding DNA query are thin views over stored engine state, not separate GUI-only mapping models.
 - Recover exact genomic coding DNA plus exon attribution for one mapped protein feature, and compare it with an optional translation-speed-oriented codon choice.
 
-## Concepts
+## Applied Concepts
 
 - **Shared Engine Contract** (`shared_engine_contract`): GUI, CLI, shell, and scripting interfaces execute the same operation semantics.
 - **Genome Catalog Targeting** (`genome_catalog_targeting`): Prepared genome catalogs, annotation-based gene filters, and anchor extension connect imported entries to genomic context.
@@ -63,24 +81,6 @@ Run the same routine non-interactively once the GUI flow is clear:
 cargo run --bin gentle_cli -- workflow @docs/examples/workflows/tp53_uniprot_projection_online.json
 cargo run --bin gentle_cli -- shell 'workflow @docs/examples/workflows/tp53_uniprot_projection_online.json'
 ```
-
-## Parameters That Matter
-
-- `FetchUniprotSwissProt.query / entry_id` (where used: operation 3)
-  - Why it matters: Pins the reviewed UniProt entry that will contribute the protein coordinate system and interval annotations.
-  - How to derive it: Use a stable accession or reviewed UniProt id. For the canonical TP53 example, `P04637` is the expected reviewed entry.
-- `ProjectUniprotToGenome.projection_id / transcript_id` (where used: operation 4)
-  - Why it matters: The projection id becomes the durable handle reused by the GUI recent-projection list and the shared expert-render route. Leaving `transcript_id=null` lets the UniProt Ensembl transcript xrefs drive the full TP53 projection set.
-  - How to derive it: Use a stable project-specific id such as `tp53_uniprot_p04637`. Supply `transcript_id` later only when you intentionally want a single-transcript projection.
-- `RenderFeatureExpertSvg.target / path` (where used: operation 5)
-  - Why it matters: Confirms that the projection can be reopened through the shared feature-expert route and exported reproducibly.
-  - How to derive it: Use `UniprotProjection` with the stored projection id and a stable project-relative output path such as `exports/tp53_uniprot_projection.svg`.
-- `query_uniprot_feature_coding_dna.feature_query / transcript_id` (where used: GUI follow-up or shell follow-up after projection)
-  - Why it matters: The feature query chooses which mapped UniProt interval you want to trace back to coding DNA, while `transcript_id` narrows the report to one isoform when the projection stored multiple TP53 transcripts.
-  - How to derive it: Use a case-insensitive mapped feature substring such as `DNA-binding`, `activation`, or `DOMAIN`. Leave `transcript_id` empty until you need to pin one transcript.
-- `query_uniprot_feature_coding_dna.mode / translation_speed_profile` (where used: GUI follow-up or shell follow-up after projection)
-  - Why it matters: Controls whether you inspect only the exact genomic coding DNA or also a preferred-codon translation-speed-oriented alternative for the same amino-acid interval.
-  - How to derive it: Use `mode=both` for this tutorial so you can compare the genomic sequence with the optimized alternative. Keep the speed profile on `Auto` in the GUI or choose `human` explicitly in shell/CLI for TP53.
 
 ## Follow-up Commands
 

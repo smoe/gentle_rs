@@ -10,15 +10,32 @@ executed_during_generation: true
 
 # Promoter Design Artifact Slice (Offline Synthetic TP73 Locus)
 
-Run a tiny TP73-like promoter locus through the Promoter design artifact set: alternative-promoter grouping, promoter evidence matrix, isoform promoter comparison, promoter expression evidence, TFBS score-track SVG, TFBS similarity JSON, and a component manifest.
+Learn how GENtle turns a TP73-like annotated locus into promoter windows, promoter evidence tables, expression-linked promoter groups, TFBS score tracks, similarity rankings, and a manifest of reusable artifacts.
 
-This chapter is a release-signoff slice rather than a biological claim. The input is a synthetic 249 bp TP73-labeled locus with two transcripts sharing one 5' boundary, one alternative-start transcript, and local annotation evidence. The point is to verify that GENtle produces the portable artifacts a GUI user, CLI user, or ClawBio-style consumer can inspect without requiring an online genome fetch or a hand-built project.
+Promoter design begins by asking where transcription is likely to start for each transcript and which DNA span should be treated as the upstream regulatory context. GENtle first derives promoter windows around transcript starts, then collapses transcript-level interpretations that point to the same DNA span. It then collects evidence into portable artifacts: an alternative-promoter summary, a promoter evidence matrix, an isoform promoter comparison, expression evidence linked by transcript id, TFBS score-track graphics, TFBS similarity rankings, and a manifest that lets GUI users, CLI users, or ClawBio-style consumers choose their own presentation.
+
+This tutorial uses a synthetic 249 bp TP73-labeled locus with two transcripts sharing one 5' boundary, one alternative-start transcript, and local annotation evidence. It is not making a biological claim about TP73. The small artificial locus keeps the algorithm visible: every promoter window, evidence row, and plotted TFBS score can be traced back to a short local sequence without requiring an online genome fetch.
 
 **Prerequisites:** Read [Chapter 1: Load FASTA, branch, and reverse-complement](./01_load_branch_reverse_complement_pgex_fasta.md), [Chapter 7: Guide oligo export (CSV + protocol)](./07_guides_export_csv_and_protocol.md), [Chapter 8: Contribute to GENtle development](./08_contribute_to_gentle_development.md) first.
 
+## Parameters That Matter
+
+- `promoter_upstream_bp=40 / promoter_downstream_bp=15` (where used: AnnotatePromoterWindows, SummarizeAlternativePromoterComparison, SummarizePromoterEvidenceMatrix, SummarizeIsoformPromoterComparison, SummarizePromoterExpressionEvidence)
+  - Why it matters: The synthetic locus is deliberately tiny; these values create readable promoter windows around TSS positions 101 and 141.
+  - How to derive it: Use the fixed tutorial values so the shared TSS pair collapses to local span `60..116` and the alternative start produces `100..156`.
+- `expression rows for ENSTTP73DEMO1, ENSTTP73DEMO2, and ENSTTP73DEMO3` (where used: SummarizePromoterExpressionEvidence)
+  - Why it matters: Expression evidence is deliberately externalized as rows/artifact references so GENtle can attach it to promoter groups without inventing a biological conclusion.
+  - How to derive it: Use transcript IDs from the synthetic mRNA features; real workflows would supply RNA-seq, qPCR, or ClawBio-provided abundance rows.
+- `target span 60..158` (where used: SummarizeTfbsScoreTracks, RenderTfbsScoreTracksSvg, SummarizeTfbsTrackSimilarity)
+  - Why it matters: This span covers both promoter windows plus the synthetic SP1 and TP73-like TFBS sites.
+  - How to derive it: Use the coordinate range printed by the workflow or the Promoter design score-track range seeded from the evidence rows.
+- `motifs SP1,TP53,TP63,TP73 and similarity candidates TP53,TP63,TP73,CTCF` (where used: TF score tracks and TFBS similarity ranking)
+  - Why it matters: The motif set keeps the demo close to TP73/p53-family promoter reasoning while still producing a compact ranking table.
+  - How to derive it: Use the exact tokens in this chapter; they resolve through GENtle's shared local JASPAR query layer.
+
 ## When This Routine Is Useful
 
-- You want a fast offline sanity check for the Promoter design window before an internal release.
+- You want a fast offline Promoter design example before prepared Ensembl data are available.
 - You want to verify that transcript-derived promoter windows collapse by DNA span instead of stacking duplicate promoter symbols.
 - You want a compact promoter evidence matrix with transcript, TFBS, variant, repeat, and CUT&RUN-style interval evidence.
 - You want to compare common and differential promoter-region evidence between isoform starts of the same gene.
@@ -26,14 +43,14 @@ This chapter is a release-signoff slice rather than a biological claim. The inpu
 
 ## What You Learn
 
-- Validate the GUI-facing Promoter design controls against shared engine operations.
+- Run the GUI-facing Promoter design controls through the same shared engine operations used by CLI and automation.
 - Inspect the boundary between GENtle-owned component artifacts and downstream ClawBio/OpenClaw narrative assembly.
 - Recognize the difference between transcript-level promoter interpretation and collapsed DNA-level promoter candidates.
 - Compare common and unique promoter-region evidence between isoforms of the same gene.
 - Attach expression-level evidence to promoter groups through a structured report instead of free-text reasoning.
 - Use one synthetic input to exercise JSON and SVG exports deterministically.
 
-## Concepts
+## Applied Concepts
 
 - **Shared Engine Contract** (`shared_engine_contract`): GUI, CLI, shell, and scripting interfaces execute the same operation semantics.
 - **Deterministic Workflows** (`deterministic_workflows`): Operation chains should produce stable IDs and comparable outputs across repeated runs.
@@ -54,6 +71,8 @@ This chapter is a release-signoff slice rather than a biological claim. The inpu
 10. Inspect the component manifest to see which JSON/SVG artifacts were produced;...
 
 ## GUI First
+
+CLI snippets use GENtle's default `.gentle_state.json` state unless they say otherwise. Add `--state PATH` or `--project PATH` when you want an explicit sandboxed state file for copied commands.
 
 ### Step 1: Open docs/examples/assets/tp73_promoter_artifact_demo.gb via File -> Open Seq...
 
@@ -176,21 +195,6 @@ cargo run --bin gentle_cli -- workflow @docs/examples/workflows/promoter_design_
 > Expected: `promoter_artifact_manifest.json` lists the generated JSON/SVG components so downstream tools can present them in their own order.
 
 
-## Parameters That Matter
-
-- `promoter_upstream_bp=40 / promoter_downstream_bp=15` (where used: AnnotatePromoterWindows, SummarizeAlternativePromoterComparison, SummarizePromoterEvidenceMatrix, SummarizeIsoformPromoterComparison, SummarizePromoterExpressionEvidence)
-  - Why it matters: The synthetic locus is deliberately tiny; these values create readable promoter windows around TSS positions 101 and 141.
-  - How to derive it: Use the fixed tutorial values so the shared TSS pair collapses to local span `60..116` and the alternative start produces `100..156`.
-- `expression rows for `ENSTTP73DEMO1`, `ENSTTP73DEMO2`, and `ENSTTP73DEMO3`` (where used: SummarizePromoterExpressionEvidence)
-  - Why it matters: Expression evidence is deliberately externalized as rows/artifact references so GENtle can attach it to promoter groups without inventing a biological conclusion.
-  - How to derive it: Use transcript IDs from the synthetic mRNA features; real workflows would supply RNA-seq, qPCR, or ClawBio-provided abundance rows.
-- `target span `60..158`` (where used: SummarizeTfbsScoreTracks, RenderTfbsScoreTracksSvg, SummarizeTfbsTrackSimilarity)
-  - Why it matters: This span covers both promoter windows plus the synthetic SP1 and TP73-like TFBS sites.
-  - How to derive it: Use the coordinate range printed by the workflow or the Promoter design score-track range seeded from the evidence rows.
-- `motifs `SP1,TP53,TP63,TP73` and similarity candidates `TP53,TP63,TP73,CTCF`` (where used: TF score tracks and TFBS similarity ranking)
-  - Why it matters: The motif set keeps the demo close to TP73/p53-family promoter reasoning while still producing a compact ranking table.
-  - How to derive it: Use the exact tokens in this chapter; they resolve through GENtle's shared local JASPAR query layer.
-
 ## Follow-up Commands
 
 ```bash
@@ -215,6 +219,8 @@ cargo run --bin gentle_cli -- shell 'features tfbs-track-similarity tp73_promote
 ## What This Chapter Produces
 
 - [`artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg`](../artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg)
+
+> SVG text labels: `Continuous TF motif score tracks | target=tp73_promoter_artifact_demo | span=60..158 | motifs=4 | score=llr_background_tail_log10 | forward strand = teal | reverse strand = ambe...`. If this embedded preview omits text in the GUI, open the linked SVG or use these labels as the figure legend.
 
 ![tp73_promoter_artifact_demo.tfbs_score_tracks.svg](../artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg)
 

@@ -14,6 +14,19 @@ Use the built-in Gibson routine baseline to validate overlap assumptions and gen
 
 Gibson assembly in practice depends on overlap design quality. This chapter anchors that design logic in GENtle through one repeatable workflow: build two overlapping fragments, run Gibson-specific preflight checks on overlap compatibility, and produce forward-order preview sequences for review and communication.
 
+## Parameters That Matter
+
+- `left_seq_id / right_seq_id` (where used: template preflight + run)
+  - Why it matters: Order defines the expected assembled product direction and adjacent overlap checks.
+  - How to derive it: Choose fragment IDs in intended 5'->3' assembly order.
+- `overlap_bp` (where used: Gibson family preflight check)
+  - Why it matters: Controls suffix/prefix overlap length validation between adjacent fragments.
+  - How to derive it: Use planned primer-homology length (commonly 15-40 bp for many Gibson workflows).
+- `assembly_prefix / output_id` (where used: template run output naming)
+  - Why it matters: Stable IDs make review/export/communication unambiguous.
+  - How to derive it: Use project-specific names (for example `tp73_gibson_round1`).
+  - Omit when: Omit only when default IDs are acceptable for exploratory runs.
+
 ## When This Routine Is Useful
 
 - You want reproducible documentation of intended Gibson fragment order and overlap assumptions.
@@ -26,7 +39,7 @@ Gibson assembly in practice depends on overlap design quality. This chapter anch
 - Interpret overlap mismatch diagnostics before state mutation.
 - Use deterministic output IDs for clear cloning communication.
 
-## Concepts
+## Applied Concepts
 
 - **Shared Engine Contract** (`shared_engine_contract`): GUI, CLI, shell, and scripting interfaces execute the same operation semantics.
 - **Deterministic Workflows** (`deterministic_workflows`): Operation chains should produce stable IDs and comparable outputs across repeated runs.
@@ -46,19 +59,6 @@ Run the same routine non-interactively once the GUI flow is clear:
 cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gibson_two_fragment_overlap_preview.json
 cargo run --bin gentle_cli -- shell 'workflow @docs/examples/workflows/gibson_two_fragment_overlap_preview.json'
 ```
-
-## Parameters That Matter
-
-- `left_seq_id / right_seq_id` (where used: template preflight + run)
-  - Why it matters: Order defines the expected assembled product direction and adjacent overlap checks.
-  - How to derive it: Choose fragment IDs in intended 5'->3' assembly order.
-- `overlap_bp` (where used: Gibson family preflight check)
-  - Why it matters: Controls suffix/prefix overlap length validation between adjacent fragments.
-  - How to derive it: Use planned primer-homology length (commonly 15-40 bp for many Gibson workflows).
-- `assembly_prefix / output_id` (where used: template run output naming)
-  - Why it matters: Stable IDs make review/export/communication unambiguous.
-  - How to derive it: Use project-specific names (for example `tp73_gibson_round1`).
-  - Omit when: Omit only when default IDs are acceptable for exploratory runs.
 
 ## Follow-up Commands
 

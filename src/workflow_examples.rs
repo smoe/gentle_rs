@@ -2024,6 +2024,58 @@ fn retained_artifact_preview(path: &Path) -> Option<String> {
     )))
 }
 
+fn decode_basic_xml_entities(text: &str) -> String {
+    text.replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+        .replace("&amp;", "&")
+}
+
+fn retained_svg_text_preview(path: &Path) -> Option<String> {
+    let text = fs::read_to_string(path).ok()?;
+    let mut labels = Vec::new();
+    let mut search_start = 0usize;
+    while let Some(relative_text_start) = text[search_start..].find("<text") {
+        let text_start = search_start + relative_text_start;
+        let Some(tag_close_relative) = text[text_start..].find('>') else {
+            break;
+        };
+        let tag = &text[text_start..text_start + tag_close_relative + 1];
+        let value_start = text_start + tag_close_relative + 1;
+        let Some(value_end_relative) = text[value_start..].find("</text>") else {
+            search_start = value_start;
+            continue;
+        };
+        let value_end = value_start + value_end_relative;
+        if tag.contains("tfbs-score-track-logo-letter") {
+            search_start = value_end + "</text>".len();
+            continue;
+        }
+        let label = decode_basic_xml_entities(text[value_start..value_end].trim());
+        let label = label.split_whitespace().collect::<Vec<_>>().join(" ");
+        if !label.is_empty()
+            && !matches!(label.as_str(), "A" | "C" | "G" | "T")
+            && !labels
+                .iter()
+                .any(|existing: &String| existing.eq_ignore_ascii_case(&label))
+        {
+            labels.push(label);
+        }
+        if labels.len() >= 8 {
+            break;
+        }
+        search_start = value_end + "</text>".len();
+    }
+    if labels.is_empty() {
+        return None;
+    }
+    Some(markdown_inline_code(&truncate_markdown_one_line(
+        &labels.join(" | "),
+        180,
+    )))
+}
+
 fn render_tutorial_front_matter(
     chapter: &TutorialChapter,
     loaded: &LoadedWorkflowExample,
@@ -2062,7 +2114,7 @@ fn render_tutorial_concepts_compact(
     concept_by_id: &HashMap<String, TutorialConcept>,
 ) -> Result<String, String> {
     let mut out = String::new();
-    out.push_str("\n## Concepts\n\n");
+    out.push_str("\n## Applied Concepts\n\n");
     for concept_id in &chapter.concepts {
         let concept = concept_by_id.get(concept_id).ok_or_else(|| {
             format!(
@@ -2083,6 +2135,42 @@ fn render_tutorial_concepts_compact(
         out.push('\n');
     }
     Ok(out)
+}
+
+fn render_tutorial_parameters_that_matter(chapter: &TutorialChapter) -> String {
+    let mut out = String::new();
+    out.push_str("\n## Parameters That Matter\n\n");
+    if chapter.parameter_notes.is_empty() {
+        out.push_str("- This chapter intentionally avoids additional command options; run the canonical workflow unchanged.\n");
+        return out;
+    }
+    for note in &chapter.parameter_notes {
+        out.push_str("- `");
+        out.push_str(note.parameter.trim());
+        out.push_str("`");
+        if !note.where_used.trim().is_empty() {
+            out.push_str(" (where used: ");
+            out.push_str(note.where_used.trim());
+            out.push(')');
+        }
+        out.push('\n');
+        if !note.why_it_matters.trim().is_empty() {
+            out.push_str("  - Why it matters: ");
+            out.push_str(note.why_it_matters.trim());
+            out.push('\n');
+        }
+        if !note.how_to_derive.trim().is_empty() {
+            out.push_str("  - How to derive it: ");
+            out.push_str(note.how_to_derive.trim());
+            out.push('\n');
+        }
+        if !note.omit_when.trim().is_empty() {
+            out.push_str("  - Omit when: ");
+            out.push_str(note.omit_when.trim());
+            out.push('\n');
+        }
+    }
+    out
 }
 
 fn render_tutorial_at_a_glance(chapter: &TutorialChapter) -> String {
@@ -2210,6 +2298,9 @@ fn render_tutorial_gui_steps(chapter: &TutorialChapter) -> String {
         out.push_str("- No GUI-first steps are required for this chapter.\n");
         return out;
     }
+    if !chapter.cli_steps.is_empty() {
+        out.push_str("CLI snippets use GENtle's default `.gentle_state.json` state unless they say otherwise. Add `--state PATH` or `--project PATH` when you want an explicit sandboxed state file for copied commands.\n\n");
+    }
     for (idx, step) in chapter.gui_steps.iter().enumerate() {
         let step = step.trim();
         let cli_step = tutorial_step_at(&chapter.cli_steps, idx);
@@ -2266,6 +2357,13 @@ fn render_tutorial_produced_artifacts(retained_artifacts: &[String], output_dir:
             out.push_str("`](");
             out.push_str(&link_target);
             out.push_str(")\n\n");
+            if extension == "svg" {
+                if let Some(preview) = retained_svg_text_preview(&artifact_path) {
+                    out.push_str("> SVG text labels: ");
+                    out.push_str(&preview);
+                    out.push_str(". If this embedded preview omits text in the GUI, open the linked SVG or use these labels as the figure legend.\n\n");
+                }
+            }
             out.push_str("![");
             out.push_str(&file_name);
             out.push_str("](");
@@ -2320,6 +2418,7 @@ fn render_tutorial_chapter_markdown(
     out.push_str(&render_tutorial_guided_walkthrough_see_also(chapter));
     out.push_str(&render_tutorial_prerequisites(chapter, chapter_by_id)?);
     out.push_str(&render_tutorial_local_execution_note(chapter));
+    out.push_str(&render_tutorial_parameters_that_matter(chapter));
     out.push_str("\n## When This Routine Is Useful\n\n");
     for use_case in &chapter.use_cases {
         out.push_str("- ");
@@ -2346,37 +2445,6 @@ fn render_tutorial_chapter_markdown(
         out.push_str(&source_path);
         out.push_str("'\n");
         out.push_str("```\n");
-    }
-    out.push_str("\n## Parameters That Matter\n\n");
-    if chapter.parameter_notes.is_empty() {
-        out.push_str("- This chapter intentionally avoids additional command options; run the canonical workflow unchanged.\n");
-    } else {
-        for note in &chapter.parameter_notes {
-            out.push_str("- `");
-            out.push_str(note.parameter.trim());
-            out.push_str("`");
-            if !note.where_used.trim().is_empty() {
-                out.push_str(" (where used: ");
-                out.push_str(note.where_used.trim());
-                out.push(')');
-            }
-            out.push('\n');
-            if !note.why_it_matters.trim().is_empty() {
-                out.push_str("  - Why it matters: ");
-                out.push_str(note.why_it_matters.trim());
-                out.push('\n');
-            }
-            if !note.how_to_derive.trim().is_empty() {
-                out.push_str("  - How to derive it: ");
-                out.push_str(note.how_to_derive.trim());
-                out.push('\n');
-            }
-            if !note.omit_when.trim().is_empty() {
-                out.push_str("  - Omit when: ");
-                out.push_str(note.omit_when.trim());
-                out.push('\n');
-            }
-        }
     }
     if !chapter.follow_up_commands.is_empty() {
         out.push_str("\n## Follow-up Commands\n\n");
@@ -3492,10 +3560,14 @@ mod tests {
         let markdown = std::fs::read_to_string(&chapter).expect("read generated chapter markdown");
         assert!(markdown.starts_with("---\nchapter_id: "));
         assert!(markdown.contains("## What You Learn"));
-        assert!(markdown.contains("## Concepts"));
+        assert!(markdown.contains("## Applied Concepts"));
         assert!(!markdown.contains("Reoccurs in:"));
         assert!(markdown.contains("## GUI First"));
         assert!(markdown.contains("## Parameters That Matter"));
+        assert!(
+            markdown.find("## Parameters That Matter").unwrap()
+                < markdown.find("## GUI First").unwrap()
+        );
         assert!(markdown.contains("## Canonical Source"));
 
         let online_chapter = generated.join("chapters/09_prepare_reference_genome_online.md");
@@ -3520,9 +3592,13 @@ mod tests {
         assert!(promoter_markdown.contains("**Prerequisites:** Read [Chapter 1:"));
         assert!(promoter_markdown.contains("### Step 8:"));
         assert!(promoter_markdown.contains("CLI:\n\n```bash\ncargo run --bin gentle_cli"));
+        assert!(promoter_markdown.contains(
+            "CLI snippets use GENtle's default `.gentle_state.json` state"
+        ));
         assert!(promoter_markdown.contains("> Expected: `tfbs_score_tracks.svg`"));
         assert!(!promoter_markdown.contains("## Command Equivalent (After GUI)"));
         assert!(promoter_markdown.contains("## What This Chapter Produces"));
+        assert!(promoter_markdown.contains("> SVG text labels:"));
         assert!(promoter_markdown.contains(
             "![tp73_promoter_artifact_demo.tfbs_score_tracks.svg](../artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg)"
         ));

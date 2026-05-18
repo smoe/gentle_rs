@@ -17,6 +17,18 @@ This chapter extends the TP53 genome-targeting path toward read-origin mapping i
 > **How to Run This Locally**
 > Set `GENTLE_TEST_ONLINE=1` and run from the repository root. The workflow prepares/extracts GRCh38 Ensembl 116 from Ensembl FTP, then runs the multi-gene sparse RNA-read interpretation against locally derived TP53-family transcript templates.
 
+## Parameters That Matter
+
+- `InterpretRnaReads.seed_feature_id` (where used: operation 3)
+  - Why it matters: Defines which feature seeds the splicing view and baseline transcript scope for sparse expansion.
+  - How to derive it: In GUI this is implicit from the selected transcript. For direct workflow/CLI editing, inspect TP53 feature indices first and set the correct mRNA feature id.
+- `InterpretRnaReads.origin_mode / target_gene_ids` (where used: operation 3)
+  - Why it matters: Controls whether indexing stays baseline (`single_gene`) or is expanded with matched target-gene transcripts (`multi_gene_sparse`).
+  - How to derive it: Use TP53-family IDs (`TP53, TP63, TP73`) for contrast runs, then narrow/expand based on biological question.
+- `InterpretRnaReads.roi_seed_capture_enabled` (where used: operation 3)
+  - Why it matters: Tracks request intent for future annotation-independent ROI capture layer.
+  - How to derive it: Keep `false` for current runtime behavior; set `true` only when you want the deterministic pending-feature warning in provenance.
+
 ## When This Routine Is Useful
 
 - You want one TP53-based run that can contrast seed support across TP53-family targets.
@@ -29,7 +41,7 @@ This chapter extends the TP53 genome-targeting path toward read-origin mapping i
 - Understand what `multi_gene_sparse` changes at runtime (expanded local transcript-template indexing).
 - Interpret deterministic report provenance for `origin_mode`, target-gene set, and planned ROI capture flag.
 
-## Concepts
+## Applied Concepts
 
 - **Shared Engine Contract** (`shared_engine_contract`): GUI, CLI, shell, and scripting interfaces execute the same operation semantics.
 - **Deterministic Workflows** (`deterministic_workflows`): Operation chains should produce stable IDs and comparable outputs across repeated runs.
@@ -50,18 +62,6 @@ Run the same routine non-interactively once the GUI flow is clear:
 cargo run --bin gentle_cli -- workflow @docs/examples/workflows/tp53_multi_gene_sparse_mapping_online.json
 cargo run --bin gentle_cli -- shell 'workflow @docs/examples/workflows/tp53_multi_gene_sparse_mapping_online.json'
 ```
-
-## Parameters That Matter
-
-- `InterpretRnaReads.seed_feature_id` (where used: operation 3)
-  - Why it matters: Defines which feature seeds the splicing view and baseline transcript scope for sparse expansion.
-  - How to derive it: In GUI this is implicit from the selected transcript. For direct workflow/CLI editing, inspect TP53 feature indices first and set the correct mRNA feature id.
-- `InterpretRnaReads.origin_mode / target_gene_ids` (where used: operation 3)
-  - Why it matters: Controls whether indexing stays baseline (`single_gene`) or is expanded with matched target-gene transcripts (`multi_gene_sparse`).
-  - How to derive it: Use TP53-family IDs (`TP53, TP63, TP73`) for contrast runs, then narrow/expand based on biological question.
-- `InterpretRnaReads.roi_seed_capture_enabled` (where used: operation 3)
-  - Why it matters: Tracks request intent for future annotation-independent ROI capture layer.
-  - How to derive it: Keep `false` for current runtime behavior; set `true` only when you want the deterministic pending-feature warning in provenance.
 
 ## Follow-up Commands
 

@@ -12,6 +12,91 @@
 use super::*;
 
 impl GENtleApp {
+    pub(super) fn split_leading_markdown_front_matter(markdown: &str) -> Option<(&str, &str)> {
+        let start = if markdown.starts_with("---\n") {
+            "---\n".len()
+        } else if markdown.starts_with("---\r\n") {
+            "---\r\n".len()
+        } else {
+            return None;
+        };
+        let mut offset = start;
+        while offset < markdown.len() {
+            let line_start = offset;
+            let line_end = markdown[offset..]
+                .find('\n')
+                .map(|relative| offset + relative)
+                .unwrap_or(markdown.len());
+            let line = markdown[line_start..line_end].trim_end_matches('\r');
+            let next_line_start = if line_end < markdown.len() {
+                line_end + 1
+            } else {
+                line_end
+            };
+            if line == "---" {
+                return Some((&markdown[start..line_start], &markdown[next_line_start..]));
+            }
+            offset = next_line_start;
+        }
+        None
+    }
+
+    pub(super) fn markdown_front_matter_value(front_matter: &str, key: &str) -> Option<String> {
+        let prefix = format!("{key}:");
+        front_matter.lines().find_map(|line| {
+            let value = line.trim().strip_prefix(&prefix)?.trim();
+            if value.is_empty() {
+                return None;
+            }
+            Some(value.trim_matches('"').to_string())
+        })
+    }
+
+    pub(super) fn insert_markdown_note_after_first_heading(markdown: &str, note: &str) -> String {
+        let trimmed = markdown.trim_start_matches(['\r', '\n']);
+        if !trimmed.starts_with('#') {
+            return format!("{note}{trimmed}");
+        }
+        let Some(first_line_end) = trimmed.find('\n') else {
+            return format!("{trimmed}\n\n{note}");
+        };
+        let (heading, body) = trimmed.split_at(first_line_end + 1);
+        format!("{heading}\n{note}{}", body.trim_start_matches(['\r', '\n']))
+    }
+
+    pub(super) fn summarize_markdown_front_matter_for_help(markdown: &str) -> String {
+        let Some((front_matter, body)) = Self::split_leading_markdown_front_matter(markdown) else {
+            return markdown.to_string();
+        };
+        let chapter_id = Self::markdown_front_matter_value(front_matter, "chapter_id");
+        let source_example = Self::markdown_front_matter_value(front_matter, "source_example");
+        let mut note = String::from("_Provenance note: ");
+        match (chapter_id, source_example) {
+            (Some(chapter_id), Some(source_example)) => {
+                note.push_str("this generated tutorial is tracked as chapter `");
+                note.push_str(&chapter_id);
+                note.push_str("` from workflow `");
+                note.push_str(&source_example);
+                note.push_str("`.");
+            }
+            (Some(chapter_id), None) => {
+                note.push_str("this generated tutorial is tracked as chapter `");
+                note.push_str(&chapter_id);
+                note.push_str("`.");
+            }
+            (None, Some(source_example)) => {
+                note.push_str("this generated tutorial is tracked from workflow `");
+                note.push_str(&source_example);
+                note.push_str("`.");
+            }
+            (None, None) => {
+                note.push_str("this generated tutorial has machine-readable source metadata.");
+            }
+        }
+        note.push_str(" The note is only there to preserve tutorial provenance; the hands-on walkthrough starts here, and full canonical source details are repeated at the end._\n\n");
+        Self::insert_markdown_note_after_first_heading(body, &note)
+    }
+
     pub(super) fn rewrite_markdown_inline_code_soft_breaks(markdown: &str) -> String {
         let mut out = String::with_capacity(markdown.len() + markdown.len() / 16);
         let mut idx = 0usize;
@@ -148,6 +233,73 @@ impl GENtleApp {
         rewritten.push_str(&absolute_uri);
         rewritten.push_str(&span[dest_end..]);
         Some(rewritten)
+    }
+
+    pub(super) fn help_svg_png_cache_path(svg_path: &Path) -> Option<PathBuf> {
+        if !svg_path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.eq_ignore_ascii_case("svg"))
+            .unwrap_or(false)
+        {
+            return None;
+        }
+        let metadata = fs::metadata(svg_path).ok();
+        let mut hasher = Sha1::new();
+        hasher.update(svg_path.to_string_lossy().as_bytes());
+        if let Some(metadata) = metadata {
+            hasher.update(metadata.len().to_le_bytes());
+            if let Ok(modified) = metadata.modified() {
+                if let Ok(duration) = modified.duration_since(UNIX_EPOCH) {
+                    hasher.update(duration.as_secs().to_le_bytes());
+                    hasher.update(duration.subsec_nanos().to_le_bytes());
+                }
+            }
+        }
+        let digest = format!("{:x}", hasher.finalize());
+        let stem = svg_path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap_or("image")
+            .chars()
+            .map(|ch| {
+                if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_') {
+                    ch
+                } else {
+                    '_'
+                }
+            })
+            .collect::<String>();
+        Some(
+            env::temp_dir()
+                .join("gentle_help_svg_png")
+                .join(format!("{stem}.{digest}.png")),
+        )
+    }
+
+    pub(super) fn help_image_render_path(absolute_dest: &Path) -> PathBuf {
+        let Some(png_path) = Self::help_svg_png_cache_path(absolute_dest) else {
+            return absolute_dest.to_path_buf();
+        };
+        if png_path.is_file() {
+            return png_path;
+        }
+        if let Some(parent) = png_path.parent() {
+            if fs::create_dir_all(parent).is_err() {
+                return absolute_dest.to_path_buf();
+            }
+        }
+        match crate::svg_png::render_svg_file_to_png(
+            absolute_dest,
+            &png_path,
+            crate::svg_png::SvgPngRenderOptions {
+                scale: 1.0,
+                drop_dotplot_metadata: false,
+            },
+        ) {
+            Ok(_) => png_path,
+            Err(_) => absolute_dest.to_path_buf(),
+        }
     }
 
     pub(super) fn find_inline_image_destination(span: &str) -> Option<(usize, usize)> {

@@ -17,6 +17,15 @@ This chapter demonstrates a publication-oriented use case: derive TP53 from a pr
 > **How to Run This Locally**
 > Set `GENTLE_TEST_ONLINE=1` and run from the repository root. The workflow prepares/extracts `Human GRCh38 Ensembl 116` from Ensembl FTP, then imports the local curated panel `assets/panels/tp53_isoforms_v1.json` and writes `exports/tp53_isoform_architecture.svg`.
 
+## Parameters That Matter
+
+- `ImportIsoformPanel.panel_path / panel_id / strict` (where used: operation 3)
+  - Why it matters: Defines which curated panel is loaded and whether transcript mapping mismatches should fail hard.
+  - How to derive it: Use `assets/panels/tp53_isoforms_v1.json` and keep `strict=false` for exploratory mapping; switch to `strict=true` when curation is locked.
+- `RenderIsoformArchitectureSvg.path` (where used: operation 4)
+  - Why it matters: Controls deterministic export location used for tutorial artifact retention and figure review.
+  - How to derive it: Use a stable project-relative path such as `exports/tp53_isoform_architecture.svg`.
+
 ## When This Routine Is Useful
 
 - You want transcript and protein isoform architecture from one sequence context with explicit panel provenance.
@@ -29,7 +38,7 @@ This chapter demonstrates a publication-oriented use case: derive TP53 from a pr
 - Understand how curated panel JSON joins genome-derived transcripts without GUI-only logic.
 - Export deterministic architecture SVG suitable for downstream figure styling.
 
-## Concepts
+## Applied Concepts
 
 - **Shared Engine Contract** (`shared_engine_contract`): GUI, CLI, shell, and scripting interfaces execute the same operation semantics.
 - **Genome Catalog Targeting** (`genome_catalog_targeting`): Prepared genome catalogs, annotation-based gene filters, and anchor extension connect imported entries to genomic context.
@@ -51,15 +60,6 @@ Run the same routine non-interactively once the GUI flow is clear:
 cargo run --bin gentle_cli -- workflow @docs/examples/workflows/tp53_isoform_architecture_online.json
 cargo run --bin gentle_cli -- shell 'workflow @docs/examples/workflows/tp53_isoform_architecture_online.json'
 ```
-
-## Parameters That Matter
-
-- `ImportIsoformPanel.panel_path / panel_id / strict` (where used: operation 3)
-  - Why it matters: Defines which curated panel is loaded and whether transcript mapping mismatches should fail hard.
-  - How to derive it: Use `assets/panels/tp53_isoforms_v1.json` and keep `strict=false` for exploratory mapping; switch to `strict=true` when curation is locked.
-- `RenderIsoformArchitectureSvg.path` (where used: operation 4)
-  - Why it matters: Controls deterministic export location used for tutorial artifact retention and figure review.
-  - How to derive it: Use a stable project-relative path such as `exports/tp53_isoform_architecture.svg`.
 
 ## Follow-up Commands
 

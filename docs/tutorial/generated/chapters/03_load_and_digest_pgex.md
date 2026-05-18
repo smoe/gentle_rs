@@ -14,6 +14,16 @@ Introduce restriction digest planning and deterministic fragment products.
 
 Restriction digest is a core molecular cloning routine used for vector linearization, insert release, and diagnostic fragment checks. This chapter focuses on how digest parameters map to reproducible fragment sets that can later feed ligation or analysis steps.
 
+## Parameters That Matter
+
+- `Digest.enzymes` (where used: operation 2)
+  - Why it matters: The enzyme set determines cut positions and resulting fragment repertoire.
+  - How to derive it: Choose enzymes based on cloning strategy (diagnostic digest vs insert release vs vector opening).
+- `Digest.output_prefix` (where used: operation 2)
+  - Why it matters: Controls deterministic fragment ID namespace.
+  - How to derive it: Use a short routine-specific prefix (e.g., `frag`, `d`, `eco_bam`).
+  - Omit when: Omit only if auto-generated IDs are acceptable for ad hoc inspection.
+
 ## When This Routine Is Useful
 
 - You want to verify expected restriction fragments before ordering primers or designing ligations.
@@ -26,7 +36,7 @@ Restriction digest is a core molecular cloning routine used for vector lineariza
 - Reason about multi-product lineage from one parent sequence.
 - Identify why stable IDs matter for follow-up ligation/extraction steps.
 
-## Concepts
+## Applied Concepts
 
 - **Deterministic Workflows** (`deterministic_workflows`): Operation chains should produce stable IDs and comparable outputs across repeated runs.
 - **Sequence Lineage** (`sequence_lineage`): Derived sequences are explicit products linked to upstream inputs and operations.
@@ -45,16 +55,6 @@ Run the same routine non-interactively once the GUI flow is clear:
 cargo run --bin gentle_cli -- workflow @docs/examples/workflows/load_and_digest_pgex.json
 cargo run --bin gentle_cli -- shell 'workflow @docs/examples/workflows/load_and_digest_pgex.json'
 ```
-
-## Parameters That Matter
-
-- `Digest.enzymes` (where used: operation 2)
-  - Why it matters: The enzyme set determines cut positions and resulting fragment repertoire.
-  - How to derive it: Choose enzymes based on cloning strategy (diagnostic digest vs insert release vs vector opening).
-- `Digest.output_prefix` (where used: operation 2)
-  - Why it matters: Controls deterministic fragment ID namespace.
-  - How to derive it: Use a short routine-specific prefix (e.g., `frag`, `d`, `eco_bam`).
-  - Omit when: Omit only if auto-generated IDs are acceptable for ad hoc inspection.
 
 ## Checkpoints
 

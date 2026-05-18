@@ -14,6 +14,12 @@ Executable contributor onboarding from baseline run to test/documentation checks
 
 Contributing effectively requires keeping biological behavior, command contracts, and docs in sync. This chapter provides a concrete contributor routine: run a baseline operation chain, then validate examples, tutorial generation, and tests before opening a change request.
 
+## Parameters That Matter
+
+- `Workflow file path @docs/examples/workflows/...` (where used: command equivalent)
+  - Why it matters: Ensures you are validating the same canonical routine used by docs/tests.
+  - How to derive it: Select the chapter's `example_id` and open the matching JSON file under `docs/examples/workflows`.
+
 ## When This Routine Is Useful
 
 - You want to submit a feature or fix without breaking cross-interface behavior.
@@ -26,7 +32,7 @@ Contributing effectively requires keeping biological behavior, command contracts
 - Use tutorial and example checks to prevent documentation drift.
 - Identify the minimum validation commands expected before handoff or PR.
 
-## Concepts
+## Applied Concepts
 
 - **Shared Engine Contract** (`shared_engine_contract`): GUI, CLI, shell, and scripting interfaces execute the same operation semantics.
 - **Tutorial Drift Checks** (`tutorial_drift_checks`): Tutorial content is generated from executable examples and verified in automated checks.
@@ -46,12 +52,6 @@ Run the same routine non-interactively once the GUI flow is clear:
 cargo run --bin gentle_cli -- workflow @docs/examples/workflows/contribute_gentle_development_baseline.json
 cargo run --bin gentle_cli -- shell 'workflow @docs/examples/workflows/contribute_gentle_development_baseline.json'
 ```
-
-## Parameters That Matter
-
-- `Workflow file path @docs/examples/workflows/...` (where used: command equivalent)
-  - Why it matters: Ensures you are validating the same canonical routine used by docs/tests.
-  - How to derive it: Select the chapter's `example_id` and open the matching JSON file under `docs/examples/workflows`.
 
 ## Follow-up Commands
 

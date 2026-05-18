@@ -16,6 +16,18 @@ This chapter is intentionally minimal. The tutorial project opens one stable loc
 
 See also: guided walkthrough [docs/tutorial/simple_pcr_selection_gui.md](../../simple_pcr_selection_gui.md). Use that page first when you want a human-led path; this chapter is the executable reference.
 
+## Parameters That Matter
+
+- `core ROI` (where used: map selection and PCR Designer starter block)
+  - Why it matters: This is the part of the biology that must definitely be included in the PCR product.
+  - How to derive it: Select only the indispensable sequence interval, not the full desired amplicon.
+- `max primer distance from core` (where used: PCR Designer starter block)
+  - Why it matters: This sets how far upstream and downstream primers may move away from the required core region.
+  - How to derive it: Choose the largest flank width you are comfortable allowing for primer search on each side of the core ROI.
+- `max amplicon` (where used: Design primer pairs form)
+  - Why it matters: This caps product length so the simple-PCR result stays experimentally practical.
+  - How to derive it: Set the longest acceptable product length for the assay before running primer design.
+
 ## When This Routine Is Useful
 
 - You want the shortest possible path from one selected region to one PCR design attempt.
@@ -28,7 +40,7 @@ See also: guided walkthrough [docs/tutorial/simple_pcr_selection_gui.md](../../s
 - Interpret the beginner PCR controls as deterministic flank-window constraints around the selected core ROI.
 - Review saved primer pairs in terms of amplicon length and left/right distance from the core ROI.
 
-## Concepts
+## Applied Concepts
 
 - **Shared Engine Contract** (`shared_engine_contract`): GUI, CLI, shell, and scripting interfaces execute the same operation semantics.
 - **Deterministic Workflows** (`deterministic_workflows`): Operation chains should produce stable IDs and comparable outputs across repeated runs.
@@ -57,18 +69,6 @@ Run the same routine non-interactively once the GUI flow is clear:
 cargo run --bin gentle_cli -- workflow @docs/examples/workflows/simple_pcr_selection_gui.json
 cargo run --bin gentle_cli -- shell 'workflow @docs/examples/workflows/simple_pcr_selection_gui.json'
 ```
-
-## Parameters That Matter
-
-- `core ROI` (where used: map selection and PCR Designer starter block)
-  - Why it matters: This is the part of the biology that must definitely be included in the PCR product.
-  - How to derive it: Select only the indispensable sequence interval, not the full desired amplicon.
-- `max primer distance from core` (where used: PCR Designer starter block)
-  - Why it matters: This sets how far upstream and downstream primers may move away from the required core region.
-  - How to derive it: Choose the largest flank width you are comfortable allowing for primer search on each side of the core ROI.
-- `max amplicon` (where used: Design primer pairs form)
-  - Why it matters: This caps product length so the simple-PCR result stays experimentally practical.
-  - How to derive it: Set the longest acceptable product length for the assay before running primer design.
 
 ## Follow-up Commands
 

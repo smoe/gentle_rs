@@ -20,6 +20,12 @@ Maintenance rule:
 - Added native Mistral Agent Assistant integration with a quick-start GUI route,
   `MISTRAL_API_KEY` session/env handling, model discovery, and live setup
   preflight parity.
+- Added tutorial stewardship rules so recurring maintenance checks tutorial
+  implementation drift, wet-lab readability, biological teaching depth, and
+  Codex-versus-human review sign-off boundaries.
+- Polished generated tutorial rendering with quieter provenance in Help,
+  applied-concept wording, earlier parameter explanation, CLI state guidance,
+  SVG label fallbacks, and capped tutorial-project progress before final open.
 
 ## 2026-05-17
 

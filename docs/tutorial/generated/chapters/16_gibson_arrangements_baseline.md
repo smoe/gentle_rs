@@ -16,6 +16,24 @@ This chapter now uses its own deterministic workflow example instead of reusing 
 
 See also: guided walkthrough [docs/tutorial/gibson_arrangements_gui.md](../../gibson_arrangements_gui.md). Use that page first when you want a human-led path; this chapter is the executable reference.
 
+## Parameters That Matter
+
+- `destination seq_id = gibson_destination_pgex` (where used: Stored vector lane in the arrangement walkthrough)
+  - Why it matters: Keeps the original vector lane stable across the arrangement guide and CLI replay.
+  - How to derive it: This workflow assigns the ID directly during `LoadFile`.
+- `insert seq_id = gibson_insert_demo` (where used: Insert lane in the arrangement walkthrough)
+  - Why it matters: Provides the same deterministic insert lane that the Gibson arrangement is expected to reference.
+  - How to derive it: This workflow assigns the ID directly during `LoadFile`.
+- `assembled product seq_id = gibson_destination_pgex_with_gibson_insert_demo` (where used: Stored Gibson result already present when the arrangement tutorial opens)
+  - Why it matters: Makes the arrangement tutorial disjunct from the separate Gibson-specialist apply walkthrough while keeping one deterministic product identity.
+  - How to derive it: The chapter workflow applies the canonical single-insert Gibson plan before the guide opens.
+- `workflow example = gibson_arrangements_baseline` (where used: `Open Tutorial Project...` and CLI workflow replay)
+  - Why it matters: The arrangement starter now has its own canonical example so the tutorial can begin with the cloned result and stored lane arrangement already available.
+  - How to derive it: Select the chapter from `Open Tutorial Project...` or run the canonical workflow JSON directly.
+- `lab assistant handoff = artifacts/gibson_lab_assistant_handoff.md` (where used: ClawBio/Telegram demo artifact and CLI replay)
+  - Why it matters: Provides non-IT bench-facing instructions tied to the exact deterministic design outputs.
+  - How to derive it: The workflow calls `ExportLabAssistantInstructions` after applying the Gibson plan.
+
 ## When This Routine Is Useful
 
 - You want to inspect the arrangement that Gibson apply creates without first navigating through the earlier Gibson-specialist apply walkthrough.
@@ -30,7 +48,7 @@ See also: guided walkthrough [docs/tutorial/gibson_arrangements_gui.md](../../gi
 - Inspect the generated lab-assistant handoff as the bench-facing counterpart to the design state.
 - Replay the same arrangement-focused setup from GUI and CLI without requiring a second manual Gibson apply.
 
-## Concepts
+## Applied Concepts
 
 - **Shared Engine Contract** (`shared_engine_contract`): GUI, CLI, shell, and scripting interfaces execute the same operation semantics.
 - **Deterministic Workflows** (`deterministic_workflows`): Operation chains should produce stable IDs and comparable outputs across repeated runs.
@@ -50,24 +68,6 @@ Run the same routine non-interactively once the GUI flow is clear:
 cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gibson_arrangements_baseline.json
 cargo run --bin gentle_cli -- shell 'workflow @docs/examples/workflows/gibson_arrangements_baseline.json'
 ```
-
-## Parameters That Matter
-
-- `destination seq_id = gibson_destination_pgex` (where used: Stored vector lane in the arrangement walkthrough)
-  - Why it matters: Keeps the original vector lane stable across the arrangement guide and CLI replay.
-  - How to derive it: This workflow assigns the ID directly during `LoadFile`.
-- `insert seq_id = gibson_insert_demo` (where used: Insert lane in the arrangement walkthrough)
-  - Why it matters: Provides the same deterministic insert lane that the Gibson arrangement is expected to reference.
-  - How to derive it: This workflow assigns the ID directly during `LoadFile`.
-- `assembled product seq_id = gibson_destination_pgex_with_gibson_insert_demo` (where used: Stored Gibson result already present when the arrangement tutorial opens)
-  - Why it matters: Makes the arrangement tutorial disjunct from the separate Gibson-specialist apply walkthrough while keeping one deterministic product identity.
-  - How to derive it: The chapter workflow applies the canonical single-insert Gibson plan before the guide opens.
-- `workflow example = gibson_arrangements_baseline` (where used: `Open Tutorial Project...` and CLI workflow replay)
-  - Why it matters: The arrangement starter now has its own canonical example so the tutorial can begin with the cloned result and stored lane arrangement already available.
-  - How to derive it: Select the chapter from `Open Tutorial Project...` or run the canonical workflow JSON directly.
-- `lab assistant handoff = artifacts/gibson_lab_assistant_handoff.md` (where used: ClawBio/Telegram demo artifact and CLI replay)
-  - Why it matters: Provides non-IT bench-facing instructions tied to the exact deterministic design outputs.
-  - How to derive it: The workflow calls `ExportLabAssistantInstructions` after applying the Gibson plan.
 
 ## Follow-up Commands
 

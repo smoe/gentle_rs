@@ -14,6 +14,15 @@ Run a full mini-loop from fragment production to assembled product extraction.
 
 This chapter models a compact molecular cloning routine in one chain: digest source material, produce a ligation product, and extract a target segment for subsequent validation or design. It is the smallest end-to-end routine that still reflects real bench-side reasoning.
 
+## Parameters That Matter
+
+- `Ligation.protocol` (where used: operation 3)
+  - Why it matters: Protocol controls compatibility logic (e.g., blunt vs sticky behavior).
+  - How to derive it: Choose based on end chemistry produced by upstream digest products.
+- `ExtractRegion.from / to` (where used: operation 4)
+  - Why it matters: Defines the exact segment handed to downstream interpretation.
+  - How to derive it: Derive boundaries from feature coordinates or expected amplicon/design window.
+
 ## When This Routine Is Useful
 
 - You want to test whether your planned digest/ligation sequence is internally consistent.
@@ -26,7 +35,7 @@ This chapter models a compact molecular cloning routine in one chain: digest sou
 - Track how intermediate IDs are consumed by downstream operations.
 - Use ExtractRegion output as a stable hand-off point for later analyses.
 
-## Concepts
+## Applied Concepts
 
 - **Deterministic Workflows** (`deterministic_workflows`): Operation chains should produce stable IDs and comparable outputs across repeated runs.
 - **Sequence Lineage** (`sequence_lineage`): Derived sequences are explicit products linked to upstream inputs and operations.
@@ -45,15 +54,6 @@ Run the same routine non-interactively once the GUI flow is clear:
 cargo run --bin gentle_cli -- workflow @docs/examples/workflows/digest_ligation_extract_region_minimal.json
 cargo run --bin gentle_cli -- shell 'workflow @docs/examples/workflows/digest_ligation_extract_region_minimal.json'
 ```
-
-## Parameters That Matter
-
-- `Ligation.protocol` (where used: operation 3)
-  - Why it matters: Protocol controls compatibility logic (e.g., blunt vs sticky behavior).
-  - How to derive it: Choose based on end chemistry produced by upstream digest products.
-- `ExtractRegion.from / to` (where used: operation 4)
-  - Why it matters: Defines the exact segment handed to downstream interpretation.
-  - How to derive it: Derive boundaries from feature coordinates or expected amplicon/design window.
 
 ## Checkpoints
 
