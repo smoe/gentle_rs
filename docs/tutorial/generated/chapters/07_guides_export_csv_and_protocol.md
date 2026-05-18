@@ -14,6 +14,8 @@ Export representative machine-readable and human-readable artifacts.
 
 Operational work is only useful if outputs can be shared with collaborators and ordering pipelines. This routine keeps one representative CSV and one protocol text file so the tutorial remains readable while still proving export behavior.
 
+**Prerequisites:** Read [Chapter 5: Guide practical filtering and oligo generation](./05_guides_filter_and_generate_oligos.md) first.
+
 ## Parameters That Matter
 
 - `ExportGuideOligos.format` (where used: operation 3)
@@ -42,18 +44,46 @@ Operational work is only useful if outputs can be shared with collaborators and 
 
 ## GUI First
 
-1. Open the guide/oligo export controls after guide generation.
-2. Export one CSV table and one protocol text file to verify both machine and human output forms.
-3. Inspect the exported files and confirm they match current guide/oligo set IDs.
+CLI snippets use GENtle's default `.gentle_state.json` state unless they say otherwise. Add `--state PATH` or `--project PATH` when you want an explicit sandboxed state file for copied commands.
 
-## Command Equivalent (After GUI)
+### Step 1: Open the guide/oligo export controls after guide generation
 
-Run the same routine non-interactively once the GUI flow is clear:
+GUI: Open the guide/oligo export controls after guide generation.
+
+CLI:
 
 ```bash
-cargo run --bin gentle_cli -- workflow @docs/examples/workflows/guides_export_csv_and_protocol.json
-cargo run --bin gentle_cli -- shell 'workflow @docs/examples/workflows/guides_export_csv_and_protocol.json'
+cargo run --bin gentle_cli -- guides put demo_guides --json '[{"guide_id":"demo_1","seq_id":"target_demo","start_0based":10,"end_0based_exclusive":30,"strand":"+","protospacer":"GACCTGTTGACGATGTTCCA","pam":"AGG","nuclease":"SpCas9","cut_offset_from_protospacer_start":17,"rank":1}]'
+cargo run --bin gentle_cli -- guides oligos-generate demo_guides lenti_bsmbi_u6_default --apply-5prime-g-extension --output-oligo-set demo_lenti
 ```
+
+> Expected: The guide set `demo_guides` and oligo set `demo_lenti` are stored with deterministic ids.
+
+### Step 2: Export one CSV table and one protocol text file to verify both machine and hu...
+
+GUI: Export one CSV table and one protocol text file to verify both machine and human output forms.
+
+CLI:
+
+```bash
+cargo run --bin gentle_cli -- guides oligos-export demo_guides exports/demo_guides.csv --format csv_table --oligo-set demo_lenti
+cargo run --bin gentle_cli -- guides protocol-export demo_guides exports/demo_guides.protocol.txt --oligo-set demo_lenti
+```
+
+> Expected: The CSV and protocol text files are written under `exports/` for machine and bench-facing review.
+
+### Step 3: Inspect the exported files and confirm they match current guide/oligo set IDs
+
+GUI: Inspect the exported files and confirm they match current guide/oligo set IDs.
+
+CLI:
+
+```bash
+cargo run --bin gentle_cli -- guides oligos-show demo_lenti
+```
+
+> Expected: The oligo-set inspection output matches the exported set id and guide provenance.
+
 
 ## Checkpoints
 

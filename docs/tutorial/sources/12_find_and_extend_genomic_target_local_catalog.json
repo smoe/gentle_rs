@@ -1,5 +1,5 @@
 {
-  "schema": "gentle.tutorial_source.v2",
+  "schema": "gentle.tutorial_source.v3",
   "id": "find_and_extend_genomic_target_local_catalog",
   "title": "Find and extend the right genomic target (local catalog)",
   "catalog": {
@@ -30,6 +30,19 @@
       "Open `File -> Prepare Reference Genome...`, set catalog to `assets/genomes.json`, choose `LocalProject`, and prepare it.",
       "Open `File -> Retrieve Genome Sequence...`, use `Gene filter` (regex) to narrow annotation hits, pick one gene match, and extract it.",
       "In the resulting DNA window, use the `Extend 5'` / `Extend 3'` anchor controls (next to `Genome anchor`) to add flanking context."
+    ],
+    "cli_steps": [
+      "cargo run --bin gentle_cli -- genomes prepare LocalProject --catalog assets/genomes.json --cache-dir cache/localproject",
+      "cargo run --bin gentle_cli -- genomes genes LocalProject --catalog assets/genomes.json --cache-dir cache/localproject --filter '^etp' --limit 20\ncargo run --bin gentle_cli -- genomes extract-gene LocalProject etpC --occurrence 1 --output-id local_etpc --catalog assets/genomes.json --cache-dir cache/localproject",
+      "cargo run --bin gentle_cli -- genomes extend-anchor local_etpc 5p 250 --output-id local_etpc_ext5 --catalog assets/genomes.json --cache-dir cache/localproject"
+    ],
+    "step_expectations": [
+      "The offline `LocalProject` reference is prepared into `cache/localproject` without network access.",
+      "The gene listing narrows annotation candidates, and extraction creates the anchored sequence id `local_etpc`.",
+      "Anchor extension creates `local_etpc_ext5` with widened interval provenance rather than a disconnected sequence copy."
+    ],
+    "prerequisites": [
+      "load_branch_reverse_complement_pgex_fasta"
     ],
     "learning_objectives": [
       "Understand that `assets/genomes.json` defines selectable genome sources for preparation/retrieval.",

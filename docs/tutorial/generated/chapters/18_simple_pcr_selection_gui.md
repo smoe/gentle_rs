@@ -16,6 +16,8 @@ This chapter is intentionally minimal. The tutorial project opens one stable loc
 
 See also: guided walkthrough [docs/tutorial/simple_pcr_selection_gui.md](../../simple_pcr_selection_gui.md). Use that page first when you want a human-led path; this chapter is the executable reference.
 
+**Prerequisites:** Read [Chapter 1: Load FASTA, branch, and reverse-complement](./01_load_branch_reverse_complement_pgex_fasta.md) first.
+
 ## Parameters That Matter
 
 - `core ROI` (where used: map selection and PCR Designer starter block)
@@ -55,20 +57,68 @@ See also: guided walkthrough [docs/tutorial/simple_pcr_selection_gui.md](../../s
 
 ## GUI First
 
-1. Open `File -> Open Tutorial Project... -> Core -> 18. Simple PCR From a Selected Core Region`.
-2. In the opened TP73 project, keep the DNA map in linear mode and drag over one short core region that must be included in the amplicon.
-3. Right-click the selection and choose `Simple PCR from selection`.
-4. In `PCR Designer`, adjust `max primer distance from core` and `max amplicon`, then click `Apply simple flank windows` if you changed the distance.
-5. Run `Design Primer Pairs` and inspect the in-panel primer report preview for left/right distance from the core ROI and whether the pair cleanly flanks the core.
+CLI snippets use GENtle's default `.gentle_state.json` state unless they say otherwise. Add `--state PATH` or `--project PATH` when you want an explicit sandboxed state file for copied commands.
 
-## Command Equivalent (After GUI)
+### Step 1: Open File -> Open Tutorial Project... -> Core -> 18. Simple PCR From a Select...
 
-Run the same routine non-interactively once the GUI flow is clear:
+GUI: Open `File -> Open Tutorial Project... -> Core -> 18. Simple PCR From a Selected Core Region`.
+
+CLI:
 
 ```bash
 cargo run --bin gentle_cli -- workflow @docs/examples/workflows/simple_pcr_selection_gui.json
-cargo run --bin gentle_cli -- shell 'workflow @docs/examples/workflows/simple_pcr_selection_gui.json'
 ```
+
+> Expected: The starter project loads local TP73 context as `tp73_locus` and pins the primer backend to the deterministic internal implementation.
+
+### Step 2: In the opened TP73 project, keep the DNA map in linear mode and drag over one...
+
+GUI: In the opened TP73 project, keep the DNA map in linear mode and drag over one short core region that must be included in the amplicon.
+
+CLI:
+
+```bash
+# GUI-only selection gesture. For a fully scripted primer-design payload, use Chapter 13's batch PCR route.
+```
+
+> Expected: The selected core ROI is the biological interval that must be included; scripted users should encode the same interval explicitly in a primer-design request.
+
+### Step 3: Right-click the selection and choose Simple PCR from selection
+
+GUI: Right-click the selection and choose `Simple PCR from selection`.
+
+CLI:
+
+```bash
+cargo run --bin gentle_cli -- shell 'ui open pcr-design'
+```
+
+> Expected: The PCR Designer opens from the same shared UI-intent route used by agent and shell callers.
+
+### Step 4: In PCR Designer, adjust max primer distance from core and max amplicon, then ...
+
+GUI: In `PCR Designer`, adjust `max primer distance from core` and `max amplicon`, then click `Apply simple flank windows` if you changed the distance.
+
+CLI:
+
+```bash
+# The scripted equivalent is a DesignPrimerPairs request with explicit core_start/core_end and flank limits.
+```
+
+> Expected: The primer-design request should carry flank-window and maximum-amplicon constraints derived from the selected core ROI.
+
+### Step 5: Run Design Primer Pairs and inspect the in-panel primer report preview for le...
+
+GUI: Run `Design Primer Pairs` and inspect the in-panel primer report preview for left/right distance from the core ROI and whether the pair cleanly flanks the core.
+
+CLI:
+
+```bash
+cargo run --bin gentle_cli -- shell 'primers list-reports'
+```
+
+> Expected: After primer design, report rows expose amplicon length plus left/right distance from the core ROI.
+
 
 ## Follow-up Commands
 

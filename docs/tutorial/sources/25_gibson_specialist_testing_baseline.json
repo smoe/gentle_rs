@@ -1,5 +1,5 @@
 {
-  "schema": "gentle.tutorial_source.v2",
+  "schema": "gentle.tutorial_source.v3",
   "id": "gibson_specialist_testing_baseline",
   "title": "Gibson Specialist Starter Project (offline)",
   "catalog": {
@@ -28,9 +28,22 @@
       "You want one deterministic starting state for checking overlaps, primer suggestions, cartoon rendering, and export behavior."
     ],
     "gui_steps": [
-      "Open `File -> Open Tutorial Project...` and choose `Gibson Specialist Starter Project (offline)`.",
-      "Confirm the opened project contains `gibson_destination_pgex` (circular) and `gibson_insert_demo` (linear).",
-      "The Help window should open automatically on `Gibson Specialist Testing Tutorial`; continue there from `Step 3` onward to exercise the Gibson specialist itself."
+      "Open the Gibson specialist starter project from `File -> Open Tutorial Project...`.",
+      "Confirm the starter contains `gibson_destination_pgex` (circular) and `gibson_insert_demo` (linear).",
+      "Continue in the automatically opened `Gibson Specialist Testing Tutorial` from `Step 3` onward."
+    ],
+    "cli_steps": [
+      "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gibson_specialist_testing_baseline.json",
+      "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gibson_specialist_testing_baseline.json",
+      "cargo run --bin gentle_examples_docs -- tutorial-catalog-check"
+    ],
+    "step_expectations": [
+      "The workflow loads the same starter inputs that the GUI tutorial-project menu opens, without requiring manual sequence import.",
+      "The workflow result contains `gibson_destination_pgex` from `test_files/pGEX-3X.gb` and `gibson_insert_demo` from the tutorial insert FASTA.",
+      "The tutorial catalog remains linked so the generated starter chapter points readers to the hand-written Gibson specialist walkthrough."
+    ],
+    "prerequisites": [
+      "gibson_two_fragment_overlap_preview"
     ],
     "learning_objectives": [
       "Use executable tutorial projects as deterministic GUI test baselines.",

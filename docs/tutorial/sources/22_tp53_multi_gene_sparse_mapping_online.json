@@ -31,6 +31,19 @@
       "Open Splicing Expert for a TP53 transcript, set `Origin mode` to `multi_gene_sparse`, and set `Target genes` to `TP53, TP63, TP73`.",
       "Run Nanopore interpretation from the same panel and inspect sparse-origin warnings/summary fields in the report section."
     ],
+    "cli_steps": [
+      "GENTLE_TEST_ONLINE=1 cargo run --bin gentle_cli -- workflow @docs/examples/workflows/tp53_multi_gene_sparse_mapping_online.json",
+      "cargo run --bin gentle_cli -- shell 'rna-reads list-reports grch38_tp53'",
+      "cargo run --bin gentle_cli -- shell 'rna-reads show-report tp53_family_sparse_template'"
+    ],
+    "step_expectations": [
+      "The workflow prepares/extracts TP53 and runs the read interpretation template with `origin_mode=multi_gene_sparse`.",
+      "The report list includes `tp53_family_sparse_template` after the interpretation step has stored its report.",
+      "The report detail exposes target-gene provenance, sparse-origin warnings, and seed/align summary fields for review."
+    ],
+    "prerequisites": [
+      "prepare_reference_genome_online"
+    ],
     "local_execution_note": "Set `GENTLE_TEST_ONLINE=1` and run from the repository root. The workflow prepares/extracts GRCh38 Ensembl 116 from Ensembl FTP, then runs the multi-gene sparse RNA-read interpretation against locally derived TP53-family transcript templates.",
     "learning_objectives": [
       "Map one gene locus from reference genome preparation through read-interpretation in a single operation chain.",

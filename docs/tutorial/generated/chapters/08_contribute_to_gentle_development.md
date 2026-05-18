@@ -14,6 +14,8 @@ Executable contributor onboarding from baseline run to test/documentation checks
 
 Contributing effectively requires keeping biological behavior, command contracts, and docs in sync. This chapter provides a concrete contributor routine: run a baseline operation chain, then validate examples, tutorial generation, and tests before opening a change request.
 
+**Prerequisites:** Read [Chapter 1: Load FASTA, branch, and reverse-complement](./01_load_branch_reverse_complement_pgex_fasta.md) first.
+
 ## Parameters That Matter
 
 - `Workflow file path @docs/examples/workflows/...` (where used: command equivalent)
@@ -40,18 +42,45 @@ Contributing effectively requires keeping biological behavior, command contracts
 
 ## GUI First
 
-1. Run the baseline sequence routine in the GUI and inspect resulting lineage entries.
-2. Locate the same routine as a canonical workflow JSON example in `docs/examples/workflows`.
-3. Use this mapping to validate that your planned code change affects shared engine behavior, not only one interface.
+CLI snippets use GENtle's default `.gentle_state.json` state unless they say otherwise. Add `--state PATH` or `--project PATH` when you want an explicit sandboxed state file for copied commands.
 
-## Command Equivalent (After GUI)
+### Step 1: Run the baseline sequence routine in the GUI and inspect resulting lineage en...
 
-Run the same routine non-interactively once the GUI flow is clear:
+GUI: Run the baseline sequence routine in the GUI and inspect resulting lineage entries.
+
+CLI:
 
 ```bash
 cargo run --bin gentle_cli -- workflow @docs/examples/workflows/contribute_gentle_development_baseline.json
-cargo run --bin gentle_cli -- shell 'workflow @docs/examples/workflows/contribute_gentle_development_baseline.json'
 ```
+
+> Expected: The baseline workflow creates `contrib_seed`, `contrib_branch`, and `contrib_branch_rc` through the shared engine.
+
+### Step 2: Locate the same routine as a canonical workflow JSON example in docs/examples...
+
+GUI: Locate the same routine as a canonical workflow JSON example in `docs/examples/workflows`.
+
+CLI:
+
+```bash
+cargo run --bin gentle_examples_docs -- --check
+```
+
+> Expected: Example generation/checking confirms the canonical workflow JSON remains parseable and adapter snippets are current.
+
+### Step 3: Use this mapping to validate that your planned code change affects shared eng...
+
+GUI: Use this mapping to validate that your planned code change affects shared engine behavior, not only one interface.
+
+CLI:
+
+```bash
+cargo check -q
+cargo run --bin gentle_examples_docs -- tutorial-check
+```
+
+> Expected: The Rust check and tutorial drift check catch interface or documentation changes that escaped the GUI path.
+
 
 ## Follow-up Commands
 

@@ -14,6 +14,8 @@ Build a TP53 locus project and export Figure-1-style transcript/protein isoform 
 
 This chapter demonstrates a publication-oriented use case: derive TP53 from a prepared GRCh38 reference, import a curated isoform panel, and render transcript/protein architecture from the same expert-view payload used by GUI and shell interfaces. The focus is parity and provenance, not manual figure drawing.
 
+**Prerequisites:** Read [Chapter 9: Prepare a reference genome cache (online)](./09_prepare_reference_genome_online.md) first.
+
 > **How to Run This Locally**
 > Set `GENTLE_TEST_ONLINE=1` and run from the repository root. The workflow prepares/extracts `Human GRCh38 Ensembl 116` from Ensembl FTP, then imports the local curated panel `assets/panels/tp53_isoforms_v1.json` and writes `exports/tp53_isoform_architecture.svg`.
 
@@ -48,18 +50,46 @@ This chapter demonstrates a publication-oriented use case: derive TP53 from a pr
 
 ## GUI First
 
-1. Prepare `Human GRCh38 Ensembl 116` and extract gene `TP53` into `grch38_tp53`.
-2. Open DNA window `Engine Ops -> Isoform architecture panels`, import `assets/panels/tp53_isoforms_v1.json`.
-3. Open `Isoform Expert` and export SVG from the same panel context.
+CLI snippets use GENtle's default `.gentle_state.json` state unless they say otherwise. Add `--state PATH` or `--project PATH` when you want an explicit sandboxed state file for copied commands.
 
-## Command Equivalent (After GUI)
+### Step 1: Prepare Human GRCh38 Ensembl 116 and extract gene TP53 into grch38_tp53
 
-Run the same routine non-interactively once the GUI flow is clear:
+GUI: Prepare `Human GRCh38 Ensembl 116` and extract gene `TP53` into `grch38_tp53`.
+
+CLI:
 
 ```bash
-cargo run --bin gentle_cli -- workflow @docs/examples/workflows/tp53_isoform_architecture_online.json
-cargo run --bin gentle_cli -- shell 'workflow @docs/examples/workflows/tp53_isoform_architecture_online.json'
+GENTLE_TEST_ONLINE=1 cargo run --bin gentle_cli -- genomes prepare "Human GRCh38 Ensembl 116" --catalog assets/genomes.json --cache-dir data/genomes --timeout-secs 3600
+cargo run --bin gentle_cli -- genomes extract-gene "Human GRCh38 Ensembl 116" TP53 --occurrence 1 --output-id grch38_tp53 --catalog assets/genomes.json --cache-dir data/genomes
 ```
+
+> Expected: The reference is prepared if needed and TP53 is extracted into the stable anchored sequence id `grch38_tp53`.
+
+### Step 2: Open DNA window Engine Ops -> Isoform architecture panels, import assets/pane...
+
+GUI: Open DNA window `Engine Ops -> Isoform architecture panels`, import `assets/panels/tp53_isoforms_v1.json`.
+
+CLI:
+
+```bash
+cargo run --bin gentle_cli -- shell 'panels import-isoform grch38_tp53 assets/panels/tp53_isoforms_v1.json --panel-id tp53_isoforms_v1'
+cargo run --bin gentle_cli -- shell 'panels inspect-isoform grch38_tp53 tp53_isoforms_v1'
+```
+
+> Expected: The panel import stores `tp53_isoforms_v1`; the inspect route returns the same isoform-architecture payload that the GUI expert view renders.
+
+### Step 3: Open Isoform Expert and export SVG from the same panel context
+
+GUI: Open `Isoform Expert` and export SVG from the same panel context.
+
+CLI:
+
+```bash
+cargo run --bin gentle_cli -- shell 'panels render-isoform-svg grch38_tp53 tp53_isoforms_v1 exports/tp53_isoform_architecture.svg'
+```
+
+> Expected: The renderer writes `exports/tp53_isoform_architecture.svg` with deterministic isoform lane ordering.
+
 
 ## Follow-up Commands
 

@@ -1,5 +1,5 @@
 {
-  "schema": "gentle.tutorial_source.v2",
+  "schema": "gentle.tutorial_source.v3",
   "id": "gibson_two_fragment_overlap_preview",
   "title": "Gibson two-fragment overlap planning baseline",
   "catalog": {
@@ -27,9 +27,22 @@
       "You want one routine that can be explained to collaborators through GUI + shell parity."
     ],
     "gui_steps": [
-      "Load `test_files/pGEX_3X.fa` and create two overlapping fragments (`gibson_left`, `gibson_right`) using region extraction.",
-      "Open `Patterns -> Routine catalog`, locate `Gibson Two-Fragment Overlap Preview`, and import it.",
-      "Run from `Shell`: `macros template-run gibson_two_fragment_overlap_preview --bind left_seq_id=gibson_left --bind right_seq_id=gibson_right --bind overlap_bp=20 --bind assembly_prefix=gibson_demo --bind output_id=gibson_demo_forward --validate-only`, then execute without `--validate-only`."
+      "Create two overlapping pGEX fragments (`gibson_left`, `gibson_right`) from `test_files/pGEX_3X.fa` using region extraction.",
+      "Import the Gibson two-fragment overlap preview routine from `Patterns -> Routine catalog`.",
+      "Validate the Gibson overlap preview from `Shell`, then rerun the same template without `--validate-only` to create outputs."
+    ],
+    "cli_steps": [
+      "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gibson_two_fragment_overlap_preview.json",
+      "cargo run --bin gentle_cli -- shell 'macros template-import assets/cloning_patterns_catalog/gibson/overlap_assembly/gibson_two_fragment_overlap_preview.json'",
+      "cargo run --bin gentle_cli -- shell 'macros template-run gibson_two_fragment_overlap_preview --bind left_seq_id=gibson_left --bind right_seq_id=gibson_right --bind overlap_bp=20 --bind assembly_prefix=gibson_demo --bind output_id=gibson_demo_forward --validate-only'"
+    ],
+    "step_expectations": [
+      "The workflow loads `pgex_fasta`, extracts `gibson_left` and `gibson_right`, and leaves deterministic preview IDs for inspection.",
+      "The routine catalog registers `gibson_two_fragment_overlap_preview`, so the next shell command can validate that specific fragment order.",
+      "The validate-only run reports executable bindings for the chosen overlap; rerun with `--transactional` to create the named preview assembly."
+    ],
+    "prerequisites": [
+      "load_branch_reverse_complement_pgex_fasta"
     ],
     "learning_objectives": [
       "Understand where Gibson overlap assumptions are checked in shared-shell preflight.",

@@ -31,6 +31,19 @@
       "Open DNA window `Engine Ops -> Isoform architecture panels`, import `assets/panels/tp53_isoforms_v1.json`.",
       "Open `Isoform Expert` and export SVG from the same panel context."
     ],
+    "cli_steps": [
+      "GENTLE_TEST_ONLINE=1 cargo run --bin gentle_cli -- genomes prepare \"Human GRCh38 Ensembl 116\" --catalog assets/genomes.json --cache-dir data/genomes --timeout-secs 3600\ncargo run --bin gentle_cli -- genomes extract-gene \"Human GRCh38 Ensembl 116\" TP53 --occurrence 1 --output-id grch38_tp53 --catalog assets/genomes.json --cache-dir data/genomes",
+      "cargo run --bin gentle_cli -- shell 'panels import-isoform grch38_tp53 assets/panels/tp53_isoforms_v1.json --panel-id tp53_isoforms_v1'\ncargo run --bin gentle_cli -- shell 'panels inspect-isoform grch38_tp53 tp53_isoforms_v1'",
+      "cargo run --bin gentle_cli -- shell 'panels render-isoform-svg grch38_tp53 tp53_isoforms_v1 exports/tp53_isoform_architecture.svg'"
+    ],
+    "step_expectations": [
+      "The reference is prepared if needed and TP53 is extracted into the stable anchored sequence id `grch38_tp53`.",
+      "The panel import stores `tp53_isoforms_v1`; the inspect route returns the same isoform-architecture payload that the GUI expert view renders.",
+      "The renderer writes `exports/tp53_isoform_architecture.svg` with deterministic isoform lane ordering."
+    ],
+    "prerequisites": [
+      "prepare_reference_genome_online"
+    ],
     "local_execution_note": "Set `GENTLE_TEST_ONLINE=1` and run from the repository root. The workflow prepares/extracts `Human GRCh38 Ensembl 116` from Ensembl FTP, then imports the local curated panel `assets/panels/tp53_isoforms_v1.json` and writes `exports/tp53_isoform_architecture.svg`.",
     "learning_objectives": [
       "Execute an end-to-end isoform-panel workflow using shared engine operations.",

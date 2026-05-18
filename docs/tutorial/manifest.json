@@ -150,6 +150,19 @@
         "Open `File -> Retrieve Genome Sequence...`, use `Gene filter` (regex) to narrow annotation hits, pick one gene match, and extract it.",
         "In the resulting DNA window, use the `Extend 5'` / `Extend 3'` anchor controls (next to `Genome anchor`) to add flanking context."
       ],
+      "cli_steps": [
+        "cargo run --bin gentle_cli -- genomes prepare LocalProject --catalog assets/genomes.json --cache-dir cache/localproject",
+        "cargo run --bin gentle_cli -- genomes genes LocalProject --catalog assets/genomes.json --cache-dir cache/localproject --filter '^etp' --limit 20\ncargo run --bin gentle_cli -- genomes extract-gene LocalProject etpC --occurrence 1 --output-id local_etpc --catalog assets/genomes.json --cache-dir cache/localproject",
+        "cargo run --bin gentle_cli -- genomes extend-anchor local_etpc 5p 250 --output-id local_etpc_ext5 --catalog assets/genomes.json --cache-dir cache/localproject"
+      ],
+      "step_expectations": [
+        "The offline `LocalProject` reference is prepared into `cache/localproject` without network access.",
+        "The gene listing narrows annotation candidates, and extraction creates the anchored sequence id `local_etpc`.",
+        "Anchor extension creates `local_etpc_ext5` with widened interval provenance rather than a disconnected sequence copy."
+      ],
+      "prerequisites": [
+        "load_branch_reverse_complement_pgex_fasta"
+      ],
       "learning_objectives": [
         "Understand that `assets/genomes.json` defines selectable genome sources for preparation/retrieval.",
         "Use annotation-backed gene filtering to find target regions reproducibly.",
@@ -275,9 +288,22 @@
         "You want one routine that can be explained to collaborators through GUI + shell parity."
       ],
       "gui_steps": [
-        "Load `test_files/pGEX_3X.fa` and create two overlapping fragments (`gibson_left`, `gibson_right`) using region extraction.",
-        "Open `Patterns -> Routine catalog`, locate `Gibson Two-Fragment Overlap Preview`, and import it.",
-        "Run from `Shell`: `macros template-run gibson_two_fragment_overlap_preview --bind left_seq_id=gibson_left --bind right_seq_id=gibson_right --bind overlap_bp=20 --bind assembly_prefix=gibson_demo --bind output_id=gibson_demo_forward --validate-only`, then execute without `--validate-only`."
+        "Create two overlapping pGEX fragments (`gibson_left`, `gibson_right`) from `test_files/pGEX_3X.fa` using region extraction.",
+        "Import the Gibson two-fragment overlap preview routine from `Patterns -> Routine catalog`.",
+        "Validate the Gibson overlap preview from `Shell`, then rerun the same template without `--validate-only` to create outputs."
+      ],
+      "cli_steps": [
+        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gibson_two_fragment_overlap_preview.json",
+        "cargo run --bin gentle_cli -- shell 'macros template-import assets/cloning_patterns_catalog/gibson/overlap_assembly/gibson_two_fragment_overlap_preview.json'",
+        "cargo run --bin gentle_cli -- shell 'macros template-run gibson_two_fragment_overlap_preview --bind left_seq_id=gibson_left --bind right_seq_id=gibson_right --bind overlap_bp=20 --bind assembly_prefix=gibson_demo --bind output_id=gibson_demo_forward --validate-only'"
+      ],
+      "step_expectations": [
+        "The workflow loads `pgex_fasta`, extracts `gibson_left` and `gibson_right`, and leaves deterministic preview IDs for inspection.",
+        "The routine catalog registers `gibson_two_fragment_overlap_preview`, so the next shell command can validate that specific fragment order.",
+        "The validate-only run reports executable bindings for the chosen overlap; rerun with `--transactional` to create the named preview assembly."
+      ],
+      "prerequisites": [
+        "load_branch_reverse_complement_pgex_fasta"
       ],
       "learning_objectives": [
         "Understand where Gibson overlap assumptions are checked in shared-shell preflight.",
@@ -472,6 +498,19 @@
         "Export one CSV table and one protocol text file to verify both machine and human output forms.",
         "Inspect the exported files and confirm they match current guide/oligo set IDs."
       ],
+      "cli_steps": [
+        "cargo run --bin gentle_cli -- guides put demo_guides --json '[{\"guide_id\":\"demo_1\",\"seq_id\":\"target_demo\",\"start_0based\":10,\"end_0based_exclusive\":30,\"strand\":\"+\",\"protospacer\":\"GACCTGTTGACGATGTTCCA\",\"pam\":\"AGG\",\"nuclease\":\"SpCas9\",\"cut_offset_from_protospacer_start\":17,\"rank\":1}]'\ncargo run --bin gentle_cli -- guides oligos-generate demo_guides lenti_bsmbi_u6_default --apply-5prime-g-extension --output-oligo-set demo_lenti",
+        "cargo run --bin gentle_cli -- guides oligos-export demo_guides exports/demo_guides.csv --format csv_table --oligo-set demo_lenti\ncargo run --bin gentle_cli -- guides protocol-export demo_guides exports/demo_guides.protocol.txt --oligo-set demo_lenti",
+        "cargo run --bin gentle_cli -- guides oligos-show demo_lenti"
+      ],
+      "step_expectations": [
+        "The guide set `demo_guides` and oligo set `demo_lenti` are stored with deterministic ids.",
+        "The CSV and protocol text files are written under `exports/` for machine and bench-facing review.",
+        "The oligo-set inspection output matches the exported set id and guide provenance."
+      ],
+      "prerequisites": [
+        "guides_filter_and_generate_oligos"
+      ],
       "learning_objectives": [
         "Export guide outputs in machine-readable and human-readable forms.",
         "Understand selective artifact retention for tutorial readability.",
@@ -525,6 +564,19 @@
         "Run the baseline sequence routine in the GUI and inspect resulting lineage entries.",
         "Locate the same routine as a canonical workflow JSON example in `docs/examples/workflows`.",
         "Use this mapping to validate that your planned code change affects shared engine behavior, not only one interface."
+      ],
+      "cli_steps": [
+        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/contribute_gentle_development_baseline.json",
+        "cargo run --bin gentle_examples_docs -- --check",
+        "cargo check -q\ncargo run --bin gentle_examples_docs -- tutorial-check"
+      ],
+      "step_expectations": [
+        "The baseline workflow creates `contrib_seed`, `contrib_branch`, and `contrib_branch_rc` through the shared engine.",
+        "Example generation/checking confirms the canonical workflow JSON remains parseable and adapter snippets are current.",
+        "The Rust check and tutorial drift check catch interface or documentation changes that escaped the GUI path."
+      ],
+      "prerequisites": [
+        "load_branch_reverse_complement_pgex_fasta"
       ],
       "learning_objectives": [
         "Understand the expected contributor loop from change to verification.",
@@ -643,6 +695,19 @@
         "Open DNA window `Engine Ops -> Isoform architecture panels`, import `assets/panels/tp53_isoforms_v1.json`.",
         "Open `Isoform Expert` and export SVG from the same panel context."
       ],
+      "cli_steps": [
+        "GENTLE_TEST_ONLINE=1 cargo run --bin gentle_cli -- genomes prepare \"Human GRCh38 Ensembl 116\" --catalog assets/genomes.json --cache-dir data/genomes --timeout-secs 3600\ncargo run --bin gentle_cli -- genomes extract-gene \"Human GRCh38 Ensembl 116\" TP53 --occurrence 1 --output-id grch38_tp53 --catalog assets/genomes.json --cache-dir data/genomes",
+        "cargo run --bin gentle_cli -- shell 'panels import-isoform grch38_tp53 assets/panels/tp53_isoforms_v1.json --panel-id tp53_isoforms_v1'\ncargo run --bin gentle_cli -- shell 'panels inspect-isoform grch38_tp53 tp53_isoforms_v1'",
+        "cargo run --bin gentle_cli -- shell 'panels render-isoform-svg grch38_tp53 tp53_isoforms_v1 exports/tp53_isoform_architecture.svg'"
+      ],
+      "step_expectations": [
+        "The reference is prepared if needed and TP53 is extracted into the stable anchored sequence id `grch38_tp53`.",
+        "The panel import stores `tp53_isoforms_v1`; the inspect route returns the same isoform-architecture payload that the GUI expert view renders.",
+        "The renderer writes `exports/tp53_isoform_architecture.svg` with deterministic isoform lane ordering."
+      ],
+      "prerequisites": [
+        "prepare_reference_genome_online"
+      ],
       "local_execution_note": "Set `GENTLE_TEST_ONLINE=1` and run from the repository root. The workflow prepares/extracts `Human GRCh38 Ensembl 116` from Ensembl FTP, then imports the local curated panel `assets/panels/tp53_isoforms_v1.json` and writes `exports/tp53_isoform_architecture.svg`.",
       "learning_objectives": [
         "Execute an end-to-end isoform-panel workflow using shared engine operations.",
@@ -704,6 +769,19 @@
         "Open `File -> Retrieve Genome Sequence...`, set gene query/filter to `TP63`, review the displayed TP63 coordinate hit, and extract the first TP63 entry.",
         "In the resulting DNA sequence window (`grch38_tp63`), use `Extend 5'` with `2000 bp`, then `Extend 3'` with `2000 bp` to produce the +/-2 kb context sequence."
       ],
+      "cli_steps": [
+        "GENTLE_TEST_ONLINE=1 cargo run --bin gentle_cli -- genomes prepare \"Human GRCh38 Ensembl 116\" --catalog assets/genomes.json --cache-dir data/genomes --timeout-secs 3600",
+        "cargo run --bin gentle_cli -- genomes genes \"Human GRCh38 Ensembl 116\" --catalog assets/genomes.json --cache-dir data/genomes --filter \"^TP63$\" --limit 20\ncargo run --bin gentle_cli -- genomes extract-gene \"Human GRCh38 Ensembl 116\" TP63 --occurrence 1 --output-id grch38_tp63 --catalog assets/genomes.json --cache-dir data/genomes",
+        "cargo run --bin gentle_cli -- genomes extend-anchor grch38_tp63 5p 2000 --output-id grch38_tp63_ext5_2kb --catalog assets/genomes.json --cache-dir data/genomes\ncargo run --bin gentle_cli -- genomes extend-anchor grch38_tp63_ext5_2kb 3p 2000 --output-id grch38_tp63_ext5_ext3_2kb --catalog assets/genomes.json --cache-dir data/genomes"
+      ],
+      "step_expectations": [
+        "The reference-preparation status becomes ready or reports a reusable prepared cache for GRCh38.",
+        "The gene listing shows the TP63 coordinate candidate(s), and extraction creates the anchored sequence id `grch38_tp63`.",
+        "The final extension step creates or refreshes `grch38_tp63_ext5_ext3_2kb` while preserving genome-anchor provenance."
+      ],
+      "prerequisites": [
+        "prepare_reference_genome_online"
+      ],
       "local_execution_note": "Set `GENTLE_TEST_ONLINE=1` and run from the repository root. The workflow prepares `Human GRCh38 Ensembl 116` using Ensembl FTP FASTA/GTF endpoints from `assets/genomes.json`, then extracts TP63 and extends the anchored locus locally.",
       "learning_objectives": [
         "Use annotation-backed gene retrieval to inspect coordinates before extracting a sequence.",
@@ -763,6 +841,19 @@
         "Prepare `Human GRCh38 Ensembl 116` and extract `TP53` into `grch38_tp53`.",
         "Open Splicing Expert for a TP53 transcript, set `Origin mode` to `multi_gene_sparse`, and set `Target genes` to `TP53, TP63, TP73`.",
         "Run Nanopore interpretation from the same panel and inspect sparse-origin warnings/summary fields in the report section."
+      ],
+      "cli_steps": [
+        "GENTLE_TEST_ONLINE=1 cargo run --bin gentle_cli -- workflow @docs/examples/workflows/tp53_multi_gene_sparse_mapping_online.json",
+        "cargo run --bin gentle_cli -- shell 'rna-reads list-reports grch38_tp53'",
+        "cargo run --bin gentle_cli -- shell 'rna-reads show-report tp53_family_sparse_template'"
+      ],
+      "step_expectations": [
+        "The workflow prepares/extracts TP53 and runs the read interpretation template with `origin_mode=multi_gene_sparse`.",
+        "The report list includes `tp53_family_sparse_template` after the interpretation step has stored its report.",
+        "The report detail exposes target-gene provenance, sparse-origin warnings, and seed/align summary fields for review."
+      ],
+      "prerequisites": [
+        "prepare_reference_genome_online"
       ],
       "local_execution_note": "Set `GENTLE_TEST_ONLINE=1` and run from the repository root. The workflow prepares/extracts GRCh38 Ensembl 116 from Ensembl FTP, then runs the multi-gene sparse RNA-read interpretation against locally derived TP53-family transcript templates.",
       "learning_objectives": [
@@ -947,6 +1038,19 @@
         "Prepare `Human GRCh38 Ensembl 116`, retrieve gene `TP73` as `tp73_genomic`.",
         "Open `tp73_cdna`, switch to `Dotplot map`, set pair mode against `tp73_genomic`, and compute with `word<=7`, `step=1`, `mismatches=0`."
       ],
+      "cli_steps": [
+        "cargo run --bin gentle_cli -- shell 'genbank fetch NM_001126241.3 --as-id tp73_cdna'",
+        "GENTLE_TEST_ONLINE=1 cargo run --bin gentle_cli -- genomes prepare \"Human GRCh38 Ensembl 116\" --catalog assets/genomes.json --cache-dir data/genomes --timeout-secs 3600\ncargo run --bin gentle_cli -- genomes extract-gene \"Human GRCh38 Ensembl 116\" TP73 --occurrence 1 --output-id tp73_genomic --catalog assets/genomes.json --cache-dir data/genomes",
+        "cargo run --bin gentle_cli -- shell 'dotplot compute tp73_cdna --reference-seq tp73_genomic --mode pair_forward --word-size 7 --step 1 --max-mismatches 0 --id tp73_cdna_vs_genomic_dotplot'"
+      ],
+      "step_expectations": [
+        "The GenBank route imports the TP73 cDNA accession under the stable id `tp73_cdna`.",
+        "The reference is prepared if needed and TP73 is extracted into the stable genomic sequence id `tp73_genomic`.",
+        "The dotplot compute route creates `tp73_cdna_vs_genomic_dotplot` with the same high-sensitivity seed settings used by the GUI."
+      ],
+      "prerequisites": [
+        "prepare_reference_genome_online"
+      ],
       "local_execution_note": "Set `GENTLE_TEST_ONLINE=1` and run from the repository root. This chapter fetches TP73 cDNA `NM_001126241.3` from NCBI/GenBank and prepares GRCh38 Ensembl 116 from Ensembl FTP before computing the local dotplot.",
       "learning_objectives": [
         "Use one deterministic route from accession retrieval to pairwise dotplot artifact generation.",
@@ -1001,9 +1105,22 @@
         "You want one deterministic starting state for checking overlaps, primer suggestions, cartoon rendering, and export behavior."
       ],
       "gui_steps": [
-        "Open `File -> Open Tutorial Project...` and choose `Gibson Specialist Starter Project (offline)`.",
-        "Confirm the opened project contains `gibson_destination_pgex` (circular) and `gibson_insert_demo` (linear).",
-        "The Help window should open automatically on `Gibson Specialist Testing Tutorial`; continue there from `Step 3` onward to exercise the Gibson specialist itself."
+        "Open the Gibson specialist starter project from `File -> Open Tutorial Project...`.",
+        "Confirm the starter contains `gibson_destination_pgex` (circular) and `gibson_insert_demo` (linear).",
+        "Continue in the automatically opened `Gibson Specialist Testing Tutorial` from `Step 3` onward."
+      ],
+      "cli_steps": [
+        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gibson_specialist_testing_baseline.json",
+        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gibson_specialist_testing_baseline.json",
+        "cargo run --bin gentle_examples_docs -- tutorial-catalog-check"
+      ],
+      "step_expectations": [
+        "The workflow loads the same starter inputs that the GUI tutorial-project menu opens, without requiring manual sequence import.",
+        "The workflow result contains `gibson_destination_pgex` from `test_files/pGEX-3X.gb` and `gibson_insert_demo` from the tutorial insert FASTA.",
+        "The tutorial catalog remains linked so the generated starter chapter points readers to the hand-written Gibson specialist walkthrough."
+      ],
+      "prerequisites": [
+        "gibson_two_fragment_overlap_preview"
       ],
       "learning_objectives": [
         "Use executable tutorial projects as deterministic GUI test baselines.",
@@ -1064,9 +1181,22 @@
         "You want one offline tutorial-project entry that opens directly on the arrangement guide in Help/Tutorial."
       ],
       "gui_steps": [
-        "Open `File -> Open Tutorial Project...` and choose `Gibson Arrangements Starter Project (offline)`.",
-        "Confirm the opened project contains `gibson_destination_pgex` (circular), `gibson_insert_demo` (linear), and the assembled product `gibson_destination_pgex_with_gibson_insert_demo`.",
-        "The Help window should open automatically on `Gibson Arrangements Tutorial`; continue there from `Step 1` onward."
+        "Open the Gibson arrangements starter project from `File -> Open Tutorial Project...`.",
+        "Confirm the starter contains `gibson_destination_pgex` (circular), `gibson_insert_demo` (linear), and the assembled product `gibson_destination_pgex_with_gibson_insert_demo`.",
+        "Continue in the automatically opened `Gibson Arrangements Tutorial` from `Step 1` onward."
+      ],
+      "cli_steps": [
+        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gibson_arrangements_baseline.json",
+        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gibson_arrangements_baseline.json",
+        "cargo run --bin gentle_examples_docs -- tutorial-catalog-check"
+      ],
+      "step_expectations": [
+        "The workflow builds the same arrangement-ready starter state that the GUI tutorial-project menu opens.",
+        "The workflow result includes the vector, insert, assembled Gibson product, stored arrangement context, and the retained handoff artifact.",
+        "The tutorial catalog remains linked so the generated arrangement starter points readers to the hand-written Gibson Arrangements walkthrough."
+      ],
+      "prerequisites": [
+        "gibson_specialist_testing_baseline"
       ],
       "learning_objectives": [
         "Use one executable starter project to reach an arrangement-ready walkthrough directly.",
@@ -1149,6 +1279,23 @@
         "Inspect the stored projection with `Open Protein Expert` or export it with `Render Protein Mapping SVG...` so you can verify how UniProt domains/regions landed on the TP53 transcripts.",
         "In `Feature coding DNA query`, enter `DNA-binding`, leave `feature transcript` empty unless you want to pin one isoform, choose `mode=both`, and press `Query Coding DNA`.",
         "Read the result panel to see the amino-acid span, genomic coding DNA, optional translation-speed optimized DNA, and the reported exon or exon pair for each matching transcript feature span."
+      ],
+      "cli_steps": [
+        "GENTLE_TEST_ONLINE=1 cargo run --bin gentle_cli -- genomes prepare \"Human GRCh38 Ensembl 116\" --catalog assets/genomes.json --cache-dir data/genomes --timeout-secs 3600\ncargo run --bin gentle_cli -- genomes extract-gene \"Human GRCh38 Ensembl 116\" TP53 --occurrence 1 --output-id grch38_tp53 --catalog assets/genomes.json --cache-dir data/genomes",
+        "cargo run --bin gentle_cli -- shell 'uniprot fetch P04637 --entry-id P04637'\ncargo run --bin gentle_cli -- shell 'uniprot map P04637 grch38_tp53 --projection-id tp53_uniprot_p04637'",
+        "cargo run --bin gentle_cli -- inspect-feature-expert grch38_tp53 uniprot-projection tp53_uniprot_p04637\ncargo run --bin gentle_cli -- render-feature-expert-svg grch38_tp53 uniprot-projection tp53_uniprot_p04637 exports/tp53_uniprot_projection.svg",
+        "cargo run --bin gentle_cli -- shell 'uniprot feature-coding-dna tp53_uniprot_p04637 DNA-binding --mode both --speed-profile human'",
+        "cargo run --bin gentle_cli -- shell 'uniprot projection-show tp53_uniprot_p04637'"
+      ],
+      "step_expectations": [
+        "The reference is prepared if needed and TP53 is extracted into the anchored sequence id `grch38_tp53`.",
+        "The reviewed UniProt entry is stored as `P04637`, then projected onto TP53 as `tp53_uniprot_p04637`.",
+        "The shared expert inspection and SVG export expose the same projected domain geometry used by the GUI Protein Expert.",
+        "The coding-DNA query reports genomic-as-encoded and optimized alternatives for mapped `DNA-binding` feature spans.",
+        "Projection inspection keeps the transcript, feature, and evidence metadata available for audit after the GUI panel is closed."
+      ],
+      "prerequisites": [
+        "prepare_reference_genome_online"
       ],
       "local_execution_note": "Set `GENTLE_TEST_ONLINE=1` and run from the repository root. The workflow prepares/extracts GRCh38 Ensembl 116 from Ensembl FTP, fetches reviewed UniProt accession `P04637`, then performs projection and coding-DNA queries locally.",
       "learning_objectives": [
@@ -1239,6 +1386,23 @@
         "In `PCR Designer`, adjust `max primer distance from core` and `max amplicon`, then click `Apply simple flank windows` if you changed the distance.",
         "Run `Design Primer Pairs` and inspect the in-panel primer report preview for left/right distance from the core ROI and whether the pair cleanly flanks the core."
       ],
+      "cli_steps": [
+        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/simple_pcr_selection_gui.json",
+        "# GUI-only selection gesture. For a fully scripted primer-design payload, use Chapter 13's batch PCR route.",
+        "cargo run --bin gentle_cli -- shell 'ui open pcr-design'",
+        "# The scripted equivalent is a DesignPrimerPairs request with explicit core_start/core_end and flank limits.",
+        "cargo run --bin gentle_cli -- shell 'primers list-reports'"
+      ],
+      "step_expectations": [
+        "The starter project loads local TP73 context as `tp73_locus` and pins the primer backend to the deterministic internal implementation.",
+        "The selected core ROI is the biological interval that must be included; scripted users should encode the same interval explicitly in a primer-design request.",
+        "The PCR Designer opens from the same shared UI-intent route used by agent and shell callers.",
+        "The primer-design request should carry flank-window and maximum-amplicon constraints derived from the selected core ROI.",
+        "After primer design, report rows expose amplicon length plus left/right distance from the core ROI."
+      ],
+      "prerequisites": [
+        "load_branch_reverse_complement_pgex_fasta"
+      ],
       "learning_objectives": [
         "Start a simple PCR directly from one sequence selection.",
         "Interpret the beginner PCR controls as deterministic flank-window constraints around the selected core ROI.",
@@ -1304,6 +1468,23 @@
         "Run the high-level audit and parity actions from `Protein Evidence...` so the stored audit rows and local unsent email draft are persisted.",
         "Open the saved projection in the Protein Expert or inspect the exported SVG artifact to verify the projected feature geometry.",
         "Use the companion CLI tutorial to rebuild the same result from `resolve-ensembl-links`, `transcript-accounting`, `compare-ensembl-exons`, and `compare-ensembl-peptide`."
+      ],
+      "cli_steps": [
+        "GENTLE_TEST_ONLINE=1 cargo run --bin gentle_cli -- genomes prepare \"Human GRCh38 Ensembl 116\" --catalog assets/genomes.json --cache-dir data/genomes --timeout-secs 3600\ncargo run --bin gentle_cli -- genomes extract-gene \"Human GRCh38 Ensembl 116\" TP73 --occurrence 1 --output-id grch38_tp73 --catalog assets/genomes.json --cache-dir data/genomes",
+        "cargo run --bin gentle_cli -- shell 'uniprot fetch Q9H3D4 --entry-id Q9H3D4'\ncargo run --bin gentle_cli -- shell 'ensembl-protein fetch ENSP00000264724 --entry-id TP73_ENS'\ncargo run --bin gentle_cli -- shell 'uniprot map Q9H3D4 grch38_tp73 --projection-id tp73_uniprot_q9h3d4'",
+        "cargo run --bin gentle_cli -- shell 'uniprot audit-projection tp73_uniprot_q9h3d4 --ensembl-entry TP73_ENS --report-id tp73_projection_audit'\ncargo run --bin gentle_cli -- shell 'uniprot audit-parity tp73_uniprot_q9h3d4 --ensembl-entry TP73_ENS --report-id tp73_projection_audit_parity'",
+        "cargo run --bin gentle_cli -- inspect-feature-expert grch38_tp73 uniprot-projection tp73_uniprot_q9h3d4\ncargo run --bin gentle_cli -- render-feature-expert-svg grch38_tp73 uniprot-projection tp73_uniprot_q9h3d4 exports/tp73_uniprot_projection.svg",
+        "cargo run --bin gentle_cli -- shell 'uniprot resolve-ensembl-links tp73_uniprot_q9h3d4'\ncargo run --bin gentle_cli -- shell 'uniprot transcript-accounting tp73_uniprot_q9h3d4'\ncargo run --bin gentle_cli -- shell 'uniprot compare-ensembl-exons tp73_uniprot_q9h3d4 --ensembl-entry TP73_ENS'\ncargo run --bin gentle_cli -- shell 'uniprot compare-ensembl-peptide tp73_uniprot_q9h3d4 --ensembl-entry TP73_ENS'"
+      ],
+      "step_expectations": [
+        "The reference is prepared if needed and TP73 is extracted into the anchored sequence id `grch38_tp73`.",
+        "The UniProt, Ensembl protein, and projection records persist under the ids used by the audit workflow.",
+        "The integrated audit and parity reports are stored as `tp73_projection_audit` and `tp73_projection_audit_parity`.",
+        "Expert inspection and SVG export show the same projected TP73 feature geometry used by the GUI.",
+        "The primitive CLI commands rebuild the audit evidence path behind the integrated reports."
+      ],
+      "prerequisites": [
+        "tp53_uniprot_projection_online"
       ],
       "local_execution_note": "Set `GENTLE_TEST_ONLINE=1` and run from the repository root. This workflow prepares/extracts GRCh38 Ensembl 116 from Ensembl FTP, fetches UniProt `Q9H3D4`, queries Ensembl protein evidence for `ENSP00000264724`, and then writes the audit/parity reports plus SVG locally.",
       "learning_objectives": [
