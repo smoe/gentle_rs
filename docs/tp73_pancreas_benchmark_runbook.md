@@ -297,6 +297,22 @@ done
   > "$WORK/post_interpret/json/$REPORT_ID.${GENE_ID}.gene_support.near.command.json" \
   2> "$WORK/logs/$REPORT_ID.${GENE_ID}.gene_support.near.stderr.log"
 
+"${GENTLE[@]}" rna-reads show-alignments "$REPORT_ID" \
+  --gene "$GENE_ID" --cohort all --complete-rule near --limit 5 \
+  --output "$WORK/post_interpret/json/$REPORT_ID.${GENE_ID}.alignment_batch.top5.json" \
+  > "$WORK/post_interpret/json/$REPORT_ID.${GENE_ID}.alignment_batch.top5.command.json" \
+  2> "$WORK/logs/$REPORT_ID.${GENE_ID}.alignment_batch.top5.stderr.log"
+
+jq '{
+  schema,
+  report_id,
+  entry_count,
+  skipped_count: (.skipped_records | length),
+  first_record_index: (.entries[0].record_index // null),
+  first_aligned_query_bp: ((.entries[0].alignment.aligned_query // "") | length)
+}' "$WORK/post_interpret/json/$REPORT_ID.${GENE_ID}.alignment_batch.top5.json" \
+  > "$WORK/post_interpret/json/$REPORT_ID.${GENE_ID}.alignment_batch.top5.quickcheck.json"
+
 "${GENTLE[@]}" rna-reads export-alignments-tsv "$REPORT_ID" \
   "$WORK/post_interpret/tsv/$REPORT_ID.alignments.aligned.tsv" \
   --selection aligned --subset-spec "from_scratch_tp73_pancreas_${RUN}" \

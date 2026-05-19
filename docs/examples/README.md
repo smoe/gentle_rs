@@ -39,6 +39,14 @@ syntax.
 - Folder note:
   - `docs/examples/plans/README.md`
 
+## Shell-only inspection examples
+
+- `docs/examples/shell/rna_reads_show_alignments_tp73_template.md`
+  documents the shared-shell `rna-reads show-alignments` batch inspector for a
+  saved TP73 RNA-read report. It stays outside `docs/examples/workflows/`
+  because the route is intentionally shell-only, matching the existing
+  `rna-reads show-alignment` inspector precedent.
+
 ## Example assets
 
 - `docs/examples/assets/cdna_assay_demo.gb`
