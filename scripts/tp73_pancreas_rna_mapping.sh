@@ -143,6 +143,10 @@ refuse_existing_harvest_outputs() {
   refuse_existing_path "$RUN_WORK/post_interpret/json/$REPORT_ID.$GENE_ID.gene_support.near.json"
   refuse_existing_path "$RUN_WORK/post_interpret/json/$REPORT_ID.$GENE_ID.gene_support.near.command.json"
   refuse_existing_path "$RUN_WORK/logs/$REPORT_ID.$GENE_ID.gene_support.near.stderr.log"
+  refuse_existing_path "$RUN_WORK/post_interpret/json/$REPORT_ID.$GENE_ID.alignment_batch.top5.json"
+  refuse_existing_path "$RUN_WORK/post_interpret/json/$REPORT_ID.$GENE_ID.alignment_batch.top5.command.json"
+  refuse_existing_path "$RUN_WORK/post_interpret/json/$REPORT_ID.$GENE_ID.alignment_batch.top5.quickcheck.json"
+  refuse_existing_path "$RUN_WORK/logs/$REPORT_ID.$GENE_ID.alignment_batch.top5.stderr.log"
   refuse_existing_path "$RUN_WORK/post_interpret/tsv/$REPORT_ID.alignments.aligned.tsv"
   refuse_existing_path "$RUN_WORK/post_interpret/json/$REPORT_ID.export_alignments.command.json"
   refuse_existing_path "$RUN_WORK/logs/$REPORT_ID.export_alignments.stderr.log"
@@ -196,6 +200,8 @@ audit_run() {
   audit_artifact "preflight" "$RUN_WORK/reports/$REPORT_ID.preflight.json" || missing=$((missing + 1))
   audit_artifact "preflight summary" "$RUN_WORK/reports/$REPORT_ID.preflight.summary.json" || missing=$((missing + 1))
   audit_artifact "final summary" "$RUN_WORK/reports/$REPORT_ID.final_summary.json" || missing=$((missing + 1))
+  audit_artifact "alignment batch smoke JSON" "$RUN_WORK/post_interpret/json/$REPORT_ID.$GENE_ID.alignment_batch.top5.json" || missing=$((missing + 1))
+  audit_artifact "alignment batch smoke quickcheck" "$RUN_WORK/post_interpret/json/$REPORT_ID.$GENE_ID.alignment_batch.top5.quickcheck.json" || missing=$((missing + 1))
   audit_artifact "alignments TSV" "$RUN_WORK/post_interpret/tsv/$REPORT_ID.alignments.aligned.tsv" || missing=$((missing + 1))
   audit_artifact "paths TSV" "$RUN_WORK/post_interpret/tsv/$REPORT_ID.paths.aligned.tsv" || missing=$((missing + 1))
   audit_artifact "abundance TSV" "$RUN_WORK/post_interpret/tsv/$REPORT_ID.abundance.aligned.tsv" || missing=$((missing + 1))
@@ -461,6 +467,22 @@ harvest_run() {
     > "$RUN_WORK/post_interpret/json/$REPORT_ID.$GENE_ID.gene_support.near.command.json" \
     2> "$RUN_WORK/logs/$REPORT_ID.$GENE_ID.gene_support.near.stderr.log"
 
+  "${gentle[@]}" rna-reads show-alignments "$REPORT_ID" \
+    --gene "$GENE_ID" --cohort all --complete-rule near --limit 5 \
+    --output "$RUN_WORK/post_interpret/json/$REPORT_ID.$GENE_ID.alignment_batch.top5.json" \
+    > "$RUN_WORK/post_interpret/json/$REPORT_ID.$GENE_ID.alignment_batch.top5.command.json" \
+    2> "$RUN_WORK/logs/$REPORT_ID.$GENE_ID.alignment_batch.top5.stderr.log"
+
+  jq '{
+    schema,
+    report_id,
+    entry_count,
+    skipped_count: (.skipped_records | length),
+    first_record_index: (.entries[0].record_index // null),
+    first_aligned_query_bp: ((.entries[0].alignment.aligned_query // "") | length)
+  }' "$RUN_WORK/post_interpret/json/$REPORT_ID.$GENE_ID.alignment_batch.top5.json" \
+    > "$RUN_WORK/post_interpret/json/$REPORT_ID.$GENE_ID.alignment_batch.top5.quickcheck.json"
+
   "${gentle[@]}" rna-reads export-alignments-tsv "$REPORT_ID" \
     "$RUN_WORK/post_interpret/tsv/$REPORT_ID.alignments.aligned.tsv" \
     --selection aligned --subset-spec "strict_tp73_pancreas_${RUN}" \
@@ -572,6 +594,8 @@ harvest_run() {
     echo "- preflight summary: $RUN_WORK/reports/$REPORT_ID.preflight.summary.json"
     echo "- final summary: $RUN_WORK/reports/$REPORT_ID.final_summary.json"
     echo "- top alignments: $RUN_WORK/post_interpret/json/$REPORT_ID.aligned.top200.json"
+    echo "- alignment batch smoke: $RUN_WORK/post_interpret/json/$REPORT_ID.$GENE_ID.alignment_batch.top5.json"
+    echo "- alignment batch quickcheck: $RUN_WORK/post_interpret/json/$REPORT_ID.$GENE_ID.alignment_batch.top5.quickcheck.json"
     echo "- alignments TSV: $RUN_WORK/post_interpret/tsv/$REPORT_ID.alignments.aligned.tsv"
     echo "- paths TSV: $RUN_WORK/post_interpret/tsv/$REPORT_ID.paths.aligned.tsv"
     echo "- abundance TSV: $RUN_WORK/post_interpret/tsv/$REPORT_ID.abundance.aligned.tsv"
