@@ -96,7 +96,10 @@ cargo test workflow_examples -- --test-threads=1
 ```
 
 `tutorial-check` regenerates tutorial outputs in a temp directory and compares
-byte-for-byte with committed files under `docs/tutorial/generated`.
+byte-for-byte with committed files under `docs/tutorial/generated`. On failure,
+it prints a paste-ready tutorial feedback context with the chapter id, source
+JSON, workflow JSON, generated chapter path, artifact directory, failing check,
+and suggested GitHub issue-template category.
 
 CI additionally runs a CLI smoke path for core tutorial chapters via:
 

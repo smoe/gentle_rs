@@ -2717,6 +2717,157 @@ fn tutorial_generated_file_count_mismatch_message(
     )
 }
 
+fn tutorial_source_path_lookup_lossy(source_dir: &Path) -> HashMap<String, String> {
+    let mut lookup = HashMap::new();
+    let Ok(entries) = fs::read_dir(source_dir) else {
+        return lookup;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path
+            .extension()
+            .and_then(|value| value.to_str())
+            .map(|value| value.eq_ignore_ascii_case("json"))
+            .unwrap_or(false)
+        {
+            continue;
+        }
+        let Ok(raw) = fs::read_to_string(&path) else {
+            continue;
+        };
+        let Ok(unit) = serde_json::from_str::<TutorialSourceUnit>(&raw) else {
+            continue;
+        };
+        lookup.insert(unit.id, display_path(&path));
+    }
+    lookup
+}
+
+fn tutorial_source_dir_for_manifest(manifest_path: &Path) -> PathBuf {
+    manifest_path
+        .parent()
+        .map(|parent| parent.join("sources"))
+        .unwrap_or_else(|| PathBuf::from(DEFAULT_TUTORIAL_SOURCE_DIR))
+}
+
+fn tutorial_chapter_for_generated_path<'a>(
+    manifest: &'a TutorialManifest,
+    rel_path: &str,
+) -> Option<&'a TutorialChapter> {
+    let rel_path = rel_path.trim();
+    for chapter in &manifest.chapters {
+        let chapter_file = format!("chapters/{}", markdown_path_for_chapter(chapter));
+        if rel_path == chapter_file {
+            return Some(chapter);
+        }
+        let artifact_prefix = format!("artifacts/{}/", markdown_file_stem(&chapter.id));
+        if rel_path.starts_with(&artifact_prefix) {
+            return Some(chapter);
+        }
+    }
+    None
+}
+
+fn tutorial_check_issue_template_for_path(rel_path: Option<&str>) -> &'static str {
+    match rel_path {
+        Some(path)
+            if path.starts_with("artifacts/")
+                && (path.ends_with(".svg")
+                    || path.ends_with(".png")
+                    || path.ends_with(".jpg")
+                    || path.ends_with(".jpeg")) =>
+        {
+            "Tutorial artifact/figure problem"
+        }
+        Some(path) if path.starts_with("artifacts/") => "Tutorial artifact/figure problem",
+        Some(path) if path.starts_with("chapters/") || path.ends_with(".md") => {
+            "Tutorial confusion"
+        }
+        _ => "Tutorial execution failure",
+    }
+}
+
+fn extract_tutorial_chapter_id_from_error(error: &str) -> Option<String> {
+    let marker = "Tutorial chapter '";
+    let start = error.find(marker)? + marker.len();
+    let rest = &error[start..];
+    let end = rest.find('\'')?;
+    let id = rest[..end].trim();
+    (!id.is_empty()).then(|| id.to_string())
+}
+
+fn tutorial_check_feedback_context(
+    manifest: &TutorialManifest,
+    examples: &[LoadedWorkflowExample],
+    tutorial_source_dir: &Path,
+    manifest_path: &Path,
+    expected_output_dir: &Path,
+    rel_path: Option<&str>,
+    chapter_id_hint: Option<&str>,
+    failing_check: &str,
+) -> String {
+    let source_paths = tutorial_source_path_lookup_lossy(tutorial_source_dir);
+    let example_by_id = example_lookup(examples);
+    let chapter = rel_path
+        .and_then(|path| tutorial_chapter_for_generated_path(manifest, path))
+        .or_else(|| {
+            chapter_id_hint.and_then(|id| manifest.chapters.iter().find(|chapter| chapter.id == id))
+        });
+    let issue_template = tutorial_check_issue_template_for_path(rel_path);
+    let mut out = String::new();
+    out.push_str("\n\nTutorial feedback context\n");
+    out.push_str("-------------------------\n");
+    if let Some(chapter) = chapter {
+        let workflow_path = example_by_id
+            .get(&chapter.example_id)
+            .map(|loaded| display_path(&loaded.path))
+            .unwrap_or_else(|| "(workflow example not found)".to_string());
+        let source_path = source_paths
+            .get(&chapter.id)
+            .cloned()
+            .unwrap_or_else(|| "(tutorial source JSON not found)".to_string());
+        out.push_str(&format!("Chapter: {} {}\n", chapter.order, chapter.title));
+        out.push_str(&format!("Tutorial id: {}\n", chapter.id));
+        out.push_str(&format!("Tier: {}\n", chapter.tier.as_str()));
+        out.push_str(&format!("Source JSON: {source_path}\n"));
+        out.push_str(&format!("Workflow: {workflow_path}\n"));
+        out.push_str(&format!(
+            "Generated chapter: {}\n",
+            display_path(
+                &expected_output_dir
+                    .join("chapters")
+                    .join(markdown_path_for_chapter(chapter))
+            )
+        ));
+        out.push_str(&format!(
+            "Artifact dir: {}\n",
+            display_path(
+                &expected_output_dir
+                    .join("artifacts")
+                    .join(markdown_file_stem(&chapter.id))
+            )
+        ));
+    } else {
+        out.push_str("Chapter: (not identified)\n");
+        out.push_str(&format!("Manifest: {}\n", display_path(manifest_path)));
+        out.push_str(&format!(
+            "Tutorial source dir: {}\n",
+            display_path(tutorial_source_dir)
+        ));
+        out.push_str(&format!(
+            "Generated tutorial dir: {}\n",
+            display_path(expected_output_dir)
+        ));
+    }
+    if let Some(path) = rel_path {
+        out.push_str(&format!("Affected generated path: {path}\n"));
+    }
+    out.push_str(&format!("Failing check: {failing_check}\n"));
+    out.push_str(&format!("Suggested issue template: {issue_template}\n"));
+    out.push_str("When reporting, include what you expected, what happened, and whether you used GUI, CLI, Agent Assistant, or ClawBio.\n");
+    out
+}
+
 pub fn generate_tutorial_docs(
     source_dir: &Path,
     manifest_path: &Path,
@@ -2853,6 +3004,9 @@ pub fn check_tutorial_generated(
     expected_output_dir: &Path,
     repo_root: &Path,
 ) -> Result<TutorialGenerationReport, String> {
+    let examples = load_workflow_examples(source_dir)?;
+    let manifest = load_tutorial_manifest(manifest_path)?;
+    let tutorial_source_dir = tutorial_source_dir_for_manifest(manifest_path);
     if !expected_output_dir.exists() {
         return Err(format!(
             "Expected generated tutorial directory '{}' does not exist. Run `tutorial-generate` first.",
@@ -2861,33 +3015,105 @@ pub fn check_tutorial_generated(
     }
     let temp = TempDir::new().map_err(|e| format!("Could not create temp directory: {e}"))?;
     let generated_dir = temp.path().join("generated");
-    let report = generate_tutorial_docs(source_dir, manifest_path, &generated_dir, repo_root)?;
+    let report = generate_tutorial_docs(source_dir, manifest_path, &generated_dir, repo_root)
+        .map_err(|error| {
+            let chapter_hint = extract_tutorial_chapter_id_from_error(&error);
+            format!(
+                "{}{}",
+                error,
+                tutorial_check_feedback_context(
+                    &manifest,
+                    &examples,
+                    &tutorial_source_dir,
+                    manifest_path,
+                    expected_output_dir,
+                    None,
+                    chapter_hint.as_deref(),
+                    "tutorial generation failed"
+                )
+            )
+        })?;
     let expected = directory_bytes_map(expected_output_dir)?;
     let actual = directory_bytes_map(&generated_dir)?;
     if expected.len() != actual.len() {
-        return Err(tutorial_generated_file_count_mismatch_message(
-            &expected, &actual,
+        let affected_path = actual
+            .keys()
+            .find(|path| !expected.contains_key(*path))
+            .or_else(|| expected.keys().find(|path| !actual.contains_key(*path)))
+            .map(String::as_str);
+        return Err(format!(
+            "{}{}",
+            tutorial_generated_file_count_mismatch_message(&expected, &actual),
+            tutorial_check_feedback_context(
+                &manifest,
+                &examples,
+                &tutorial_source_dir,
+                manifest_path,
+                expected_output_dir,
+                affected_path,
+                None,
+                "generated tutorial file set differs from committed output"
+            )
         ));
     }
     for (path, expected_bytes) in &expected {
         let actual_bytes = actual.get(path).ok_or_else(|| {
             format!(
-                "Tutorial generated output is missing file '{}' in check run",
-                path
+                "{}{}",
+                format!(
+                    "Tutorial generated output is missing file '{}' in check run",
+                    path
+                ),
+                tutorial_check_feedback_context(
+                    &manifest,
+                    &examples,
+                    &tutorial_source_dir,
+                    manifest_path,
+                    expected_output_dir,
+                    Some(path),
+                    None,
+                    "generated tutorial output is missing a committed file"
+                )
             )
         })?;
         if expected_bytes != actual_bytes {
             return Err(format!(
-                "Tutorial generated file '{}' differs from committed version",
-                path
+                "{}{}",
+                format!(
+                    "Tutorial generated file '{}' differs from committed version",
+                    path
+                ),
+                tutorial_check_feedback_context(
+                    &manifest,
+                    &examples,
+                    &tutorial_source_dir,
+                    manifest_path,
+                    expected_output_dir,
+                    Some(path),
+                    None,
+                    "generated tutorial file differs from committed version"
+                )
             ));
         }
     }
     for path in actual.keys() {
         if !expected.contains_key(path) {
             return Err(format!(
-                "Tutorial generated output contains unexpected file '{}'",
-                path
+                "{}{}",
+                format!(
+                    "Tutorial generated output contains unexpected file '{}'",
+                    path
+                ),
+                tutorial_check_feedback_context(
+                    &manifest,
+                    &examples,
+                    &tutorial_source_dir,
+                    manifest_path,
+                    expected_output_dir,
+                    Some(path),
+                    None,
+                    "generated tutorial output contains an unexpected file"
+                )
             ));
         }
     }
@@ -3831,6 +4057,60 @@ mod tests {
             )
         );
         assert!(message.contains("committed-only files: none"));
+    }
+
+    #[test]
+    fn tutorial_feedback_context_identifies_generated_chapter_paths() {
+        let manifest =
+            load_tutorial_manifest(&tutorial_manifest_path()).expect("load tutorial manifest");
+        let examples = load_workflow_examples(&example_dir()).expect("load workflow examples");
+        let chapter = manifest.chapters.first().expect("at least one chapter");
+        let rel_path = format!("chapters/{}", markdown_path_for_chapter(chapter));
+
+        let context = tutorial_check_feedback_context(
+            &manifest,
+            &examples,
+            &tutorial_source_dir(),
+            &tutorial_manifest_path(),
+            &tutorial_output_dir(),
+            Some(&rel_path),
+            None,
+            "generated tutorial file differs from committed version",
+        );
+
+        assert!(context.contains("Tutorial feedback context"));
+        assert!(context.contains(&format!("Tutorial id: {}", chapter.id)));
+        assert!(context.contains("Source JSON: docs/tutorial/sources/"));
+        assert!(context.contains("Workflow: docs/examples/workflows/"));
+        assert!(context.contains("Artifact dir: docs/tutorial/generated/artifacts/"));
+        assert!(context.contains("Suggested issue template: Tutorial confusion"));
+    }
+
+    #[test]
+    fn tutorial_feedback_context_suggests_artifact_issue_for_svg_artifacts() {
+        let manifest =
+            load_tutorial_manifest(&tutorial_manifest_path()).expect("load tutorial manifest");
+        let examples = load_workflow_examples(&example_dir()).expect("load workflow examples");
+        let chapter = manifest.chapters.first().expect("at least one chapter");
+        let rel_path = format!(
+            "artifacts/{}/artifacts/example.svg",
+            markdown_file_stem(&chapter.id)
+        );
+
+        let context = tutorial_check_feedback_context(
+            &manifest,
+            &examples,
+            &tutorial_source_dir(),
+            &tutorial_manifest_path(),
+            &tutorial_output_dir(),
+            Some(&rel_path),
+            None,
+            "generated tutorial artifact differs from committed version",
+        );
+
+        assert!(context.contains(&format!("Tutorial id: {}", chapter.id)));
+        assert!(context.contains("Affected generated path: artifacts/"));
+        assert!(context.contains("Suggested issue template: Tutorial artifact/figure problem"));
     }
 
     #[test]
