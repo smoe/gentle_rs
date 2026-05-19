@@ -470,6 +470,16 @@ pub enum ShellCommand {
     SaveProject {
         path: String,
     },
+    LoadFile {
+        path: String,
+        as_id: Option<String>,
+    },
+    SequenceCreate {
+        sequence_text: String,
+        output_id: Option<String>,
+        name: Option<String>,
+        circular: bool,
+    },
     ScreenshotWindow {
         output: String,
     },
@@ -5495,6 +5505,33 @@ impl ShellCommand {
             }
             Self::LoadProject { path } => format!("load project state from '{path}'"),
             Self::SaveProject { path } => format!("save current project state to '{path}'"),
+            Self::LoadFile { path, as_id } => format!(
+                "load sequence file '{}' (as_id={})",
+                path,
+                as_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("auto")
+            ),
+            Self::SequenceCreate {
+                output_id,
+                name,
+                circular,
+                ..
+            } => format!(
+                "create {} sequence from inline text (output_id='{}', name='{}')",
+                if *circular { "circular" } else { "linear" },
+                output_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("auto"),
+                name.as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("-")
+            ),
             Self::ScreenshotWindow { output } => {
                 format!("capture active GENtle window screenshot to '{output}'")
             }
@@ -10543,6 +10580,7 @@ impl ShellCommand {
         matches!(
             self,
             Self::LoadProject { .. }
+                | Self::LoadFile { .. }
                 | Self::ImportPool { .. }
                 | Self::ReferenceInstallEnsembl { .. }
                 | Self::ReferencePrepare { .. }
@@ -10562,6 +10600,7 @@ impl ShellCommand {
                 | Self::TracksTrackedRemove { .. }
                 | Self::TracksTrackedClear
                 | Self::TracksTrackedApply { .. }
+                | Self::SequenceCreate { .. }
                 | Self::UniprotFetch { .. }
                 | Self::EnsemblGeneFetch { .. }
                 | Self::EnsemblRegionFetch { .. }
@@ -17802,6 +17841,518 @@ fn parse_reporters_command(tokens: &[String]) -> Result<ShellCommand, String> {
     }
 }
 
+fn parse_sequence_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err("sequence requires a subcommand: create".to_string());
+    }
+    match tokens[1].as_str() {
+        "create" => {
+            let mut sequence_text: Option<String> = None;
+            let mut output_id: Option<String> = None;
+            let mut name: Option<String> = None;
+            let mut circular = false;
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--sequence-text" | "--sequence" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, "sequence create")?;
+                        if raw.trim().is_empty() {
+                            return Err(
+                                "--sequence-text for sequence create must not be empty".to_string()
+                            );
+                        }
+                        sequence_text = Some(raw);
+                    }
+                    "--output-id" | "--id" | "--seq-id" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, "sequence create")?;
+                        if raw.trim().is_empty() {
+                            return Err(format!("{flag} for sequence create must not be empty"));
+                        }
+                        output_id = Some(raw);
+                    }
+                    "--name" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--name", "sequence create")?;
+                        if raw.trim().is_empty() {
+                            return Err("--name for sequence create must not be empty".to_string());
+                        }
+                        name = Some(raw);
+                    }
+                    "--topology" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--topology", "sequence create")?;
+                        circular = match raw.trim().to_ascii_lowercase().as_str() {
+                            "linear" | "lin" => false,
+                            "circular" | "circ" => true,
+                            other => {
+                                return Err(format!(
+                                    "Unsupported --topology value '{other}' for sequence create (expected linear|circular)"
+                                ));
+                            }
+                        };
+                    }
+                    "--circular" => {
+                        circular = true;
+                        idx += 1;
+                    }
+                    "--linear" => {
+                        circular = false;
+                        idx += 1;
+                    }
+                    other => return Err(format!("Unknown option '{other}' for sequence create")),
+                }
+            }
+            Ok(ShellCommand::SequenceCreate {
+                sequence_text: sequence_text
+                    .ok_or_else(|| "sequence create requires --sequence-text DNA".to_string())?,
+                output_id,
+                name,
+                circular,
+            })
+        }
+        other => Err(format!(
+            "Unknown sequence subcommand '{other}' (expected create)"
+        )),
+    }
+}
+
+fn shell_alias_alternatives_for(cmd: &str) -> Vec<String> {
+    let trimmed = cmd.trim();
+    let mut alternatives = gentle_protocol::shell_alias_registry()
+        .iter()
+        .filter(|descriptor| {
+            (trimmed == "/fetch" && descriptor.alias.starts_with("/fetch "))
+                || (trimmed == "/open" && descriptor.alias.starts_with("/open"))
+                || (trimmed == "/import" && descriptor.alias.starts_with("/import"))
+                || (trimmed == "/paste" && descriptor.alias.starts_with("/paste"))
+        })
+        .map(|descriptor| descriptor.surface_form.clone())
+        .collect::<Vec<_>>();
+    if alternatives.is_empty() {
+        alternatives = gentle_protocol::shell_alias_supported_alternatives();
+    }
+    alternatives
+}
+
+fn slash_alias_rejection(cmd: &str, reason: impl Into<String>) -> String {
+    let reason = reason.into();
+    let supported_alternatives = shell_alias_alternatives_for(cmd);
+    let payload = json!({
+        "schema": "gentle.shell_alias_rejection.v1",
+        "status": "unsupported_slash_alias",
+        "command": cmd,
+        "reason": reason,
+        "supported_alternatives": supported_alternatives,
+    });
+    format!(
+        "{} Supported GENtle-local alternatives: {}. Details: {}",
+        reason,
+        supported_alternatives.join(", "),
+        payload
+    )
+}
+
+fn parse_common_alias_id_option(
+    tokens: &[String],
+    idx: &mut usize,
+    context: &str,
+) -> Result<String, String> {
+    let flag = tokens[*idx].clone();
+    let value = parse_option_path(tokens, idx, &flag, context)?;
+    let trimmed = value.trim().to_string();
+    if trimmed.is_empty() {
+        Err(format!("{flag} for {context} must not be empty"))
+    } else {
+        Ok(trimmed)
+    }
+}
+
+fn parse_slash_file_alias(tokens: &[String], context: &str) -> Result<ShellCommand, String> {
+    if tokens.len() < 3 {
+        return Err(slash_alias_rejection(
+            tokens[0].as_str(),
+            format!("{context} requires PATH after `file`"),
+        ));
+    }
+    let path = tokens[2].trim().to_string();
+    if path.is_empty() {
+        return Err(slash_alias_rejection(
+            tokens[0].as_str(),
+            format!("{context} PATH must not be empty"),
+        ));
+    }
+    let mut as_id: Option<String> = None;
+    let mut idx = 3usize;
+    while idx < tokens.len() {
+        match tokens[idx].as_str() {
+            "--id" | "--as-id" | "--output-id" | "--entry-id" => {
+                as_id = Some(parse_common_alias_id_option(tokens, &mut idx, context)?);
+            }
+            other => {
+                return Err(slash_alias_rejection(
+                    tokens[0].as_str(),
+                    format!("Unknown option '{other}' for {context}"),
+                ));
+            }
+        }
+    }
+    Ok(ShellCommand::LoadFile { path, as_id })
+}
+
+fn normalize_pasted_iupac_sequence(raw: &str) -> Result<String, String> {
+    let mut normalized = String::new();
+    for (idx, ch) in raw.chars().enumerate() {
+        if ch.is_whitespace() || ch.is_ascii_digit() {
+            continue;
+        }
+        if !ch.is_ascii() {
+            return Err(format!(
+                "Invalid sequence character '{}' at input character {}",
+                ch,
+                idx + 1
+            ));
+        }
+        let byte = ch as u8;
+        if !crate::iupac_code::IupacCode::is_valid_letter(byte) {
+            return Err(format!(
+                "Invalid IUPAC sequence character '{}' at input character {}",
+                ch,
+                idx + 1
+            ));
+        }
+        let upper = byte.to_ascii_uppercase();
+        normalized.push(if upper == b'U' { 'T' } else { upper as char });
+    }
+    if normalized.is_empty() {
+        Err("Pasted sequence contains no IUPAC bases after normalization".to_string())
+    } else {
+        Ok(normalized)
+    }
+}
+
+fn parse_slash_paste_alias(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 || tokens[1] != "sequence" {
+        return Err(slash_alias_rejection(
+            "/paste",
+            "/paste supports only `sequence --sequence-text DNA`",
+        ));
+    }
+    let mut sequence_text: Option<String> = None;
+    let mut output_id: Option<String> = None;
+    let mut name: Option<String> = None;
+    let mut circular = false;
+    let mut idx = 2usize;
+    while idx < tokens.len() {
+        match tokens[idx].as_str() {
+            "--sequence-text" | "--sequence" => {
+                let flag = tokens[idx].clone();
+                let raw = parse_option_path(tokens, &mut idx, &flag, "/paste sequence")?;
+                sequence_text = Some(normalize_pasted_iupac_sequence(&raw).map_err(|err| {
+                    slash_alias_rejection("/paste", format!("{err}; use explicit IUPAC DNA text"))
+                })?);
+            }
+            "--id" | "--as-id" | "--output-id" | "--entry-id" => {
+                output_id = Some(parse_common_alias_id_option(
+                    tokens,
+                    &mut idx,
+                    "/paste sequence",
+                )?);
+            }
+            "--name" => {
+                let raw = parse_option_path(tokens, &mut idx, "--name", "/paste sequence")?;
+                name = Some(raw);
+            }
+            "--topology" => {
+                let raw = parse_option_path(tokens, &mut idx, "--topology", "/paste sequence")?;
+                circular = match raw.trim().to_ascii_lowercase().as_str() {
+                    "linear" | "lin" => false,
+                    "circular" | "circ" => true,
+                    other => {
+                        return Err(slash_alias_rejection(
+                            "/paste",
+                            format!("Unsupported --topology value '{other}' for /paste sequence"),
+                        ));
+                    }
+                };
+            }
+            "--circular" => {
+                circular = true;
+                idx += 1;
+            }
+            "--linear" => {
+                circular = false;
+                idx += 1;
+            }
+            other => {
+                return Err(slash_alias_rejection(
+                    "/paste",
+                    format!("Unknown option '{other}' for /paste sequence"),
+                ));
+            }
+        }
+    }
+    Ok(ShellCommand::SequenceCreate {
+        sequence_text: sequence_text.ok_or_else(|| {
+            slash_alias_rejection(
+                "/paste",
+                "/paste sequence requires --sequence-text with explicit DNA",
+            )
+        })?,
+        output_id,
+        name,
+        circular,
+    })
+}
+
+fn parse_slash_fetch_alias(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err(slash_alias_rejection(
+            "/fetch",
+            "/fetch requires an explicit source such as genbank, ensembl, uniprot, or dbsnp",
+        ));
+    }
+    match tokens[1].as_str() {
+        "genbank" | "ncbi" => {
+            if tokens.len() < 3 {
+                return Err(slash_alias_rejection(
+                    "/fetch",
+                    "/fetch genbank requires ACCESSION",
+                ));
+            }
+            let accession = tokens[2].trim().to_string();
+            if accession.is_empty() {
+                return Err(slash_alias_rejection(
+                    "/fetch",
+                    "/fetch genbank ACCESSION must not be empty",
+                ));
+            }
+            let mut as_id: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--id" | "--as-id" | "--output-id" | "--entry-id" => {
+                        as_id = Some(parse_common_alias_id_option(
+                            tokens,
+                            &mut idx,
+                            "/fetch genbank",
+                        )?);
+                    }
+                    other => {
+                        return Err(slash_alias_rejection(
+                            "/fetch",
+                            format!("Unknown option '{other}' for /fetch genbank"),
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::GenbankFetch { accession, as_id })
+        }
+        "uniprot" => {
+            if tokens.len() < 3 {
+                return Err(slash_alias_rejection(
+                    "/fetch",
+                    "/fetch uniprot requires QUERY",
+                ));
+            }
+            let query = tokens[2].trim().to_string();
+            if query.is_empty() {
+                return Err(slash_alias_rejection(
+                    "/fetch",
+                    "/fetch uniprot QUERY must not be empty",
+                ));
+            }
+            let mut entry_id: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--id" | "--as-id" | "--output-id" | "--entry-id" => {
+                        entry_id = Some(parse_common_alias_id_option(
+                            tokens,
+                            &mut idx,
+                            "/fetch uniprot",
+                        )?);
+                    }
+                    other => {
+                        return Err(slash_alias_rejection(
+                            "/fetch",
+                            format!("Unknown option '{other}' for /fetch uniprot"),
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::UniprotFetch { query, entry_id })
+        }
+        "ensembl" | "ensembl-gene" | "ensembl_gene" => {
+            if tokens.len() < 3 {
+                return Err(slash_alias_rejection(
+                    "/fetch",
+                    "/fetch ensembl requires QUERY",
+                ));
+            }
+            let query = tokens[2].trim().to_string();
+            if query.is_empty() {
+                return Err(slash_alias_rejection(
+                    "/fetch",
+                    "/fetch ensembl QUERY must not be empty",
+                ));
+            }
+            let mut species: Option<String> = None;
+            let mut entry_id: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--species" => {
+                        species = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--species",
+                            "/fetch ensembl",
+                        )?);
+                    }
+                    "--id" | "--as-id" | "--output-id" | "--entry-id" => {
+                        entry_id = Some(parse_common_alias_id_option(
+                            tokens,
+                            &mut idx,
+                            "/fetch ensembl",
+                        )?);
+                    }
+                    other => {
+                        return Err(slash_alias_rejection(
+                            "/fetch",
+                            format!("Unknown option '{other}' for /fetch ensembl"),
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::EnsemblGeneFetch {
+                query,
+                species,
+                entry_id,
+            })
+        }
+        "ensembl-protein" | "ensembl_protein" => {
+            if tokens.len() < 3 {
+                return Err(slash_alias_rejection(
+                    "/fetch",
+                    "/fetch ensembl-protein requires QUERY",
+                ));
+            }
+            let query = tokens[2].trim().to_string();
+            if query.is_empty() {
+                return Err(slash_alias_rejection(
+                    "/fetch",
+                    "/fetch ensembl-protein QUERY must not be empty",
+                ));
+            }
+            let mut entry_id: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--id" | "--as-id" | "--output-id" | "--entry-id" => {
+                        entry_id = Some(parse_common_alias_id_option(
+                            tokens,
+                            &mut idx,
+                            "/fetch ensembl-protein",
+                        )?);
+                    }
+                    other => {
+                        return Err(slash_alias_rejection(
+                            "/fetch",
+                            format!("Unknown option '{other}' for /fetch ensembl-protein"),
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::EnsemblProteinFetch { query, entry_id })
+        }
+        "ensembl-region" | "ensembl_region" => {
+            let mut normalized = vec!["ensembl-region".to_string(), "fetch".to_string()];
+            normalized.extend(tokens.iter().skip(2).cloned().map(|token| {
+                if matches!(token.as_str(), "--id" | "--as-id" | "--entry-id") {
+                    "--output-id".to_string()
+                } else {
+                    token
+                }
+            }));
+            parse_ensembl_region_command(&normalized)
+        }
+        "dbsnp" => {
+            if tokens.len() < 4 {
+                return Err(slash_alias_rejection(
+                    "/fetch",
+                    "/fetch dbsnp requires RS_ID GENOME_ID",
+                ));
+            }
+            let mut normalized = vec!["dbsnp".to_string(), "fetch".to_string()];
+            normalized.extend(tokens.iter().skip(2).cloned().map(|token| {
+                if matches!(token.as_str(), "--id" | "--as-id" | "--entry-id") {
+                    "--output-id".to_string()
+                } else {
+                    token
+                }
+            }));
+            parse_dbsnp_command(&normalized)
+        }
+        other => Err(slash_alias_rejection(
+            "/fetch",
+            format!("Unsupported /fetch source '{other}'"),
+        )),
+    }
+}
+
+fn parse_slash_alias(tokens: &[String]) -> Result<ShellCommand, String> {
+    let cmd = tokens[0].as_str();
+    match cmd {
+        "/help" => {
+            let mut normalized = tokens.to_vec();
+            normalized[0] = "help".to_string();
+            parse_help_command(&normalized)
+        }
+        "/list" => {
+            if tokens.len() == 1 {
+                Ok(ShellCommand::StateSummary)
+            } else {
+                Err(slash_alias_rejection(
+                    "/list",
+                    "/list does not take arguments; use `help TOPIC` for command help",
+                ))
+            }
+        }
+        "/open" | "/import" => {
+            if tokens.len() == 1 {
+                Ok(ShellCommand::UiIntent {
+                    action: UiIntentAction::Open,
+                    target: UiIntentTarget::OpenSequence,
+                    genome_id: None,
+                    helper_mode: false,
+                    catalog_path: None,
+                    cache_dir: None,
+                    filter: None,
+                    species: None,
+                    latest: false,
+                })
+            } else if tokens[1] == "file" {
+                parse_slash_file_alias(tokens, &format!("{} file", tokens[0]))
+            } else {
+                Err(slash_alias_rejection(
+                    cmd,
+                    format!(
+                        "{} supports either no arguments or `file PATH [--id ID]`",
+                        tokens[0]
+                    ),
+                ))
+            }
+        }
+        "/paste" => parse_slash_paste_alias(tokens),
+        "/fetch" => parse_slash_fetch_alias(tokens),
+        other => Err(slash_alias_rejection(
+            other,
+            format!("Unknown GENtle-local slash command '{other}'"),
+        )),
+    }
+}
+
 /// Parse tokenized shell input into one canonical `ShellCommand`.
 ///
 /// Start here when debugging shell grammar or adapter parity: GUI Shell and
@@ -17811,6 +18362,9 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         return Err("Missing shell command".to_string());
     }
     let cmd = tokens[0].as_str();
+    if cmd.starts_with('/') {
+        return parse_slash_alias(tokens);
+    }
     match cmd {
         "help" | "-h" | "--help" => parse_help_command(tokens),
         "capabilities" => {
@@ -17858,6 +18412,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 Err(token_error(cmd))
             }
         }
+        "sequence" | "sequences" => parse_sequence_command(tokens),
         "screenshot-window" => {
             let _ = tokens;
             Err(SCREENSHOT_DISABLED_MESSAGE.to_string())
@@ -32513,7 +33068,9 @@ fn execute_ui_intent_command(
             .map(|v| v.to_string());
         prepared_query = Some(prepared.output);
     }
-    let message = if matches!(target, UiIntentTarget::PreparedReferences) {
+    let message = if matches!(target, UiIntentTarget::OpenSequence) {
+        "UI intent recorded; opening a sequence file requires GUI host file-picker integration."
+    } else if matches!(target, UiIntentTarget::PreparedReferences) {
         if selected_genome_id.is_some() {
             "UI intent recorded; prepared-references selection resolved deterministically."
         } else {
@@ -33220,6 +33777,39 @@ fn execute_shell_command_with_options_inner(
             ShellRunResult {
                 state_changed: false,
                 output: json!({ "message": format!("Saved project to '{path}'") }),
+            }
+        }
+        ShellCommand::LoadFile { path, as_id } => {
+            let op_result = engine
+                .apply(Operation::LoadFile {
+                    path: path.clone(),
+                    as_id: as_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: !op_result.created_seq_ids.is_empty()
+                    || !op_result.changed_seq_ids.is_empty(),
+                output: json!({ "result": op_result }),
+            }
+        }
+        ShellCommand::SequenceCreate {
+            sequence_text,
+            output_id,
+            name,
+            circular,
+        } => {
+            let op_result = engine
+                .apply(Operation::CreateSequenceFromText {
+                    sequence_text: sequence_text.clone(),
+                    output_id: output_id.clone(),
+                    name: name.clone(),
+                    circular: *circular,
+                })
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: !op_result.created_seq_ids.is_empty()
+                    || !op_result.changed_seq_ids.is_empty(),
+                output: json!({ "result": op_result }),
             }
         }
         ShellCommand::ScreenshotWindow { output: _ } => {

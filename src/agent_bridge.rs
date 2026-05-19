@@ -21,6 +21,19 @@ const AGENT_RESPONSE_SCHEMA: &str = "gentle.agent_response.v1";
 const AGENT_SYSTEMS_SCHEMA_PREFIX: &str = "gentle.agent_systems.v";
 const AGENT_REQUEST_SCHEMA_PREFIX: &str = "gentle.agent_request.v";
 const AGENT_RESPONSE_SCHEMA_PREFIX: &str = "gentle.agent_response.v";
+pub(crate) const AGENT_BRIDGE_SYSTEM_PROMPT: &str = r#"You are a GENtle agent bridge.
+Return STRICT JSON only with this schema:
+{"schema":"gentle.agent_response.v1","assistant_message":"string","questions":["string"],"suggested_commands":[{"title":"string","rationale":"string","command":"string","execution":"chat|ask|auto"}]}
+Use only keys from the schema. Extensions may use x_ prefix. Do not include markdown fences.
+Suggested command contract:
+- Current scope declaration: GENtle does not currently implement OpenClaw-like filesystem, operating-system, or gateway commands. That may change in a future gateway layer; for now, concentrate on actions GENtle can also perform through its GUI or shared shell on the same project state.
+- suggested_commands[].command must be one exact GENtle shared-shell command parseable by GENtle.
+- GENtle-local slash aliases are deliberately small and parser-validated. Allowed aliases are: /help; /list; /open; /import; /open file PATH [--id ID]; /import file PATH [--id ID]; /paste sequence --sequence-text DNA [--id ID]; /fetch genbank ACCESSION [--id ID]; /fetch ncbi ACCESSION [--id ID]; /fetch uniprot QUERY [--id ID]; /fetch ensembl QUERY [--species NAME] [--id ID]; /fetch ensembl-gene QUERY [--species NAME] [--id ID]; /fetch ensembl-protein QUERY [--id ID]; /fetch ensembl-region SPECIES CHR START END [--strand +|-] [--id ID]; /fetch dbsnp RS_ID GENOME_ID [--id ID].
+- External aliases such as /fetch genbank, /fetch ncbi, /fetch uniprot, /fetch ensembl*, and /fetch dbsnp require explicit user confirmation or network opt-in; mark them execution="ask" unless the caller has already opted into network execution.
+- Common valid non-slash examples include: state-summary; op '{"LoadFile":{"path":"PATH","as_id":"ID"}}'; sequence create --sequence-text DNA --output-id ID; genbank fetch ACCESSION --as-id ID; ensembl-gene fetch SYMBOL --species SPECIES --entry-id ID; ensembl-region fetch SPECIES CHR:START..END:+ --output-id ID; features restriction-scan SEQ_ID --enzyme EcoRI.
+- Do not invent OS, gateway, or OpenClaw-style commands such as fs.ls, fs.find, fs.grep, workspace.status, import.sequence, gentle.load_sequence, agent.help, sequence.new, /grep, /find, /ls, /new, or /example.
+- If the user asks you to search local files and no exact path is already known, ask the user to pick/provide the path; do not suggest filesystem discovery as a GENtle command. It is fine to explain that file discovery must happen by regular operating-system means outside GENtle. On macOS, suggest Finder search or Spotlight when appropriate.
+- Use ASCII punctuation in assistant_message, questions, titles, rationales, and commands. In particular, use the regular breakable hyphen '-' and plain quotes; avoid non-breaking hyphen, en dash, em dash, smart quotes, and mathematical minus."#;
 const AGENT_SCHEMA_SUPPORTED_MAJOR: u32 = 1;
 const AGENT_INVOKE_RETRY_BASE_DELAY_MS: u64 = 250;
 const AGENT_REQUEST_TIMEOUT_SECS_DEFAULT: u64 = 180;
@@ -44,6 +57,9 @@ pub const ANTHROPIC_API_KEY_ENV: &str = "ANTHROPIC_API_KEY";
 pub const MISTRAL_API_KEY_ENV: &str = "MISTRAL_API_KEY";
 pub(crate) const ANTHROPIC_API_KEY_AUTH_HINT: &str = "Use an Anthropic Console API key for ANTHROPIC_API_KEY; Claude Code/Claude.ai subscription or OAuth tokens are not Anthropic API keys.";
 pub(crate) const MISTRAL_API_KEY_AUTH_HINT: &str = "Use a Mistral La Plateforme API key for MISTRAL_API_KEY; Le Chat or Mistral account login tokens are not Mistral API keys.";
+pub(crate) const OPENAI_USAGE_URL: &str = "https://platform.openai.com/usage";
+pub(crate) const OPENAI_BILLING_URL: &str =
+    "https://platform.openai.com/settings/organization/billing/overview";
 const ANTHROPIC_API_KEY_WRONG_KIND_HINT: &str = "This looks like a Claude Code/Claude.ai OAuth token, not an Anthropic Console API key. Use an Anthropic Console API key for ANTHROPIC_API_KEY instead.";
 const ANTHROPIC_API_KEY_UNUSUAL_SHAPE_HINT: &str = "This does not look like an Anthropic Console API key. Current Anthropic API keys usually begin with sk-ant-api; Test Setup can still verify the key live.";
 pub const AGENT_BASE_URL_ENV: &str = "GENTLE_AGENT_BASE_URL";
@@ -1943,7 +1959,7 @@ fn classify_openai_http_error(status: reqwest::StatusCode, body: &str) -> Extern
         return ExternalAttemptError {
             kind: ExternalAttemptErrorKind::Unavailable,
             message: format!(
-                "{message_prefix}\nHint: OpenAI reported insufficient quota. Check API project billing/usage at https://platform.openai.com/usage and https://platform.openai.com/settings/organization/billing/overview ."
+                "{message_prefix}\nHint: OpenAI reported insufficient quota. Check API project billing/usage at {OPENAI_USAGE_URL} and {OPENAI_BILLING_URL}."
             ),
         };
     }
@@ -2024,7 +2040,7 @@ fn invoke_native_openai_once(
     let model = resolve_model(system, OPENAI_DEFAULT_MODEL);
     let base_url = resolve_base_url(system, OPENAI_DEFAULT_BASE_URL);
     let endpoint = format!("{base_url}/responses");
-    let system_prompt = "You are a GENtle agent bridge.\nReturn STRICT JSON only with this schema:\n{\"schema\":\"gentle.agent_response.v1\",\"assistant_message\":\"string\",\"questions\":[\"string\"],\"suggested_commands\":[{\"title\":\"string\",\"rationale\":\"string\",\"command\":\"string\",\"execution\":\"chat|ask|auto\"}]}\nUse only keys from the schema. Extensions may use x_ prefix. Do not include markdown fences.";
+    let system_prompt = AGENT_BRIDGE_SYSTEM_PROMPT;
     let payload = json!({
         "model": model,
         "input": [
@@ -2110,7 +2126,7 @@ fn invoke_native_anthropic_once(
         .first()
         .cloned()
         .unwrap_or_else(|| format!("{base_url}/messages"));
-    let system_prompt = "You are a GENtle agent bridge.\nReturn STRICT JSON only with this schema:\n{\"schema\":\"gentle.agent_response.v1\",\"assistant_message\":\"string\",\"questions\":[\"string\"],\"suggested_commands\":[{\"title\":\"string\",\"rationale\":\"string\",\"command\":\"string\",\"execution\":\"chat|ask|auto\"}]}\nUse only keys from the schema. Extensions may use x_ prefix. Do not include markdown fences.";
+    let system_prompt = AGENT_BRIDGE_SYSTEM_PROMPT;
     let payload = json!({
         "model": model,
         "max_tokens": 4096,
@@ -2184,7 +2200,7 @@ fn invoke_native_mistral_once(
         .first()
         .cloned()
         .unwrap_or_else(|| format!("{base_url}/chat/completions"));
-    let system_prompt = "You are a GENtle agent bridge.\nReturn STRICT JSON only with this schema:\n{\"schema\":\"gentle.agent_response.v1\",\"assistant_message\":\"string\",\"questions\":[\"string\"],\"suggested_commands\":[{\"title\":\"string\",\"rationale\":\"string\",\"command\":\"string\",\"execution\":\"chat|ask|auto\"}]}\nUse only keys from the schema. Extensions may use x_ prefix. Do not include markdown fences.";
+    let system_prompt = AGENT_BRIDGE_SYSTEM_PROMPT;
     let payload = json!({
         "model": model,
         "messages": [
@@ -2269,7 +2285,7 @@ fn invoke_native_openai_compat_once(
         }
     })?;
     let endpoints = openai_compat_endpoint_candidates(&base_url);
-    let system_prompt = "You are a GENtle agent bridge.\nReturn STRICT JSON only with this schema:\n{\"schema\":\"gentle.agent_response.v1\",\"assistant_message\":\"string\",\"questions\":[\"string\"],\"suggested_commands\":[{\"title\":\"string\",\"rationale\":\"string\",\"command\":\"string\",\"execution\":\"chat|ask|auto\"}]}\nUse only keys from the schema. Extensions may use x_ prefix. Do not include markdown fences.";
+    let system_prompt = AGENT_BRIDGE_SYSTEM_PROMPT;
     let payload = json!({
         "model": model,
         "messages": [
@@ -3264,6 +3280,24 @@ mod tests {
         assert_eq!(err.kind, ExternalAttemptErrorKind::Unavailable);
         assert!(err.message.contains("OpenAI API error (status=429"));
         assert!(err.message.contains("insufficient quota"));
+        assert!(err.message.contains(OPENAI_USAGE_URL));
+        assert!(err.message.contains(OPENAI_BILLING_URL));
+    }
+
+    #[test]
+    fn agent_bridge_system_prompt_rejects_invented_gateway_commands() {
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("GENtle shared-shell command"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("does not currently implement OpenClaw-like"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("/help"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("/list"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("op '{\"LoadFile\""));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("sequence create --sequence-text"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("Do not invent"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("fs.find"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("gentle.load_sequence"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("/import"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("Spotlight"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("non-breaking hyphen"));
     }
 
     #[test]

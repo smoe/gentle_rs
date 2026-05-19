@@ -49,12 +49,11 @@ pub use reporter::{
     REPORTER_RECOMMENDATION_SCHEMA, ReporterAnnotatedRecord, ReporterBackboneResolution,
     ReporterBackboneResolutionStatus, ReporterCatalog, ReporterCatalogReport,
     ReporterComputedAnnotation, ReporterConstraints, ReporterConstructHandoffCommand,
-    ReporterConstructHandoffPlan, ReporterConstructHandoffProvenance,
-    ReporterConstructPortBinding, ReporterConstructSelectedFragment,
-    ReporterConstructSelectedReporter, ReporterCorpusExport, ReporterCorpusExportFormat,
-    ReporterPreferenceWeights, ReporterQuarantinedRecord, ReporterRecommendation,
-    ReporterRecommendationResult, ReporterRecord, ReporterRejectedCandidate, ReporterSourceRef,
-    ReporterSpectralProfile,
+    ReporterConstructHandoffPlan, ReporterConstructHandoffProvenance, ReporterConstructPortBinding,
+    ReporterConstructSelectedFragment, ReporterConstructSelectedReporter, ReporterCorpusExport,
+    ReporterCorpusExportFormat, ReporterPreferenceWeights, ReporterQuarantinedRecord,
+    ReporterRecommendation, ReporterRecommendationResult, ReporterRecord,
+    ReporterRejectedCandidate, ReporterSourceRef, ReporterSpectralProfile,
 };
 
 /// Stable identifier for one sequence entry stored in project state.
@@ -4714,6 +4713,50 @@ pub struct CapabilityDescriptor {
     pub source: CapabilitySource,
 }
 
+/// Machine-readable descriptor for one GENtle-local slash alias.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ShellAliasDescriptor {
+    /// Stable alias key, such as `/fetch genbank`.
+    pub alias: String,
+    /// Human/agent-facing syntax for this alias.
+    pub surface_form: String,
+    /// Canonical shared-shell command or operation template that the alias
+    /// resolves to.
+    pub canonical_command: String,
+    /// Short description used by docs, prompt contracts, and rejection help.
+    pub description: String,
+    /// Mutation/network safety class consumed by agent confirmation policy.
+    pub mutating: CapabilityMutation,
+    pub gui: AdapterSurfacing,
+    pub cli: AdapterSurfacing,
+    pub mcp: AdapterSurfacing,
+    pub js: AdapterSurfacing,
+    pub lua: AdapterSurfacing,
+    pub clawbio: AdapterSurfacing,
+    /// Engine operation variants reached by this alias, if any.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub engine_operations: Vec<String>,
+    /// Registry capability names this alias delegates to.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub capability_names: Vec<String>,
+    /// Nearby valid alternatives returned when the alias family is misused.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub supported_alternatives: Vec<String>,
+}
+
+impl ShellAliasDescriptor {
+    pub fn surfacing_for_adapter(&self, adapter: CapabilityAdapter) -> AdapterSurfacing {
+        match adapter {
+            CapabilityAdapter::Gui => self.gui,
+            CapabilityAdapter::Cli => self.cli,
+            CapabilityAdapter::Mcp => self.mcp,
+            CapabilityAdapter::Js => self.js,
+            CapabilityAdapter::Lua => self.lua,
+            CapabilityAdapter::Clawbio => self.clawbio,
+        }
+    }
+}
+
 impl CapabilityDescriptor {
     pub fn surfacing_for_adapter(&self, adapter: CapabilityAdapter) -> AdapterSurfacing {
         match adapter {
@@ -5206,6 +5249,8 @@ fn is_mcp_prominent_glossary_command(path: &str) -> bool {
 
 static CAPABILITY_REGISTRY: LazyLock<Vec<CapabilityDescriptor>> =
     LazyLock::new(build_capability_registry);
+static SHELL_ALIAS_REGISTRY: LazyLock<Vec<ShellAliasDescriptor>> =
+    LazyLock::new(build_shell_alias_registry);
 static PARITY_MATRIX_OVERRIDES: LazyLock<Vec<ParityMatrixOverride>> =
     LazyLock::new(load_parity_matrix_overrides);
 
@@ -5226,6 +5271,26 @@ pub fn public_engine_operation_names() -> &'static [&'static str] {
 /// Shared capability registry projected by adapters.
 pub fn capability_registry() -> &'static [CapabilityDescriptor] {
     &CAPABILITY_REGISTRY
+}
+
+/// GENtle-local slash aliases accepted by the shared shell parser.
+pub fn shell_alias_registry() -> &'static [ShellAliasDescriptor] {
+    &SHELL_ALIAS_REGISTRY
+}
+
+/// Return one GENtle-local slash alias descriptor by stable alias key.
+pub fn shell_alias_descriptor(alias: &str) -> Option<&'static ShellAliasDescriptor> {
+    shell_alias_registry()
+        .iter()
+        .find(|descriptor| descriptor.alias == alias)
+}
+
+/// Suggested alternatives for invalid or unsupported local slash commands.
+pub fn shell_alias_supported_alternatives() -> Vec<String> {
+    shell_alias_registry()
+        .iter()
+        .map(|descriptor| descriptor.surface_form.clone())
+        .collect()
 }
 
 /// Adapter order used by the generated GUI/CLI/MCP parity matrix.
@@ -5489,6 +5554,311 @@ fn build_capability_registry() -> Vec<CapabilityDescriptor> {
         descriptors.push(mcp_tool_descriptor(name, title, description, *mutating));
     }
     descriptors
+}
+
+fn build_shell_alias_registry() -> Vec<ShellAliasDescriptor> {
+    let prominent = AdapterSurfacing::Prominent;
+    let shell = AdapterSurfacing::ShellPassthrough;
+    let na = AdapterSurfacing::NotApplicable;
+    let read_only_alternatives = &["/help", "/list"];
+    let local_alternatives = &[
+        "/help",
+        "/list",
+        "/open",
+        "/import",
+        "/open file PATH [--id ID]",
+        "/import file PATH [--id ID]",
+        "/paste sequence --sequence-text DNA [--id ID]",
+        "/fetch genbank ACCESSION [--id ID]",
+        "/fetch ensembl QUERY [--species NAME] [--id ID]",
+        "/fetch uniprot QUERY [--id ID]",
+    ];
+    vec![
+        shell_alias_descriptor_row(
+            "/help",
+            "/help [TOPIC]",
+            "help [TOPIC]",
+            "Show GENtle shared-shell help.",
+            CapabilityMutation::ReadOnly,
+            &[],
+            &["help"],
+            read_only_alternatives,
+            prominent,
+            shell,
+            shell,
+            na,
+            na,
+            na,
+        ),
+        shell_alias_descriptor_row(
+            "/list",
+            "/list",
+            "state-summary",
+            "List the current GENtle workspace state.",
+            CapabilityMutation::ReadOnly,
+            &[],
+            &["state-summary"],
+            read_only_alternatives,
+            prominent,
+            shell,
+            shell,
+            na,
+            na,
+            na,
+        ),
+        shell_alias_descriptor_row(
+            "/open",
+            "/open",
+            "ui open open-sequence",
+            "Open the GUI sequence-file picker.",
+            CapabilityMutation::Mutating,
+            &[],
+            &[],
+            local_alternatives,
+            prominent,
+            shell,
+            shell,
+            na,
+            na,
+            na,
+        ),
+        shell_alias_descriptor_row(
+            "/import",
+            "/import",
+            "ui open open-sequence",
+            "Open the GUI sequence-file picker.",
+            CapabilityMutation::Mutating,
+            &[],
+            &[],
+            local_alternatives,
+            prominent,
+            shell,
+            shell,
+            na,
+            na,
+            na,
+        ),
+        shell_alias_descriptor_row(
+            "/open file",
+            "/open file PATH [--id ID]",
+            "op '{\"LoadFile\":{\"path\":\"PATH\",\"as_id\":\"ID\"}}'",
+            "Load a user-specified local sequence file into the project.",
+            CapabilityMutation::Mutating,
+            &["LoadFile"],
+            &["LoadFile"],
+            local_alternatives,
+            prominent,
+            shell,
+            shell,
+            na,
+            na,
+            na,
+        ),
+        shell_alias_descriptor_row(
+            "/import file",
+            "/import file PATH [--id ID]",
+            "op '{\"LoadFile\":{\"path\":\"PATH\",\"as_id\":\"ID\"}}'",
+            "Load a user-specified local sequence file into the project.",
+            CapabilityMutation::Mutating,
+            &["LoadFile"],
+            &["LoadFile"],
+            local_alternatives,
+            prominent,
+            shell,
+            shell,
+            na,
+            na,
+            na,
+        ),
+        shell_alias_descriptor_row(
+            "/paste sequence",
+            "/paste sequence --sequence-text DNA [--id ID]",
+            "sequence create --sequence-text DNA [--id ID]",
+            "Create a project sequence from explicit pasted IUPAC sequence text.",
+            CapabilityMutation::Mutating,
+            &["CreateSequenceFromText"],
+            &["sequence create"],
+            local_alternatives,
+            prominent,
+            shell,
+            shell,
+            na,
+            na,
+            na,
+        ),
+        shell_alias_descriptor_row(
+            "/fetch genbank",
+            "/fetch genbank ACCESSION [--id ID]",
+            "genbank fetch ACCESSION [--as-id ID]",
+            "Fetch a GenBank-format record by accession.",
+            CapabilityMutation::External,
+            &["FetchGenBankAccession"],
+            &["genbank fetch"],
+            local_alternatives,
+            prominent,
+            shell,
+            shell,
+            na,
+            na,
+            na,
+        ),
+        shell_alias_descriptor_row(
+            "/fetch ncbi",
+            "/fetch ncbi ACCESSION [--id ID]",
+            "genbank fetch ACCESSION [--as-id ID]",
+            "Synonym for `/fetch genbank` for NCBI GenBank accessions.",
+            CapabilityMutation::External,
+            &["FetchGenBankAccession"],
+            &["genbank fetch"],
+            local_alternatives,
+            prominent,
+            shell,
+            shell,
+            na,
+            na,
+            na,
+        ),
+        shell_alias_descriptor_row(
+            "/fetch uniprot",
+            "/fetch uniprot QUERY [--id ID]",
+            "uniprot fetch QUERY [--entry-id ID]",
+            "Fetch a UniProt Swiss-Prot entry.",
+            CapabilityMutation::External,
+            &["FetchUniprotSwissProt"],
+            &["uniprot fetch"],
+            local_alternatives,
+            prominent,
+            shell,
+            shell,
+            na,
+            na,
+            na,
+        ),
+        shell_alias_descriptor_row(
+            "/fetch ensembl",
+            "/fetch ensembl QUERY [--species NAME] [--id ID]",
+            "ensembl-gene fetch QUERY [--species NAME] [--entry-id ID]",
+            "Fetch an Ensembl gene lookup record.",
+            CapabilityMutation::External,
+            &["FetchEnsemblGene"],
+            &["ensembl-gene fetch"],
+            local_alternatives,
+            prominent,
+            shell,
+            shell,
+            na,
+            na,
+            na,
+        ),
+        shell_alias_descriptor_row(
+            "/fetch ensembl-gene",
+            "/fetch ensembl-gene QUERY [--species NAME] [--id ID]",
+            "ensembl-gene fetch QUERY [--species NAME] [--entry-id ID]",
+            "Fetch an Ensembl gene lookup record.",
+            CapabilityMutation::External,
+            &["FetchEnsemblGene"],
+            &["ensembl-gene fetch"],
+            local_alternatives,
+            prominent,
+            shell,
+            shell,
+            na,
+            na,
+            na,
+        ),
+        shell_alias_descriptor_row(
+            "/fetch ensembl-protein",
+            "/fetch ensembl-protein QUERY [--id ID]",
+            "ensembl-protein fetch QUERY [--entry-id ID]",
+            "Fetch an Ensembl protein lookup record.",
+            CapabilityMutation::External,
+            &["FetchEnsemblProtein"],
+            &["ensembl-protein fetch"],
+            local_alternatives,
+            prominent,
+            shell,
+            shell,
+            na,
+            na,
+            na,
+        ),
+        shell_alias_descriptor_row(
+            "/fetch ensembl-region",
+            "/fetch ensembl-region SPECIES CHR START END [--strand +|-] [--id ID]",
+            "ensembl-region fetch SPECIES CHR START END [--strand +|-] [--output-id ID]",
+            "Fetch an Ensembl REST genomic region.",
+            CapabilityMutation::External,
+            &["FetchEnsemblRegion"],
+            &["ensembl-region fetch"],
+            local_alternatives,
+            prominent,
+            shell,
+            shell,
+            na,
+            na,
+            na,
+        ),
+        shell_alias_descriptor_row(
+            "/fetch dbsnp",
+            "/fetch dbsnp RS_ID GENOME_ID [--id ID]",
+            "dbsnp fetch RS_ID GENOME_ID [--output-id ID]",
+            "Fetch a dbSNP-centered region from a prepared reference.",
+            CapabilityMutation::External,
+            &["FetchDbSnpRegion"],
+            &["dbsnp fetch"],
+            local_alternatives,
+            prominent,
+            shell,
+            shell,
+            na,
+            na,
+            na,
+        ),
+    ]
+}
+
+#[allow(clippy::too_many_arguments)]
+fn shell_alias_descriptor_row(
+    alias: &str,
+    surface_form: &str,
+    canonical_command: &str,
+    description: &str,
+    mutating: CapabilityMutation,
+    engine_operations: &[&str],
+    capability_names: &[&str],
+    supported_alternatives: &[&str],
+    gui: AdapterSurfacing,
+    cli: AdapterSurfacing,
+    mcp: AdapterSurfacing,
+    js: AdapterSurfacing,
+    lua: AdapterSurfacing,
+    clawbio: AdapterSurfacing,
+) -> ShellAliasDescriptor {
+    ShellAliasDescriptor {
+        alias: alias.to_string(),
+        surface_form: surface_form.to_string(),
+        canonical_command: canonical_command.to_string(),
+        description: description.to_string(),
+        mutating,
+        gui,
+        cli,
+        mcp,
+        js,
+        lua,
+        clawbio,
+        engine_operations: engine_operations
+            .iter()
+            .map(|value| (*value).to_string())
+            .collect(),
+        capability_names: capability_names
+            .iter()
+            .map(|value| (*value).to_string())
+            .collect(),
+        supported_alternatives: supported_alternatives
+            .iter()
+            .map(|value| (*value).to_string())
+            .collect(),
+    }
 }
 
 fn glossary_interfaces_by_path(

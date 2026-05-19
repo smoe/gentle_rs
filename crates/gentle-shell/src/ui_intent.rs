@@ -26,6 +26,7 @@ impl UiIntentAction {
 /// GUI-facing UI-intent destination understood by adapter shells.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum UiIntentTarget {
+    OpenSequence,
     PreparedReferences,
     PrepareReferenceGenome,
     RetrieveGenomeSequence,
@@ -39,7 +40,8 @@ pub enum UiIntentTarget {
     BlastHelperSequence,
 }
 
-const UI_INTENT_TARGETS: [UiIntentTarget; 11] = [
+const UI_INTENT_TARGETS: [UiIntentTarget; 12] = [
+    UiIntentTarget::OpenSequence,
     UiIntentTarget::PreparedReferences,
     UiIntentTarget::PrepareReferenceGenome,
     UiIntentTarget::RetrieveGenomeSequence,
@@ -86,6 +88,9 @@ impl UiIntentTarget {
     /// Parse stable shell spellings and common aliases.
     pub fn parse(raw: &str) -> Option<Self> {
         match raw.trim().to_ascii_lowercase().as_str() {
+            "open-sequence" | "open_sequence" | "sequence-file" | "sequence_file" => {
+                Some(Self::OpenSequence)
+            }
             "prepared-references" | "prepared_references" | "prepared" => {
                 Some(Self::PreparedReferences)
             }
@@ -130,6 +135,7 @@ impl UiIntentTarget {
     /// Stable machine-readable spelling used in shell output payloads.
     pub fn as_str(self) -> &'static str {
         match self {
+            Self::OpenSequence => "open-sequence",
             Self::PreparedReferences => "prepared-references",
             Self::PrepareReferenceGenome => "prepare-reference-genome",
             Self::RetrieveGenomeSequence => "retrieve-genome-sequence",
@@ -147,6 +153,7 @@ impl UiIntentTarget {
     /// Stable human-facing title reused by UI-intent discovery surfaces.
     pub fn discoverability_title(self) -> &'static str {
         match self {
+            Self::OpenSequence => "Open Sequence",
             Self::PreparedReferences => "Prepared References",
             Self::PrepareReferenceGenome => "Prepare Reference Genome",
             Self::RetrieveGenomeSequence => "Retrieve Genomic Sequence",
@@ -169,6 +176,7 @@ impl UiIntentTarget {
     /// Short discoverability copy for command palettes, agent helpers, and MCP.
     pub fn discoverability_detail(self) -> &'static str {
         match self {
+            Self::OpenSequence => "Open a FASTA, GenBank, EMBL, SnapGene, or XML sequence file.",
             Self::PreparedReferences => "Inspect prepared reference/helper genome installations.",
             Self::PrepareReferenceGenome => "Download/index the selected reference genome.",
             Self::RetrieveGenomeSequence => {
@@ -197,6 +205,7 @@ impl UiIntentTarget {
     /// Search keywords shared across UI-intent discoverability surfaces.
     pub fn discoverability_keywords(self) -> &'static str {
         match self {
+            Self::OpenSequence => "open sequence import file fasta genbank snapgene embl xml",
             Self::PreparedReferences => "genome prepared references helpers inspector",
             Self::PrepareReferenceGenome => "genome prepare reference",
             Self::RetrieveGenomeSequence => "genome retrieve extract anchor region gene",
@@ -221,8 +230,8 @@ impl UiIntentTarget {
     /// Primary GUI menu location for the target.
     pub fn menu_path(self) -> &'static str {
         match self {
+            Self::OpenSequence | Self::AgentAssistant => "File",
             Self::PcrDesign | Self::SequencingConfirmation => "Patterns",
-            Self::AgentAssistant => "File",
             _ => "Genome",
         }
     }

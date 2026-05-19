@@ -24,9 +24,9 @@ use crate::engine::{
     RackPhysicalTemplateKind, RackPlacementEntry, RackProfileKind, RackProfileSnapshot,
     ReadAcquisitionAnalysisFormat, ReadAcquisitionReadLayout, RepeatEnvironmentGeometryMode,
     RestrictionCloningPcrHandoffMode, RnaReadAlignConfig, RnaReadInterpretationHit,
-    RnaReadInterpretationReport, RnaReadMappingHit, RnaReadOriginClass, SequenceScanTarget,
-    TfThresholdOverride, TfbsScoreTrackCorrelationSignalSource, TfbsScoreTrackValueKind,
-    TfbsTrackSimilarityRankingMetric,
+    RnaReadInterpretationReport, RnaReadMappingHit, RnaReadOriginClass, SequenceOrigin,
+    SequenceScanTarget, TfThresholdOverride, TfbsScoreTrackCorrelationSignalSource,
+    TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric,
 };
 use crate::ensembl_gene::{
     EnsemblGeneEntry, EnsemblGeneExonSummary, EnsemblGeneTranscriptSummary,
@@ -290,9 +290,10 @@ fn sample_value_for_usage_token(flag: &str, token: &str) -> String {
             "i,j,k" => "1,2".to_string(),
             "+" | "-" => token.to_string(),
             "KEY=VALUE" => "key=value".to_string(),
-            "N" | "M" | "NM" | "ROWS" | "COLUMNS" | "START" | "END" | "START_0BASED" | "END_0BASED"
-            | "START_1BASED" | "END_1BASED" | "FEATURE_ID" | "CUT_POS_1BASED" | "RESIDUE_START"
-            | "RESIDUE_END" | "LENGTH_BP" | "LEFT_END_0BASED" | "RECORD_INDEX" => "1".to_string(),
+            "N" | "M" | "NM" | "ROWS" | "COLUMNS" | "START" | "END" | "START_0BASED"
+            | "END_0BASED" | "START_1BASED" | "END_1BASED" | "FEATURE_ID" | "CUT_POS_1BASED"
+            | "RESIDUE_START" | "RESIDUE_END" | "LENGTH_BP" | "LEFT_END_0BASED"
+            | "RECORD_INDEX" => "1".to_string(),
             "START..END" | "RANGE" => "1..10".to_string(),
             "PROTOCOL_ID" => "gibson.two_fragment".to_string(),
             "TARGET" => "prepared-references".to_string(),
@@ -1137,6 +1138,167 @@ fn parse_help_with_topic_and_options() {
         }
         other => panic!("unexpected command: {other:?}"),
     }
+}
+
+#[test]
+fn parse_local_slash_aliases_cover_gui_file_import_fetch_and_paste() {
+    match parse_shell_line("/help").expect("parse /help") {
+        ShellCommand::Help { topic, .. } => assert!(topic.is_empty()),
+        other => panic!("unexpected /help command: {other:?}"),
+    }
+
+    assert!(matches!(
+        parse_shell_line("/list").expect("parse /list"),
+        ShellCommand::StateSummary
+    ));
+
+    match parse_shell_line("/open").expect("parse /open") {
+        ShellCommand::UiIntent { action, target, .. } => {
+            assert_eq!(action, UiIntentAction::Open);
+            assert_eq!(target, UiIntentTarget::OpenSequence);
+        }
+        other => panic!("unexpected /open command: {other:?}"),
+    }
+
+    match parse_shell_line("/import file test_files/tp73.ncbi.gb --id tp73") {
+        Ok(ShellCommand::LoadFile { path, as_id }) => {
+            assert_eq!(path, "test_files/tp73.ncbi.gb");
+            assert_eq!(as_id.as_deref(), Some("tp73"));
+        }
+        other => panic!("unexpected /import file command: {other:?}"),
+    }
+
+    match parse_shell_line("/fetch ncbi L09137 --id puc19") {
+        Ok(ShellCommand::GenbankFetch { accession, as_id }) => {
+            assert_eq!(accession, "L09137");
+            assert_eq!(as_id.as_deref(), Some("puc19"));
+        }
+        other => panic!("unexpected /fetch ncbi command: {other:?}"),
+    }
+
+    match parse_shell_line("/fetch ensembl TP73 --species homo_sapiens --id tp73_gene") {
+        Ok(ShellCommand::EnsemblGeneFetch {
+            query,
+            species,
+            entry_id,
+        }) => {
+            assert_eq!(query, "TP73");
+            assert_eq!(species.as_deref(), Some("homo_sapiens"));
+            assert_eq!(entry_id.as_deref(), Some("tp73_gene"));
+        }
+        other => panic!("unexpected /fetch ensembl command: {other:?}"),
+    }
+
+    match parse_shell_line("/fetch uniprot P04637 --id p53_uniprot") {
+        Ok(ShellCommand::UniprotFetch { query, entry_id }) => {
+            assert_eq!(query, "P04637");
+            assert_eq!(entry_id.as_deref(), Some("p53_uniprot"));
+        }
+        other => panic!("unexpected /fetch uniprot command: {other:?}"),
+    }
+
+    match parse_shell_line("/fetch ensembl-protein ENSP00000269305 --id p53_ensp") {
+        Ok(ShellCommand::EnsemblProteinFetch { query, entry_id }) => {
+            assert_eq!(query, "ENSP00000269305");
+            assert_eq!(entry_id.as_deref(), Some("p53_ensp"));
+        }
+        other => panic!("unexpected /fetch ensembl-protein command: {other:?}"),
+    }
+
+    match parse_shell_line("/fetch ensembl-region homo_sapiens 1 100 200 --strand - --id roi") {
+        Ok(ShellCommand::EnsemblRegionFetch {
+            species,
+            chromosome,
+            start_1based,
+            end_1based,
+            strand,
+            output_id,
+            ..
+        }) => {
+            assert_eq!(species, "homo_sapiens");
+            assert_eq!(chromosome, "1");
+            assert_eq!(start_1based, 100);
+            assert_eq!(end_1based, 200);
+            assert_eq!(strand, Some('-'));
+            assert_eq!(output_id.as_deref(), Some("roi"));
+        }
+        other => panic!("unexpected /fetch ensembl-region command: {other:?}"),
+    }
+
+    match parse_shell_line("/fetch dbsnp rs9923231 'Human GRCh38 Ensembl 116' --id vkorc1") {
+        Ok(ShellCommand::DbsnpFetch {
+            rs_id,
+            genome_id,
+            output_id,
+            ..
+        }) => {
+            assert_eq!(rs_id, "rs9923231");
+            assert_eq!(genome_id, "Human GRCh38 Ensembl 116");
+            assert_eq!(output_id.as_deref(), Some("vkorc1"));
+        }
+        other => panic!("unexpected /fetch dbsnp command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_paste_sequence_alias_normalizes_iupac_text() {
+    match parse_shell_line(
+        "/paste sequence --sequence-text '1 acg u
+2 wsmk rybdhvn' --id pasted --topology circular",
+    ) {
+        Ok(ShellCommand::SequenceCreate {
+            sequence_text,
+            output_id,
+            circular,
+            ..
+        }) => {
+            assert_eq!(sequence_text, "ACGTWSMKRYBDHVN");
+            assert_eq!(output_id.as_deref(), Some("pasted"));
+            assert!(circular);
+        }
+        other => panic!("unexpected /paste command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_local_slash_alias_rejections_include_typed_alternatives() {
+    let err = parse_shell_line("/grep TP73 *.fa").expect_err("unknown slash command should fail");
+    assert!(err.contains("gentle.shell_alias_rejection.v1"));
+    assert!(err.contains("supported_alternatives"));
+    assert!(err.contains("/list"));
+    assert!(err.contains("/import file PATH"));
+
+    let vague_fetch = parse_shell_line("/fetch").expect_err("vague fetch should fail");
+    assert!(vague_fetch.contains("/fetch genbank ACCESSION"));
+    assert!(vague_fetch.contains("/fetch ensembl QUERY"));
+
+    let bad_paste = parse_shell_line("/paste sequence --sequence-text ACGZ")
+        .expect_err("bad IUPAC character should fail");
+    assert!(bad_paste.contains("Invalid IUPAC sequence character 'Z'"));
+    assert!(bad_paste.contains("input character 4"));
+}
+
+#[test]
+fn execute_file_alias_loads_sequence_without_network() {
+    let tmp = tempdir().expect("tempdir");
+    let fasta = tmp.path().join("agent_import.fa");
+    fs::write(&fasta, ">agent import\nACGTACGT\n").expect("write fasta");
+    let command = parse_shell_line(&format!(
+        "/open file '{}' --id agent_import",
+        fasta.display()
+    ))
+    .expect("parse /open file");
+    let mut engine = GentleEngine::default();
+    let run = execute_shell_command(&mut engine, &command).expect("execute /open file");
+    assert!(run.state_changed);
+    assert!(
+        engine.state().sequences.contains_key("agent_import"),
+        "exact-path alias should materialize the requested sequence id"
+    );
+    assert_eq!(
+        run.output["result"]["created_seq_ids"][0].as_str(),
+        Some("agent_import")
+    );
 }
 
 #[test]
@@ -6142,6 +6304,28 @@ fn parse_features_repeat_query_and_cohort_commands() {
             assert_eq!(path.as_deref(), Some("/tmp/materialized.json"));
         }
         other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_sequence_create_from_inline_text() {
+    let command = parse_shell_line(
+        "sequence create --sequence-text ACGTACGT --output-id agent_candidate --name 'Agent candidate' --topology circular",
+    )
+    .expect("parse sequence create");
+    match command {
+        ShellCommand::SequenceCreate {
+            sequence_text,
+            output_id,
+            name,
+            circular,
+        } => {
+            assert_eq!(sequence_text, "ACGTACGT");
+            assert_eq!(output_id.as_deref(), Some("agent_candidate"));
+            assert_eq!(name.as_deref(), Some("Agent candidate"));
+            assert!(circular);
+        }
+        other => panic!("expected SequenceCreate, got {other:?}"),
     }
 }
 
@@ -12030,6 +12214,48 @@ fn execute_features_restriction_scan_matches_inline_and_stored_sequence_targets(
         stored.output["report"]["skipped_enzyme_names_due_to_max_sites"],
         inline.output["report"]["skipped_enzyme_names_due_to_max_sites"]
     );
+}
+
+#[test]
+fn execute_sequence_create_materializes_inline_text_as_project_sequence() {
+    let mut engine = GentleEngine::default();
+    let run = execute_shell_command(
+        &mut engine,
+        &ShellCommand::SequenceCreate {
+            sequence_text: "acgt acgt".to_string(),
+            output_id: Some("agent_candidate".to_string()),
+            name: Some("Agent candidate".to_string()),
+            circular: true,
+        },
+    )
+    .expect("execute sequence create");
+
+    assert!(run.state_changed);
+    assert_eq!(
+        run.output["result"]["created_seq_ids"][0].as_str(),
+        Some("agent_candidate")
+    );
+    let created = engine
+        .state()
+        .sequences
+        .get("agent_candidate")
+        .expect("created sequence");
+    assert_eq!(created.get_forward_string(), "ACGTACGT");
+    assert!(created.is_circular());
+    assert_eq!(created.name().as_deref(), Some("Agent candidate"));
+    let node_id = engine
+        .state()
+        .lineage
+        .seq_to_node
+        .get("agent_candidate")
+        .expect("lineage node");
+    let node = engine
+        .state()
+        .lineage
+        .nodes
+        .get(node_id)
+        .expect("lineage node record");
+    assert!(matches!(node.origin, SequenceOrigin::ImportedSynthetic));
 }
 
 #[test]

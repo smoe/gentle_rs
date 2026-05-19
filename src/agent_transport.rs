@@ -9,10 +9,10 @@ use crate::agent_bridge::{
     AGENT_BASE_URL_ENV, AGENT_CONNECT_TIMEOUT_SECS_ENV, AGENT_MAX_RESPONSE_BYTES_ENV,
     AGENT_MAX_RETRIES_ENV, AGENT_MODEL_ENV, AGENT_READ_TIMEOUT_SECS_ENV, AGENT_TIMEOUT_SECS_ENV,
     ANTHROPIC_API_KEY_AUTH_HINT, ANTHROPIC_API_KEY_ENV, MISTRAL_API_KEY_AUTH_HINT,
-    MISTRAL_API_KEY_ENV, OPENAI_API_KEY_ENV, anthropic_api_key_is_known_non_api_token,
-    anthropic_api_key_kind_warning, discover_mistral_models, extract_anthropic_error_code,
-    extract_mistral_error_code, extract_models_from_openai_models_payload,
-    extract_openai_error_code, redact_sensitive_text,
+    MISTRAL_API_KEY_ENV, OPENAI_API_KEY_ENV, OPENAI_BILLING_URL, OPENAI_USAGE_URL,
+    anthropic_api_key_is_known_non_api_token, anthropic_api_key_kind_warning,
+    discover_mistral_models, extract_anthropic_error_code, extract_mistral_error_code,
+    extract_models_from_openai_models_payload, extract_openai_error_code, redact_sensitive_text,
 };
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
@@ -389,9 +389,19 @@ fn classify_model_list_http_error(
                 )
             }
         }
-        AgentLiveProbeStatusClass::QuotaOrBilling => format!(
-            "{provider} reported quota or billing trouble during model-list probe at {endpoint} (status={status}). The probe did not send a generation request. Response: {body_preview}"
-        ),
+        AgentLiveProbeStatusClass::QuotaOrBilling => {
+            let provider_hint = if provider.contains("OpenAI")
+                || lower_code.contains("insufficient_quota")
+                || lower_body.contains("insufficient_quota")
+            {
+                format!(" Check usage at {OPENAI_USAGE_URL} and billing at {OPENAI_BILLING_URL}.")
+            } else {
+                " Check provider billing/quota.".to_string()
+            };
+            format!(
+                "{provider} reported quota or billing trouble during model-list probe at {endpoint} (status={status}). The probe did not send a generation request.{provider_hint} Response: {body_preview}"
+            )
+        }
         _ => format!(
             "{provider} model-list probe failed at {endpoint} (status={status}). Response: {body_preview}"
         ),
@@ -1138,6 +1148,8 @@ mod tests {
             probe.provider_error_code.as_deref(),
             Some("insufficient_quota")
         );
+        assert!(probe.message.contains(OPENAI_USAGE_URL));
+        assert!(probe.message.contains(OPENAI_BILLING_URL));
     }
 
     #[test]

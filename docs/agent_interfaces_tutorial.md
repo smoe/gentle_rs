@@ -16,7 +16,8 @@ giving up reproducibility. The most important idea is simple:
 You can open this page inside GENtle from:
 
 1. `Help -> Tutorials -> Agent Assistant and Agent Interfaces Tutorial`
-2. `Help -> Agent Interface` for the shorter protocol overview
+2. `File -> Open Tutorial Project... -> Guided walkthroughs -> GENtle Agent Assistant and Agent Interfaces Tutorial`
+3. `Help -> Agent Interface` for the shorter protocol overview
 
 Protocol-level details live in `docs/agent_interface.md` and
 `docs/protocol.md`. This page is the practical walk-through.
@@ -36,7 +37,138 @@ The same command should mean the same thing when it is reached from:
 An agent can help you find, combine, or explain commands. It should not become
 a second biology implementation.
 
-## 2) The internal path: Agent Assistant
+Current scope declaration: GENtle does not yet expose OpenClaw-like
+filesystem, operating-system, or gateway commands through the in-app Agent
+Assistant. That may change later, but at this stage suggested commands should
+stay within the same actions GENtle can perform through its GUI or shared shell
+on the currently open project. If a file name or location is uncertain, find it
+by regular operating-system means first. On macOS, use Finder search or
+Spotlight, then give GENtle the selected path.
+
+GENtle does expose a deliberately small set of local slash aliases. They are
+parser-validated convenience forms, not operating-system commands:
+
+- `/help` maps to shared-shell help.
+- `/list` maps to the current project state summary.
+- `/open` and `/import` open the GUI file picker, just like
+  `File -> Open Sequence...`.
+- `/open file PATH [--id ID]` and `/import file PATH [--id ID]` load an exact
+  user-provided sequence file.
+- `/paste sequence --sequence-text DNA [--id ID]` creates a sequence from
+  explicit IUPAC DNA text.
+- `/fetch genbank|ncbi|uniprot|ensembl|ensembl-gene|ensembl-protein|ensembl-region|dbsnp ...`
+  normalize to existing external fetch routes and should require explicit
+  confirmation/network opt-in.
+
+Other slash commands such as `/grep`, `/find`, `/ls`, `/new`, and `/example`
+are rejected so that GENtle does not accidentally grow an unreviewed
+ClawBio/OpenClaw-style command vocabulary.
+
+## 2) Same live project, different controls
+
+The in-app Agent Assistant, the GUI, and the GUI Shell are mutually
+substitutable control surfaces over the same running GENtle instance. If the
+assistant suggestion creates a sequence, imports a locus, runs a digest, or
+changes display state, the GUI sees that change because it happened in the same
+engine state that backs the visible project. Equally, if you load a sequence
+through `File -> Open Sequence...`, the assistant and GUI Shell can immediately
+refer to that sequence by its project sequence ID.
+
+This is the practical rule:
+
+- GUI actions, GUI Shell commands, and reviewed Agent Assistant suggestions all
+  mutate or inspect the same open project.
+- A command executed through terminal `gentle_cli shell ...` can be equivalent,
+  but only when it is pointed at the same saved state path; it is not the same
+  live GUI process unless you save/reload or intentionally share state.
+- External agents such as Codex or Claude Code operate the checkout or a state
+  file from outside GENtle; they are excellent for adding routes or running
+  reproducible commands, but they are not automatically inside the GUI's current
+  memory.
+
+So yes: inside a running GENtle instance, the Agent Assistant can be used
+interchangeably with GUI operations and GUI Shell commands. The audit trail is
+the concrete reviewed GENtle command, not the natural-language prompt that led
+to it.
+
+## 3) Bringing sequences into that shared state
+
+The same project-state rule becomes most useful once a sequence exists in the
+project. There are three common entry paths.
+
+### From a local file
+
+GUI path:
+
+```text
+File -> Open Sequence...
+```
+
+Shared-shell equivalent:
+
+```text
+/open file test_files/pGEX_3X.fa --id pgex
+features restriction-scan pgex --enzyme EcoRI --enzyme SmaI
+render-svg pgex linear /tmp/pgex.linear.svg
+state-summary
+```
+
+Canonical operation equivalent:
+
+```text
+op '{"LoadFile":{"path":"test_files/pGEX_3X.fa","as_id":"pgex"}}'
+features restriction-scan pgex --enzyme EcoRI --enzyme SmaI
+render-svg pgex linear /tmp/pgex.linear.svg
+state-summary
+```
+
+The first command imports the FASTA/GenBank/SnapGene/EMBL/XML file into project
+state. The following commands operate on the resulting `pgex` sequence ID.
+If you run the import from the GUI, the same follow-up shell commands can still
+refer to the sequence ID visible in the project table.
+
+### From GENtle online services
+
+If online access is available, GENtle can retrieve sequence data directly
+through its service routes. For a coordinate-defined Ensembl region:
+
+```text
+/fetch ensembl-region homo_sapiens 17:7668402..7687550:+ --id tp53_region
+features restriction-scan tp53_region --enzyme EcoRI --enzyme SmaI
+state-summary
+```
+
+For a live Ensembl gene lookup followed by import:
+
+```text
+/fetch ensembl BACH2 --species homo_sapiens --id bach2_live
+ensembl-gene import-sequence bach2_live --output-id bach2_locus
+features tfbs-scan bach2_locus --motif SP1 --max-hits 10
+```
+
+Prepared local references remain the preferred path for large, reproducible
+gene/promoter work. The live routes are useful for one-off retrieval and for
+agent-guided exploration before deciding what should become a prepared local
+asset.
+
+### From sequence text proposed by an external source
+
+Sometimes an agent, paper, vendor note, or database page provides the sequence
+itself rather than a file. Use `sequence create` to make that text a persistent
+project sequence before running ordinary GENtle operations on it:
+
+```text
+/paste sequence --sequence-text ATGGAATTCGGGCCCTAA --id paper_candidate --name "Candidate from publication" --topology linear
+features restriction-scan paper_candidate --enzyme EcoRI --enzyme SmaI
+render-svg paper_candidate linear /tmp/paper_candidate.svg
+```
+
+This is deliberately different from read-only commands such as
+`features restriction-scan --sequence-text ...`: `sequence create` mutates the
+project, creates a lineage node, and lets later GUI/Agent/Shell steps refer to
+the same sequence by ID.
+
+## 4) The internal path: Agent Assistant
 
 Use this when you are already in GENtle and want the assistant to propose next
 steps.
@@ -70,7 +202,7 @@ Important: `suggested_commands[].command` contains GENtle shared-shell
 commands, not operating-system shell commands. GENtle runs them internally after
 you review them.
 
-## 3) First internal test: offline demo
+## 5) First internal test: offline demo
 
 This does not contact any provider.
 
@@ -83,14 +215,14 @@ This does not contact any provider.
 ask: features restriction-scan --sequence-text GAATTCGGGCCCGGGCCCGAGCTCGAATTC --enzyme EcoRI --enzyme SmaI
 ```
 
-5. Click `Ask Agent`.
+5. Click `Ask Agent`, or press `Ctrl+Return` while the prompt editor is focused.
 6. Review the suggested command.
 7. Run it only if the command is the GENtle command you intended.
 
 The demo echo is not intelligent. It is useful because it exercises the same
 response and command-review loop without requiring an API key.
 
-## 4) Provider quick starts
+## 6) Provider quick starts
 
 The quick-start buttons configure the built-in native HTTP transports.
 
@@ -135,7 +267,7 @@ Le Chat or Mistral account login tokens are not Mistral API keys.
 Local roots may expose `/chat/completions` or `/v1/chat/completions`; GENtle
 tries both for OpenAI-compatible local services.
 
-## 5) What Test Setup actually tests
+## 7) What Test Setup actually tests
 
 `Test Setup` is intentionally non-generating for native HTTP transports.
 
@@ -164,7 +296,7 @@ Common outcomes:
 | `endpoint_unreachable` | Base URL could not be reached. | Start the local server or correct Base URL. |
 | `provider_error` | Model-list response was malformed or unexpected. | Inspect the provider message. |
 
-## 6) A safe first real prompt
+## 8) A safe first real prompt
 
 Use a read-only request first:
 
@@ -192,7 +324,7 @@ cargo run --quiet --bin gentle_cli -- shell 'features restriction-scan --sequenc
 That replay command is the audit trail. The model prompt is only how you got
 there.
 
-## 7) Execution policy
+## 9) Execution policy
 
 Prefer this policy while learning:
 
@@ -205,7 +337,7 @@ Prefer this policy while learning:
 GENtle blocks recursive agent execution. Suggested commands may not silently run
 `agents ask`, `agents plan`, or `agents execute-plan` again.
 
-## 8) The external path: Claude, Codex, or another coding agent
+## 10) The external path: Claude, Codex, or another coding agent
 
 Use this when the assistant is outside GENtle and can run terminal commands or
 edit the checkout.
@@ -235,7 +367,7 @@ They are not the same as the in-app Agent Assistant. They operate your
 development environment; the in-app assistant operates through GENtle's agent
 catalog and reviewed shared-shell suggestions.
 
-## 9) The MCP path
+## 11) The MCP path
 
 Use MCP when your external assistant supports typed tools.
 
@@ -255,7 +387,7 @@ Mutating operation/workflow routes require explicit confirmation. MCP is best
 when the outside agent should see a typed tool palette instead of inventing
 plain text commands.
 
-## 10) Choosing the right interface
+## 12) Choosing the right interface
 
 | Need | Use |
 |---|---|
@@ -266,7 +398,7 @@ plain text commands.
 | Repository edits or missing route implementation | Codex/Claude Code-style external agent |
 | Private/local inference | Local OpenAI-compatible Agent Assistant profile |
 
-## 11) Troubleshooting
+## 13) Troubleshooting
 
 `auth_failed` for OpenAI:
 
@@ -299,7 +431,7 @@ MCP and CLI disagree:
 - Treat that as a parity bug.
 - Record the exact command/tool call and state path.
 
-## 12) Related docs
+## 14) Related docs
 
 - `docs/agent_interface.md` - concise interface overview and schema notes
 - `docs/quickstart_claude.md` - Claude-specific internal/external loop notes

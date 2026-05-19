@@ -12,6 +12,31 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-05-19
+
+- Clarified the Agent Assistant tutorial's same-live-state relationship with
+  the GUI and GUI Shell, and added `CreateSequenceFromText` /
+  `sequence create --sequence-text ...` so agent-proposed sequence text can be
+  materialized as an ordinary project sequence.
+- Added direct OpenAI usage and billing hyperlinks to GUI quota-failure
+  messages from the Agent Assistant, including `Test Setup` live-probe results
+  whose static configuration is otherwise available.
+- Tightened the native Agent Assistant system prompt so providers are told to
+  suggest only GENtle shared-shell commands, avoid invented `fs.*`/gateway-style
+  verbs, ask for local file paths when discovery is outside the GENtle contract,
+  and use ASCII punctuation for egui-safe rendering.
+- Documented the current non-OpenClaw command boundary for the in-app Agent
+  Assistant, including Finder/Spotlight as the macOS path-discovery fallback
+  before handing a selected file path to GENtle.
+- Added a protocol-owned GENtle-local slash alias registry covering `/help`,
+  `/list`, GUI file opening, exact file import, pasted sequence creation, and
+  explicit external fetch aliases while keeping vague filesystem/OpenClaw-style
+  commands rejected with typed alternatives.
+- Added `Ctrl+Return` submission for the Agent Assistant prompt editor.
+- Added a `Copy Response JSON` button for the latest Agent Assistant response.
+- The Agent Assistant suggestion table now validates suggested commands before
+  enabling `Run`, marking hallucinated or unsupported commands as invalid.
+
 ## 2026-05-18
 
 - Split the tutorial hub into hand-written guided walkthroughs versus

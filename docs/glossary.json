@@ -106,6 +106,19 @@
       },
       {
          "aliases": [],
+         "engine_operations": [
+            "CreateSequenceFromText"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "sequence create",
+         "summary": "Create a persistent project sequence from inline sequence text.",
+         "usage": "sequence create --sequence-text DNA [--output-id ID] [--name TEXT] [--topology linear|circular]"
+      },
+      {
+         "aliases": [],
          "engine_operations": [],
          "interfaces": [
             "cli-shell",
