@@ -641,6 +641,7 @@ Recommended preparation order for common human-question answering:
 5. for cloning/vector-heavy follow-up if likely:
    - `helpers status "Plasmid pUC19 (online)"`
    - `helpers prepare "Plasmid pUC19 (online)" --timeout-secs 1800`
+   - `planning consult cloning --format json`
 6. `resources status`
 
 For a generic "what is installed?" or "what databases do you know about?"
@@ -1056,6 +1057,7 @@ Current shared GENtle routes behind this capability:
 - shared reporter-preview workflow/macro paths
 - `routines list|explain|compare ... --seq-id ...`
 - `planning profile|objective|suggestions ...`
+- `planning consult cloning --format json`
 
 Expected outputs:
 
@@ -1064,6 +1066,8 @@ Expected outputs:
 - paired allele inserts
 - perturbation and readout candidate families
 - routine time/cost/local-fit planning evidence when available
+- deterministic cloning strategy/vector consultation reports when users ask
+  which cloning strategy or target vector to choose
 - construct previews and handoff bundle artifacts
 - one best-first storyboard-style PNG when the wrapper collects multiple
   follow-up figures from the same run
@@ -1129,11 +1133,16 @@ task:
    - restriction analysis
    - splicing expert
    - isoform architecture
+   - cloning strategy/vector planning
    - experimental follow-up
    - general cloning/workflow replay if none of the above fits better
    - if the user only supplied raw DNA text and asked for a read-only scan,
      prefer the stateless inline-sequence operation path under TFBS or
      restriction analysis instead of inventing project state
+   - if the user asks which cloning strategy, helper vector, target vector, or
+     local setup path to choose, prefer `planning consult cloning --format json`
+     and quote its `strategy_candidates`, `vector_candidates`, and
+     `missing_questions` rather than improvising biological planning prose
 3. **Resolve execution route**: choose `--gentle-cli`, then `GENTLE_CLI_CMD`
    (recommended for the included local-checkout launcher or Docker /
    Apptainer/Singularity-backed execution), then `gentle_cli` on `PATH`, then
@@ -1198,6 +1207,9 @@ python clawbio.py run gentle-cloning \
 python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_services_telegram_guide.json \
   --output /tmp/gentle_clawbio_telegram_guide
+python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_planning_consult_cloning.json \
+  --output /tmp/gentle_clawbio_planning_consult
 python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_services_handoff.json \
   --output /tmp/gentle_clawbio_services_handoff

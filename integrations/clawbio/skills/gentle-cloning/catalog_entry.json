@@ -43,6 +43,7 @@
     "experimental-follow-up",
     "perturbation-planning",
     "wet-lab-planning",
+    "cloning-strategy-planning",
     "reference-preparation"
   ],
   "trigger_keywords": [
@@ -53,6 +54,14 @@
     "continue readiness",
     "continue cloning",
     "continue isoforms",
+    "cloning strategy",
+    "which cloning strategy",
+    "choose cloning strategy",
+    "choose vector",
+    "target vector",
+    "which vector",
+    "vector choice",
+    "planning consult cloning",
     "cloning workflow",
     "gibson assembly",
     "prepare genome",

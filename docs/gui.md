@@ -1815,6 +1815,9 @@ Patterns menu:
   - includes a searchable `Helper Construct Browser` backed by the shared
     helper catalog + normalized interpretation layer, so planning work can
     inspect helper semantics without reparsing free text.
+  - the Agent Assistant and GUI Shell can ask the same read-only consultation
+    route (`planning consult cloning`) for cloning strategy/vector advice backed
+    by the effective profile, host/helper catalogs, and routine estimates.
   - supports registering pending planning sync suggestions (`pull`/`push`) from
     JSON payload and explicit `Accept`/`Reject` resolution in-window.
   - exposes sync status (`pending count`, latest pull/push timestamps, last
@@ -2400,6 +2403,8 @@ Common examples:
 - `guides oligos-export GUIDE_SET_ID OUTPUT_PATH ...` — export guide oligo set.
 - `planning profile show --scope effective` — inspect merged planning profile
   (`global -> confirmed_agent_overlay -> project_override`).
+- `planning consult cloning --format text` — get read-only cloning
+  strategy/vector advice from the effective planning profile and catalogs.
 - `planning sync pull @suggestion.json --source lab_manager` — register a
   pending advisory planning suggestion (apply via
   `planning suggestions accept SUGGESTION_ID`).

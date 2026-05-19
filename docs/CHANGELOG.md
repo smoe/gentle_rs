@@ -14,6 +14,10 @@ Maintenance rule:
 
 ## 2026-05-19
 
+- Added the read-only `planning consult cloning` route and
+  `gentle.planning_cloning_consultation.v1` report so Agent Assistant and
+  ClawBio can quote deterministic cloning-strategy/vector advice instead of
+  improvising prose.
 - Clarified the Agent Assistant tutorial's same-live-state relationship with
   the GUI and GUI Shell, and added `CreateSequenceFromText` /
   `sequence create --sequence-text ...` so agent-proposed sequence text can be

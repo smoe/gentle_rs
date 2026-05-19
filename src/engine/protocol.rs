@@ -6188,6 +6188,109 @@ pub struct PlanningEstimate {
     pub explanation: serde_json::Value,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Read-only cloning strategy and helper/vector planning consultation.
+pub struct PlanningCloningConsultation {
+    pub schema: String,
+    pub profile_scope: String,
+    pub seq_id: Option<String>,
+    pub objective_summary: serde_json::Value,
+    pub local_profile_summary: serde_json::Value,
+    pub available_helper_vectors: Vec<PlanningCloningHelperVectorSummary>,
+    pub available_host_profiles: Vec<PlanningCloningHostProfileSummary>,
+    pub strategy_candidates: Vec<PlanningCloningStrategyCandidate>,
+    pub vector_candidates: Vec<PlanningCloningVectorCandidate>,
+    pub missing_questions: Vec<PlanningCloningMissingQuestion>,
+    pub local_constraints: Vec<PlanningCloningLocalConstraint>,
+    pub warnings: Vec<String>,
+    pub suggested_next_actions: Vec<PlanningCloningSuggestedNextAction>,
+    pub suggested_sync_payload: Option<serde_json::Value>,
+    pub text_report: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Best routine candidate for one cloning routine family.
+pub struct PlanningCloningStrategyCandidate {
+    pub rank: usize,
+    pub family: String,
+    pub routine_id: String,
+    pub title: String,
+    pub status: String,
+    pub summary: Option<String>,
+    pub estimate: PlanningEstimate,
+    pub rationale: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Helper/vector catalog row exposed to cloning consultation clients.
+pub struct PlanningCloningHelperVectorSummary {
+    pub helper_id: String,
+    pub description: Option<String>,
+    pub summary: Option<String>,
+    pub helper_kind: Option<String>,
+    pub host_systems: Vec<String>,
+    pub structured_tags: Vec<String>,
+    pub offered_functions: Vec<String>,
+    pub routine_family_hints: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Host/strain catalog row exposed to cloning consultation clients.
+pub struct PlanningCloningHostProfileSummary {
+    pub profile_id: String,
+    pub species: String,
+    pub strain: String,
+    pub aliases: Vec<String>,
+    pub genotype_tags: Vec<String>,
+    pub phenotype_tags: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Ranked helper/vector candidate based only on structured catalog fields.
+pub struct PlanningCloningVectorCandidate {
+    pub rank: usize,
+    pub helper_id: String,
+    pub score: f64,
+    pub helper_kind: Option<String>,
+    pub host_systems: Vec<String>,
+    pub routine_family_hints: Vec<String>,
+    pub rationale: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Stable follow-up question for underspecified cloning planning requests.
+pub struct PlanningCloningMissingQuestion {
+    pub question_id: String,
+    pub prompt: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Local infrastructure note that affects strategy/vector planning confidence.
+pub struct PlanningCloningLocalConstraint {
+    pub constraint_id: String,
+    pub status: String,
+    pub summary: String,
+    pub details: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Safe next action suggested by a cloning consultation.
+pub struct PlanningCloningSuggestedNextAction {
+    pub action_id: String,
+    pub label: String,
+    pub shell_line: String,
+    pub rationale: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 /// Advisory pull/push suggestion awaiting explicit user acceptance or rejection.
