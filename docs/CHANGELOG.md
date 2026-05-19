@@ -14,6 +14,10 @@ Maintenance rule:
 
 ## 2026-05-19
 
+- Added GUI export for lab-assistant cloning handoff reports and upgraded
+  `ExportLabAssistantInstructions` to `gentle.lab_assistant_instructions.v2`
+  with ODT/DOCX editable reports plus embedded lineage graphics where
+  rasterization is available.
 - Added the read-only `planning consult cloning` route and
   `gentle.planning_cloning_consultation.v1` report so Agent Assistant and
   ClawBio can quote deterministic cloning-strategy/vector advice instead of

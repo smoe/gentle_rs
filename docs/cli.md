@@ -1977,7 +1977,7 @@ Shared shell command:
     - `ladders export OUTPUT.json [--molecule dna|rna] [--filter TEXT]`
     - `export-pool IDS OUTPUT.pool.gentle.json [HUMAN_ID]`
     - `export-run-bundle OUTPUT.run_bundle.json [--run-id RUN_ID]`
-    - `export-lab-instructions OUTPUT.md [--run-id RUN_ID] [--title TEXT] [--audience TEXT]`
+    - `export-lab-instructions OUTPUT.{md|odt|docx} [--format markdown|odt|docx] [--run-id RUN_ID] [--title TEXT] [--audience TEXT]`
     - `import-pool INPUT.pool.gentle.json [PREFIX]`
     - `resources sync-rebase INPUT.withrefm_or_URL [OUTPUT.rebase.json] [--commercial-only]`
     - `resources sync-jaspar INPUT.jaspar_or_URL [OUTPUT.motifs.json]`
@@ -2951,11 +2951,14 @@ Pool exchange commands:
     - selected operation log records
     - output summaries (created/changed ids, exported artifact paths)
   - Omitting `--run-id` exports all operation-log rows.
-- `export-lab-instructions OUTPUT.md [--run-id RUN_ID] [--title TEXT] [--audience TEXT]`
+- `export-lab-instructions OUTPUT.{md|odt|docx} [--format markdown|odt|docx] [--run-id RUN_ID] [--title TEXT] [--audience TEXT]`
   - Calls engine operation `ExportLabAssistantInstructions`.
-  - Writes a Markdown bench handoff (`gentle.lab_assistant_instructions.v1`)
-    for non-IT lab assistants from recorded design operations and current
-    sequence/container state.
+  - Writes a bench handoff (`gentle.lab_assistant_instructions.v2`) for
+    non-IT lab assistants from recorded design operations and current
+    sequence/container state. The output format is inferred from the extension
+    unless `--format` is supplied.
+  - `odt` and `docx` reports embed a lineage overview graphic when SVG
+    rasterization succeeds; `md` stays a lightweight text fallback.
   - Includes material IDs, designed outputs, container/arrangement/rack/gel
     references where available, design-derived bench steps, checkpoints, safety
     scope, and record-keeping notes.

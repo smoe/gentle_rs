@@ -49,32 +49,32 @@ use crate::{
         GenomeAnchorSide, GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackSource,
         GenomeTrackSubscription, GentleEngine, GuideCandidate, GuideOligoExportFormat,
         GuideOligoPlateFormat, GuidePracticalFilterConfig, InlineSequenceTopology,
-        LineageMacroInstance, LineageMacroPortBinding, MacroInstanceStatus, Operation,
-        OperationProgress, PLANNING_CLONING_CONSULTATION_SCHEMA, PLANNING_ESTIMATE_SCHEMA,
-        PLANNING_OBJECTIVE_SCHEMA, PLANNING_PROFILE_SCHEMA, PLANNING_SUGGESTION_SCHEMA,
-        PLANNING_SYNC_STATUS_SCHEMA,
-        PRIMER_DESIGN_REPORTS_METADATA_KEY, PairwiseAlignmentMode, PlanningEstimate,
-        PlanningCloningConsultation, PlanningCloningHelperVectorSummary,
-        PlanningCloningHostProfileSummary, PlanningCloningLocalConstraint,
-        PlanningCloningMissingQuestion, PlanningCloningStrategyCandidate,
-        PlanningCloningSuggestedNextAction, PlanningCloningVectorCandidate, PlanningObjective,
-        PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus,
-        PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignReport,
-        PrimerDesignSideConstraint, PrimerSpecificityPolicy, ProjectState,
-        PromoterArtifactManifestEntry, PromoterExpressionEvidenceInput, PromoterTfbsGeneQuery,
-        PromoterWindowCollapseMode, ProteinExternalOpinionSource, ProteinFeatureFilter,
-        ProteinToDnaHandoffRankingGoal, QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting,
-        QpcrTranscriptTargetingMode, RNA_READ_ALIGNMENT_DISPLAY_BATCH_SCHEMA,
-        RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
-        RackOccupant, RackPhysicalTemplateKind, RackProfileKind, ReadAcquisitionAnalysisFormat,
-        ReadAcquisitionReadLayout, RenderSvgMode, RepeatAnnotationFilter,
-        RepeatEnvironmentCohortReport, RepeatEnvironmentGeometryMode, ReporterConstraints,
-        ReporterCorpusExportFormat, RestrictionCloningPcrHandoffMode, ReverseTranslationReport,
-        ReverseTranslationReportSummary, RnaReadAlignConfig, RnaReadAlignmentDisplayBatch,
-        RnaReadAlignmentInspectionEffectFilter, RnaReadAlignmentInspectionSortKey,
-        RnaReadAlignmentInspectionSubsetSpec, RnaReadConcatemerInspectionSettings,
-        RnaReadGeneSupportAuditCohortFilter, RnaReadGeneSupportCompleteRule, RnaReadHitSelection,
-        RnaReadInputFormat, RnaReadInterpretationProfile, RnaReadOriginMode, RnaReadReportMode,
+        LabAssistantInstructionsFormat, LineageMacroInstance, LineageMacroPortBinding,
+        MacroInstanceStatus, Operation, OperationProgress, PLANNING_CLONING_CONSULTATION_SCHEMA,
+        PLANNING_ESTIMATE_SCHEMA, PLANNING_OBJECTIVE_SCHEMA, PLANNING_PROFILE_SCHEMA,
+        PLANNING_SUGGESTION_SCHEMA, PLANNING_SYNC_STATUS_SCHEMA,
+        PRIMER_DESIGN_REPORTS_METADATA_KEY, PairwiseAlignmentMode, PlanningCloningConsultation,
+        PlanningCloningHelperVectorSummary, PlanningCloningHostProfileSummary,
+        PlanningCloningLocalConstraint, PlanningCloningMissingQuestion,
+        PlanningCloningStrategyCandidate, PlanningCloningSuggestedNextAction,
+        PlanningCloningVectorCandidate, PlanningEstimate, PlanningObjective, PlanningProfile,
+        PlanningProfileScope, PlanningSuggestionStatus, PrimerDesignBackend,
+        PrimerDesignPairConstraint, PrimerDesignReport, PrimerDesignSideConstraint,
+        PrimerSpecificityPolicy, ProjectState, PromoterArtifactManifestEntry,
+        PromoterExpressionEvidenceInput, PromoterTfbsGeneQuery, PromoterWindowCollapseMode,
+        ProteinExternalOpinionSource, ProteinFeatureFilter, ProteinToDnaHandoffRankingGoal,
+        QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting, QpcrTranscriptTargetingMode,
+        RNA_READ_ALIGNMENT_DISPLAY_BATCH_SCHEMA, RackAuthoringTemplate, RackCarrierLabelPreset,
+        RackFillDirection, RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind,
+        RackProfileKind, ReadAcquisitionAnalysisFormat, ReadAcquisitionReadLayout, RenderSvgMode,
+        RepeatAnnotationFilter, RepeatEnvironmentCohortReport, RepeatEnvironmentGeometryMode,
+        ReporterConstraints, ReporterCorpusExportFormat, RestrictionCloningPcrHandoffMode,
+        ReverseTranslationReport, ReverseTranslationReportSummary, RnaReadAlignConfig,
+        RnaReadAlignmentDisplayBatch, RnaReadAlignmentInspectionEffectFilter,
+        RnaReadAlignmentInspectionSortKey, RnaReadAlignmentInspectionSubsetSpec,
+        RnaReadConcatemerInspectionSettings, RnaReadGeneSupportAuditCohortFilter,
+        RnaReadGeneSupportCompleteRule, RnaReadHitSelection, RnaReadInputFormat,
+        RnaReadInterpretationProfile, RnaReadOriginMode, RnaReadReportMode,
         RnaReadScoreDensityScale, RnaReadScoreDensityVariant, RnaReadSeedFilterConfig,
         RoutinePreferenceContext, SEQUENCING_CONFIRMATION_SUPPORT_TSV_SCHEMA, SequenceAnchor,
         SequenceFeatureQualifierFilter, SequenceFeatureQuery, SequenceFeatureRangeRelation,
@@ -883,6 +883,7 @@ pub enum ShellCommand {
         run_id: Option<String>,
         title: Option<String>,
         audience: Option<String>,
+        format: Option<LabAssistantInstructionsFormat>,
     },
     ImportPool {
         input: String,
@@ -6247,6 +6248,7 @@ impl ShellCommand {
                 run_id,
                 title,
                 audience,
+                format,
             } => {
                 let run_id = run_id
                     .as_deref()
@@ -6254,9 +6256,14 @@ impl ShellCommand {
                     .filter(|value| !value.is_empty())
                     .unwrap_or("all");
                 format!(
-                    "export lab assistant instructions to '{output}' (run_id={run_id}, title={}, audience={})",
+                    "export lab assistant instructions to '{output}' (run_id={run_id}, title={}, audience={}, format={})",
                     title.as_deref().unwrap_or("-"),
-                    audience.as_deref().unwrap_or("-")
+                    audience.as_deref().unwrap_or("-"),
+                    format
+                        .as_ref()
+                        .copied()
+                        .map(LabAssistantInstructionsFormat::as_str)
+                        .unwrap_or("infer")
                 )
             }
             Self::ImportPool { input, prefix } => {
@@ -12429,7 +12436,10 @@ fn build_planning_cloning_consultation_text(report: &PlanningCloningConsultation
     lines.push(String::new());
     lines.push("Vector candidates:".to_string());
     if report.vector_candidates.is_empty() {
-        lines.push("- No structured helper/vector candidates were found in the active catalog.".to_string());
+        lines.push(
+            "- No structured helper/vector candidates were found in the active catalog."
+                .to_string(),
+        );
     } else {
         for candidate in report.vector_candidates.iter().take(5) {
             lines.push(format!(
@@ -12459,8 +12469,10 @@ fn execute_planning_consult_cloning(
     output_format: &str,
 ) -> Result<PlanningCloningConsultation, String> {
     if profile_scope != PlanningProfileScope::Effective {
-        return Err("planning consult cloning currently supports --profile-scope effective only"
-            .to_string());
+        return Err(
+            "planning consult cloning currently supports --profile-scope effective only"
+                .to_string(),
+        );
     }
 
     let objective = match objective_json.as_deref() {
@@ -12472,7 +12484,8 @@ fn execute_planning_consult_cloning(
         None => engine.planning_objective(),
     };
     let profile = engine.planning_effective_profile();
-    let preference_context = GentleEngine::planning_objective_routine_preference_context(&objective);
+    let preference_context =
+        GentleEngine::planning_objective_routine_preference_context(&objective);
     let routine_catalog = load_cloning_routine_catalog(DEFAULT_CLONING_ROUTINE_CATALOG_PATH)?;
     let catalog_families = planning_catalog_family_ids(&routine_catalog);
     let expected_families = [
@@ -12541,7 +12554,9 @@ fn execute_planning_consult_cloning(
             .iter()
             .any(|value| value == &family)
         {
-            rationale.push("Routine family matches objective/helper-derived preference context.".to_string());
+            rationale.push(
+                "Routine family matches objective/helper-derived preference context.".to_string(),
+            );
         }
         let candidate = PlanningCloningStrategyCandidate {
             rank: 0,
@@ -12637,18 +12652,23 @@ fn execute_planning_consult_cloning(
             .unwrap_or(false)
         {
             score += 0.40;
-            rationale.push("Matches objective helper_profile_id by helper id or alias.".to_string());
+            rationale
+                .push("Matches objective helper_profile_id by helper id or alias.".to_string());
         }
         if routine_family_hints
             .iter()
             .any(|family| effective_family_set.contains(family))
         {
             score += 0.20;
-            rationale.push("Structured routine-family hints overlap the objective/helper preference context.".to_string());
+            rationale.push(
+                "Structured routine-family hints overlap the objective/helper preference context."
+                    .to_string(),
+            );
         }
         if planning_tokens_overlap(&host_systems, &host_tokens) {
             score += 0.20;
-            rationale.push("Structured helper host_system overlaps a known host profile.".to_string());
+            rationale
+                .push("Structured helper host_system overlaps a known host profile.".to_string());
         }
         vector_candidates.push(PlanningCloningVectorCandidate {
             rank: 0,
@@ -12672,7 +12692,11 @@ fn execute_planning_consult_cloning(
     }
 
     let mut missing_questions = vec![];
-    if seq_id.as_deref().map(str::trim).filter(|v| !v.is_empty()).is_none()
+    if seq_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .is_none()
         && objective.preferred_routine_families.is_empty()
         && objective.required_capabilities.is_empty()
     {
@@ -12774,7 +12798,9 @@ fn execute_planning_consult_cloning(
             action_id: "show_effective_profile".to_string(),
             label: "Show effective local planning profile".to_string(),
             shell_line: "planning profile show --scope effective".to_string(),
-            rationale: "Inspect the merged local capabilities, inventory, and machine availability.".to_string(),
+            rationale:
+                "Inspect the merged local capabilities, inventory, and machine availability."
+                    .to_string(),
         },
         PlanningCloningSuggestedNextAction {
             action_id: "list_routines".to_string(),
@@ -12786,7 +12812,9 @@ fn execute_planning_consult_cloning(
             action_id: "list_helper_vectors".to_string(),
             label: "List helper/vector catalog rows".to_string(),
             shell_line: "helpers list --filter vector".to_string(),
-            rationale: "Inspect structured helper/vector catalog rows before committing to a backbone.".to_string(),
+            rationale:
+                "Inspect structured helper/vector catalog rows before committing to a backbone."
+                    .to_string(),
         },
     ];
     if let Some(top) = strategy_candidates.first() {
@@ -20567,7 +20595,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "export-lab-instructions" | "export-lab-assistant-instructions" => {
             if tokens.len() < 2 {
                 return Err(
-                    "export-lab-instructions requires: OUTPUT.md [--run-id RUN_ID] [--title TITLE] [--audience TEXT]"
+                    "export-lab-instructions requires: OUTPUT.{md|odt|docx} [--format markdown|odt|docx] [--run-id RUN_ID] [--title TITLE] [--audience TEXT]"
                         .to_string(),
                 );
             }
@@ -20575,6 +20603,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
             let mut run_id: Option<String> = None;
             let mut title: Option<String> = None;
             let mut audience: Option<String> = None;
+            let mut format: Option<LabAssistantInstructionsFormat> = None;
             let mut idx = 2usize;
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
@@ -20608,6 +20637,20 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         }
                         idx += 2;
                     }
+                    "--format" => {
+                        if idx + 1 >= tokens.len() {
+                            return Err("Missing value after --format".to_string());
+                        }
+                        let value = tokens[idx + 1].trim();
+                        format = Some(LabAssistantInstructionsFormat::from_token(value).ok_or_else(
+                            || {
+                                format!(
+                                    "Unknown lab assistant instructions format '{value}', expected markdown, odt, or docx"
+                                )
+                            },
+                        )?);
+                        idx += 2;
+                    }
                     other => {
                         return Err(format!(
                             "Unknown argument '{other}' for export-lab-instructions"
@@ -20620,6 +20663,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 run_id,
                 title,
                 audience,
+                format,
             })
         }
         "import-pool" => {
@@ -25119,6 +25163,7 @@ fn execute_export_import_and_resource_command(
             run_id,
             title,
             audience,
+            format,
         } => {
             let op_result = engine
                 .apply(Operation::ExportLabAssistantInstructions {
@@ -25126,6 +25171,7 @@ fn execute_export_import_and_resource_command(
                     run_id: run_id.clone(),
                     title: title.clone(),
                     audience: audience.clone(),
+                    format: *format,
                 })
                 .map_err(|e| e.to_string())?;
             Ok(ShellRunResult {

@@ -2221,6 +2221,7 @@ impl GentleEngine {
         run_id_filter: Option<&str>,
         title: Option<&str>,
         audience: Option<&str>,
+        format: Option<LabAssistantInstructionsFormat>,
     ) -> Result<LabAssistantInstructionsExport, EngineError> {
         let path = path.trim();
         if path.is_empty() {
@@ -2231,6 +2232,8 @@ impl GentleEngine {
                 cause_chain: vec![],
             });
         }
+        let output_format =
+            format.unwrap_or_else(|| LabAssistantInstructionsFormat::infer_from_path(path));
         let normalized_run_id = run_id_filter
             .map(str::trim)
             .filter(|value| !value.is_empty());
@@ -2273,6 +2276,27 @@ impl GentleEngine {
 
         let material_rows = self.lab_assistant_material_rows(&selected_records, &op_ids);
         let mut warning_lines = vec![];
+        let embedded_images = if matches!(
+            output_format,
+            LabAssistantInstructionsFormat::Odt | LabAssistantInstructionsFormat::Docx
+        ) {
+            match self.lab_assistant_default_embedded_images() {
+                Ok(images) => images,
+                Err(err) => {
+                    warning_lines.push(format!(
+                        "Could not embed lineage overview graphic: {}",
+                        err.message
+                    ));
+                    Vec::new()
+                }
+            }
+        } else {
+            Vec::new()
+        };
+        let embedded_visuals = embedded_images
+            .iter()
+            .map(|image| image.visual_row("operation lineage overview"))
+            .collect::<Vec<_>>();
         if selected_records.is_empty() {
             warning_lines.push(
                 "No recorded operations were available; this export is a general handoff scaffold."
@@ -2333,6 +2357,11 @@ impl GentleEngine {
                 material_rows.len(),
                 step_sections.len()
             ),
+            format!(
+                "Embedded {} graphical overview(s) in {} output.",
+                embedded_visuals.len(),
+                output_format.as_str()
+            ),
         ];
 
         let export = LabAssistantInstructionsExport {
@@ -2341,10 +2370,12 @@ impl GentleEngine {
             title,
             audience,
             output_path: path.to_string(),
+            output_format,
             run_id_filter: normalized_run_id.map(str::to_string),
             selected_record_count: selected_records.len(),
             material_rows,
             step_sections,
+            embedded_visuals,
             checkpoint_lines,
             safety_lines,
             record_keeping_lines,
@@ -2364,14 +2395,67 @@ impl GentleEngine {
 
             cause_chain: vec![],
         })?;
-        let markdown = Self::render_lab_assistant_instructions_markdown(&export);
-        std::fs::write(path, markdown).map_err(|e| EngineError {
+        let bytes = match output_format {
+            LabAssistantInstructionsFormat::Markdown => {
+                crate::engine::lab_assistant_export::render_markdown(&export).into_bytes()
+            }
+            LabAssistantInstructionsFormat::Odt => {
+                crate::engine::lab_assistant_export::render_odt(&export, &embedded_images).map_err(
+                    |e| EngineError {
+                        code: ErrorCode::Internal,
+                        message: format!("Could not render ODT lab assistant report: {e}"),
+
+                        cause_chain: vec![],
+                    },
+                )?
+            }
+            LabAssistantInstructionsFormat::Docx => {
+                crate::engine::lab_assistant_export::render_docx(&export, &embedded_images)
+                    .map_err(|e| EngineError {
+                        code: ErrorCode::Internal,
+                        message: format!("Could not render DOCX lab assistant report: {e}"),
+
+                        cause_chain: vec![],
+                    })?
+            }
+        };
+        std::fs::write(path, bytes).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write lab assistant instructions file '{path}': {e}"),
 
             cause_chain: vec![],
         })?;
         Ok(export)
+    }
+
+    fn lab_assistant_default_embedded_images(
+        &self,
+    ) -> Result<Vec<crate::engine::lab_assistant_export::LabAssistantEmbeddedImage>, EngineError>
+    {
+        let svg = crate::lineage_export::export_lineage_svg(&self.state, &self.journal);
+        let rendered = crate::svg_png::render_svg_to_png_bytes(
+            &svg,
+            crate::svg_png::SvgPngRenderOptions {
+                scale: 1.5,
+                drop_dotplot_metadata: false,
+            },
+        )
+        .map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not rasterize lineage overview SVG: {e}"),
+
+            cause_chain: vec![],
+        })?;
+        Ok(vec![
+            crate::engine::lab_assistant_export::LabAssistantEmbeddedImage {
+                visual_id: "lineage_overview".to_string(),
+                label: "GENtle operation lineage overview".to_string(),
+                file_name: "lineage_overview.png".to_string(),
+                bytes: rendered.bytes,
+                width_px: rendered.width as usize,
+                height_px: rendered.height as usize,
+            },
+        ])
     }
 
     fn infer_lab_assistant_title(records: &[&OperationRecord]) -> Option<String> {
@@ -2894,92 +2978,6 @@ impl GentleEngine {
         } else {
             format!("{}... ({} nt)", &trimmed[..80], trimmed.len())
         }
-    }
-
-    fn render_lab_assistant_instructions_markdown(
-        export: &LabAssistantInstructionsExport,
-    ) -> String {
-        let mut out = String::new();
-        out.push_str(&format!("# {}\n\n", export.title));
-        out.push_str(&format!("- Schema: `{}`\n", export.schema));
-        out.push_str(&format!(
-            "- Audience: {}\n",
-            Self::lab_markdown_escape(&export.audience)
-        ));
-        out.push_str("- Generated by GENtle from selected operation records.\n");
-        if let Some(run_id) = export.run_id_filter.as_deref() {
-            out.push_str(&format!(
-                "- Run ID: `{}`\n",
-                Self::lab_markdown_escape(run_id)
-            ));
-        }
-        out.push('\n');
-
-        Self::push_lab_markdown_list(&mut out, "Summary", &export.summary_lines);
-        Self::push_lab_markdown_list(&mut out, "Safety and Scope", &export.safety_lines);
-
-        out.push_str("## Materials and IDs\n\n");
-        if export.material_rows.is_empty() {
-            out.push_str("- No material rows were available in the selected GENtle state.\n\n");
-        } else {
-            for row in &export.material_rows {
-                let mut detail = format!(
-                    "- `{}`: {} [{}; source={}]",
-                    Self::lab_markdown_escape(&row.material_id),
-                    Self::lab_markdown_escape(&row.display_name),
-                    Self::lab_markdown_escape(&row.kind),
-                    Self::lab_markdown_escape(&row.source)
-                );
-                if let Some(length_bp) = row.length_bp {
-                    detail.push_str(&format!("; {length_bp} bp"));
-                }
-                if let Some(topology) = row.topology.as_deref() {
-                    detail.push_str(&format!("; {}", Self::lab_markdown_escape(topology)));
-                }
-                if !row.members.is_empty() {
-                    detail.push_str(&format!(
-                        "; members: {}",
-                        row.members
-                            .iter()
-                            .map(|value| format!("`{}`", Self::lab_markdown_escape(value)))
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    ));
-                }
-                out.push_str(&detail);
-                out.push('\n');
-                for note in &row.notes {
-                    out.push_str(&format!("  - {}\n", Self::lab_markdown_escape(note)));
-                }
-            }
-            out.push('\n');
-        }
-
-        for section in &export.step_sections {
-            Self::push_lab_markdown_list(&mut out, &section.heading, &section.steps);
-        }
-        Self::push_lab_markdown_list(&mut out, "Checkpoints", &export.checkpoint_lines);
-        Self::push_lab_markdown_list(&mut out, "Record Keeping", &export.record_keeping_lines);
-        if !export.warning_lines.is_empty() {
-            Self::push_lab_markdown_list(&mut out, "Warnings", &export.warning_lines);
-        }
-        out
-    }
-
-    fn push_lab_markdown_list(out: &mut String, heading: &str, lines: &[String]) {
-        out.push_str(&format!("## {heading}\n\n"));
-        if lines.is_empty() {
-            out.push_str("- None recorded.\n\n");
-            return;
-        }
-        for line in lines {
-            out.push_str(&format!("- {}\n", Self::lab_markdown_escape(line)));
-        }
-        out.push('\n');
-    }
-
-    fn lab_markdown_escape(value: &str) -> String {
-        value.replace('\n', " ").replace('\r', " ")
     }
 
     pub(crate) fn reverse_complement(seq: &str) -> String {

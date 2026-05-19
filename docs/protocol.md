@@ -2086,7 +2086,7 @@ Current draft operations:
 - `ExportRnaLadders { path, name_filter? }`
 - `ExportPool { inputs, path, pool_id?, human_id? }`
 - `ExportProcessRunBundle { path, run_id? }`
-- `ExportLabAssistantInstructions { path, run_id?, title?, audience? }`
+- `ExportLabAssistantInstructions { path, run_id?, title?, audience?, format? }`
 - `Digest { input, enzymes, output_prefix? }`
 - `Ligation { inputs, circularize_if_possible, protocol, output_id?, output_prefix?, unique? }`
 - `MergeContainers { inputs, output_prefix? }`
@@ -4946,22 +4946,32 @@ Feature-distance geometry controls (candidate generation and distance scoring):
 
 `ExportLabAssistantInstructions` semantics:
 
-- Exports a deterministic Markdown bench handoff
-  (`gentle.lab_assistant_instructions.v1`) for non-IT lab assistants from the
+- Exports a deterministic bench handoff
+  (`gentle.lab_assistant_instructions.v2`) for non-IT lab assistants from the
   current operation journal and sequence/container state.
+- Supported output formats are `markdown`, `odt`, and `docx`. When `format` is
+  omitted, GENtle infers the format from `path`; unknown extensions fall back to
+  `markdown`.
+- `odt` and `docx` reports automatically embed a generated lineage overview
+  graphic when SVG-to-PNG rasterization succeeds. If rasterization fails, the
+  report is still written and `warning_lines[]` records the reason.
 - Inputs:
-  - `path` (required): output Markdown file
+  - `path` (required): output report path
   - `run_id` (optional): when set, only operation-log rows for that `run_id`
     are summarized; when omitted, all operation-log rows are summarized
   - `title` (optional): heading for the handoff; otherwise inferred from the
     first recognized cloning operation or falls back to "GENtle cloning handoff"
   - `audience` (optional): human-facing audience label, defaulting to
     "Lab assistant"
+  - `format` (optional): one of `markdown`, `odt`, or `docx`
 - Returned `OpResult.lab_assistant_instructions` payload:
+  - `output_format`: realized output format
   - `material_rows[]`: sequence, container, and arrangement IDs with display
     names, source role, length/topology where applicable, members, and notes
   - `step_sections[]`: "Before starting", "Design-derived bench sequence",
     and "After the bench work" sections
+  - `embedded_visuals[]`: graphical overview rows embedded in editable document
+    formats, including visual id, label, format, source, and pixel dimensions
   - `checkpoint_lines[]`, `safety_lines[]`, and `record_keeping_lines[]`
   - `warning_lines[]` when no recorded operations or no cloning-specific
     operations were available

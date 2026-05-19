@@ -17534,12 +17534,14 @@ impl GentleEngine {
                     run_id,
                     title,
                     audience,
+                    format,
                 } => {
                     let export = self.export_lab_assistant_instructions_file(
                         &path,
                         run_id.as_deref(),
                         title.as_deref(),
                         audience.as_deref(),
+                        format,
                     )?;
                     let run_scope = export
                         .run_id_filter
@@ -17548,10 +17550,12 @@ impl GentleEngine {
                         .filter(|value| !value.is_empty())
                         .unwrap_or("all");
                     result.messages.push(format!(
-                        "Wrote lab assistant instructions '{}' with {} material row(s) and {} instruction section(s) (run_id={}) to '{}'",
+                        "Wrote lab assistant instructions '{}' as {} with {} material row(s), {} instruction section(s), and {} embedded visual(s) (run_id={}) to '{}'",
                         export.schema,
+                        export.output_format.as_str(),
                         export.material_rows.len(),
                         export.step_sections.len(),
+                        export.embedded_visuals.len(),
                         run_scope,
                         path
                     ));

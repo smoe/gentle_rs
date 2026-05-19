@@ -127,9 +127,9 @@ use crate::{
         DisplaySettings, DisplayTarget, Engine, EngineError, ErrorCode, FeatureExpertTarget,
         GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackImportProgress, GenomeTrackSource,
         GenomeTrackSubscription, GenomeTrackSyncReport, GentleEngine, HostProfileRecord,
-        JasparCatalogReport, JasparEntryExpertView, LineageMacroPortBinding,
-        LinearSequenceLetterLayoutMode, MacroTemplateSuggestion, OpResult, Operation,
-        OperationProgress, PlanningEstimate, PlanningObjective, PlanningProfile,
+        JasparCatalogReport, JasparEntryExpertView, LabAssistantInstructionsFormat,
+        LineageMacroPortBinding, LinearSequenceLetterLayoutMode, MacroTemplateSuggestion, OpResult,
+        Operation, OperationProgress, PlanningEstimate, PlanningObjective, PlanningProfile,
         PlanningProfileScope, PlanningSuggestionStatus, ProjectState, ProteaseDigestReport,
         ProteinToDnaHandoffRankingGoal, ROUTINE_DECISION_TRACE_SCHEMA,
         ROUTINE_DECISION_TRACE_STORE_SCHEMA, ROUTINE_DECISION_TRACES_METADATA_KEY, Rack,
@@ -249,6 +249,7 @@ const BACKGROUND_JOB_HISTORY_METADATA_KEY: &str = "gui.background_job_history";
 const BACKGROUND_JOB_HISTORY_SCHEMA: &str = "gentle.gui_background_job_history.v1";
 const DEFAULT_LINEAGE_MAIN_SPLIT_FRACTION: f32 = 420.0 / (420.0 + 220.0);
 const DEFAULT_LINEAGE_CONTAINER_ARRANGEMENT_SPLIT_FRACTION: f32 = 0.58;
+const LAB_ASSISTANT_REPORT_EXTENSIONS: &[&str] = &["odt", "docx", "md"];
 const DEFAULT_CLONING_PATTERN_CATALOG_DIR: &str = "assets/cloning_patterns_catalog";
 const DEFAULT_CLONING_PATTERN_PACK_PATH: &str = "assets/cloning_patterns.json";
 const DEFAULT_CLONING_ROUTINE_CATALOG_PATH: &str = "assets/cloning_routines.json";
@@ -2148,6 +2149,7 @@ enum CommandPaletteAction {
     OpenReviewerPreviewManual,
     OpenShellManual,
     ExportLineageSvg,
+    ExportLabAssistantReport,
     ToggleJobsPanel,
     ToggleHistoryPanel,
     Undo,
@@ -4926,6 +4928,13 @@ Error: `{err}`"
                 action: CommandPaletteAction::ExportLineageSvg,
             },
             CommandPaletteEntry {
+                title: "Export Lab Assistant Report".to_string(),
+                detail: "Export bench-facing cloning handoff as ODT, DOCX, or Markdown"
+                    .to_string(),
+                keywords: "export lab assistant report handoff odt docx markdown".to_string(),
+                action: CommandPaletteAction::ExportLabAssistantReport,
+            },
+            CommandPaletteEntry {
                 title: "Toggle Background Jobs Panel".to_string(),
                 detail: "Show or hide centralized jobs panel".to_string(),
                 keywords: "jobs progress background".to_string(),
@@ -5000,6 +5009,9 @@ Error: `{err}`"
             }
             CommandPaletteAction::OpenShellManual => self.open_help_doc(HelpDoc::Shell),
             CommandPaletteAction::ExportLineageSvg => self.prompt_export_lineage_svg(),
+            CommandPaletteAction::ExportLabAssistantReport => {
+                self.prompt_export_lab_assistant_report()
+            }
             CommandPaletteAction::ToggleJobsPanel => {
                 self.toggle_background_jobs_panel();
             }
@@ -7034,6 +7046,51 @@ Error: `{err}`"
         match self.export_visible_lineage_svg_to_path(&path) {
             Ok(status) => self.app_status = status,
             Err(err) => self.app_status = err,
+        }
+    }
+
+    fn prompt_export_lab_assistant_report(&mut self) {
+        let Some(mut path) = rfd::FileDialog::new()
+            .set_file_name(&self.default_lab_assistant_report_file_name())
+            .add_filter("Lab assistant report", LAB_ASSISTANT_REPORT_EXTENSIONS)
+            .add_filter("OpenDocument Text", &["odt"])
+            .add_filter("Word document", &["docx"])
+            .add_filter("Markdown", &["md"])
+            .save_file()
+        else {
+            self.app_status = "Lab assistant report export canceled".to_string();
+            return;
+        };
+        if path.extension().and_then(|value| value.to_str()).is_none() {
+            path.set_extension(LabAssistantInstructionsFormat::Odt.extension());
+        }
+        let path_text = path.display().to_string();
+        let result =
+            self.engine
+                .write()
+                .unwrap()
+                .apply(Operation::ExportLabAssistantInstructions {
+                    path: path_text.clone(),
+                    run_id: None,
+                    title: None,
+                    audience: Some("Lab assistant".to_string()),
+                    format: None,
+                });
+        match result {
+            Ok(result) => {
+                self.app_status = Self::format_op_result_status(
+                    &format!("Export lab assistant report to '{}': ok", path_text),
+                    &result.created_seq_ids,
+                    &result.warnings,
+                    &result.messages,
+                );
+            }
+            Err(err) => {
+                self.app_status = format!(
+                    "Export lab assistant report to '{}' failed: {}",
+                    path_text, err
+                );
+            }
         }
     }
 
@@ -14469,6 +14526,13 @@ Error: `{err}`"
         format!("{}.lineage.svg", self.current_project_file_stem())
     }
 
+    fn default_lab_assistant_report_file_name(&self) -> String {
+        format!(
+            "{}.lab_assistant_report.odt",
+            self.current_project_file_stem()
+        )
+    }
+
     fn load_lineage_graph_workspace_from_state(&mut self) {
         let (workspace_serialized, legacy_offsets_serialized, legacy_groups_serialized) = {
             let engine = self.engine.read().unwrap();
@@ -15089,6 +15153,14 @@ Error: `{err}`"
                     .clicked()
                 {
                     self.prompt_export_lineage_svg();
+                    ui.close();
+                }
+                if ui
+                    .button("Export Lab Assistant Report...")
+                    .on_hover_text("Export a bench-facing report with lineage graphics as ODT, DOCX, or Markdown")
+                    .clicked()
+                {
+                    self.prompt_export_lab_assistant_report();
                     ui.close();
                 }
                 ui.separator();
@@ -22873,6 +22945,24 @@ Error: `{err}`"
                 pool_id.clone().unwrap_or_else(|| "-".to_string()),
                 human_id.clone().unwrap_or_else(|| "-".to_string())
             ),
+            Operation::ExportLabAssistantInstructions {
+                path,
+                run_id,
+                title,
+                audience,
+                format,
+            } => format!(
+                "Export lab assistant report: path={}, run_id={}, title={}, audience={}, format={}",
+                path,
+                run_id.as_deref().unwrap_or("all"),
+                title.as_deref().unwrap_or("-"),
+                audience.as_deref().unwrap_or("-"),
+                format
+                    .as_ref()
+                    .copied()
+                    .map(LabAssistantInstructionsFormat::as_str)
+                    .unwrap_or("infer")
+            ),
             Operation::PrepareGenome {
                 genome_id,
                 catalog_path,
@@ -27972,6 +28062,18 @@ mod tests {
     }
 
     #[test]
+    fn command_palette_includes_lab_assistant_report_export() {
+        let app = GENtleApp::default();
+        let entries = app.collect_command_palette_entries();
+        assert!(
+            entries
+                .iter()
+                .any(|entry| entry.title == "Export Lab Assistant Report"
+                    && matches!(entry.action, CommandPaletteAction::ExportLabAssistantReport))
+        );
+    }
+
+    #[test]
     fn command_palette_includes_external_services_entry() {
         let app = GENtleApp::default();
         let entries = app.collect_command_palette_entries();
@@ -30200,6 +30302,10 @@ mod tests {
 
         assert_eq!(app.default_project_save_file_name(), "demo.gentle.json");
         assert_eq!(app.default_lineage_svg_file_name(), "demo.lineage.svg");
+        assert_eq!(
+            app.default_lab_assistant_report_file_name(),
+            "demo.lab_assistant_report.odt"
+        );
     }
 
     #[test]

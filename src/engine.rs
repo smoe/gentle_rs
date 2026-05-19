@@ -348,8 +348,7 @@ pub const PLANNING_OBJECTIVE_SCHEMA: &str = "gentle.planning_objective.v1";
 pub const PLANNING_ESTIMATE_SCHEMA: &str = "gentle.planning_estimate.v1";
 pub const PLANNING_SUGGESTION_SCHEMA: &str = "gentle.planning_suggestion.v1";
 pub const PLANNING_SYNC_STATUS_SCHEMA: &str = "gentle.planning_sync_status.v1";
-pub const PLANNING_CLONING_CONSULTATION_SCHEMA: &str =
-    "gentle.planning_cloning_consultation.v1";
+pub const PLANNING_CLONING_CONSULTATION_SCHEMA: &str = "gentle.planning_cloning_consultation.v1";
 const PLANNING_STORE_SCHEMA: &str = "gentle.planning_store.v1";
 pub const CONSTRUCT_REASONING_METADATA_KEY: &str = "construct_reasoning";
 pub const CONSTRUCT_OBJECTIVE_SCHEMA: &str = gentle_protocol::CONSTRUCT_OBJECTIVE_SCHEMA;
@@ -418,7 +417,7 @@ pub const UNIPROT_ENSEMBL_EXON_COMPARE_SCHEMA: &str = "gentle.uniprot_ensembl_ex
 pub const UNIPROT_ENSEMBL_PEPTIDE_COMPARE_SCHEMA: &str =
     "gentle.uniprot_ensembl_peptide_compare.v1";
 const PROCESS_RUN_BUNDLE_SCHEMA: &str = "gentle.process_run_bundle.v1";
-const LAB_ASSISTANT_INSTRUCTIONS_SCHEMA: &str = "gentle.lab_assistant_instructions.v1";
+const LAB_ASSISTANT_INSTRUCTIONS_SCHEMA: &str = "gentle.lab_assistant_instructions.v2";
 pub const ROUTINE_DECISION_TRACES_METADATA_KEY: &str = "routine_decision_traces";
 pub const ROUTINE_DECISION_TRACE_SCHEMA: &str = "gentle.routine_decision_trace.v1";
 pub const ROUTINE_DECISION_TRACE_STORE_SCHEMA: &str = "gentle.routine_decision_trace_store.v1";
@@ -642,6 +641,8 @@ mod genome_tracks;
 mod import_anchors;
 #[path = "engine/analysis/jaspar.rs"]
 mod jaspar;
+#[path = "engine/state/lab_assistant_export.rs"]
+mod lab_assistant_export;
 #[path = "engine/state/lineage_containers.rs"]
 mod lineage_containers;
 #[path = "engine/io/microarray_tracks.rs"]
@@ -670,6 +671,8 @@ mod sequencing_confirmation;
 mod sequencing_traces;
 #[path = "engine/analysis/variant_promoter.rs"]
 mod variant_promoter;
+#[path = "engine/io/zip_store.rs"]
+mod zip_store;
 
 #[path = "engine/protocol.rs"]
 pub mod protocol;
@@ -2809,6 +2812,8 @@ pub enum Operation {
         title: Option<String>,
         #[serde(default)]
         audience: Option<String>,
+        #[serde(default)]
+        format: Option<LabAssistantInstructionsFormat>,
     },
     PrepareGenome {
         genome_id: String,
