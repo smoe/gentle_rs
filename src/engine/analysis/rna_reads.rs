@@ -1542,6 +1542,7 @@ impl GentleEngine {
         width: f32,
         height: f32,
         title: &str,
+        x_axis_label: &str,
         counts: &[u64],
         color: &str,
     ) {
@@ -1556,6 +1557,17 @@ impl GentleEngine {
             out,
             "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" fill=\"#ffffff\" stroke=\"#cbd5e1\" stroke-width=\"1\" />",
             x, y, width, height
+        );
+        Self::render_rna_read_target_quality_panel_axes_svg(
+            out,
+            x,
+            y,
+            width,
+            height,
+            x_axis_label,
+            "relative read count",
+            "max",
+            "0",
         );
         if counts.is_empty() {
             return;
@@ -1605,6 +1617,17 @@ impl GentleEngine {
             "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" fill=\"#ffffff\" stroke=\"#cbd5e1\" stroke-width=\"1\" />",
             x, y, width, height
         );
+        Self::render_rna_read_target_quality_panel_axes_svg(
+            out,
+            x,
+            y,
+            width,
+            height,
+            "read length bins (bp)",
+            "target-positive share",
+            "100%",
+            "0%",
+        );
         if total_counts.is_empty() {
             return;
         }
@@ -1637,6 +1660,71 @@ impl GentleEngine {
         }
     }
 
+    fn render_rna_read_target_quality_panel_axes_svg(
+        out: &mut String,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        x_axis_label: &str,
+        y_axis_label: &str,
+        y_top_label: &str,
+        y_bottom_label: &str,
+    ) {
+        let axis_color = "#64748b";
+        let label_color = "#475569";
+        let _ = write!(
+            out,
+            "<line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"{}\" stroke-width=\"0.8\" />",
+            x + 0.5,
+            y + height - 1.5,
+            x + width - 0.5,
+            y + height - 1.5,
+            axis_color
+        );
+        let _ = write!(
+            out,
+            "<line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"{}\" stroke-width=\"0.8\" />",
+            x + 0.5,
+            y + 0.5,
+            x + 0.5,
+            y + height - 1.5,
+            axis_color
+        );
+        let _ = write!(
+            out,
+            "<text x=\"{:.1}\" y=\"{:.1}\" font-size=\"8\" font-family=\"Helvetica,Arial,sans-serif\" fill=\"{}\">{}</text>",
+            x + 4.0,
+            y + 10.0,
+            label_color,
+            Self::svg_escape_text(y_top_label)
+        );
+        let _ = write!(
+            out,
+            "<text x=\"{:.1}\" y=\"{:.1}\" font-size=\"8\" font-family=\"Helvetica,Arial,sans-serif\" fill=\"{}\">{}</text>",
+            x + 4.0,
+            y + height - 4.0,
+            label_color,
+            Self::svg_escape_text(y_bottom_label)
+        );
+        let _ = write!(
+            out,
+            "<text x=\"{:.1}\" y=\"{:.1}\" font-size=\"8\" font-family=\"Helvetica,Arial,sans-serif\" fill=\"{}\">y-axis: {}</text>",
+            x + 28.0,
+            y + 10.0,
+            label_color,
+            Self::svg_escape_text(y_axis_label)
+        );
+        let _ = write!(
+            out,
+            "<text x=\"{:.1}\" y=\"{:.1}\" font-size=\"9\" font-family=\"Helvetica,Arial,sans-serif\" fill=\"{}\">x-axis: {}</text>",
+            x + 4.0,
+            y + height + 13.0,
+            label_color,
+            Self::svg_escape_text(x_axis_label)
+        );
+    }
+
     fn render_rna_read_target_quality_comparison_svg_text(
         bundle: &RnaReadTargetQualityComparisonBundle,
     ) -> String {
@@ -1644,7 +1732,7 @@ impl GentleEngine {
         let margin = 18.0f32;
         let panel_w = 180.0f32;
         let panel_h = 82.0f32;
-        let entry_h = 164.0f32;
+        let entry_h = 184.0f32;
         let total_w = margin * 2.0 + panel_w * 4.0 + 16.0 * 3.0;
         let total_h = margin * 2.0 + entry_h * entry_count as f32;
         let mut svg = String::new();
@@ -1725,6 +1813,7 @@ impl GentleEngine {
                 panel_w,
                 panel_h,
                 "All read lengths",
+                "read length bins (bp)",
                 &entry.all_read_lengths.length_counts,
                 "#94a3b8",
             );
@@ -1746,6 +1835,7 @@ impl GentleEngine {
                 panel_w,
                 panel_h,
                 "Target fragment lengths",
+                "target fragment length bins (bp)",
                 &entry.summary.accepted_target_fragment_lengths.length_counts,
                 "#0d9488",
             );
@@ -1756,6 +1846,7 @@ impl GentleEngine {
                 panel_w,
                 panel_h,
                 "Target/read coverage %",
+                "target/read coverage (%)",
                 &Self::rebin_counts(&entry.summary.accepted_target_query_coverage.bin_counts, 24),
                 "#0284c7",
             );

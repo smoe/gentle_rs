@@ -1934,6 +1934,12 @@ Placement payload:
 Current draft operations:
 
 - `LoadFile { path, as_id? }`
+- `CreateSequenceFromText { sequence_text, output_id?, name?, circular=false }`
+  - creates a persistent synthetic project sequence from inline sequence text
+  - whitespace is ignored and bases are stored upper-case
+  - records ordinary lineage/container state so GUI, GUI Shell, Agent
+    Assistant, CLI `op`, workflow, and MCP `op` callers can use the same
+    created sequence id afterward
 - `SaveFile { seq_id, path, format }`
 - `RenderSequenceSvg { seq_id, mode, path }`
   - linear exports honor the current stored linear viewport in `display`
@@ -2734,6 +2740,11 @@ external coding agent runtime, see:
   - `ensembl-region fetch SPECIES CHR START END [--strand +|-] [--output-id ID] [--coord-system-version VERSION]`
   - equivalent compact form:
     `ensembl-region fetch SPECIES CHR:START..END[:STRAND] [--output-id ID]`
+- shared-shell inline sequence creation route:
+  - `sequence create --sequence-text DNA [--output-id ID] [--name TEXT] [--topology linear|circular]`
+  - this is the mutating companion to read-only inline scans such as
+    `features restriction-scan --sequence-text ...`; it creates a reusable
+    project sequence before later commands operate on the same sequence id
 - shared feature-expert route now also accepts transcript-first protein
   comparison with optional stored external evidence plus persisted UniProt
   projections as direct targets:
@@ -3582,6 +3593,48 @@ Agent response payload schema (`gentle.agent_response.v1`):
   ]
 }
 ```
+
+Agent command-scope declaration:
+
+- The in-app Agent Assistant currently accepts only GENtle shared-shell
+  commands that correspond to GENtle GUI/shared-engine capabilities.
+- Local slash aliases are a small GENtle-owned compatibility layer, described
+  by `gentle_protocol::shell_alias_registry()`. They are not operating-system
+  shell commands and are not an OpenClaw gateway.
+- Accepted read-only aliases:
+  - `/help [TOPIC]`
+  - `/list`
+- Accepted GUI/file aliases:
+  - `/open` and `/import` request the GUI sequence-file picker. In headless
+    shell execution they return a structured UI-intent payload explaining that
+    a GUI host is required.
+  - `/open file PATH [--id ID]` and `/import file PATH [--id ID]` load an exact
+    user-provided sequence file through `LoadFile`.
+- Accepted explicit sequence/fetch aliases:
+  - `/paste sequence --sequence-text DNA [--id ID]`
+  - `/fetch genbank ACCESSION [--id ID]`
+  - `/fetch ncbi ACCESSION [--id ID]` (synonym for GenBank accession fetch)
+  - `/fetch uniprot QUERY [--id ID]`
+  - `/fetch ensembl QUERY [--species NAME] [--id ID]`
+  - `/fetch ensembl-gene QUERY [--species NAME] [--id ID]`
+  - `/fetch ensembl-protein QUERY [--id ID]`
+  - `/fetch ensembl-region SPECIES CHR START END [--strand +|-] [--id ID]`
+  - `/fetch dbsnp RS_ID GENOME_ID [--id ID]`
+- External fetch aliases are tagged as `CapabilityMutation::External` and
+  should require explicit confirmation/network opt-in on agent surfaces.
+- Unknown slash commands return a typed
+  `gentle.shell_alias_rejection.v1` diagnostic with
+  `supported_alternatives[]`.
+- Slash commands such as `/grep`, `/find`, `/ls`, `/new`, and `/example` are
+  intentionally rejected unless GENtle explicitly implements them later.
+- OpenClaw-like filesystem, operating-system, and gateway commands are not part
+  of this contract yet, though a future gateway layer may add them.
+- When local file discovery is needed and the exact path is unknown, the agent
+  should ask the user to locate the file by regular operating-system means
+  rather than suggesting invented commands such as `fs.find` or
+  `gentle.load_sequence`.
+- On macOS, it is appropriate to suggest Finder search or Spotlight for that
+  outside-GENtle discovery step.
 
 Agent execution intent semantics:
 

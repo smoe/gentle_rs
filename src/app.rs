@@ -110,9 +110,9 @@ use crate::{
         AGENT_TIMEOUT_SECS_ENV, ANTHROPIC_API_KEY_AUTH_HINT, ANTHROPIC_API_KEY_ENV,
         AgentExecutionIntent, AgentInvocationOutcome, AgentResponse, AgentSystemSpec,
         AgentSystemTransport, DEFAULT_AGENT_SYSTEM_CATALOG_PATH, MISTRAL_API_KEY_AUTH_HINT,
-        MISTRAL_API_KEY_ENV, OPENAI_API_KEY_ENV, OPENAI_COMPAT_UNSPECIFIED_MODEL,
-        agent_system_availability, invoke_agent_support_with_env_overrides,
-        load_agent_system_catalog,
+        MISTRAL_API_KEY_ENV, OPENAI_API_KEY_ENV, OPENAI_BILLING_URL,
+        OPENAI_COMPAT_UNSPECIFIED_MODEL, OPENAI_USAGE_URL, agent_system_availability,
+        invoke_agent_support_with_env_overrides, load_agent_system_catalog,
     },
     agent_transport::{
         AgentLiveProbeStatusClass, AgentSystemPreflight, build_agent_system_preflight_with_live,
@@ -21075,7 +21075,7 @@ Error: `{err}`"
                     });
             }
             if !self.agent_status.trim().is_empty() {
-                ui.small(self.agent_status.clone());
+                self.render_agent_status_message(ui, &self.agent_status, false);
             }
 
             ui.separator();
@@ -22089,6 +22089,17 @@ Error: `{err}`"
                 Some(id) => format!("Load file: path={path}, as_id={id}"),
                 None => format!("Load file: path={path}"),
             },
+            Operation::CreateSequenceFromText {
+                output_id,
+                name,
+                circular,
+                ..
+            } => format!(
+                "Create inline {} sequence: output_id={}, name={}",
+                if *circular { "circular" } else { "linear" },
+                output_id.clone().unwrap_or_else(|| "-".to_string()),
+                name.clone().unwrap_or_else(|| "-".to_string())
+            ),
             Operation::DigestContainer {
                 container_id,
                 enzymes,

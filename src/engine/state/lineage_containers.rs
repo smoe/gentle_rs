@@ -3414,6 +3414,7 @@ impl GentleEngine {
         };
         let name = match op {
             Operation::LoadFile { .. } => Some("Imported sequence".to_string()),
+            Operation::CreateSequenceFromText { .. } => Some("Inline sequence".to_string()),
             Operation::ImportUniprotEntrySequence { .. } => {
                 Some("Imported UniProt sequence".to_string())
             }

@@ -2528,6 +2528,14 @@ pub enum Operation {
         path: String,
         as_id: Option<SeqId>,
     },
+    CreateSequenceFromText {
+        sequence_text: String,
+        output_id: Option<SeqId>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        #[serde(default)]
+        circular: bool,
+    },
     SaveFile {
         seq_id: SeqId,
         path: String,

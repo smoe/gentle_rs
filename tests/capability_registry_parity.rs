@@ -1,7 +1,7 @@
 use gentle::{app::gui_prominent_glossary_entries, engine::GentleEngine};
 use gentle_protocol::{
-    AdapterSurfacing, CapabilityAdapter, CapabilityDescriptor, CapabilitySource,
-    capability_parity_adapters, capability_registry,
+    AdapterSurfacing, CapabilityAdapter, CapabilityDescriptor, CapabilityMutation,
+    CapabilitySource, capability_parity_adapters, capability_registry, shell_alias_registry,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -716,4 +716,126 @@ fn cli_capabilities_reads_protocol_registry() {
             .len(),
         capability_registry().len()
     );
+}
+
+#[test]
+fn shell_alias_registry_resolves_to_known_capabilities_and_parity_policy() {
+    let registry = capability_registry();
+    let known_names = registry
+        .iter()
+        .map(|descriptor| descriptor.name.as_str())
+        .collect::<BTreeSet<_>>();
+    let known_operations = registry
+        .iter()
+        .flat_map(|descriptor| descriptor.engine_operations.iter().map(String::as_str))
+        .collect::<BTreeSet<_>>();
+    let aliases = shell_alias_registry();
+    assert!(
+        aliases.iter().any(|alias| alias.alias == "/fetch ensembl"),
+        "alias registry should include agent-natural Ensembl fetch alias"
+    );
+    for alias in aliases {
+        assert!(
+            !alias.surface_form.trim().is_empty(),
+            "alias `{}` needs a surface form",
+            alias.alias
+        );
+        assert!(
+            !alias.canonical_command.trim().is_empty(),
+            "alias `{}` needs a canonical command",
+            alias.alias
+        );
+        assert_eq!(
+            alias.surfacing_for_adapter(CapabilityAdapter::Gui),
+            AdapterSurfacing::Prominent,
+            "alias `{}` should be prominent in the Agent Assistant GUI surface",
+            alias.alias
+        );
+        assert_eq!(
+            alias.surfacing_for_adapter(CapabilityAdapter::Cli),
+            AdapterSurfacing::ShellPassthrough,
+            "alias `{}` should remain shell-pass-through on CLI",
+            alias.alias
+        );
+        assert_eq!(
+            alias.surfacing_for_adapter(CapabilityAdapter::Mcp),
+            AdapterSurfacing::ShellPassthrough,
+            "alias `{}` should remain shell-pass-through on MCP",
+            alias.alias
+        );
+        for adapter in [
+            CapabilityAdapter::Js,
+            CapabilityAdapter::Lua,
+            CapabilityAdapter::Clawbio,
+        ] {
+            assert_eq!(
+                alias.surfacing_for_adapter(adapter),
+                AdapterSurfacing::NotApplicable,
+                "alias `{}` should not be projected onto {:?}",
+                alias.alias,
+                adapter
+            );
+        }
+        for capability in &alias.capability_names {
+            assert!(
+                known_names.contains(capability.as_str()),
+                "alias `{}` references unknown capability `{}`",
+                alias.alias,
+                capability
+            );
+        }
+        for operation in &alias.engine_operations {
+            assert!(
+                known_operations.contains(operation.as_str()),
+                "alias `{}` references unknown engine operation `{}`",
+                alias.alias,
+                operation
+            );
+        }
+    }
+}
+
+#[test]
+fn shell_alias_registry_mutation_tags_match_contract() {
+    let mutation_by_alias = shell_alias_registry()
+        .iter()
+        .map(|alias| (alias.alias.as_str(), alias.mutating))
+        .collect::<BTreeMap<_, _>>();
+    assert_eq!(
+        mutation_by_alias.get("/help"),
+        Some(&CapabilityMutation::ReadOnly)
+    );
+    assert_eq!(
+        mutation_by_alias.get("/list"),
+        Some(&CapabilityMutation::ReadOnly)
+    );
+    for alias in [
+        "/open",
+        "/import",
+        "/open file",
+        "/import file",
+        "/paste sequence",
+    ] {
+        assert_eq!(
+            mutation_by_alias.get(alias),
+            Some(&CapabilityMutation::Mutating),
+            "`{alias}` should require mutating confirmation policy"
+        );
+    }
+    for alias in [
+        "/fetch genbank",
+        "/fetch ncbi",
+        "/fetch uniprot",
+        "/fetch ensembl",
+        "/fetch ensembl-gene",
+        "/fetch ensembl-protein",
+        "/fetch ensembl-region",
+        "/fetch dbsnp",
+    ] {
+        assert_eq!(
+            mutation_by_alias.get(alias),
+            Some(&CapabilityMutation::External),
+            "`{alias}` should require explicit external/network policy"
+        );
+    }
 }

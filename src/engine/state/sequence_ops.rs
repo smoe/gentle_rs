@@ -1106,6 +1106,11 @@ impl GentleEngine {
             Operation::LoadFile { path, .. } => {
                 Self::push_unique_token(&mut summary.file_paths, path);
             }
+            Operation::CreateSequenceFromText { output_id, .. } => {
+                if let Some(output_id) = output_id {
+                    Self::push_unique_token(&mut summary.sequence_ids, output_id);
+                }
+            }
             Operation::SaveFile { seq_id, .. }
             | Operation::RenderSequenceSvg { seq_id, .. }
             | Operation::ExportSequenceContextBundle { seq_id, .. }
@@ -2585,6 +2590,22 @@ impl GentleEngine {
             Operation::LoadFile { path, as_id } => vec![format!(
                 "Use design input `{}` from `{path}`.",
                 as_id.as_deref().unwrap_or("derived sequence ID")
+            )],
+            Operation::CreateSequenceFromText {
+                output_id,
+                name,
+                circular,
+                ..
+            } => vec![format!(
+                "Use inline {} sequence `{}`{} as a project input.",
+                if *circular { "circular" } else { "linear" },
+                output_id
+                    .as_deref()
+                    .or(name.as_deref())
+                    .unwrap_or("derived sequence ID"),
+                name.as_deref()
+                    .map(|value| format!(" ({value})"))
+                    .unwrap_or_default()
             )],
             Operation::Digest {
                 input,

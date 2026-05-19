@@ -578,6 +578,14 @@ Agent-assistant capability status:
 - `gentle_cli`: supported via shared-shell command family (`agents list`,
   `agents ask`, `agents plan`, `agents execute-plan`) and direct forwarding
   (`gentle_cli agents ...`)
+- GENtle-local slash aliases are available through the shared shell parser for
+  agent convenience, not as OpenClaw/OS commands. They include `/help`, `/list`,
+  GUI file-picker intents (`/open`, `/import`), exact file import
+  (`/open file PATH [--id ID]`, `/import file PATH [--id ID]`), pasted
+  sequence creation (`/paste sequence --sequence-text DNA [--id ID]`), and
+  explicit external fetch aliases (`/fetch genbank|ncbi|uniprot|ensembl*|dbsnp
+  ...`). Unknown slash commands return a typed
+  `gentle.shell_alias_rejection.v1` diagnostic with supported alternatives.
 - `gentle_js`: supported via helper wrappers (`list_agent_systems`,
   `ask_agent_system`, `plan_agent_system`, `execute_agent_plan`) over shared
   shell execution
@@ -1933,6 +1941,10 @@ Shared shell command:
     - `containers set-exclusive CONTAINER_ID true|false`
     - `load-project PATH`
     - `save-project PATH`
+    - `sequence create --sequence-text DNA [--output-id ID] [--name TEXT] [--topology linear|circular]`
+      - creates a persistent project sequence from inline bases so an
+        Agent Assistant or external agent can promote a paper/vendor/database
+        sequence into the same state used by GUI, GUI Shell, and later commands
     - `render-svg SEQ_ID linear|circular OUTPUT.svg`
     - `render-dotplot-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp|shared_exon_anchor] [--overlay-anchor-exon START..END]`
     - `dotplot render-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp|shared_exon_anchor] [--overlay-anchor-exon START..END]`
@@ -4371,6 +4383,12 @@ Load a file:
 
 ```json
 {"LoadFile":{"path":"test_files/pGEX-3X.gb","as_id":"pgex"}}
+```
+
+Create a persistent project sequence from inline bases:
+
+```json
+{"CreateSequenceFromText":{"sequence_text":"ATGGAATTCGGGCCCTAA","output_id":"paper_candidate","name":"Candidate from publication","circular":false}}
 ```
 
 Digest:

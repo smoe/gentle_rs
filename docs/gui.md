@@ -2526,10 +2526,30 @@ Behavior:
 - optional `Include state summary` injects current project summary context
 - optional `Allow auto execute` only applies to suggestions marked with `auto`
 - `Ask Agent` runs in background and reports status in `Background Jobs`
+- `Ctrl+Return` while the prompt editor is focused is equivalent to clicking
+  `Ask Agent`; plain `Return` still inserts a new line
+- GENtle-local slash aliases are deliberately small and parser-validated:
+  - `/help` shows shared-shell help
+  - `/list` shows the current project state summary
+  - `/open` and `/import` open the same sequence-file picker as
+    `File -> Open Sequence...`
+  - `/open file PATH [--id ID]` and `/import file PATH [--id ID]` import an
+    exact user-provided sequence file and open the resulting sequence window
+  - `/paste sequence --sequence-text DNA [--id ID]` creates a sequence from
+    explicit pasted IUPAC DNA text
+  - `/fetch genbank`, `/fetch ncbi`, `/fetch uniprot`, `/fetch ensembl*`, and
+    `/fetch dbsnp` normalize to existing external fetch routes and should be
+    confirmation-gated
+  - `/grep`, `/find`, `/ls`, `/new`, `/example`, and vague file-discovery
+    requests are rejected rather than treated as ClawBio/OpenClaw commands
 - response panel can include:
   - assistant message text
   - follow-up questions
   - suggested shared-shell commands with per-row `Run` action
+  - invalid or invented suggestions are shown as `Invalid GENtle command` and
+    cannot be run from the row button
+  - `Copy Response JSON` for copying the latest strict agent-response JSON
+    payload to the clipboard
 - execution is always per suggestion (row-run, explicit all, or explicit auto);
   there is no global always-execute mode
 - each executed suggestion is logged with status/output in the same window
@@ -2629,6 +2649,12 @@ Common failure interpretation:
 
 - `AGENT_ADAPTER_UNAVAILABLE ... status=429 ... code=insufficient_quota`
   - connection/auth path works, but OpenAI API project quota is exhausted
+  - the Agent Assistant, Background Jobs, and `Test Setup` live-probe panels
+    show direct links for:
+    - OpenAI usage
+    - OpenAI billing
+  - `Test Setup` treats non-OK live probes as the visible overall status even
+    when the static catalog/key configuration is otherwise available
   - fix billing/quota at:
     - `https://platform.openai.com/usage`
     - `https://platform.openai.com/settings/organization/billing/overview`

@@ -16485,6 +16485,61 @@ impl GentleEngine {
                         .messages
                         .push(format!("Loaded '{path}' as '{seq_id}'"));
                 }
+                Operation::CreateSequenceFromText {
+                    sequence_text,
+                    output_id,
+                    name,
+                    circular,
+                } => {
+                    let normalized = sequence_text
+                        .chars()
+                        .filter(|c| !c.is_whitespace())
+                        .collect::<String>()
+                        .to_ascii_uppercase();
+                    if normalized.is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "CreateSequenceFromText requires non-empty sequence_text"
+                                .to_string(),
+
+                            cause_chain: vec![],
+                        });
+                    }
+                    let requested_output_id = output_id
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty());
+                    let display_name = name
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty());
+                    let base = requested_output_id.unwrap_or("inline_sequence");
+                    let seq_id = self.unique_seq_id(base);
+                    let mut dna = crate::dna_sequence::DNAsequence::from_sequence(&normalized)
+                        .map_err(|e| EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!("Could not create sequence from inline text: {e}"),
+
+                            cause_chain: vec![],
+                        })?;
+                    dna.set_circular(circular);
+                    dna.set_name(display_name.unwrap_or(&seq_id).to_string());
+                    Self::prepare_sequence(&mut dna);
+
+                    self.state.sequences.insert(seq_id.clone(), dna);
+                    self.add_lineage_node(
+                        &seq_id,
+                        SequenceOrigin::ImportedSynthetic,
+                        Some(&result.op_id),
+                    );
+                    result.created_seq_ids.push(seq_id.clone());
+                    result.messages.push(format!(
+                        "Created {} inline sequence '{}' ({} bp)",
+                        if circular { "circular" } else { "linear" },
+                        seq_id,
+                        normalized.len()
+                    ));
+                }
                 Operation::SaveFile {
                     seq_id,
                     path,

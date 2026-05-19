@@ -27024,6 +27024,28 @@ fn test_export_rna_read_target_quality_svg_keeps_existing_nonbundle_file() {
 }
 
 #[test]
+fn test_export_rna_read_target_quality_svg_labels_axes() {
+    let engine = build_rna_read_gene_support_test_engine();
+    let td = tempdir().expect("tempdir");
+    let requested_path = td.path().join("target_quality.svg");
+    let export = engine
+        .export_rna_read_target_quality(
+            "rna_reads_gene_support",
+            requested_path.to_str().expect("utf-8 path"),
+            &["GENE1".to_string()],
+            RnaReadGeneSupportCompleteRule::Near,
+        )
+        .expect("svg export");
+
+    let svg = std::fs::read_to_string(&export.written_path).expect("read target-quality svg");
+    assert!(svg.contains("x-axis: read length bins (bp)"));
+    assert!(svg.contains("y-axis: relative read count"));
+    assert!(svg.contains("y-axis: target-positive share"));
+    assert!(svg.contains("x-axis: target fragment length bins (bp)"));
+    assert!(svg.contains("x-axis: target/read coverage (%)"));
+}
+
+#[test]
 fn test_inspect_rna_read_gene_support_classifies_rows_and_groups_record_indices() {
     let mut engine = build_rna_read_gene_support_test_engine();
     let result = engine

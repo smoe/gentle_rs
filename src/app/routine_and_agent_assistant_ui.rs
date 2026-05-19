@@ -72,6 +72,75 @@ impl GENtleApp {
             .cloned()
     }
 
+    pub(super) fn agent_status_mentions_openai_quota(status: &str) -> bool {
+        let lower = status.to_ascii_lowercase();
+        lower.contains("openai")
+            && (lower.contains("insufficient quota")
+                || lower.contains("insufficient_quota")
+                || lower.contains("quota or billing"))
+            && (status.contains(OPENAI_USAGE_URL) || status.contains(OPENAI_BILLING_URL))
+    }
+
+    pub(super) fn render_openai_quota_links(&self, ui: &mut egui::Ui) {
+        ui.horizontal_wrapped(|ui| {
+            ui.small("OpenAI quota links:");
+            ui.hyperlink_to("Usage", OPENAI_USAGE_URL);
+            ui.hyperlink_to("Billing", OPENAI_BILLING_URL);
+        });
+    }
+
+    pub(super) fn render_agent_status_message(
+        &self,
+        ui: &mut egui::Ui,
+        status: &str,
+        monospace: bool,
+    ) {
+        if monospace {
+            ui.monospace(status.to_string());
+        } else {
+            ui.small(status.to_string());
+        }
+        if Self::agent_status_mentions_openai_quota(status) {
+            self.render_openai_quota_links(ui);
+        }
+    }
+
+    pub(super) fn agent_response_clipboard_payload(invocation: &AgentInvocationOutcome) -> String {
+        let raw = invocation.raw_stdout.trim();
+        if !raw.is_empty() {
+            return raw.to_string();
+        }
+        serde_json::to_string_pretty(&invocation.response)
+            .unwrap_or_else(|_| invocation.response.assistant_message.clone())
+    }
+
+    pub(super) fn agent_preflight_summary_status(preflight: &AgentSystemPreflight) -> &'static str {
+        if !preflight.available {
+            return "unavailable";
+        }
+        match preflight
+            .live_probe
+            .as_ref()
+            .map(|probe| probe.status_class)
+        {
+            None | Some(AgentLiveProbeStatusClass::Ok) => "ok",
+            Some(AgentLiveProbeStatusClass::ProviderError)
+            | Some(AgentLiveProbeStatusClass::UnsupportedTransport) => "live_warning",
+            Some(_) => "live_failed",
+        }
+    }
+
+    pub(super) fn agent_preflight_overall_label(
+        preflight: &AgentSystemPreflight,
+    ) -> (&'static str, egui::Color32) {
+        match Self::agent_preflight_summary_status(preflight) {
+            "ok" => ("Ready", egui::Color32::from_rgb(60, 140, 80)),
+            "live_warning" => ("Live test warning", egui::Color32::from_rgb(180, 120, 50)),
+            "live_failed" => ("Live test failed", egui::Color32::from_rgb(190, 70, 70)),
+            _ => ("Unavailable", egui::Color32::from_rgb(190, 70, 70)),
+        }
+    }
+
     pub(super) fn clear_agent_preflight_output(&mut self) {
         self.agent_preflight_output = None;
     }
@@ -663,19 +732,15 @@ impl GENtleApp {
             live_probe,
         ) {
             Ok(preflight) => {
-                let availability = if preflight.available {
-                    "available"
-                } else {
-                    "unavailable"
-                };
+                let status = Self::agent_preflight_summary_status(&preflight);
                 let live_status = preflight
                     .live_probe
                     .as_ref()
                     .map(|probe| format!(", live={}", probe.status_class.as_str()))
                     .unwrap_or_default();
                 self.agent_status = format!(
-                    "Agent setup preflight: {} ({}{})",
-                    selected_system.id, availability, live_status
+                    "Agent setup preflight: {} (status={}, transport={}{})",
+                    selected_system.id, status, preflight.transport, live_status
                 );
                 self.agent_preflight_output = Some(preflight);
             }
@@ -880,8 +945,32 @@ impl GENtleApp {
                 if run.state_changed {
                     self.lineage_cache_valid = false;
                 }
+                let opened_seq_ids = if matches!(command, ShellCommand::LoadFile { .. }) {
+                    run.output
+                        .get("result")
+                        .and_then(|result| result.get("created_seq_ids"))
+                        .and_then(|ids| ids.as_array())
+                        .map(|ids| {
+                            ids.iter()
+                                .filter_map(|value| value.as_str().map(str::to_string))
+                                .collect::<Vec<_>>()
+                        })
+                        .unwrap_or_default()
+                } else {
+                    Vec::new()
+                };
+                for seq_id in &opened_seq_ids {
+                    self.open_sequence_window(seq_id);
+                }
                 let summary = if run.state_changed {
-                    "executed (state changed)".to_string()
+                    if opened_seq_ids.is_empty() {
+                        "executed (state changed)".to_string()
+                    } else {
+                        format!(
+                            "executed (state changed; opened {})",
+                            opened_seq_ids.join(", ")
+                        )
+                    }
                 } else {
                     "executed".to_string()
                 };
@@ -967,6 +1056,7 @@ impl GENtleApp {
             self.invalidate_genome_genes();
         }
         match target {
+            UiIntentTarget::OpenSequence => self.prompt_open_sequence(),
             UiIntentTarget::PreparedReferences => self.open_reference_genome_inspector_dialog(),
             UiIntentTarget::PrepareReferenceGenome => self.open_reference_genome_prepare_dialog(),
             UiIntentTarget::RetrieveGenomeSequence => self.open_reference_genome_retrieve_dialog(),
@@ -2412,21 +2502,14 @@ impl GENtleApp {
         if let Some(preflight) = &self.agent_preflight_output {
             ui.group(|ui| {
                 ui.strong("Setup preflight");
-                let color = if preflight.available {
-                    egui::Color32::from_rgb(60, 140, 80)
-                } else {
-                    egui::Color32::from_rgb(190, 70, 70)
-                };
+                let (overall_label, color) = Self::agent_preflight_overall_label(preflight);
                 ui.colored_label(
                     color,
                     format!(
-                        "{} ({})",
-                        if preflight.available {
-                            "Available"
-                        } else {
-                            "Unavailable"
-                        },
-                        preflight.transport
+                        "{} (static={}, transport={})",
+                        overall_label,
+                        if preflight.available { "available" } else { "unavailable" },
+                        preflight.transport,
                     ),
                 );
                 if let Some(reason) = preflight.availability_reason.as_deref() {
@@ -2486,6 +2569,12 @@ impl GENtleApp {
                     ui.colored_label(color, live.status_class.as_str());
                     if !live.message.trim().is_empty() {
                         ui.small(format!("detail: {}", live.message.trim()));
+                    }
+                    if Self::agent_status_mentions_openai_quota(&live.message)
+                        || (live.status_class == AgentLiveProbeStatusClass::QuotaOrBilling
+                            && preflight.transport == AgentSystemTransport::NativeOpenai.as_str())
+                    {
+                        self.render_openai_quota_links(ui);
                     }
                     ui.small(format!(
                         "reachable={} | auth_ok={} | model_list_ok={} | selected_model_seen={}",
@@ -2587,19 +2676,31 @@ impl GENtleApp {
             }
         });
         ui.label("Prompt");
+        let prompt_edit_id = ui.make_persistent_id("agent_assistant_prompt_edit");
+        let prompt_submit_shortcut = ui.memory(|memory| memory.has_focus(prompt_edit_id))
+            && ui.input_mut(|input| {
+                input.consume_shortcut(&egui::KeyboardShortcut::new(
+                    egui::Modifiers::CTRL,
+                    egui::Key::Enter,
+                ))
+            });
         ui.add(
             egui::TextEdit::multiline(&mut self.agent_prompt)
+                .id(prompt_edit_id)
                 .desired_rows(6)
                 .desired_width(f32::INFINITY),
         );
         let running = self.agent_task.is_some();
+        if prompt_submit_shortcut && !running && selected_available {
+            self.start_agent_assistant_request();
+        }
         ui.horizontal(|ui| {
             if ui
                 .add_enabled(
                     !running && selected_available,
                     egui::Button::new("Ask Agent"),
                 )
-                .on_hover_text("Send prompt to selected agent system")
+                .on_hover_text("Send prompt to selected agent system (Ctrl+Return)")
                 .clicked()
             {
                 self.start_agent_assistant_request();
@@ -2631,15 +2732,26 @@ impl GENtleApp {
         }
         if !self.agent_status.is_empty() {
             ui.separator();
-            ui.monospace(self.agent_status.clone());
+            self.render_agent_status_message(ui, &self.agent_status, true);
         }
 
         if let Some(invocation) = self.agent_last_invocation.clone() {
             ui.separator();
-            ui.label(format!(
-                "Latest response from {} ({})",
-                invocation.system_label, invocation.system_id
-            ));
+            ui.horizontal_wrapped(|ui| {
+                ui.label(format!(
+                    "Latest response from {} ({})",
+                    invocation.system_label, invocation.system_id
+                ));
+                if ui
+                    .button("Copy Response JSON")
+                    .on_hover_text("Copy the latest agent response JSON to the clipboard")
+                    .clicked()
+                {
+                    let payload = Self::agent_response_clipboard_payload(&invocation);
+                    ui.ctx().copy_text(payload);
+                    self.agent_status = "Copied latest agent response JSON".to_string();
+                }
+            });
             ui.small(format!(
                 "elapsed={} ms | transport={} | exit_code={:?}",
                 invocation.elapsed_ms, invocation.transport, invocation.exit_code
@@ -2705,15 +2817,34 @@ impl GENtleApp {
                             let index_1based = idx + 1;
                             ui.label(index_1based.to_string());
                             ui.label(suggestion.execution.as_str());
-                            ui.monospace(suggestion.command.as_str());
+                            let command_parse_error = parse_shell_line(&suggestion.command)
+                                .err()
+                                .filter(|_| suggestion.execution != AgentExecutionIntent::Chat);
+                            if command_parse_error.is_some() {
+                                ui.colored_label(
+                                    egui::Color32::from_rgb(190, 70, 70),
+                                    suggestion.command.as_str(),
+                                );
+                            } else {
+                                ui.monospace(suggestion.command.as_str());
+                            }
                             ui.label(suggestion.rationale.clone().unwrap_or_default());
                             let can_run = !suggestion.command.trim().is_empty()
-                                && suggestion.execution != AgentExecutionIntent::Chat;
+                                && suggestion.execution != AgentExecutionIntent::Chat
+                                && command_parse_error.is_none();
+                            let mut hover_text =
+                                "Execute this suggested command using GENtle shared shell parser/executor"
+                                    .to_string();
+                            if let Some(err) = &command_parse_error {
+                                hover_text =
+                                    format!("Not a valid GENtle shared-shell command: {err}");
+                            }
                             let run_resp = ui
                                 .add_enabled(can_run, egui::Button::new("Run"))
-                                .on_hover_text(
-                                    "Execute this suggested command using GENtle shared shell parser/executor",
-                                );
+                                .on_hover_text(hover_text);
+                            if command_parse_error.is_some() {
+                                ui.small("Invalid GENtle command");
+                            }
                             if run_resp.clicked() {
                                 run_request = Some((index_1based, suggestion.command.clone()));
                             }
