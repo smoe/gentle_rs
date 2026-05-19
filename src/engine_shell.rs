@@ -50,10 +50,15 @@ use crate::{
         GenomeTrackSubscription, GentleEngine, GuideCandidate, GuideOligoExportFormat,
         GuideOligoPlateFormat, GuidePracticalFilterConfig, InlineSequenceTopology,
         LineageMacroInstance, LineageMacroPortBinding, MacroInstanceStatus, Operation,
-        OperationProgress, PLANNING_ESTIMATE_SCHEMA, PLANNING_OBJECTIVE_SCHEMA,
-        PLANNING_PROFILE_SCHEMA, PLANNING_SUGGESTION_SCHEMA, PLANNING_SYNC_STATUS_SCHEMA,
+        OperationProgress, PLANNING_CLONING_CONSULTATION_SCHEMA, PLANNING_ESTIMATE_SCHEMA,
+        PLANNING_OBJECTIVE_SCHEMA, PLANNING_PROFILE_SCHEMA, PLANNING_SUGGESTION_SCHEMA,
+        PLANNING_SYNC_STATUS_SCHEMA,
         PRIMER_DESIGN_REPORTS_METADATA_KEY, PairwiseAlignmentMode, PlanningEstimate,
-        PlanningObjective, PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus,
+        PlanningCloningConsultation, PlanningCloningHelperVectorSummary,
+        PlanningCloningHostProfileSummary, PlanningCloningLocalConstraint,
+        PlanningCloningMissingQuestion, PlanningCloningStrategyCandidate,
+        PlanningCloningSuggestedNextAction, PlanningCloningVectorCandidate, PlanningObjective,
+        PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus,
         PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignReport,
         PrimerDesignSideConstraint, PrimerSpecificityPolicy, ProjectState,
         PromoterArtifactManifestEntry, PromoterExpressionEvidenceInput, PromoterTfbsGeneQuery,
@@ -89,8 +94,8 @@ use crate::{
     feature_location::collect_location_ranges_usize,
     gene_groups,
     genomes::{
-        GenomeBlastReport, GenomeCatalog, GenomeGeneRecord, PreparedCacheCleanupMode,
-        PreparedCacheCleanupRequest, configured_helper_genome_cache_dir,
+        GenomeBlastReport, GenomeCatalog, GenomeCatalogListEntry, GenomeGeneRecord,
+        PreparedCacheCleanupMode, PreparedCacheCleanupRequest, configured_helper_genome_cache_dir,
         configured_reference_genome_cache_dir, default_catalog_discovery_label,
         default_catalog_discovery_token, default_helper_semantics_vocabulary_discovery_label,
     },
@@ -1050,6 +1055,12 @@ pub enum ShellCommand {
         left_routine_id: String,
         right_routine_id: String,
         seq_id: Option<String>,
+    },
+    PlanningConsultCloning {
+        seq_id: Option<String>,
+        objective_json: Option<String>,
+        profile_scope: PlanningProfileScope,
+        output_format: String,
     },
     PlanningProfileShow {
         scope: PlanningProfileScope,
@@ -6738,6 +6749,31 @@ impl ShellCommand {
                     left_routine_id, right_routine_id, catalog, seq_id
                 )
             }
+            Self::PlanningConsultCloning {
+                seq_id,
+                objective_json,
+                profile_scope,
+                output_format,
+            } => {
+                let seq_id = seq_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("-");
+                let objective = objective_json
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(|value| format!("payload_len={}", value.len()))
+                    .unwrap_or_else(|| "stored_objective".to_string());
+                format!(
+                    "consult cloning planning (scope={}, seq_id={}, objective={}, format={})",
+                    profile_scope.as_str(),
+                    seq_id,
+                    objective,
+                    output_format
+                )
+            }
             Self::PlanningProfileShow { scope } => {
                 format!("show planning profile (scope={})", scope.as_str())
             }
@@ -12239,6 +12275,582 @@ struct PlanningSyncSuggestionPayload {
     profile_patch: Option<PlanningProfile>,
     objective_patch: Option<PlanningObjective>,
     message: Option<String>,
+}
+
+fn planning_catalog_family_ids(catalog: &CloningRoutineCatalog) -> BTreeSet<String> {
+    catalog
+        .routines
+        .iter()
+        .map(|routine| normalize_planning_class_key(&routine.family))
+        .filter(|family| !family.is_empty())
+        .collect::<BTreeSet<_>>()
+}
+
+fn planning_helper_host_systems(entry: &GenomeCatalogListEntry) -> Vec<String> {
+    let mut values = BTreeSet::new();
+    if let Some(host_system) = entry
+        .host_system
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        values.insert(host_system.to_string());
+    }
+    if let Some(interpretation) = entry.interpretation.as_ref() {
+        for value in &interpretation.host_systems {
+            let value = value.trim();
+            if !value.is_empty() {
+                values.insert(value.to_string());
+            }
+        }
+    }
+    values.into_iter().collect()
+}
+
+fn planning_helper_routine_family_hints(entry: &GenomeCatalogListEntry) -> Vec<String> {
+    entry
+        .interpretation
+        .as_ref()
+        .map(|interpretation| interpretation.routine_family_preferences().0)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|value| normalize_planning_class_key(&value))
+        .filter(|value| !value.is_empty())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+fn planning_helper_offered_functions(entry: &GenomeCatalogListEntry) -> Vec<String> {
+    entry
+        .interpretation
+        .as_ref()
+        .map(|interpretation| {
+            interpretation
+                .offered_functions
+                .iter()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default()
+}
+
+fn planning_helper_aliases(entry: &GenomeCatalogListEntry) -> BTreeSet<String> {
+    let mut aliases = BTreeSet::from([normalize_planning_class_key(&entry.genome_id)]);
+    for alias in &entry.aliases {
+        let alias = normalize_planning_class_key(alias);
+        if !alias.is_empty() {
+            aliases.insert(alias);
+        }
+    }
+    if let Some(interpretation) = entry.interpretation.as_ref() {
+        for alias in &interpretation.aliases {
+            let alias = normalize_planning_class_key(alias);
+            if !alias.is_empty() {
+                aliases.insert(alias);
+            }
+        }
+    }
+    aliases
+}
+
+fn planning_helper_is_vector(entry: &GenomeCatalogListEntry) -> bool {
+    let mut tokens = vec![];
+    if let Some(kind) = entry.helper_kind.as_deref() {
+        tokens.push(kind);
+    }
+    tokens.extend(entry.tags.iter().map(String::as_str));
+    if let Some(interpretation) = entry.interpretation.as_ref() {
+        tokens.extend(interpretation.helper_kinds.iter().map(String::as_str));
+        tokens.extend(interpretation.offered_functions.iter().map(String::as_str));
+    }
+    tokens.iter().any(|value| {
+        let normalized = normalize_planning_class_key(value);
+        normalized.contains("vector") || normalized == "insert_cloning"
+    })
+}
+
+fn planning_host_tokens(hosts: &[PlanningCloningHostProfileSummary]) -> BTreeSet<String> {
+    let mut tokens = BTreeSet::new();
+    for host in hosts {
+        for value in [&host.profile_id, &host.species, &host.strain] {
+            let normalized = normalize_planning_class_key(value);
+            if !normalized.is_empty() {
+                tokens.insert(normalized);
+            }
+        }
+        for value in host
+            .aliases
+            .iter()
+            .chain(host.genotype_tags.iter())
+            .chain(host.phenotype_tags.iter())
+        {
+            let normalized = normalize_planning_class_key(value);
+            if !normalized.is_empty() {
+                tokens.insert(normalized);
+            }
+        }
+    }
+    tokens
+}
+
+fn planning_tokens_overlap(left: &[String], right: &BTreeSet<String>) -> bool {
+    left.iter().any(|value| {
+        let normalized = normalize_planning_class_key(value);
+        !normalized.is_empty() && right.contains(&normalized)
+    })
+}
+
+fn build_planning_cloning_consultation_text(report: &PlanningCloningConsultation) -> String {
+    let mut lines = vec![
+        "GENtle cloning planning consultation".to_string(),
+        format!("Schema: {}", report.schema),
+        format!("Profile scope: {}", report.profile_scope),
+    ];
+    if let Some(seq_id) = report.seq_id.as_deref() {
+        lines.push(format!("Sequence context: {seq_id}"));
+    }
+    lines.push(String::new());
+    lines.push("Top strategy candidates:".to_string());
+    for candidate in report.strategy_candidates.iter().take(5) {
+        lines.push(format!(
+            "{}. {} ({}) score {:.3}, time {:.1} h, cost {:.2}",
+            candidate.rank,
+            candidate.title,
+            candidate.family,
+            candidate.estimate.composite_meta_score,
+            candidate.estimate.estimated_time_hours,
+            candidate.estimate.estimated_cost
+        ));
+    }
+    lines.push(String::new());
+    lines.push("Vector candidates:".to_string());
+    if report.vector_candidates.is_empty() {
+        lines.push("- No structured helper/vector candidates were found in the active catalog.".to_string());
+    } else {
+        for candidate in report.vector_candidates.iter().take(5) {
+            lines.push(format!(
+                "{}. {} score {:.2} ({})",
+                candidate.rank,
+                candidate.helper_id,
+                candidate.score,
+                candidate.rationale.join("; ")
+            ));
+        }
+    }
+    if !report.missing_questions.is_empty() {
+        lines.push(String::new());
+        lines.push("Questions before committing:".to_string());
+        for question in &report.missing_questions {
+            lines.push(format!("- {}", question.prompt));
+        }
+    }
+    lines.join("\n")
+}
+
+fn execute_planning_consult_cloning(
+    engine: &GentleEngine,
+    seq_id: &Option<String>,
+    objective_json: &Option<String>,
+    profile_scope: PlanningProfileScope,
+    output_format: &str,
+) -> Result<PlanningCloningConsultation, String> {
+    if profile_scope != PlanningProfileScope::Effective {
+        return Err("planning consult cloning currently supports --profile-scope effective only"
+            .to_string());
+    }
+
+    let objective = match objective_json.as_deref() {
+        Some(payload) => parse_optional_json_payload::<PlanningObjective>(
+            payload,
+            "planning consult cloning objective",
+        )?
+        .unwrap_or_default(),
+        None => engine.planning_objective(),
+    };
+    let profile = engine.planning_effective_profile();
+    let preference_context = GentleEngine::planning_objective_routine_preference_context(&objective);
+    let routine_catalog = load_cloning_routine_catalog(DEFAULT_CLONING_ROUTINE_CATALOG_PATH)?;
+    let catalog_families = planning_catalog_family_ids(&routine_catalog);
+    let expected_families = [
+        "restriction",
+        "gibson",
+        "golden_gate",
+        "gateway",
+        "infusion",
+        "nebuilder_hifi",
+        "pcr",
+        "topo",
+        "ta_gc",
+        "crispr",
+        "sequence",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect::<BTreeSet<_>>();
+
+    let mut warnings = vec![];
+    let missing_families = expected_families
+        .difference(&catalog_families)
+        .cloned()
+        .collect::<Vec<_>>();
+    if !missing_families.is_empty() {
+        warnings.push(format!(
+            "Routine catalog is missing expected cloning family ids: {}.",
+            missing_families.join(", ")
+        ));
+    }
+    let extra_families = catalog_families
+        .difference(&expected_families)
+        .cloned()
+        .collect::<Vec<_>>();
+    if !extra_families.is_empty() {
+        warnings.push(format!(
+            "Routine catalog contains additional family ids not ranked by v1 expectations: {}.",
+            extra_families.join(", ")
+        ));
+    }
+    if seq_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .is_some()
+    {
+        warnings.push(
+            "planning consult cloning v1 records --seq-id for traceability but does not consume construct-candidate graphs."
+                .to_string(),
+        );
+    }
+
+    let mut best_by_family: BTreeMap<String, PlanningCloningStrategyCandidate> = BTreeMap::new();
+    for routine in &routine_catalog.routines {
+        let family = normalize_planning_class_key(&routine.family);
+        if family.is_empty() {
+            continue;
+        }
+        let estimate = estimate_routine_planning(engine, &objective, routine, &preference_context);
+        let mut rationale = vec![format!(
+            "Ranked with existing planning estimate meta-score ({:.3}).",
+            estimate.composite_meta_score
+        )];
+        if preference_context
+            .effective_preferred_routine_families
+            .iter()
+            .any(|value| value == &family)
+        {
+            rationale.push("Routine family matches objective/helper-derived preference context.".to_string());
+        }
+        let candidate = PlanningCloningStrategyCandidate {
+            rank: 0,
+            family: family.clone(),
+            routine_id: routine.routine_id.clone(),
+            title: routine.title.clone(),
+            status: routine.status.clone(),
+            summary: routine.summary.clone(),
+            estimate,
+            rationale,
+        };
+        let replace = best_by_family
+            .get(&family)
+            .map(|existing| {
+                candidate
+                    .estimate
+                    .composite_meta_score
+                    .total_cmp(&existing.estimate.composite_meta_score)
+                    .is_gt()
+                    || (candidate.estimate.composite_meta_score
+                        == existing.estimate.composite_meta_score
+                        && candidate.routine_id < existing.routine_id)
+            })
+            .unwrap_or(true);
+        if replace {
+            best_by_family.insert(family, candidate);
+        }
+    }
+    let mut strategy_candidates = best_by_family.into_values().collect::<Vec<_>>();
+    strategy_candidates.sort_by(|left, right| {
+        right
+            .estimate
+            .composite_meta_score
+            .total_cmp(&left.estimate.composite_meta_score)
+            .then_with(|| left.family.cmp(&right.family))
+            .then_with(|| left.routine_id.cmp(&right.routine_id))
+    });
+    for (idx, candidate) in strategy_candidates.iter_mut().enumerate() {
+        candidate.rank = idx + 1;
+    }
+
+    let host_profiles = GentleEngine::list_host_profile_catalog_entries(None, None)
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .map(|host| PlanningCloningHostProfileSummary {
+            profile_id: host.profile_id,
+            species: host.species,
+            strain: host.strain,
+            aliases: host.aliases,
+            genotype_tags: host.genotype_tags,
+            phenotype_tags: host.phenotype_tags,
+        })
+        .collect::<Vec<_>>();
+    let host_tokens = planning_host_tokens(&host_profiles);
+
+    let helper_entries = GentleEngine::list_helper_catalog_entries(None, None)
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .filter(planning_helper_is_vector)
+        .collect::<Vec<_>>();
+    let mut available_helper_vectors = vec![];
+    let mut vector_candidates = vec![];
+    let objective_helper_id = objective
+        .helper_profile_id
+        .as_deref()
+        .map(normalize_planning_class_key)
+        .filter(|value| !value.is_empty());
+    let effective_family_set = preference_context
+        .effective_preferred_routine_families
+        .iter()
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    for entry in &helper_entries {
+        let host_systems = planning_helper_host_systems(entry);
+        let routine_family_hints = planning_helper_routine_family_hints(entry);
+        let offered_functions = planning_helper_offered_functions(entry);
+        available_helper_vectors.push(PlanningCloningHelperVectorSummary {
+            helper_id: entry.genome_id.clone(),
+            description: entry.description.clone(),
+            summary: entry.summary.clone(),
+            helper_kind: entry.helper_kind.clone(),
+            host_systems: host_systems.clone(),
+            structured_tags: entry.tags.clone(),
+            offered_functions: offered_functions.clone(),
+            routine_family_hints: routine_family_hints.clone(),
+        });
+
+        let mut score = 0.50;
+        let mut rationale = vec!["Known helper/vector catalog entry.".to_string()];
+        if objective_helper_id
+            .as_ref()
+            .map(|target| planning_helper_aliases(entry).contains(target))
+            .unwrap_or(false)
+        {
+            score += 0.40;
+            rationale.push("Matches objective helper_profile_id by helper id or alias.".to_string());
+        }
+        if routine_family_hints
+            .iter()
+            .any(|family| effective_family_set.contains(family))
+        {
+            score += 0.20;
+            rationale.push("Structured routine-family hints overlap the objective/helper preference context.".to_string());
+        }
+        if planning_tokens_overlap(&host_systems, &host_tokens) {
+            score += 0.20;
+            rationale.push("Structured helper host_system overlaps a known host profile.".to_string());
+        }
+        vector_candidates.push(PlanningCloningVectorCandidate {
+            rank: 0,
+            helper_id: entry.genome_id.clone(),
+            score,
+            helper_kind: entry.helper_kind.clone(),
+            host_systems,
+            routine_family_hints,
+            rationale,
+        });
+    }
+    available_helper_vectors.sort_by(|left, right| left.helper_id.cmp(&right.helper_id));
+    vector_candidates.sort_by(|left, right| {
+        right
+            .score
+            .total_cmp(&left.score)
+            .then_with(|| left.helper_id.cmp(&right.helper_id))
+    });
+    for (idx, candidate) in vector_candidates.iter_mut().enumerate() {
+        candidate.rank = idx + 1;
+    }
+
+    let mut missing_questions = vec![];
+    if seq_id.as_deref().map(str::trim).filter(|v| !v.is_empty()).is_none()
+        && objective.preferred_routine_families.is_empty()
+        && objective.required_capabilities.is_empty()
+    {
+        missing_questions.push(PlanningCloningMissingQuestion {
+            question_id: "construct_goal".to_string(),
+            prompt: "What construct outcome should the assistant optimize for: routine cloning, expression, reporter handoff, mutagenesis, or sequence verification?".to_string(),
+            reason: "No sequence id, preferred routine family, or required capability was supplied.".to_string(),
+        });
+    }
+    if objective.helper_profile_id.is_none() {
+        missing_questions.push(PlanningCloningMissingQuestion {
+            question_id: "target_vector_or_backbone".to_string(),
+            prompt: "Is there a target vector/backbone that must be used, or may GENtle rank helper vectors from the local catalog?".to_string(),
+            reason: "The planning objective does not name a helper_profile_id.".to_string(),
+        });
+    }
+    missing_questions.push(PlanningCloningMissingQuestion {
+        question_id: "expression_or_propagation_host".to_string(),
+        prompt: "Which host or expression system must the construct support?".to_string(),
+        reason: "PlanningObjective v1 does not carry a structured host target field.".to_string(),
+    });
+    missing_questions.push(PlanningCloningMissingQuestion {
+        question_id: "selectable_marker".to_string(),
+        prompt: "Which selectable marker is required or forbidden?".to_string(),
+        reason: "Helper/vector marker information is not yet a structured ranking field in the v1 helper profile substrate.".to_string(),
+    });
+    missing_questions.push(PlanningCloningMissingQuestion {
+        question_id: "promoter_or_expression_control".to_string(),
+        prompt: "Is a promoter, expression cassette, or regulatory control element required?".to_string(),
+        reason: "Promoter/expression context is intentionally not inferred from narrative helper notes in v1.".to_string(),
+    });
+    missing_questions.push(PlanningCloningMissingQuestion {
+        question_id: "assembly_site_constraints".to_string(),
+        prompt: "Are any restriction sites, scars, reading frame constraints, or MCS positions mandatory?".to_string(),
+        reason: "MCS and assembly-compatibility constraints are not yet structured enough for deterministic vector ranking.".to_string(),
+    });
+
+    let mut local_constraints = vec![
+        PlanningCloningLocalConstraint {
+            constraint_id: "local_capabilities".to_string(),
+            status: if profile.capabilities.is_empty() {
+                "unknown".to_string()
+            } else {
+                "known".to_string()
+            },
+            summary: format!(
+                "{} local capability token(s) are present in the effective profile.",
+                profile.capabilities.len()
+            ),
+            details: json!({ "capabilities": profile.capabilities.clone() }),
+        },
+        PlanningCloningLocalConstraint {
+            constraint_id: "inventory".to_string(),
+            status: if profile.inventory.is_empty() {
+                "unknown".to_string()
+            } else {
+                "known".to_string()
+            },
+            summary: format!(
+                "{} inventory item class(es) are present in the effective profile.",
+                profile.inventory.len()
+            ),
+            details: json!({ "inventory_keys": profile.inventory.keys().cloned().collect::<BTreeSet<_>>() }),
+        },
+        PlanningCloningLocalConstraint {
+            constraint_id: "machine_availability".to_string(),
+            status: if profile.machine_availability.is_empty() {
+                "unknown".to_string()
+            } else {
+                "known".to_string()
+            },
+            summary: format!(
+                "{} machine/platform availability row(s) are present in the effective profile.",
+                profile.machine_availability.len()
+            ),
+            details: json!({ "machine_keys": profile.machine_availability.keys().cloned().collect::<BTreeSet<_>>() }),
+        },
+    ];
+    if profile.capabilities.is_empty()
+        && profile.inventory.is_empty()
+        && profile.machine_availability.is_empty()
+    {
+        local_constraints.push(PlanningCloningLocalConstraint {
+            constraint_id: "empty_effective_profile".to_string(),
+            status: "high_uncertainty".to_string(),
+            summary: "No local capabilities, inventory, or machine availability are configured; estimates fall back to catalog defaults.".to_string(),
+            details: json!({}),
+        });
+    }
+
+    let mut suggested_next_actions = vec![
+        PlanningCloningSuggestedNextAction {
+            action_id: "show_planning_objective".to_string(),
+            label: "Show current planning objective".to_string(),
+            shell_line: "planning objective show".to_string(),
+            rationale: "Review the objective fields that drove this consultation.".to_string(),
+        },
+        PlanningCloningSuggestedNextAction {
+            action_id: "show_effective_profile".to_string(),
+            label: "Show effective local planning profile".to_string(),
+            shell_line: "planning profile show --scope effective".to_string(),
+            rationale: "Inspect the merged local capabilities, inventory, and machine availability.".to_string(),
+        },
+        PlanningCloningSuggestedNextAction {
+            action_id: "list_routines".to_string(),
+            label: "List cloning routine catalog".to_string(),
+            shell_line: "routines list".to_string(),
+            rationale: "See the catalogued cloning routine families and their status.".to_string(),
+        },
+        PlanningCloningSuggestedNextAction {
+            action_id: "list_helper_vectors".to_string(),
+            label: "List helper/vector catalog rows".to_string(),
+            shell_line: "helpers list --filter vector".to_string(),
+            rationale: "Inspect structured helper/vector catalog rows before committing to a backbone.".to_string(),
+        },
+    ];
+    if let Some(top) = strategy_candidates.first() {
+        suggested_next_actions.push(PlanningCloningSuggestedNextAction {
+            action_id: "explain_top_strategy".to_string(),
+            label: format!("Explain top strategy ({})", top.routine_id),
+            shell_line: format!("routines explain {}", top.routine_id),
+            rationale: "Read the routine mechanism, inputs, and disambiguation questions for the top candidate.".to_string(),
+        });
+    }
+
+    let suggested_sync_payload = if objective.helper_profile_id.is_none() {
+        vector_candidates.first().map(|top_vector| {
+            let mut objective_patch = objective.clone();
+            objective_patch.helper_profile_id = Some(top_vector.helper_id.clone());
+            json!({
+                "objective_patch": objective_patch,
+                "message": format!(
+                    "Consider helper/vector '{}' as a starting point; accept only after confirming marker, host, promoter/MCS, and assembly constraints.",
+                    top_vector.helper_id
+                )
+            })
+        })
+    } else {
+        None
+    };
+
+    let mut report = PlanningCloningConsultation {
+        schema: PLANNING_CLONING_CONSULTATION_SCHEMA.to_string(),
+        profile_scope: profile_scope.as_str().to_string(),
+        seq_id: seq_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string),
+        objective_summary: json!({
+            "objective_schema": PLANNING_OBJECTIVE_SCHEMA,
+            "objective": objective,
+            "routine_preference_context": preference_context,
+        }),
+        local_profile_summary: json!({
+            "profile_schema": PLANNING_PROFILE_SCHEMA,
+            "profile_id": profile.profile_id,
+            "currency": profile.currency,
+            "procurement_business_days_default": profile.procurement_business_days_default,
+            "capability_count": profile.capabilities.len(),
+            "inventory_item_count": profile.inventory.len(),
+            "machine_availability_count": profile.machine_availability.len(),
+        }),
+        available_helper_vectors,
+        available_host_profiles: host_profiles,
+        strategy_candidates,
+        vector_candidates,
+        missing_questions,
+        local_constraints,
+        warnings,
+        suggested_next_actions,
+        suggested_sync_payload,
+        text_report: None,
+    };
+    if output_format == "text" {
+        report.text_report = Some(build_planning_cloning_consultation_text(&report));
+    }
+    Ok(report)
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -27397,6 +28009,25 @@ fn execute_planning_command(
     command: &ShellCommand,
 ) -> Result<ShellRunResult, String> {
     match command {
+        ShellCommand::PlanningConsultCloning {
+            seq_id,
+            objective_json,
+            profile_scope,
+            output_format,
+        } => {
+            let report = execute_planning_consult_cloning(
+                engine,
+                seq_id,
+                objective_json,
+                *profile_scope,
+                output_format,
+            )?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(report)
+                    .map_err(|e| format!("Could not serialize planning consult result: {e}"))?,
+            })
+        }
         ShellCommand::PlanningProfileShow { scope } => {
             let scope_profile = engine.planning_profile(*scope);
             let effective_profile = engine.planning_effective_profile();
@@ -33496,7 +34127,8 @@ fn execute_shell_command_with_options_dispatch(
     }
     if matches!(
         command,
-        ShellCommand::PlanningProfileShow { .. }
+        ShellCommand::PlanningConsultCloning { .. }
+            | ShellCommand::PlanningProfileShow { .. }
             | ShellCommand::PlanningProfileSet { .. }
             | ShellCommand::PlanningObjectiveShow
             | ShellCommand::PlanningObjectiveSet { .. }
@@ -34118,7 +34750,8 @@ fn execute_shell_command_with_options_inner(
         ShellCommand::RoutinesList { .. }
         | ShellCommand::RoutinesExplain { .. }
         | ShellCommand::RoutinesCompare { .. } => execute_routines_command(engine, command)?,
-        ShellCommand::PlanningProfileShow { .. }
+        ShellCommand::PlanningConsultCloning { .. }
+        | ShellCommand::PlanningProfileShow { .. }
         | ShellCommand::PlanningProfileSet { .. }
         | ShellCommand::PlanningObjectiveShow
         | ShellCommand::PlanningObjectiveSet { .. }

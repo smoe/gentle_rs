@@ -6978,6 +6978,27 @@ fn parse_routines_compare_with_sequence_context() {
 
 #[test]
 fn parse_planning_commands() {
+    let consult = parse_shell_line(
+        "planning consult cloning --seq-id insert_1 --objective @objective.json --profile-scope effective --format text",
+    )
+    .expect("parse planning consult cloning");
+    assert!(matches!(
+        consult,
+        ShellCommand::PlanningConsultCloning {
+            seq_id,
+            objective_json,
+            profile_scope,
+            output_format,
+        } if seq_id.as_deref() == Some("insert_1")
+            && objective_json.as_deref() == Some("@objective.json")
+            && profile_scope == PlanningProfileScope::Effective
+            && output_format == "text"
+    ));
+
+    let rejected = parse_shell_line("planning consult cloning --profile-scope global")
+        .expect_err("non-effective consult scope should be rejected");
+    assert!(rejected.contains("--profile-scope effective only"));
+
     let profile = parse_shell_line("planning profile set @profile.json --scope global")
         .expect("parse planning profile set");
     assert!(matches!(
@@ -8181,6 +8202,90 @@ fn execute_planning_sync_payload_validation_rejects_unknown_fields() {
     )
     .expect_err("unknown sync payload fields must fail");
     assert!(err.contains("Invalid planning sync pull JSON payload"));
+}
+
+#[test]
+fn execute_planning_consult_cloning_returns_ranked_report() {
+    let mut engine = GentleEngine::default();
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PlanningConsultCloning {
+            seq_id: None,
+            objective_json: None,
+            profile_scope: PlanningProfileScope::Effective,
+            output_format: "json".to_string(),
+        },
+    )
+    .expect("planning consult cloning");
+    assert!(!out.state_changed);
+    assert_eq!(
+        out.output["schema"].as_str(),
+        Some("gentle.planning_cloning_consultation.v1")
+    );
+    let report: crate::engine::PlanningCloningConsultation =
+        serde_json::from_value(out.output).expect("consultation report");
+    assert_eq!(report.strategy_candidates.len(), 11);
+    assert!(
+        report
+            .strategy_candidates
+            .iter()
+            .all(|candidate| !candidate.family.contains("reporter")),
+        "reporter handoff must not be ranked as a routine family"
+    );
+    assert!(
+        report
+            .vector_candidates
+            .iter()
+            .any(|candidate| candidate.helper_id.contains("pUC19")),
+        "pUC19 helper/vector row should be visible to the consultation"
+    );
+    assert!(
+        report
+            .missing_questions
+            .iter()
+            .any(|question| question.question_id == "selectable_marker"),
+        "unstructured marker requirements should remain an explicit question"
+    );
+}
+
+#[test]
+fn execute_planning_consult_cloning_honors_preferred_family_bonus() {
+    let mut engine = GentleEngine::default();
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PlanningConsultCloning {
+            seq_id: None,
+            objective_json: Some(
+                r#"{
+                  "schema":"gentle.planning_objective.v1",
+                  "weight_time":0,
+                  "weight_cost":0,
+                  "weight_local_fit":1,
+                  "preferred_routine_families":["gibson"]
+                }"#
+                .to_string(),
+            ),
+            profile_scope: PlanningProfileScope::Effective,
+            output_format: "text".to_string(),
+        },
+    )
+    .expect("planning consult cloning with preferred family");
+    let report: crate::engine::PlanningCloningConsultation =
+        serde_json::from_value(out.output).expect("consultation report");
+    assert_eq!(
+        report
+            .strategy_candidates
+            .first()
+            .map(|candidate| candidate.family.as_str()),
+        Some("gibson")
+    );
+    assert!(
+        report
+            .text_report
+            .as_deref()
+            .unwrap_or_default()
+            .contains("Top strategy candidates")
+    );
 }
 
 #[test]
