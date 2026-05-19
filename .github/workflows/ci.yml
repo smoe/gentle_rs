@@ -64,11 +64,16 @@ jobs:
           cargo run --bin gentle_examples_docs -- --check
           cargo run --bin gentle_examples_docs -- tutorial-check
 
+      - name: Install Python test dependencies
+        run: |
+          if ! command -v pytest >/dev/null 2>&1; then
+            brew install pytest
+          fi
+
       - name: ClawBio skill parity checks
         run: |
-          python3 -m pip install pytest
           python3 scripts/generate_clawbio_trigger_keywords.py --check
-          python3 -m pytest integrations/clawbio/skills/gentle-cloning/tests/ -q
+          pytest integrations/clawbio/skills/gentle-cloning/tests/ -q
 
       - name: Workflow example runtime tests
         run: cargo test -q workflow_examples -- --test-threads=1
@@ -177,6 +182,7 @@ jobs:
             libxi-dev \
             libxrandr-dev \
             perl \
+            python3-pytest \
             pkg-config
 
       - name: Set up Rust
@@ -229,9 +235,8 @@ jobs:
 
       - name: ClawBio skill parity checks
         run: |
-          python3 -m pip install pytest
           python3 scripts/generate_clawbio_trigger_keywords.py --check
-          python3 -m pytest integrations/clawbio/skills/gentle-cloning/tests/ -q
+          pytest integrations/clawbio/skills/gentle-cloning/tests/ -q
 
       - name: Workflow example runtime tests
         run: cargo test -q workflow_examples -- --test-threads=1
