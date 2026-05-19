@@ -11624,10 +11624,90 @@ pub(super) fn parse_planning_suggestion_status(
 pub(super) fn parse_planning_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "planning requires a subcommand: profile, objective, suggestions, sync".to_string(),
+            "planning requires a subcommand: consult, profile, objective, suggestions, sync"
+                .to_string(),
         );
     }
     match tokens[1].as_str() {
+        "consult" => {
+            if tokens.len() < 3 {
+                return Err("planning consult requires a subcommand: cloning".to_string());
+            }
+            match tokens[2].as_str() {
+                "cloning" => {
+                    let mut seq_id: Option<String> = None;
+                    let mut objective_json: Option<String> = None;
+                    let mut profile_scope = PlanningProfileScope::Effective;
+                    let mut output_format = "json".to_string();
+                    let mut idx = 3usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--seq-id" => {
+                                let raw = parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--seq-id",
+                                    "planning consult cloning",
+                                )?;
+                                seq_id = Some(raw);
+                            }
+                            "--objective" => {
+                                objective_json = Some(parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--objective",
+                                    "planning consult cloning",
+                                )?);
+                            }
+                            "--profile-scope" => {
+                                let raw = parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--profile-scope",
+                                    "planning consult cloning",
+                                )?;
+                                profile_scope = parse_planning_profile_scope(&raw)?;
+                            }
+                            "--format" => {
+                                let raw = parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--format",
+                                    "planning consult cloning",
+                                )?;
+                                let normalized = raw.trim().to_ascii_lowercase();
+                                if !matches!(normalized.as_str(), "json" | "text") {
+                                    return Err(format!(
+                                        "Invalid --format value '{raw}' for planning consult cloning; expected json or text"
+                                    ));
+                                }
+                                output_format = normalized;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for planning consult cloning"
+                                ));
+                            }
+                        }
+                    }
+                    if profile_scope != PlanningProfileScope::Effective {
+                        return Err(
+                            "planning consult cloning currently supports --profile-scope effective only"
+                                .to_string(),
+                        );
+                    }
+                    Ok(ShellCommand::PlanningConsultCloning {
+                        seq_id,
+                        objective_json,
+                        profile_scope,
+                        output_format,
+                    })
+                }
+                other => Err(format!(
+                    "Unknown planning consult subcommand '{other}' (expected cloning)"
+                )),
+            }
+        }
         "profile" => {
             if tokens.len() < 3 {
                 return Err("planning profile requires a subcommand: show, set, clear".to_string());
@@ -11930,7 +12010,7 @@ pub(super) fn parse_planning_command(tokens: &[String]) -> Result<ShellCommand, 
             }
         }
         other => Err(format!(
-            "Unknown planning subcommand '{other}' (expected profile, objective, suggestions, sync)"
+            "Unknown planning subcommand '{other}' (expected consult, profile, objective, suggestions, sync)"
         )),
     }
 }

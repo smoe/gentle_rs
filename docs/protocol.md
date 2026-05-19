@@ -3313,6 +3313,8 @@ Adapter-equivalence guarantee for UI-intent tools:
   - estimate schema: `gentle.planning_estimate.v1`
   - suggestion schema: `gentle.planning_suggestion.v1`
   - sync-status schema: `gentle.planning_sync_status.v1`
+  - cloning-consultation schema:
+    `gentle.planning_cloning_consultation.v1`
   - merge precedence for effective profile:
     - `global_profile -> confirmed_agent_overlay -> project_override`
   - purchasing latency heuristic in v1:
@@ -3324,6 +3326,20 @@ Adapter-equivalence guarantee for UI-intent tools:
   - schema compatibility rule:
     - profile/objective payloads with mismatched schema ids are rejected
       (`InvalidInput`) instead of silently coerced
+- `planning consult cloning [--seq-id SEQ_ID] [--objective JSON_OR_@FILE] [--profile-scope effective] [--format json|text]`
+  - read-only consultation route for cloning-strategy and vector-choice
+    planning
+  - consumes the effective planning profile, current or supplied planning
+    objective, host-profile catalog, helper/vector catalog, and the existing
+    routine-planning estimate logic
+  - emits ranked `strategy_candidates[]`, `vector_candidates[]`,
+    `missing_questions[]`, `local_constraints[]`, and
+    `suggested_next_actions[]`
+  - v1 deliberately ranks helper/vector candidates only from structured catalog
+    fields and leaves marker, promoter/expression, and MCS/site constraints as
+    explicit `missing_questions[]`
+  - `--seq-id` is accepted for traceability, but v1 does not yet consume
+    construct-candidate graphs when ranking strategies
 - `planning profile show [--scope global|project_override|confirmed_agent_overlay|effective]`
   - inspect one planning profile scope or merged effective profile
 - `planning profile set JSON_OR_@FILE [--scope global|project_override|confirmed_agent_overlay]`
