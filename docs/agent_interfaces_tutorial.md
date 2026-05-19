@@ -324,6 +324,27 @@ cargo run --quiet --bin gentle_cli -- shell 'features restriction-scan --sequenc
 That replay command is the audit trail. The model prompt is only how you got
 there.
 
+### Ask for cloning strategy or vector advice
+
+When the question is still at the planning stage, prefer a GENtle-owned
+consultation instead of asking the model to freestyle a cloning plan:
+
+```text
+planning consult cloning --format text
+```
+
+With a more specific objective, pass the objective JSON or a file:
+
+```text
+planning consult cloning --objective @objective.json --format json
+```
+
+This route is read-only. It ranks cloning routine families using the same
+routine-estimate logic as `routines list|compare`, ranks helper/vector
+candidates only from structured catalog fields, and returns explicit
+`missing_questions[]` for things GENtle should not guess yet, such as selectable
+marker, promoter/expression context, host target, and MCS/site constraints.
+
 ## 9) Execution policy
 
 Prefer this policy while learning:

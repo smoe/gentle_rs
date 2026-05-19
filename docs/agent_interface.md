@@ -302,6 +302,7 @@ an agent has selected a deterministic operation.
 - `panels inspect-isoform`
 - `panels render-isoform-svg`
 - `panels validate-isoform`
+- `planning consult cloning`
 - `planning objective clear`
 - `planning objective set`
 - `planning objective show`
@@ -431,6 +432,7 @@ an agent has selected a deterministic operation.
 - `seq-trace import`
 - `seq-trace list`
 - `seq-trace show`
+- `sequence create`
 - `services guide`
 - `services handoff`
 - `services project-preflight`

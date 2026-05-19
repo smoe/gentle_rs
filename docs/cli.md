@@ -4201,11 +4201,21 @@ Planning meta-layer commands (`gentle_cli planning ...` or `gentle_cli shell 'pl
   - `gentle.planning_estimate.v1`
   - `gentle.planning_suggestion.v1`
   - `gentle.planning_sync_status.v1`
+  - `gentle.planning_cloning_consultation.v1`
 - Effective profile merge precedence:
   - `global_profile -> confirmed_agent_overlay -> project_override`
 - Schema compatibility:
   - payloads declaring a non-matching planning schema id are rejected
     (not auto-upgraded silently).
+- `planning consult cloning [--seq-id SEQ_ID] [--objective JSON_OR_@FILE] [--profile-scope effective] [--format json|text]`
+  - Returns a read-only cloning strategy/vector consultation from the effective
+    profile, current or supplied objective, host/helper catalogs, and existing
+    routine estimate logic.
+  - `strategy_candidates[]` are one best routine per catalogued routine family;
+    reporter handoffs are not treated as peer strategy families.
+  - `vector_candidates[]` use structured helper/vector catalog fields only;
+    marker, promoter/expression, host-target, and MCS/site constraints remain
+    explicit `missing_questions[]` until structured profile fields exist.
 - `planning profile show [--scope global|project_override|confirmed_agent_overlay|effective]`
   - Shows one profile scope or merged effective profile.
 - `planning profile set JSON_OR_@FILE [--scope global|project_override|confirmed_agent_overlay]`

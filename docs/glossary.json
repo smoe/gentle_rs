@@ -44,7 +44,8 @@
          "engine_operations": [],
          "interfaces": [
             "cli-shell",
-            "gui-shell"
+            "gui-shell",
+            "cli-direct"
          ],
          "path": "history status",
          "summary": "Inspect session-local multi-level undo/redo availability.",
@@ -4372,6 +4373,17 @@
          "path": "routines compare",
          "summary": "Compare two cloning routines with deterministic difference axes and shared/unique vocabulary tags.",
          "usage": "routines compare ROUTINE_A ROUTINE_B [--catalog PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "planning consult cloning",
+         "summary": "Return a read-only cloning strategy and vector-choice consultation using the effective local planning profile, helper/vector catalog, host catalog, and routine estimates.",
+         "usage": "planning consult cloning [--seq-id SEQ_ID] [--objective JSON_OR_@FILE] [--profile-scope effective] [--format json|text]"
       },
       {
          "aliases": [],
