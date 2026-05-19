@@ -16601,6 +16601,7 @@ fn test_export_lab_assistant_instructions_operation_writes_markdown_and_payload(
             run_id: Some("interactive".to_string()),
             title: Some("BamHI cloning handoff".to_string()),
             audience: Some("bench assistant".to_string()),
+            format: None,
         })
         .expect("export lab assistant instructions");
     let export = res
@@ -16627,6 +16628,126 @@ fn test_export_lab_assistant_instructions_operation_writes_markdown_and_payload(
     assert!(text.contains("# BamHI cloning handoff"));
     assert!(text.contains("Use institution-approved SOPs"));
     assert!(text.contains("Digest `x` with BamHI"));
+}
+
+#[test]
+fn test_lab_assistant_instructions_format_tokens_and_path_inference() {
+    assert_eq!(
+        LabAssistantInstructionsFormat::from_token("md"),
+        Some(LabAssistantInstructionsFormat::Markdown)
+    );
+    assert_eq!(
+        LabAssistantInstructionsFormat::from_token("odt"),
+        Some(LabAssistantInstructionsFormat::Odt)
+    );
+    assert_eq!(
+        LabAssistantInstructionsFormat::from_token("word"),
+        Some(LabAssistantInstructionsFormat::Docx)
+    );
+    assert_eq!(
+        LabAssistantInstructionsFormat::infer_from_path("handoff.docx"),
+        LabAssistantInstructionsFormat::Docx
+    );
+    assert_eq!(
+        LabAssistantInstructionsFormat::infer_from_path("handoff.unknown"),
+        LabAssistantInstructionsFormat::Markdown
+    );
+}
+
+#[test]
+fn test_export_lab_assistant_instructions_writes_odt_and_docx_reports() {
+    for (format, extension, required_member) in [
+        (LabAssistantInstructionsFormat::Odt, "odt", "content.xml"),
+        (
+            LabAssistantInstructionsFormat::Docx,
+            "docx",
+            "word/document.xml",
+        ),
+    ] {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("x".to_string(), seq("ATGGATCCGCATGGATCCGCATGGATCCGC"));
+        let mut engine = GentleEngine::from_state(state);
+        engine
+            .apply(Operation::Digest {
+                input: "x".to_string(),
+                enzymes: vec!["BamHI".to_string()],
+                output_prefix: Some("frag".to_string()),
+            })
+            .expect("digest");
+
+        let tmp = tempfile::NamedTempFile::new().expect("tmp");
+        let path = tmp
+            .path()
+            .with_extension(format!("lab_handoff.{extension}"));
+        let path_text = path.display().to_string();
+        let res = engine
+            .apply(Operation::ExportLabAssistantInstructions {
+                path: path_text.clone(),
+                run_id: Some("interactive".to_string()),
+                title: Some("BamHI cloning handoff".to_string()),
+                audience: Some("bench assistant".to_string()),
+                format: Some(format),
+            })
+            .expect("export lab assistant report");
+        let export = res
+            .lab_assistant_instructions
+            .as_ref()
+            .expect("structured lab assistant instructions");
+        assert_eq!(export.output_format, format);
+        assert_eq!(export.output_path, path_text);
+
+        let bytes = std::fs::read(&path).expect("read report");
+        assert!(bytes.starts_with(b"PK\x03\x04"));
+        assert!(stored_zip_bytes_contain_name(&bytes, required_member));
+        assert!(stored_zip_bytes_contain_text(
+            &bytes,
+            "BamHI cloning handoff"
+        ));
+        if format == LabAssistantInstructionsFormat::Odt {
+            assert_odt_mimetype_first(&bytes);
+        } else {
+            assert!(stored_zip_bytes_contain_name(&bytes, "[Content_Types].xml"));
+        }
+        if export.embedded_visuals.is_empty() {
+            assert!(
+                export
+                    .warning_lines
+                    .iter()
+                    .any(|line| line.contains("Could not embed lineage overview graphic"))
+            );
+        } else {
+            let member = if format == LabAssistantInstructionsFormat::Odt {
+                "Pictures/lineage_overview.png"
+            } else {
+                "word/media/lineage_overview.png"
+            };
+            assert!(stored_zip_bytes_contain_name(&bytes, member));
+        }
+    }
+}
+
+fn stored_zip_bytes_contain_name(bytes: &[u8], name: &str) -> bool {
+    bytes
+        .windows(name.len())
+        .any(|window| window == name.as_bytes())
+}
+
+fn stored_zip_bytes_contain_text(bytes: &[u8], text: &str) -> bool {
+    stored_zip_bytes_contain_name(bytes, text)
+}
+
+fn assert_odt_mimetype_first(bytes: &[u8]) {
+    assert!(bytes.len() > 30);
+    let name_len = u16::from_le_bytes([bytes[26], bytes[27]]) as usize;
+    let extra_len = u16::from_le_bytes([bytes[28], bytes[29]]) as usize;
+    let name_start = 30;
+    let name_end = name_start + name_len;
+    assert_eq!(&bytes[name_start..name_end], b"mimetype");
+    let data_start = name_end + extra_len;
+    let mimetype = b"application/vnd.oasis.opendocument.text";
+    assert_eq!(&bytes[data_start..data_start + mimetype.len()], mimetype);
 }
 
 #[test]

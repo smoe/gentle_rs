@@ -73,6 +73,19 @@ pub struct SvgPngRenderSummary {
     pub font_face_count: usize,
 }
 
+/// In-memory PNG payload produced from an SVG string.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SvgPngRenderBytes {
+    /// PNG bytes encoded by `tiny-skia`.
+    pub bytes: Vec<u8>,
+    /// Written PNG width in pixels.
+    pub width: u32,
+    /// Written PNG height in pixels.
+    pub height: u32,
+    /// Number of font faces visible to `usvg`/`resvg` for text rendering.
+    pub font_face_count: usize,
+}
+
 /// Removes known dotplot metadata footer/header text while preserving axis
 /// labels and figure content.
 pub fn strip_dotplot_metadata_text(svg: &str) -> String {
@@ -221,8 +234,54 @@ pub fn render_svg_file_to_png(
         svg_text = strip_dotplot_metadata_text(&svg_text);
     }
 
+    let rendered = render_svg_text_to_png_bytes(
+        &svg_text,
+        canonical_parent(input_path),
+        options,
+        &format!("'{}'", input_path.display()),
+    )?;
+
+    std::fs::write(output_path, &rendered.bytes)
+        .map_err(|e| format!("Could not write PNG '{}': {e}", output_path.display()))?;
+
+    Ok(SvgPngRenderSummary {
+        input_path: input_path.to_string_lossy().into_owned(),
+        output_path: output_path.to_string_lossy().into_owned(),
+        scale: format!("{}", options.scale),
+        drop_dotplot_metadata: options.drop_dotplot_metadata,
+        width: rendered.width,
+        height: rendered.height,
+        font_face_count: rendered.font_face_count,
+    })
+}
+
+/// Rasterizes an SVG string into deterministic PNG bytes.
+pub fn render_svg_to_png_bytes(
+    svg_text: &str,
+    options: SvgPngRenderOptions,
+) -> Result<SvgPngRenderBytes, String> {
+    let mut svg_text = svg_text.to_string();
+    if options.drop_dotplot_metadata {
+        svg_text = strip_dotplot_metadata_text(&svg_text);
+    }
+    render_svg_text_to_png_bytes(&svg_text, None, options, "input SVG")
+}
+
+fn render_svg_text_to_png_bytes(
+    svg_text: &str,
+    resources_dir: Option<PathBuf>,
+    options: SvgPngRenderOptions,
+    input_label: &str,
+) -> Result<SvgPngRenderBytes, String> {
+    if !(options.scale.is_finite() && options.scale > 0.0) {
+        return Err(format!(
+            "svg-png requires a positive finite scale value, got {}",
+            options.scale
+        ));
+    }
+
     let mut opt = usvg::Options {
-        resources_dir: canonical_parent(input_path),
+        resources_dir,
         ..usvg::Options::default()
     };
     {
@@ -232,10 +291,10 @@ pub fn render_svg_file_to_png(
         configure_generic_font_families(fontdb);
     }
     let font_face_count = opt.fontdb.len();
-    ensure_svg_text_fonts_available(&svg_text, font_face_count)?;
+    ensure_svg_text_fonts_available(svg_text, font_face_count)?;
 
     let tree = usvg::Tree::from_str(&svg_text, &opt)
-        .map_err(|e| format!("Could not parse SVG '{}': {e}", input_path.display()))?;
+        .map_err(|e| format!("Could not parse SVG {input_label}: {e}"))?;
     let pixmap_size = tree
         .size()
         .to_int_size()
@@ -256,15 +315,12 @@ pub fn render_svg_file_to_png(
         tiny_skia::Transform::from_scale(options.scale, options.scale)
     };
     resvg::render(&tree, transform, &mut pixmap.as_mut());
-    pixmap
-        .save_png(output_path)
-        .map_err(|e| format!("Could not write PNG '{}': {e}", output_path.display()))?;
+    let bytes = pixmap
+        .encode_png()
+        .map_err(|e| format!("Could not encode PNG from SVG {input_label}: {e}"))?;
 
-    Ok(SvgPngRenderSummary {
-        input_path: input_path.to_string_lossy().into_owned(),
-        output_path: output_path.to_string_lossy().into_owned(),
-        scale: format!("{}", options.scale),
-        drop_dotplot_metadata: options.drop_dotplot_metadata,
+    Ok(SvgPngRenderBytes {
+        bytes,
         width: pixmap_size.width(),
         height: pixmap_size.height(),
         font_face_count,

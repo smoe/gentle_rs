@@ -1,9 +1,9 @@
 {
   "schema": "gentle.clawbio_skill_request.v1",
   "mode": "shell",
-  "shell_line": "export-lab-instructions artifacts/lab_assistant_handoff.md --title 'GENtle lab assistant handoff' --audience 'non-IT lab assistant'",
+  "shell_line": "export-lab-instructions artifacts/lab_assistant_handoff.odt --format odt --title 'GENtle lab assistant handoff' --audience 'non-IT lab assistant'",
   "expected_artifacts": [
-    "artifacts/lab_assistant_handoff.md"
+    "artifacts/lab_assistant_handoff.odt"
   ],
   "timeout_secs": 180
 }

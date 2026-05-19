@@ -6743,6 +6743,61 @@ pub struct LabAssistantInstructionSection {
     pub steps: Vec<String>,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum LabAssistantInstructionsFormat {
+    #[default]
+    Markdown,
+    Odt,
+    Docx,
+}
+
+impl LabAssistantInstructionsFormat {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Markdown => "markdown",
+            Self::Odt => "odt",
+            Self::Docx => "docx",
+        }
+    }
+
+    pub fn extension(self) -> &'static str {
+        match self {
+            Self::Markdown => "md",
+            Self::Odt => "odt",
+            Self::Docx => "docx",
+        }
+    }
+
+    pub fn from_token(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "markdown" | "md" => Some(Self::Markdown),
+            "odt" | "opendocument" | "open_document" => Some(Self::Odt),
+            "docx" | "word" => Some(Self::Docx),
+            _ => None,
+        }
+    }
+
+    pub fn infer_from_path(path: &str) -> Self {
+        let extension = std::path::Path::new(path)
+            .extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default();
+        Self::from_token(extension).unwrap_or(Self::Markdown)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct LabAssistantVisualRow {
+    pub visual_id: String,
+    pub label: String,
+    pub format: String,
+    pub source: String,
+    pub width_px: usize,
+    pub height_px: usize,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct LabAssistantInstructionsExport {
@@ -6751,10 +6806,12 @@ pub struct LabAssistantInstructionsExport {
     pub title: String,
     pub audience: String,
     pub output_path: String,
+    pub output_format: LabAssistantInstructionsFormat,
     pub run_id_filter: Option<String>,
     pub selected_record_count: usize,
     pub material_rows: Vec<LabAssistantMaterialRow>,
     pub step_sections: Vec<LabAssistantInstructionSection>,
+    pub embedded_visuals: Vec<LabAssistantVisualRow>,
     pub checkpoint_lines: Vec<String>,
     pub safety_lines: Vec<String>,
     pub record_keeping_lines: Vec<String>,

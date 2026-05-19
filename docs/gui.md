@@ -18,6 +18,9 @@ this as a confidence map for the current GUI surface.
   been prepared locally.
 - Visual explanation/export paths such as lineage SVG, protocol cartoons,
   dotplots, and isoform architecture.
+- Bench-facing cloning handoffs through `File -> Export Lab Assistant
+  Report...`, with ODT as the open editable default plus DOCX/Markdown export
+  choices from the same engine report.
 - External-service quote/handoff inspection through `Services -> External
   Services...`, using the same provider catalog, preflight, and quote payload
   contracts as CLI/agent/ClawBio routes. Metabion and GeneArt appear only via

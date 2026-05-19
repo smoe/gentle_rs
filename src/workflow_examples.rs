@@ -3763,6 +3763,7 @@ mod tests {
                         run_id: None,
                         title: None,
                         audience: None,
+                        format: None,
                     },
                 ],
             },

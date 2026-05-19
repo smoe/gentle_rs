@@ -4988,7 +4988,7 @@ fn parse_export_run_bundle_with_run_id() {
 #[test]
 fn parse_export_lab_instructions_with_title_and_run_id() {
     let cmd = parse_shell_line(
-        "export-lab-instructions handoff.md --run-id demo_run --title 'Assistant Handoff' --audience 'non-IT lab assistant'",
+        "export-lab-instructions handoff.odt --format odt --run-id demo_run --title 'Assistant Handoff' --audience 'non-IT lab assistant'",
     )
     .expect("parse command");
     match cmd {
@@ -4997,11 +4997,16 @@ fn parse_export_lab_instructions_with_title_and_run_id() {
             run_id,
             title,
             audience,
+            format,
         } => {
-            assert_eq!(output, "handoff.md");
+            assert_eq!(output, "handoff.odt");
             assert_eq!(run_id.as_deref(), Some("demo_run"));
             assert_eq!(title.as_deref(), Some("Assistant Handoff"));
             assert_eq!(audience.as_deref(), Some("non-IT lab assistant"));
+            assert_eq!(
+                format,
+                Some(crate::engine::LabAssistantInstructionsFormat::Odt)
+            );
         }
         other => panic!("unexpected command: {other:?}"),
     }
@@ -13894,6 +13899,7 @@ fn execute_export_lab_instructions_writes_bench_handoff_markdown() {
             run_id: Some("interactive".to_string()),
             title: Some("Assistant-ready cloning handoff".to_string()),
             audience: Some("non-IT lab assistant".to_string()),
+            format: None,
         },
     )
     .expect("export lab instructions");
@@ -13905,7 +13911,7 @@ fn execute_export_lab_instructions_writes_bench_handoff_markdown() {
         .expect("structured lab assistant instructions");
     assert_eq!(
         export.get("schema").and_then(|value| value.as_str()),
-        Some("gentle.lab_assistant_instructions.v1")
+        Some("gentle.lab_assistant_instructions.v2")
     );
     assert!(
         export
