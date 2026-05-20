@@ -18,6 +18,9 @@ Maintenance rule:
   `ExportLabAssistantInstructions` to `gentle.lab_assistant_instructions.v2`
   with ODT/DOCX editable reports plus embedded lineage graphics where
   rasterization is available.
+- Made `gentle_examples_docs tutorial-check` failures include paste-ready
+  tutorial feedback context with chapter/source/workflow/artifact paths and a
+  suggested issue-template category.
 - Added the read-only `planning consult cloning` route and
   `gentle.planning_cloning_consultation.v1` report so Agent Assistant and
   ClawBio can quote deterministic cloning-strategy/vector advice instead of
