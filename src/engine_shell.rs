@@ -12420,6 +12420,16 @@ fn build_planning_cloning_consultation_text(report: &PlanningCloningConsultation
     if let Some(seq_id) = report.seq_id.as_deref() {
         lines.push(format!("Sequence context: {seq_id}"));
     }
+    if report
+        .warnings
+        .iter()
+        .any(|warning| warning.contains("does not consume construct-candidate graphs"))
+    {
+        lines.push(
+            "Sequence context is recorded for traceability in v1; it is not reused as a construct-candidate graph input."
+                .to_string(),
+        );
+    }
     lines.push(String::new());
     lines.push("Top strategy candidates:".to_string());
     for candidate in report.strategy_candidates.iter().take(5) {
@@ -12541,7 +12551,7 @@ fn execute_planning_consult_cloning(
     let mut best_by_family: BTreeMap<String, PlanningCloningStrategyCandidate> = BTreeMap::new();
     for routine in &routine_catalog.routines {
         let family = normalize_planning_class_key(&routine.family);
-        if family.is_empty() {
+        if family.is_empty() || !expected_families.contains(&family) {
             continue;
         }
         let estimate = estimate_routine_planning(engine, &objective, routine, &preference_context);

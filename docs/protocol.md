@@ -3332,6 +3332,10 @@ Adapter-equivalence guarantee for UI-intent tools:
   - consumes the effective planning profile, current or supplied planning
     objective, host-profile catalog, helper/vector catalog, and the existing
     routine-planning estimate logic
+  - ranks one best strategy candidate for each of the 11 catalogued routine
+    families (`restriction`, `gibson`, `sequence`, `pcr`, `crispr`,
+    `golden_gate`, `gateway`, `topo`, `ta_gc`, `infusion`,
+    `nebuilder_hifi`)
   - emits ranked `strategy_candidates[]`, `vector_candidates[]`,
     `missing_questions[]`, `local_constraints[]`, and
     `suggested_next_actions[]`
@@ -3339,7 +3343,7 @@ Adapter-equivalence guarantee for UI-intent tools:
     fields and leaves marker, promoter/expression, and MCS/site constraints as
     explicit `missing_questions[]`
   - `--seq-id` is accepted for traceability, but v1 does not yet consume
-    construct-candidate graphs when ranking strategies
+    construct-candidate graphs when ranking strategies or helper vectors
 - `planning profile show [--scope global|project_override|confirmed_agent_overlay|effective]`
   - inspect one planning profile scope or merged effective profile
 - `planning profile set JSON_OR_@FILE [--scope global|project_override|confirmed_agent_overlay]`
