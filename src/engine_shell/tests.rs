@@ -8230,6 +8230,16 @@ fn execute_planning_consult_cloning_returns_ranked_report() {
     let report: crate::engine::PlanningCloningConsultation =
         serde_json::from_value(out.output).expect("consultation report");
     assert_eq!(report.strategy_candidates.len(), 11);
+    assert_eq!(
+        report
+            .strategy_candidates
+            .iter()
+            .map(|candidate| candidate.family.as_str())
+            .collect::<std::collections::BTreeSet<_>>()
+            .len(),
+        11,
+        "v1 should rank one best routine per expected routine family"
+    );
     assert!(
         report
             .strategy_candidates
@@ -8243,6 +8253,18 @@ fn execute_planning_consult_cloning_returns_ranked_report() {
             .iter()
             .any(|candidate| candidate.helper_id.contains("pUC19")),
         "pUC19 helper/vector row should be visible to the consultation"
+    );
+    assert!(
+        report
+            .vector_candidates
+            .iter()
+            .all(|candidate| candidate.rationale.iter().all(|line| {
+                !line.contains("marker")
+                    && !line.contains("promoter")
+                    && !line.contains("MCS")
+                    && !line.contains("notes")
+            })),
+        "vector ranking should stay on structured helper fields rather than narrative note heuristics"
     );
     assert!(
         report
@@ -8290,6 +8312,39 @@ fn execute_planning_consult_cloning_honors_preferred_family_bonus() {
             .as_deref()
             .unwrap_or_default()
             .contains("Top strategy candidates")
+    );
+}
+
+#[test]
+fn execute_planning_consult_cloning_seq_id_is_traceability_only() {
+    let mut engine = GentleEngine::default();
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PlanningConsultCloning {
+            seq_id: Some("tp73_context".to_string()),
+            objective_json: None,
+            profile_scope: PlanningProfileScope::Effective,
+            output_format: "text".to_string(),
+        },
+    )
+    .expect("planning consult cloning with traceability seq id");
+    assert!(!out.state_changed);
+    let report: crate::engine::PlanningCloningConsultation =
+        serde_json::from_value(out.output).expect("consultation report");
+    assert_eq!(report.seq_id.as_deref(), Some("tp73_context"));
+    assert!(
+        report.warnings.iter().any(|warning| warning.contains(
+            "records --seq-id for traceability but does not consume construct-candidate graphs"
+        )),
+        "v1 should be explicit that seq_id is traceability-only"
+    );
+    assert!(
+        report
+            .text_report
+            .as_deref()
+            .unwrap_or_default()
+            .contains("recorded for traceability in v1"),
+        "text report should surface the traceability-only seq_id scope"
     );
 }
 

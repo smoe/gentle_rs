@@ -1820,7 +1820,9 @@ Patterns menu:
     inspect helper semantics without reparsing free text.
   - the Agent Assistant and GUI Shell can ask the same read-only consultation
     route (`planning consult cloning`) for cloning strategy/vector advice backed
-    by the effective profile, host/helper catalogs, and routine estimates.
+    by the effective profile, host/helper catalogs, and routine estimates;
+    v1 keeps `seq_id` traceability-only and turns marker/promoter/MCS gaps into
+    explicit follow-up questions instead of hidden heuristics.
   - supports registering pending planning sync suggestions (`pull`/`push`) from
     JSON payload and explicit `Accept`/`Reject` resolution in-window.
   - exposes sync status (`pending count`, latest pull/push timestamps, last

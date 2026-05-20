@@ -104,6 +104,13 @@ descriptor/runtime parity (`INTENTS.json`, `mode=intents`, examples, and
 trigger-keyword drift checks) plus explicit scope/presentation contracts rather
 than adding more biology-specific wrapper modes.
 
+Near-term consult rule: keep `planning consult cloning` narrow and
+deterministic until richer construct reasoning lands. The preferred v1 surface
+is one best candidate per the 11 catalogued routine families plus structured
+helper/vector ranking; `seq_id` stays traceability-only and unresolved
+marker/promoter/MCS constraints stay explicit questions rather than hidden
+heuristics.
+
 MCP follow-up: the typed `tools/list` surface is curated rather than a
 one-command/one-tool mirror. Keep `docs/agent_interface.md` as the exclusion
 ledger for shell commands without dedicated MCP tools, and promote a command to

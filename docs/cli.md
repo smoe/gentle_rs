@@ -4214,11 +4214,13 @@ Planning meta-layer commands (`gentle_cli planning ...` or `gentle_cli shell 'pl
   - Returns a read-only cloning strategy/vector consultation from the effective
     profile, current or supplied objective, host/helper catalogs, and existing
     routine estimate logic.
-  - `strategy_candidates[]` are one best routine per catalogued routine family;
-    reporter handoffs are not treated as peer strategy families.
+  - `strategy_candidates[]` are one best routine per the 11 catalogued routine
+    families; reporter handoffs are not treated as peer strategy families.
   - `vector_candidates[]` use structured helper/vector catalog fields only;
     marker, promoter/expression, host-target, and MCS/site constraints remain
     explicit `missing_questions[]` until structured profile fields exist.
+  - `--seq-id` is traceability-only in v1 and is not consumed as a
+    construct-candidate graph input.
 - `planning profile show [--scope global|project_override|confirmed_agent_overlay|effective]`
   - Shows one profile scope or merged effective profile.
 - `planning profile set JSON_OR_@FILE [--scope global|project_override|confirmed_agent_overlay]`

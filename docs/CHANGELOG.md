@@ -22,6 +22,9 @@ Maintenance rule:
   `gentle.planning_cloning_consultation.v1` report so Agent Assistant and
   ClawBio can quote deterministic cloning-strategy/vector advice instead of
   improvising prose.
+- Pinned `planning consult cloning` v1 to the 11 catalogued routine families,
+  kept `--seq-id` traceability-only, and left marker/promoter/MCS gaps as
+  explicit questions instead of narrative ranking heuristics.
 - Clarified the Agent Assistant tutorial's same-live-state relationship with
   the GUI and GUI Shell, and added `CreateSequenceFromText` /
   `sequence create --sequence-text ...` so agent-proposed sequence text can be
