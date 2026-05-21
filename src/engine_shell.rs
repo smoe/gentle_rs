@@ -23066,6 +23066,20 @@ fn execute_stack_safe_reference_command(
     None
 }
 
+fn helper_list_entry_is_metadata_only_candidate(entry: &GenomeCatalogListEntry) -> bool {
+    entry
+        .sequence_availability
+        .as_deref()
+        .map(str::trim)
+        .is_some_and(|value| !value.is_empty())
+        && entry
+            .redistribution_status
+            .as_deref()
+            .map(str::trim)
+            .is_some_and(|value| !value.is_empty())
+        && entry.usable_as_empty_backbone.is_some()
+}
+
 #[inline(never)]
 pub fn execute_shell_command(
     engine: &mut GentleEngine,
@@ -26423,13 +26437,31 @@ fn execute_reference_and_track_command(
         } => {
             let resolved_catalog = resolved_catalog_path(catalog_path, *helper_mode);
             let effective_catalog = effective_catalog_path(catalog_path, *helper_mode);
-            let genomes = if *helper_mode {
-                GentleEngine::list_helper_genomes(resolved_catalog)
+            let (genomes, metadata_only_candidates) = if *helper_mode {
+                let entries = GentleEngine::list_helper_catalog_entries(resolved_catalog, None)
+                    .map_err(|e| e.to_string())?;
+                let metadata_only_candidates = entries
+                    .iter()
+                    .filter(|entry| helper_list_entry_is_metadata_only_candidate(entry))
+                    .map(|entry| entry.genome_id.clone())
+                    .collect::<BTreeSet<_>>();
+                let genomes = entries
+                    .iter()
+                    .map(|entry| entry.genome_id.clone())
+                    .collect::<Vec<_>>();
+                (genomes, metadata_only_candidates)
             } else {
-                GentleEngine::list_reference_genomes(resolved_catalog)
-            }
-            .map_err(|e| e.to_string())?;
+                (
+                    GentleEngine::list_reference_genomes(resolved_catalog)
+                        .map_err(|e| e.to_string())?,
+                    BTreeSet::new(),
+                )
+            };
+            let mut validated_sources = 0usize;
             for genome_id in &genomes {
+                if metadata_only_candidates.contains(genome_id) {
+                    continue;
+                }
                 if *helper_mode {
                     GentleEngine::describe_helper_genome_sources(genome_id, resolved_catalog, None)
                 } else {
@@ -26440,6 +26472,7 @@ fn execute_reference_and_track_command(
                     )
                 }
                 .map_err(|e| e.to_string())?;
+                validated_sources += 1;
             }
             Ok(ShellRunResult {
                 state_changed: false,
@@ -26447,7 +26480,8 @@ fn execute_reference_and_track_command(
                     "catalog_path": effective_catalog,
                     "valid": true,
                     "genome_count": genomes.len(),
-                    "validated_sources": genomes.len(),
+                    "validated_sources": validated_sources,
+                    "metadata_only_candidates": metadata_only_candidates,
                     "genomes": genomes,
                 }),
             })

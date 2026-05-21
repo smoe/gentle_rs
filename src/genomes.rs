@@ -485,6 +485,10 @@ pub struct GenomeCatalogEntry {
     pub genbank_accession: Option<String>,
     pub genbank_reference: Option<String>,
     pub local_variant_unpublished: Option<bool>,
+    pub sequence_availability: Option<String>,
+    pub redistribution_status: Option<String>,
+    pub biological_safety_note: Option<String>,
+    pub usable_as_empty_backbone: Option<bool>,
     pub sequence_remote: Option<String>,
     pub annotations_remote: Option<String>,
     pub sequence_local: Option<String>,
@@ -533,6 +537,10 @@ pub struct GenomeCatalogListEntry {
     pub species: Option<String>,
     pub helper_kind: Option<String>,
     pub host_system: Option<String>,
+    pub sequence_availability: Option<String>,
+    pub redistribution_status: Option<String>,
+    pub biological_safety_note: Option<String>,
+    pub usable_as_empty_backbone: Option<bool>,
     #[serde(default)]
     pub procurement: Option<CatalogProcurementInfo>,
     #[serde(default)]
@@ -3070,6 +3078,10 @@ impl GenomeCatalog {
                 species: entry.species.clone(),
                 helper_kind: entry.helper_kind.clone(),
                 host_system: entry.host_system.clone(),
+                sequence_availability: entry.sequence_availability.clone(),
+                redistribution_status: entry.redistribution_status.clone(),
+                biological_safety_note: entry.biological_safety_note.clone(),
+                usable_as_empty_backbone: entry.usable_as_empty_backbone,
                 procurement: entry.procurement.clone(),
                 semantics: entry.semantics.clone(),
                 interpretation,
@@ -3383,6 +3395,21 @@ impl GenomeCatalog {
         }
         if let Some(host_system) = entry.host_system.as_ref() {
             values.push(host_system.clone());
+        }
+        if let Some(sequence_availability) = entry.sequence_availability.as_ref() {
+            values.push(sequence_availability.clone());
+        }
+        if let Some(redistribution_status) = entry.redistribution_status.as_ref() {
+            values.push(redistribution_status.clone());
+        }
+        if let Some(biological_safety_note) = entry.biological_safety_note.as_ref() {
+            values.push(biological_safety_note.clone());
+        }
+        if let Some(usable_as_empty_backbone) = entry.usable_as_empty_backbone {
+            values.push(format!(
+                "usable_as_empty_backbone={}",
+                usable_as_empty_backbone
+            ));
         }
         if let Some(procurement) = entry.procurement.as_ref() {
             for value in [
@@ -7841,6 +7868,12 @@ fn estimate_double_stranded_dna_mass_da(length_bp: usize) -> Option<f64> {
     }
 }
 
+fn allows_metadata_only_catalog_entry(entry: &GenomeCatalogEntry) -> bool {
+    has_non_empty(&entry.sequence_availability)
+        && has_non_empty(&entry.redistribution_status)
+        && entry.usable_as_empty_backbone.is_some()
+}
+
 fn validate_catalog_entries(
     catalog_path: &str,
     entries: &HashMap<String, GenomeCatalogEntry>,
@@ -7918,14 +7951,15 @@ fn validate_catalog_entries(
             || has_non_empty(&entry.annotations_remote)
             || has_assembly
             || genbank_accession.is_some();
+        let metadata_only_candidate = allows_metadata_only_catalog_entry(entry);
 
-        if !has_sequence_source {
+        if !has_sequence_source && !metadata_only_candidate {
             entry_errors.push(
                 "Missing sequence source: provide sequence_local/sequence_remote or NCBI assembly/GenBank accession fields"
                     .to_string(),
             );
         }
-        if !has_annotation_source {
+        if !has_annotation_source && !metadata_only_candidate {
             entry_errors.push(
                 "Missing annotation source: provide annotations_local/annotations_remote or NCBI assembly/GenBank accession fields"
                     .to_string(),
@@ -13974,6 +14008,34 @@ mod tests {
     }
 
     #[test]
+    fn test_metadata_only_catalog_candidate_without_sequence_source_is_valid() {
+        let td = tempdir().unwrap();
+        let catalog_path = td.path().join("helper_candidates.json");
+        fs::write(
+            &catalog_path,
+            r#"{
+  "Local vector candidate": {
+    "description": "Metadata-only vector candidate",
+    "sequence_availability": "source sequence not yet bundled",
+    "redistribution_status": "review required before sequence redistribution",
+    "biological_safety_note": "confirm local classification",
+    "usable_as_empty_backbone": true,
+    "helper_kind": "plasmid_vector",
+    "host_system": "Escherichia coli"
+  }
+}"#,
+        )
+        .unwrap();
+
+        let catalog = GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref())
+            .expect("metadata-only candidate catalog should validate");
+        let rows = catalog.list_entries(Some("redistribution"));
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].usable_as_empty_backbone, Some(true));
+        assert!(catalog.source_plan("Local vector candidate", None).is_err());
+    }
+
+    #[test]
     fn test_list_entries_filter_matches_semantic_helper_metadata() {
         let mut entries = HashMap::new();
         entries.insert(
@@ -13989,6 +14051,10 @@ mod tests {
                 species: Some("synthetic construct".to_string()),
                 helper_kind: Some("plasmid_vector".to_string()),
                 host_system: Some("Escherichia coli".to_string()),
+                sequence_availability: Some("metadata-only candidate".to_string()),
+                redistribution_status: Some("review required".to_string()),
+                biological_safety_note: Some("confirm local classification".to_string()),
+                usable_as_empty_backbone: Some(true),
                 procurement: Some(CatalogProcurementInfo {
                     vendor_name: Some("lab_local".to_string()),
                     catalog_number: Some("PGEX-001".to_string()),
@@ -14050,8 +14116,29 @@ mod tests {
         assert_eq!(factor_rows.len(), 1);
         assert_eq!(catalog.list_entries(Some("affinity purification")).len(), 1);
         assert_eq!(catalog.list_entries(Some("Escherichia coli")).len(), 1);
+        assert_eq!(catalog.list_entries(Some("metadata-only")).len(), 1);
+        assert_eq!(
+            catalog
+                .list_entries(Some("usable_as_empty_backbone=true"))
+                .len(),
+            1
+        );
         assert_eq!(catalog.list_entries(Some("PGEX-001")).len(), 1);
         assert!(catalog.list_entries(Some("yeast secretion")).is_empty());
+
+        assert_eq!(
+            factor_rows[0].sequence_availability.as_deref(),
+            Some("metadata-only candidate")
+        );
+        assert_eq!(
+            factor_rows[0].redistribution_status.as_deref(),
+            Some("review required")
+        );
+        assert_eq!(
+            factor_rows[0].biological_safety_note.as_deref(),
+            Some("confirm local classification")
+        );
+        assert_eq!(factor_rows[0].usable_as_empty_backbone, Some(true));
 
         let interpretation = factor_rows[0]
             .interpretation

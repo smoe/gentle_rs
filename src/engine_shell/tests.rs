@@ -18839,6 +18839,63 @@ fn execute_genomes_validate_catalog_reports_valid() {
 }
 
 #[test]
+fn execute_helpers_validate_catalog_skips_metadata_only_candidates() {
+    let td = tempdir().expect("tempdir");
+    let fasta = td.path().join("toy.fa");
+    let gtf = td.path().join("toy.gtf");
+    let cache = td.path().join("cache");
+    fs::write(&fasta, ">plasmid\nACGT\n").expect("write fasta");
+    fs::write(
+        &gtf,
+        "plasmid\tsrc\tgene\t1\t4\t.\t+\t.\tgene_id \"BACKBONE\"; gene_name \"BACKBONE\";\n",
+    )
+    .expect("write gtf");
+    let catalog = td.path().join("helper_catalog.json");
+    let catalog_json = format!(
+        r#"{{
+  "Source-backed helper": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }},
+  "Metadata-only helper candidate": {{
+    "sequence_availability": "source sequence not yet bundled",
+    "redistribution_status": "review required before redistribution",
+    "usable_as_empty_backbone": true,
+    "helper_kind": "plasmid_vector",
+    "host_system": "Escherichia coli"
+  }}
+}}"#,
+        fasta.display(),
+        gtf.display(),
+        cache.display()
+    );
+    fs::write(&catalog, catalog_json).expect("write catalog");
+    let mut engine = GentleEngine::new();
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ReferenceValidateCatalog {
+            helper_mode: true,
+            catalog_path: Some(catalog.to_string_lossy().to_string()),
+        },
+    )
+    .expect("execute helper validate-catalog");
+    assert!(!out.state_changed);
+    assert_eq!(out.output["valid"].as_bool(), Some(true));
+    assert_eq!(out.output["genome_count"].as_u64(), Some(2));
+    assert_eq!(out.output["validated_sources"].as_u64(), Some(1));
+    assert_eq!(
+        out.output["metadata_only_candidates"]
+            .as_array()
+            .expect("metadata candidates")
+            .iter()
+            .filter_map(|value| value.as_str())
+            .collect::<Vec<_>>(),
+        vec!["Metadata-only helper candidate"]
+    );
+}
+
+#[test]
 fn execute_cutrun_list_reads_catalog_rows() {
     let _serial = cutrun_test_env_lock()
         .lock()

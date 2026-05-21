@@ -199,6 +199,9 @@ wet-lab conclusions or unconfirmed mutations.
   is selected.
 - External-service provider/CRO integration once deterministic local contracts
   are stable enough to wrap.
+- Luebeck S1 vector-resource follow-up: resolve sequence/procurement URLs and
+  redistribution clearance before bundling actual sequences for the metadata
+  candidates.
 - Primer-walking support and iterative read/contig data management.
 - Helper-construct terminology migration away from legacy "helper genome"
   wording.
