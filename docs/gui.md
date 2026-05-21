@@ -272,7 +272,8 @@ Tabs:
   - The bottom `Cancel` and `Apply` actions are kept in a persistent footer and remain visible while scrolling.
 - `Language`
   - Configure the runtime GUI interface language for visible window chrome,
-    top-level menus, and the first translated configuration controls.
+    top-level menus, first translated configuration controls, and the main
+    Agent Assistant setup/action surface.
   - The default is `System default (English)`, currently resolved to British
     English (`en-GB`) until platform locale detection is wired.
   - Available catalogs are British English (`en-GB`), US English (`en-US`),

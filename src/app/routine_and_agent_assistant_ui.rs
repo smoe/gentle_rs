@@ -2021,15 +2021,19 @@ impl GENtleApp {
         self.refresh_agent_system_catalog();
         let mut close_requested = false;
         let close_hover = Self::specialist_window_close_hover_text("Agent Assistant");
-        if self.render_specialist_window_nav_with_close(ui, Some(("Close", close_hover.as_str()))) {
+        let close_label = self.tr("button.close");
+        if self.render_specialist_window_nav_with_close(
+            ui,
+            Some((close_label.as_str(), close_hover.as_str())),
+        ) {
             close_requested = true;
         }
-        ui.label("Ask an agent system for project support, then execute suggested GENtle shell commands per reply.");
+        ui.label(self.tr("agent.description"));
         ui.horizontal(|ui| {
-            ui.label("catalog");
+            ui.label(self.tr("agent.catalog"));
             ui.text_edit_singleline(&mut self.agent_catalog_path);
             if ui
-                .button("Browse...")
+                .button(self.tr("button.browse"))
                 .on_hover_text("Browse filesystem and fill this path")
                 .clicked()
             {
@@ -2052,12 +2056,12 @@ impl GENtleApp {
         let mut preflight_inputs_changed = false;
         let mut requested_agent_system_id: Option<String> = None;
         ui.horizontal(|ui| {
-            ui.label("system");
+            ui.label(self.tr("agent.system"));
             egui::ComboBox::from_id_salt("agent_system_combo")
                 .selected_text(if self.agent_system_id.trim().is_empty() {
-                    "(choose system)"
+                    self.tr("agent.choose_system")
                 } else {
-                    self.agent_system_id.as_str()
+                    self.agent_system_id.clone()
                 })
                 .show_ui(ui, |ui| {
                     for system in &self.agent_systems {
@@ -2086,16 +2090,14 @@ impl GENtleApp {
         }
         if !self.agent_systems.is_empty() {
             ui.group(|ui| {
-                ui.strong("Quick start");
-                ui.small(
-                    "Choose whether GENtle should talk to OpenAI, Claude, Mistral, a local OpenAI-compatible model, or the offline demo.",
-                );
+                ui.strong(self.tr("agent.quick_start.title"));
+                ui.small(self.tr("agent.quick_start.description"));
                 ui.horizontal_wrapped(|ui| {
                     if let Some(openai_system_id) =
                         preferred_openai_agent_system_id(&self.agent_systems)
                     {
                         if ui
-                            .button("Use OpenAI API")
+                            .button(self.tr("agent.quick_start.openai"))
                             .on_hover_text(
                                 "Select the native OpenAI agent profile and use OPENAI_API_KEY for requests",
                             )
@@ -2105,14 +2107,14 @@ impl GENtleApp {
                             self.agent_base_url_override.clear();
                             self.agent_model_override.clear();
                             self.agent_discovered_model_pick.clear();
-                            self.agent_status = "Selected OpenAI API quick start. Add OPENAI_API_KEY or paste a session key, then run Test Setup.".to_string();
+                            self.agent_status = self.tr("agent.status.selected_openai");
                         }
                     }
                     if let Some(anthropic_system_id) =
                         preferred_anthropic_agent_system_id(&self.agent_systems)
                     {
                         if ui
-                            .button("Use Claude API")
+                            .button(self.tr("agent.quick_start.claude"))
                             .on_hover_text(
                                 "Select the native Anthropic Claude profile and use ANTHROPIC_API_KEY for requests",
                             )
@@ -2122,14 +2124,14 @@ impl GENtleApp {
                             self.agent_base_url_override.clear();
                             self.agent_model_override.clear();
                             self.agent_discovered_model_pick.clear();
-                            self.agent_status = "Selected Claude API quick start. Add ANTHROPIC_API_KEY or paste an Anthropic API key, then run Test Setup.".to_string();
+                            self.agent_status = self.tr("agent.status.selected_claude");
                         }
                     }
                     if let Some(mistral_system_id) =
                         preferred_mistral_agent_system_id(&self.agent_systems)
                     {
                         if ui
-                            .button("Use Mistral API")
+                            .button(self.tr("agent.quick_start.mistral"))
                             .on_hover_text(
                                 "Select the native Mistral profile and use MISTRAL_API_KEY for requests",
                             )
@@ -2139,14 +2141,14 @@ impl GENtleApp {
                             self.agent_base_url_override.clear();
                             self.agent_model_override.clear();
                             self.agent_discovered_model_pick.clear();
-                            self.agent_status = "Selected Mistral API quick start. Add MISTRAL_API_KEY or paste a Mistral API key, then run Test Setup.".to_string();
+                            self.agent_status = self.tr("agent.status.selected_mistral");
                         }
                     }
                     if let Some(local_system_id) =
                         preferred_local_agent_system_id(&self.agent_systems)
                     {
                         if ui
-                            .button("Use Local Model (no OpenAI API billing)")
+                            .button(self.tr("agent.quick_start.local"))
                             .on_hover_text(
                                 "Select a local OpenAI-compatible endpoint such as Ollama, Jan, or Msty",
                             )
@@ -2156,41 +2158,36 @@ impl GENtleApp {
                             self.agent_base_url_override.clear();
                             self.agent_model_override.clear();
                             self.agent_discovered_model_pick.clear();
-                            self.agent_status = "Selected local-model quick start. Start your local endpoint, discover models, then run Test Setup.".to_string();
+                            self.agent_status = self.tr("agent.status.selected_local");
                         }
                     }
                     if self.agent_systems.iter().any(|system| system.id == "builtin_echo")
                         && ui
-                            .button("Use Demo Echo")
+                            .button(self.tr("agent.quick_start.demo"))
                             .on_hover_text(
                                 "Select the offline demo assistant that never contacts a remote service",
                             )
                             .clicked()
                     {
                         self.select_agent_system_and_reset_setup("builtin_echo");
-                        self.agent_status = "Selected the built-in demo assistant.".to_string();
+                        self.agent_status = self.tr("agent.status.selected_demo");
                     }
                 });
-                ui.small(
-                    "Cloud API modes use provider API keys and talk to the provider directly. If you want a no-extra-OpenAI-bill path inside GENtle, prefer a local OpenAI-compatible endpoint.",
-                );
+                ui.small(self.tr("agent.quick_start.cloud_note"));
             });
             ui.group(|ui| {
-                ui.strong("External Agent / MCP");
-                ui.small(
-                    "Use this route when your external agent already supports MCP and has its own account/runtime.",
-                );
-                ui.small(
-                    "ChatGPT/Codex subscriptions are not OpenAI API keys; MCP exposes GENtle tools over stdio instead of making GENtle call the OpenAI API.",
-                );
+                ui.strong(self.tr("agent.external_mcp.title"));
+                ui.small(self.tr("agent.external_mcp.route"));
+                ui.small(self.tr("agent.external_mcp.subscriptions"));
                 let state_path = self.external_agent_mcp_state_path();
                 ui.small(format!(
-                    "state path: {}{}",
+                    "{}: {}{}",
+                    self.tr("agent.external_mcp.state_path"),
                     state_path,
                     if self.current_project_path.is_some() {
-                        " (active saved project)"
+                        format!(" ({})", self.tr("agent.external_mcp.active_project"))
                     } else {
-                        " (default gentle_mcp state path)"
+                        format!(" ({})", self.tr("agent.external_mcp.default_state_path"))
                     }
                 ));
                 ui.monospace(self.external_agent_mcp_command_snippet());
@@ -2287,16 +2284,16 @@ impl GENtleApp {
                 );
             }
         } else if self.agent_systems.is_empty() {
-            ui.small("No systems loaded from this catalog.");
+            ui.small(self.tr("agent.no_systems_loaded"));
         }
         let selected_transport = self
             .selected_agent_system()
             .map(|system| system.transport)
             .unwrap_or_default();
         let (key_label, key_hint) = match selected_transport {
-            AgentSystemTransport::NativeAnthropic => ("Anthropic API key", "sk-ant-..."),
-            AgentSystemTransport::NativeMistral => ("Mistral API key", "api key"),
-            _ => ("OpenAI API key", "sk-..."),
+            AgentSystemTransport::NativeAnthropic => (self.tr("agent.key.anthropic"), "sk-ant-..."),
+            AgentSystemTransport::NativeMistral => (self.tr("agent.key.mistral"), "api key"),
+            _ => (self.tr("agent.key.openai"), "sk-..."),
         };
         ui.horizontal(|ui| {
             ui.label(key_label);
@@ -2307,7 +2304,7 @@ impl GENtleApp {
             );
             preflight_inputs_changed |= response.changed();
             if ui
-                .button("Clear Key")
+                .button(self.tr("agent.clear_key"))
                 .on_hover_text("Clear session-only API key override")
                 .clicked()
             {
@@ -2316,14 +2313,14 @@ impl GENtleApp {
             }
         });
         ui.horizontal(|ui| {
-            ui.label("Base URL override");
+            ui.label(self.tr("agent.base_url_override"));
             let response = ui.add(
                 egui::TextEdit::singleline(&mut self.agent_base_url_override)
                     .hint_text("http://localhost:11964/v1"),
             );
             preflight_inputs_changed |= response.changed();
             if ui
-                .button("Clear URL")
+                .button(self.tr("agent.clear_url"))
                 .on_hover_text("Clear session-only base URL override")
                 .clicked()
             {
@@ -2332,13 +2329,13 @@ impl GENtleApp {
             }
         });
         ui.horizontal(|ui| {
-            ui.label("Model override");
+            ui.label(self.tr("agent.model_override"));
             let response = ui.add(
                 egui::TextEdit::singleline(&mut self.agent_model_override).hint_text("unspecified"),
             );
             preflight_inputs_changed |= response.changed();
             if ui
-                .button("Clear Model")
+                .button(self.tr("agent.clear_model"))
                 .on_hover_text("Clear session-only model override")
                 .clicked()
             {
@@ -2355,7 +2352,7 @@ impl GENtleApp {
             );
             preflight_inputs_changed |= response.changed();
             if ui
-                .button("Clear Timeout")
+                .button(self.tr("agent.clear_timeout"))
                 .on_hover_text("Use default timeout")
                 .clicked()
             {
@@ -2379,7 +2376,7 @@ impl GENtleApp {
             );
             preflight_inputs_changed |= read_response.changed();
             if ui
-                .button("Clear HTTP Timeouts")
+                .button(self.tr("agent.clear_http_timeouts"))
                 .on_hover_text("Use default connect/read timeouts")
                 .clicked()
             {
@@ -2404,7 +2401,7 @@ impl GENtleApp {
             );
             preflight_inputs_changed |= bytes_response.changed();
             if ui
-                .button("Clear Limits")
+                .button(self.tr("agent.clear_limits"))
                 .on_hover_text("Use default retry/response-size limits")
                 .clicked()
             {
@@ -2416,7 +2413,7 @@ impl GENtleApp {
         if let Some(system) = self.selected_agent_system() {
             ui.horizontal(|ui| {
                 if ui
-                    .button("Test Setup")
+                    .button(self.tr("agent.test_setup"))
                     .on_hover_text(
                         "Validate the current system, key, endpoint, model, and runtime settings without sending a prompt",
                     )
@@ -2426,7 +2423,7 @@ impl GENtleApp {
                 }
                 if self.agent_preflight_output.is_some()
                     && ui
-                        .button("Clear Test")
+                        .button(self.tr("agent.clear_test"))
                         .on_hover_text("Clear the latest setup-preflight snapshot")
                         .clicked()
                 {
@@ -2440,7 +2437,7 @@ impl GENtleApp {
                         | AgentSystemTransport::NativeOpenaiCompat
                 ) {
                     if ui
-                        .button("Discover Models")
+                        .button(self.tr("agent.discover_models"))
                         .on_hover_text("Query local/server model list from current base URL")
                         .clicked()
                     {
@@ -2469,12 +2466,12 @@ impl GENtleApp {
                 if !self.agent_discovered_models.is_empty() {
                     let previous_pick = self.agent_discovered_model_pick.clone();
                     ui.horizontal(|ui| {
-                        ui.label("Discovered model");
+                        ui.label(self.tr("agent.discovered_model"));
                         egui::ComboBox::from_id_salt("agent_discovered_model_combo")
                             .selected_text(if self.agent_discovered_model_pick.trim().is_empty() {
-                                "(choose model)"
+                                self.tr("agent.choose_model")
                             } else {
-                                self.agent_discovered_model_pick.as_str()
+                                self.agent_discovered_model_pick.clone()
                             })
                             .show_ui(ui, |ui| {
                                 for model in &self.agent_discovered_models {
@@ -2487,9 +2484,7 @@ impl GENtleApp {
                             });
                     });
                     preflight_inputs_changed |= previous_pick != self.agent_discovered_model_pick;
-                    ui.small(
-                        "If Model override is unspecified, the selected discovered model is used.",
-                    );
+                    ui.small(self.tr("agent.discovered_model_note"));
                 }
                 if !self.agent_model_discovery_status.trim().is_empty() {
                     ui.small(self.agent_model_discovery_status.clone());
@@ -2501,7 +2496,7 @@ impl GENtleApp {
         }
         if let Some(preflight) = &self.agent_preflight_output {
             ui.group(|ui| {
-                ui.strong("Setup preflight");
+                ui.strong(self.tr("agent.setup_preflight"));
                 let (overall_label, color) = Self::agent_preflight_overall_label(preflight);
                 ui.colored_label(
                     color,
@@ -2551,7 +2546,7 @@ impl GENtleApp {
                 }
                 if let Some(live) = &preflight.live_probe {
                     ui.separator();
-                    ui.strong("Live probe");
+                    ui.strong(self.tr("agent.live_probe"));
                     let color = match live.status_class {
                         AgentLiveProbeStatusClass::Ok => egui::Color32::from_rgb(60, 140, 80),
                         AgentLiveProbeStatusClass::MissingKey
@@ -2596,7 +2591,7 @@ impl GENtleApp {
                 let next_actions = Self::agent_preflight_next_actions(preflight);
                 if !next_actions.is_empty() {
                     ui.separator();
-                    ui.strong("Next action");
+                    ui.strong(self.tr("agent.next_action"));
                     for action in next_actions {
                         ui.small(action);
                     }
@@ -2621,15 +2616,14 @@ impl GENtleApp {
         ui.small(
             "Session only: max_retries/max_response_bytes map to GENTLE_AGENT_MAX_RETRIES/GENTLE_AGENT_MAX_RESPONSE_BYTES.",
         );
+        let include_state_summary_label = self.tr("agent.include_state_summary");
+        let auto_run_suggestions_label = self.tr("agent.auto_run_suggestions");
         ui.horizontal(|ui| {
             ui.checkbox(
                 &mut self.agent_include_state_summary,
-                "Include project state summary in request",
+                include_state_summary_label,
             );
-            ui.checkbox(
-                &mut self.agent_allow_auto_exec,
-                "Auto-run suggestions marked as 'auto'",
-            );
+            ui.checkbox(&mut self.agent_allow_auto_exec, auto_run_suggestions_label);
         });
         if !agent_prompt_template_options()
             .iter()
@@ -2638,7 +2632,7 @@ impl GENtleApp {
             self.agent_prompt_template_id = AGENT_PROMPT_TEMPLATE_DEFAULT_ID.to_string();
         }
         ui.horizontal(|ui| {
-            ui.label("Prompt template");
+            ui.label(self.tr("agent.prompt_template"));
             egui::ComboBox::from_id_salt("agent_prompt_template_combo")
                 .selected_text(agent_prompt_template_label(&self.agent_prompt_template_id))
                 .show_ui(ui, |ui| {
@@ -2651,7 +2645,7 @@ impl GENtleApp {
                     }
                 });
             if ui
-                .button("Insert")
+                .button(self.tr("agent.insert"))
                 .on_hover_text(
                     "Replace current prompt with selected template and apply its request defaults",
                 )
@@ -2665,7 +2659,7 @@ impl GENtleApp {
                     );
             }
             if ui
-                .button("Append")
+                .button(self.tr("agent.append"))
                 .on_hover_text(
                     "Append selected template below current prompt and apply its request defaults",
                 )
@@ -2687,7 +2681,7 @@ impl GENtleApp {
                     );
             }
         });
-        ui.label("Prompt");
+        ui.label(self.tr("agent.prompt"));
         let prompt_edit_id = ui.make_persistent_id("agent_assistant_prompt_edit");
         let prompt_submit_shortcut = ui.memory(|memory| memory.has_focus(prompt_edit_id))
             && ui.input_mut(|input| {
@@ -2710,7 +2704,7 @@ impl GENtleApp {
             if ui
                 .add_enabled(
                     !running && selected_available,
-                    egui::Button::new("Ask Agent"),
+                    egui::Button::new(self.tr("agent.ask_agent")),
                 )
                 .on_hover_text("Send prompt to selected agent system (Ctrl+Return)")
                 .clicked()
@@ -2718,7 +2712,7 @@ impl GENtleApp {
                 self.start_agent_assistant_request();
             }
             if ui
-                .button("Clear Response")
+                .button(self.tr("agent.clear_response"))
                 .on_hover_text("Clear latest agent response and status")
                 .clicked()
             {
@@ -2726,7 +2720,7 @@ impl GENtleApp {
                 self.agent_status.clear();
             }
             if ui
-                .button("Clear Execution Log")
+                .button(self.tr("agent.clear_execution_log"))
                 .on_hover_text("Clear local execution history for agent suggestions")
                 .clicked()
             {
@@ -2936,9 +2930,10 @@ impl GENtleApp {
         }
         let mut open = self.show_agent_assistant_dialog;
         let viewport_id = Self::agent_assistant_viewport_id();
+        let title = self.tr("agent.title");
         let spec = self
             .hosted_window_spec_for_viewport(
-                "Agent Assistant",
+                title.clone(),
                 Self::hosted_agent_assistant_window_id(),
                 viewport_id,
                 Vec2::new(980.0, 720.0),
@@ -2970,7 +2965,7 @@ impl GENtleApp {
             return;
         }
         let viewport_spec = self.hosted_window_spec_for_viewport(
-            "Agent Assistant",
+            title,
             Self::hosted_agent_assistant_window_id(),
             viewport_id,
             Vec2::new(980.0, 720.0),
