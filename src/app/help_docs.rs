@@ -44,6 +44,7 @@ impl GENtleApp {
             title,
             path: resolved_path.to_string_lossy().to_string(),
             summary,
+            audiences: entry.audiences,
         })
     }
 
@@ -583,6 +584,7 @@ impl GENtleApp {
                     .filter_map(Self::help_tutorial_entry_from_catalog_entry)
                     .collect::<Vec<_>>();
                 Self::ensure_agent_interfaces_tutorial_entry(&mut catalog_entries);
+                Self::sort_help_tutorial_entries_by_audience_group(&mut catalog_entries);
                 if !catalog_entries.is_empty() {
                     return catalog_entries;
                 }
@@ -619,10 +621,12 @@ impl GENtleApp {
                     title,
                     path: path.to_string_lossy().to_string(),
                     summary: format!("docs/tutorial/{relative}"),
+                    audiences: vec![],
                 }
             })
             .collect::<Vec<_>>();
         Self::ensure_agent_interfaces_tutorial_entry(&mut entries);
+        Self::sort_help_tutorial_entries_by_audience_group(&mut entries);
         entries
     }
 
@@ -636,6 +640,7 @@ impl GENtleApp {
                     .filter_map(Self::help_tutorial_entry_from_catalog_entry)
                     .collect::<Vec<_>>();
                 Self::ensure_agent_interfaces_tutorial_entry(&mut entries);
+                Self::sort_help_tutorial_entries_by_audience_group(&mut entries);
                 if !entries.is_empty() {
                     return entries;
                 }
@@ -643,6 +648,7 @@ impl GENtleApp {
         }
         let mut entries = vec![];
         Self::ensure_agent_interfaces_tutorial_entry(&mut entries);
+        Self::sort_help_tutorial_entries_by_audience_group(&mut entries);
         entries
     }
 
@@ -662,6 +668,11 @@ impl GENtleApp {
             title,
             path: resolved_string,
             summary: AGENT_INTERFACES_TUTORIAL_SUMMARY.to_string(),
+            audiences: vec![
+                "orientation_interfaces".to_string(),
+                "agent_users".to_string(),
+                "mcp_users".to_string(),
+            ],
         });
     }
 
@@ -764,6 +775,7 @@ impl GENtleApp {
                     title,
                     path: resolved_string,
                     summary,
+                    audiences: vec![],
                 });
                 self.help_tutorial_entries.len() - 1
             }

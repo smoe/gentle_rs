@@ -297,3 +297,19 @@ of a shell-only side path.
   [`docs/sequencing_confirmation_plan.md`](../sequencing_confirmation_plan.md)
 - fixture provenance and public benchmark shortlist:
   [`test_files/fixtures/sequencing_confirmation/README.md`](../../test_files/fixtures/sequencing_confirmation/README.md)
+
+## Feedback
+
+If this tutorial is confusing, execution-stale, biologically suspect, or missing a useful figure, please open the matching tutorial issue template and include the context copied from GENtle Help -> Tutorial -> Copy Feedback Context.
+
+- Tutorial title:
+- Tutorial/chapter id:
+- Step reached:
+- Expected vs. actual:
+- Interface used: GUI / CLI / Agent Assistant / ClawBio
+
+Paste the Tutorial feedback context here:
+
+```text
+
+```

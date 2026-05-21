@@ -363,3 +363,19 @@ If you also want to test the active-context helpers more directly:
 
 That confirms the specialist can prefill from the currently focused DNA window
 instead of forcing you to type everything manually.
+
+## Feedback
+
+If this tutorial is confusing, execution-stale, biologically suspect, or missing a useful figure, please open the matching tutorial issue template and include the context copied from GENtle Help -> Tutorial -> Copy Feedback Context.
+
+- Tutorial title:
+- Tutorial/chapter id:
+- Step reached:
+- Expected vs. actual:
+- Interface used: GUI / CLI / Agent Assistant / ClawBio
+
+Paste the Tutorial feedback context here:
+
+```text
+
+```

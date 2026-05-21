@@ -183,3 +183,19 @@ This tutorial keeps the initial mental model deliberately narrow:
   [`docs/tutorial/generated/chapters/13_pcr_selection_batch_primer_pairs_offline.md`](./generated/chapters/13_pcr_selection_batch_primer_pairs_offline.md)
 - If you want GUI navigation help for the wider application:
   [`docs/tutorial/README.md`](./README.md)
+
+## Feedback
+
+If this tutorial is confusing, execution-stale, biologically suspect, or missing a useful figure, please open the matching tutorial issue template and include the context copied from GENtle Help -> Tutorial -> Copy Feedback Context.
+
+- Tutorial title:
+- Tutorial/chapter id:
+- Step reached:
+- Expected vs. actual:
+- Interface used: GUI / CLI / Agent Assistant / ClawBio
+
+Paste the Tutorial feedback context here:
+
+```text
+
+```
