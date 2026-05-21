@@ -1,14 +1,14 @@
 //! Documentation helper binary that renders workflow examples into generated snippets.
 
 use gentle::cli_support::svg_png_summary_json;
-use gentle::svg_png::{SvgPngRenderOptions, render_svg_file_to_png};
+use gentle::svg_png::{render_svg_file_to_png, SvgPngRenderOptions};
 use gentle::workflow_examples::{
-    DEFAULT_TUTORIAL_CATALOG_META_PATH, DEFAULT_TUTORIAL_CATALOG_PATH,
-    DEFAULT_TUTORIAL_MANIFEST_PATH, DEFAULT_TUTORIAL_OUTPUT_DIR, DEFAULT_TUTORIAL_SOURCE_DIR,
-    DEFAULT_WORKFLOW_EXAMPLE_DIR, DEFAULT_WORKFLOW_SNIPPET_DIR, check_tutorial_catalog_generated,
-    check_tutorial_generated, check_tutorial_manifest_generated, generate_tutorial_docs,
-    generate_workflow_example_docs, load_workflow_examples, validate_example_required_files,
-    write_tutorial_catalog_from_sources, write_tutorial_manifest_from_sources,
+    check_tutorial_catalog_generated, check_tutorial_generated, check_tutorial_manifest_generated,
+    generate_tutorial_docs, generate_workflow_example_docs, load_workflow_examples,
+    validate_example_required_files, write_tutorial_catalog_from_sources,
+    write_tutorial_manifest_from_sources, DEFAULT_TUTORIAL_CATALOG_META_PATH,
+    DEFAULT_TUTORIAL_CATALOG_PATH, DEFAULT_TUTORIAL_MANIFEST_PATH, DEFAULT_TUTORIAL_OUTPUT_DIR,
+    DEFAULT_TUTORIAL_SOURCE_DIR, DEFAULT_WORKFLOW_EXAMPLE_DIR, DEFAULT_WORKFLOW_SNIPPET_DIR,
 };
 use serde_json::json;
 use std::{
@@ -301,6 +301,7 @@ fn run_tutorial_generate_mode(
     repo_root: &Path,
 ) -> Result<(), String> {
     let report = generate_tutorial_docs(source_dir, manifest_path, output_dir, repo_root)?;
+    emit_tutorial_warnings(&report.warnings);
     let pretty = serde_json::to_string_pretty(&report)
         .map_err(|e| format!("Could not serialize tutorial generation report: {e}"))?;
     println!("{pretty}");
@@ -314,16 +315,24 @@ fn run_tutorial_check_mode(
     repo_root: &Path,
 ) -> Result<(), String> {
     let report = check_tutorial_generated(source_dir, manifest_path, output_dir, repo_root)?;
+    emit_tutorial_warnings(&report.warnings);
     let summary = json!({
         "status": "ok",
         "mode": "tutorial-check",
         "chapter_count": report.chapter_count,
         "generated_files": report.generated_files,
+        "warnings": report.warnings,
     });
     let pretty = serde_json::to_string_pretty(&summary)
         .map_err(|e| format!("Could not serialize tutorial check report: {e}"))?;
     println!("{pretty}");
     Ok(())
+}
+
+fn emit_tutorial_warnings(warnings: &[String]) {
+    for warning in warnings {
+        eprintln!("warning: {warning}");
+    }
 }
 
 fn run_tutorial_catalog_generate_mode(
@@ -516,7 +525,7 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{Mode, parse_args};
+    use super::{parse_args, Mode};
 
     #[test]
     fn parse_svg_png_mode_with_cleanup_flag() {

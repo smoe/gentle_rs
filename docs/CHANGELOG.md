@@ -21,6 +21,9 @@ Maintenance rule:
 - Made `gentle_examples_docs tutorial-check` failures include paste-ready
   tutorial feedback context with chapter/source/workflow/artifact paths and a
   suggested issue-template category.
+- Added `gentle.tutorial_review_manifest.v1` review metadata with nonfatal
+  tutorial-check warnings for missing, unknown, or stale tutorial review
+  entries.
 - Added the read-only `planning consult cloning` route and
   `gentle.planning_cloning_consultation.v1` report so Agent Assistant and
   ClawBio can quote deterministic cloning-strategy/vector advice instead of
