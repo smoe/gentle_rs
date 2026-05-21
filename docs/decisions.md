@@ -193,3 +193,12 @@ Status: deferred
 Primer3 is the intended external backend parity layer for primer design, but
 deeper constraint mapping, fixture coverage, and backend equivalence checks
 should land through shared engine/report contracts rather than GUI-only code.
+
+## DEC-023: Presentation i18n Does Not Localise Machine Contracts
+
+Status: active
+
+GUI labels and dialog text may be translated at runtime, but shared shell
+commands, protocol schema fields, saved project records, adapter payloads,
+agent response schemas, and scientific identifiers remain deterministic
+English. Localised text is presentation only.

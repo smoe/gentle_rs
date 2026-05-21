@@ -16,11 +16,16 @@ impl GENtleApp {
         );
         with_window_content_inset(ui, |ui| {
             self.render_specialist_window_nav(ui);
+            let external_tab_label = self.tr("configuration.tab.external_applications");
+            let graphics_tab_label = self.tr("configuration.tab.graphics");
+            let language_tab_label = self.tr("configuration.tab.language");
+            let unapplied_changes_label = self.tr("configuration.status.unapplied_changes");
+            let close_label = self.tr("button.close");
             ui.horizontal_wrapped(|ui| {
                 if ui
                     .selectable_label(
                         self.configuration_tab == ConfigurationTab::ExternalApplications,
-                        "External Applications",
+                        external_tab_label,
                     )
                     .clicked()
                 {
@@ -29,18 +34,30 @@ impl GENtleApp {
                 if ui
                     .selectable_label(
                         self.configuration_tab == ConfigurationTab::Graphics,
-                        "Graphics",
+                        graphics_tab_label,
                     )
                     .clicked()
                 {
                     self.configuration_tab = ConfigurationTab::Graphics;
                 }
+                if ui
+                    .selectable_label(
+                        self.configuration_tab == ConfigurationTab::Language,
+                        language_tab_label,
+                    )
+                    .clicked()
+                {
+                    self.configuration_tab = ConfigurationTab::Language;
+                }
                 ui.separator();
                 if has_unapplied_changes {
-                    ui.colored_label(egui::Color32::from_rgb(185, 95, 25), "Unapplied changes");
+                    ui.colored_label(
+                        egui::Color32::from_rgb(185, 95, 25),
+                        unapplied_changes_label.clone(),
+                    );
                 }
                 if ui
-                    .button("Close")
+                    .button(close_label)
                     .on_hover_text(if has_unapplied_changes {
                         "Close configuration dialog (unapplied changes will be discarded)"
                     } else {
@@ -54,11 +71,16 @@ impl GENtleApp {
             ui.separator();
             ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
                 ui.horizontal(|ui| {
+                    let cancel_label = self.tr("button.cancel");
+                    let apply_label = self.tr("button.apply");
                     if has_unapplied_changes {
-                        ui.colored_label(egui::Color32::from_rgb(185, 95, 25), "Unapplied changes");
+                        ui.colored_label(
+                            egui::Color32::from_rgb(185, 95, 25),
+                            self.tr("configuration.status.unapplied_changes"),
+                        );
                     }
                     if ui
-                        .button("Cancel")
+                        .button(cancel_label)
                         .on_hover_text(if has_unapplied_changes {
                             "Discard unapplied configuration changes and close"
                         } else {
@@ -75,7 +97,7 @@ impl GENtleApp {
                         self.show_configuration_dialog = false;
                     }
                     if ui
-                        .add_enabled(has_unapplied_changes, egui::Button::new("Apply"))
+                        .add_enabled(has_unapplied_changes, egui::Button::new(apply_label))
                         .on_hover_text("Apply all unapplied configuration changes")
                         .clicked()
                     {
@@ -102,10 +124,49 @@ impl GENtleApp {
                             ConfigurationTab::Graphics => {
                                 self.render_configuration_graphics_tab(ui);
                             }
+                            ConfigurationTab::Language => {
+                                self.render_configuration_language_tab(ui);
+                            }
                         }
                     });
             });
         });
+    }
+
+    fn render_configuration_language_tab(&mut self, ui: &mut Ui) {
+        ui.heading(self.tr("configuration.language.heading"));
+        ui.label(self.tr("configuration.language.description"));
+        ui.add_space(8.0);
+
+        ui.horizontal(|ui| {
+            ui.label(self.tr("configuration.language.selector"));
+            let before = self.configuration_ui_language;
+            egui::ComboBox::from_id_salt("configuration_language_selector")
+                .selected_text(self.configuration_ui_language.label())
+                .show_ui(ui, |ui| {
+                    for language in UiLanguage::ALL {
+                        ui.selectable_value(
+                            &mut self.configuration_ui_language,
+                            language,
+                            language.label(),
+                        );
+                    }
+                });
+            if self.configuration_ui_language != before {
+                self.configuration_language_dirty =
+                    self.configuration_ui_language != self.ui_language;
+            }
+        });
+
+        ui.small(format!(
+            "{}: {} | {}: {}",
+            self.tr("configuration.language.active"),
+            self.i18n.language().label(),
+            self.tr("configuration.language.selected"),
+            self.configuration_ui_language.label()
+        ));
+        ui.small(self.tr("configuration.language.apply_note"));
+        ui.small(self.tr("configuration.language.experimental_note"));
     }
 
     pub(super) fn render_configuration_dialog(&mut self, ctx: &egui::Context) {
@@ -113,8 +174,9 @@ impl GENtleApp {
             return;
         }
         let viewport_id = Self::configuration_viewport_id();
+        let title = self.tr("dialog.configuration.title");
         let spec = self.hosted_window_spec_for_viewport(
-            "Configuration",
+            title.clone(),
             Self::hosted_configuration_window_id(),
             viewport_id,
             Vec2::new(720.0, 540.0),
@@ -138,7 +200,7 @@ impl GENtleApp {
             return;
         }
         let builder = egui::ViewportBuilder::default()
-            .with_title("Configuration")
+            .with_title(title.clone())
             .with_inner_size([720.0, 540.0])
             .with_min_inner_size([460.0, 320.0]);
         ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
@@ -148,7 +210,7 @@ impl GENtleApp {
                 let render_started = Instant::now();
                 let min_size = Vec2::new(460.0, 320.0);
                 let spec = crate::egui_compat::HostedWindowSpec::new(
-                    "Configuration",
+                    title.clone(),
                     Self::hosted_configuration_window_id(),
                     Vec2::new(720.0, 540.0),
                     min_size,

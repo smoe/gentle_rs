@@ -85,6 +85,9 @@ mod rack_workspace_ui;
 #[path = "app/gibson_ui.rs"]
 mod gibson_ui;
 
+#[path = "app/i18n.rs"]
+mod i18n;
+
 use std::{
     collections::hash_map::DefaultHasher,
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
@@ -101,6 +104,8 @@ use std::{
     },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
+
+use i18n::{I18n, UiLanguage};
 
 use crate::{
     about,
@@ -192,13 +197,13 @@ use crate::{
         self, WindowBackdropKind, WindowBackdropSettings, with_window_content_inset,
     },
     workflow_examples::{
+        DEFAULT_TUTORIAL_CATALOG_PATH, DEFAULT_TUTORIAL_MANIFEST_PATH, DEFAULT_TUTORIAL_OUTPUT_DIR,
+        DEFAULT_TUTORIAL_REVIEW_MANIFEST_PATH, DEFAULT_TUTORIAL_SOURCE_DIR,
+        DEFAULT_WORKFLOW_EXAMPLE_DIR, ExampleTestMode, TutorialTier, WorkflowExample,
         build_tutorial_feedback_context_text, load_tutorial_catalog, load_tutorial_manifest,
         load_tutorial_review_manifest, load_workflow_examples,
         run_example_workflow_for_project_state_with_progress, validate_example_required_files,
-        validate_tutorial_manifest_against_examples, DEFAULT_TUTORIAL_CATALOG_PATH,
-        DEFAULT_TUTORIAL_MANIFEST_PATH, DEFAULT_TUTORIAL_OUTPUT_DIR,
-        DEFAULT_TUTORIAL_REVIEW_MANIFEST_PATH, DEFAULT_TUTORIAL_SOURCE_DIR,
-        DEFAULT_WORKFLOW_EXAMPLE_DIR, ExampleTestMode, TutorialTier, WorkflowExample,
+        validate_tutorial_manifest_against_examples,
     },
 };
 use agent_assistant_config::{
@@ -227,7 +232,7 @@ const CLI_MANUAL_MD: &str = include_str!("../docs/cli.md");
 const AGENT_INTERFACE_MD: &str = include_str!("../docs/agent_interface.md");
 const REVIEWER_PREVIEW_MD: &str = include_str!("../docs/reviewer_preview.md");
 const APP_CONFIGURATION_FILE_NAME: &str = ".gentle_gui_settings.json";
-const APP_CONFIGURATION_SCHEMA_VERSION: u32 = 2;
+const APP_CONFIGURATION_SCHEMA_VERSION: u32 = 3;
 const MAX_RECENT_PROJECTS: usize = 12;
 const MAX_BACKGROUND_JOB_EVENTS: usize = 200;
 const MAX_BACKGROUND_JOB_RETRY_SNAPSHOTS: usize = 120;
@@ -374,6 +379,7 @@ struct PersistedConfiguration {
     bigwig_to_bedgraph_executable: String,
     graphics_defaults: DisplaySettings,
     window_backdrops: WindowBackdropSettings,
+    ui_language: UiLanguage,
     recent_projects: Vec<String>,
 }
 
@@ -387,6 +393,7 @@ impl Default for PersistedConfiguration {
             bigwig_to_bedgraph_executable: String::new(),
             graphics_defaults: DisplaySettings::default(),
             window_backdrops: WindowBackdropSettings::default(),
+            ui_language: UiLanguage::default(),
             recent_projects: vec![],
         }
     }
@@ -645,6 +652,10 @@ pub struct GENtleApp {
     window_backdrops: WindowBackdropSettings,
     configuration_window_backdrops: WindowBackdropSettings,
     configuration_window_backdrops_dirty: bool,
+    ui_language: UiLanguage,
+    configuration_ui_language: UiLanguage,
+    configuration_language_dirty: bool,
+    i18n: I18n,
     configuration_status: String,
     window_backdrop_path_status_cache: HashMap<String, (egui::Color32, String)>,
     current_project_path: Option<String>,
@@ -1110,6 +1121,7 @@ struct RenderedHelpMarkdownEntry {
 enum ConfigurationTab {
     ExternalApplications,
     Graphics,
+    Language,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -2267,6 +2279,10 @@ impl Default for GENtleApp {
             window_backdrops: WindowBackdropSettings::default(),
             configuration_window_backdrops: WindowBackdropSettings::default(),
             configuration_window_backdrops_dirty: false,
+            ui_language: UiLanguage::default(),
+            configuration_ui_language: UiLanguage::default(),
+            configuration_language_dirty: false,
+            i18n: I18n::default(),
             configuration_status: String::new(),
             window_backdrop_path_status_cache: HashMap::new(),
             current_project_path: None,
@@ -2818,6 +2834,10 @@ impl GENtleApp {
         serde_json::from_str::<PersistedConfiguration>(&text).ok()
     }
 
+    fn tr(&self, key: &str) -> String {
+        self.i18n.t(key)
+    }
+
     fn write_persisted_configuration_to_disk(&self) -> std::result::Result<(), String> {
         let path = Self::configuration_store_path();
         if let Some(parent) = path.parent() {
@@ -2841,6 +2861,7 @@ impl GENtleApp {
                 .to_string(),
             graphics_defaults: self.configuration_graphics.clone(),
             window_backdrops: self.window_backdrops.clone(),
+            ui_language: self.ui_language,
             recent_projects: self.recent_project_paths.clone(),
         };
         let json = serde_json::to_string_pretty(&payload)
@@ -3119,6 +3140,10 @@ impl GENtleApp {
         self.configuration_window_backdrops_dirty = false;
         window_backdrop::set_window_backdrop_settings(self.window_backdrops.clone());
         self.window_backdrop_path_status_cache.clear();
+        self.ui_language = saved.ui_language;
+        self.configuration_ui_language = saved.ui_language;
+        self.configuration_language_dirty = false;
+        self.i18n.set_language(saved.ui_language);
         self.recent_project_paths = Self::normalize_recent_project_paths(saved.recent_projects);
         self.configuration_graphics_dirty = false;
         self.configuration_rnapkin_validation_ok = None;
@@ -3572,6 +3597,8 @@ Error: `{err}`"
         }
         self.configuration_window_backdrops = self.window_backdrops.clone();
         self.configuration_window_backdrops_dirty = false;
+        self.configuration_ui_language = self.ui_language;
+        self.configuration_language_dirty = false;
         self.window_backdrop_path_status_cache.clear();
         self.clear_rnapkin_validation();
         self.clear_blast_validation();
@@ -3592,13 +3619,15 @@ Error: `{err}`"
         self.external_apps_configuration_dirty()
             || self.configuration_graphics_dirty
             || self.configuration_window_backdrops_dirty
+            || self.configuration_language_dirty
     }
 
     fn apply_pending_configuration_changes(&mut self) {
         let external_dirty = self.external_apps_configuration_dirty();
         let graphics_dirty = self.configuration_graphics_dirty;
         let backdrop_dirty = self.configuration_window_backdrops_dirty;
-        if !external_dirty && !graphics_dirty && !backdrop_dirty {
+        let language_dirty = self.configuration_language_dirty;
+        if !external_dirty && !graphics_dirty && !backdrop_dirty && !language_dirty {
             self.configuration_status = "No unapplied configuration changes".to_string();
             return;
         }
@@ -3610,6 +3639,9 @@ Error: `{err}`"
         }
         if backdrop_dirty {
             self.apply_configuration_window_backdrops();
+        }
+        if language_dirty {
+            self.apply_configuration_language();
         }
     }
 
@@ -5180,7 +5212,10 @@ Error: `{err}`"
             .entries
             .iter()
             .find(|candidate| {
-                let resolved = repo_root.join(&candidate.path).to_string_lossy().to_string();
+                let resolved = repo_root
+                    .join(&candidate.path)
+                    .to_string_lossy()
+                    .to_string();
                 candidate.path == entry.path || resolved == entry.path
             })
             .ok_or_else(|| {
@@ -14995,7 +15030,7 @@ Error: `{err}`"
         let redo_count = history_summary.redo_count;
         let history_ops_enabled = !self.has_active_background_jobs();
         egui::MenuBar::new().ui(ui, |ui| {
-            ui.menu_button("File", |ui| {
+            ui.menu_button(self.tr("menu.file"), |ui| {
                 if ui
                     .button("New Project")
                     .on_hover_text("Create a new empty project state")
@@ -15234,7 +15269,7 @@ Error: `{err}`"
                 }
                 ui.separator();
                 if ui
-                    .button("Configuration...")
+                    .button(self.tr("menu.file.configuration"))
                     .on_hover_text("Open global app configuration and graphics defaults")
                     .clicked()
                 {
@@ -15242,7 +15277,7 @@ Error: `{err}`"
                     ui.close();
                 }
                 if ui
-                    .button("Agent Assistant...")
+                    .button(self.tr("menu.file.agent_assistant"))
                     .on_hover_text(
                         "Ask configured agent systems and execute suggested shared-shell commands",
                     )
@@ -15301,7 +15336,7 @@ Error: `{err}`"
                 }
                 ui.separator();
                 if ui
-                    .button("Quit")
+                    .button(self.tr("menu.file.quit"))
                     .on_hover_text("Quit GENtle (Cmd/Ctrl+Q)")
                     .clicked()
                 {
@@ -15309,11 +15344,11 @@ Error: `{err}`"
                     ui.close();
                 }
             });
-            ui.menu_button("Edit", |ui| {
+            ui.menu_button(self.tr("menu.edit"), |ui| {
                 let undo_resp = self.track_hover_status(
                     ui.add_enabled(
                         history_ops_enabled && undo_count > 0,
-                        egui::Button::new("Undo"),
+                        egui::Button::new(self.tr("menu.edit.undo")),
                     )
                     .on_hover_text("Undo the most recent operation-level state change"),
                     "Edit > Undo",
@@ -15325,7 +15360,7 @@ Error: `{err}`"
                 let redo_resp = self.track_hover_status(
                     ui.add_enabled(
                         history_ops_enabled && redo_count > 0,
-                        egui::Button::new("Redo"),
+                        egui::Button::new(self.tr("menu.edit.redo")),
                     )
                     .on_hover_text("Redo the most recently undone operation"),
                     "Edit > Redo",
@@ -15344,7 +15379,7 @@ Error: `{err}`"
                 }
                 ui.separator();
                 let palette_resp = self.track_hover_status(
-                    ui.button("Command Palette...")
+                    ui.button(self.tr("menu.edit.command_palette"))
                         .on_hover_text("Open searchable command palette (Cmd/Ctrl+K)"),
                     "Edit > Command Palette",
                 );
@@ -15353,7 +15388,7 @@ Error: `{err}`"
                     ui.close();
                 }
                 let history_resp = self.track_hover_status(
-                    ui.button("Operation History...")
+                    ui.button(self.tr("menu.edit.operation_history"))
                         .on_hover_text("Show operation history with undo/redo controls"),
                     "Edit > Operation History",
                 );
@@ -15362,9 +15397,9 @@ Error: `{err}`"
                     ui.close();
                 }
             });
-            ui.menu_button("Settings", |ui| {
+            ui.menu_button(self.tr("menu.settings"), |ui| {
                 if ui
-                    .button("Configuration...")
+                    .button(self.tr("menu.file.configuration"))
                     .on_hover_text("Open global app configuration and graphics defaults")
                     .clicked()
                 {
@@ -15372,7 +15407,7 @@ Error: `{err}`"
                     ui.close();
                 }
             });
-            ui.menu_button("Genome", |ui| {
+            ui.menu_button(self.tr("menu.genome"), |ui| {
                 if ui
                     .button("Prepare Reference Genome...")
                     .on_hover_text(
@@ -15453,7 +15488,7 @@ Error: `{err}`"
                     ui.close();
                 }
             });
-            ui.menu_button("Patterns", |ui| {
+            ui.menu_button(self.tr("menu.patterns"), |ui| {
                 if ui
                     .button("Import Pattern File...")
                     .on_hover_text("Import workflow macro templates from one JSON pattern file")
@@ -15666,7 +15701,7 @@ Error: `{err}`"
                     }
                 }
             });
-            ui.menu_button("Services", |ui| {
+            ui.menu_button(self.tr("menu.services"), |ui| {
                 if ui
                     .button("External Services...")
                     .on_hover_text(
@@ -15679,7 +15714,7 @@ Error: `{err}`"
                 }
                 ui.small("Shared shell routes: services providers/preflight/quote");
             });
-            ui.menu_button("Windows", |ui| {
+            ui.menu_button(self.tr("menu.windows"), |ui| {
                 let jobs_panel_resp = self.track_hover_status(
                     ui.button(if self.show_jobs_panel {
                         "Hide Background Jobs"
@@ -15723,7 +15758,7 @@ Error: `{err}`"
                     }
                 }
             });
-            ui.menu_button("Help", |ui| {
+            ui.menu_button(self.tr("menu.help"), |ui| {
                 if ui
                     .button("GUI Manual")
                     .on_hover_text("Open the GUI manual in the built-in help window")
@@ -19631,6 +19666,24 @@ Error: `{err}`"
         self.window_backdrop_path_status_cache.clear();
         self.configuration_window_backdrops_dirty = false;
         self.configuration_status = "Window styling settings applied".to_string();
+        match self.write_persisted_configuration_to_disk() {
+            Ok(()) => {
+                self.configuration_status
+                    .push_str(" | persisted to app settings");
+            }
+            Err(e) => {
+                self.configuration_status
+                    .push_str(&format!(" | persistence failed: {e}"));
+            }
+        }
+    }
+
+    fn apply_configuration_language(&mut self) {
+        self.ui_language = self.configuration_ui_language;
+        self.i18n.set_language(self.ui_language);
+        self.configuration_language_dirty = false;
+        self.configuration_status =
+            format!("Interface language applied ({})", self.ui_language.label());
         match self.write_persisted_configuration_to_disk() {
             Ok(()) => {
                 self.configuration_status
@@ -23555,7 +23608,7 @@ mod tests {
         ROUTINE_DECISION_TRACES_METADATA_KEY, RackDragState, RetryCleanupAuditActionFilter,
         RetrySnapshotKindFilter, RetrySnapshotPendingCleanupAction, RoutineAssistantStage,
         TutorialProjectOpenOutcome, TutorialProjectTask, TutorialProjectTaskMessage,
-        TutorialProjectTaskProgress, gui_prominent_glossary_entries,
+        TutorialProjectTaskProgress, UiLanguage, gui_prominent_glossary_entries,
         preferred_anthropic_agent_system_id, preferred_local_agent_system_id,
         preferred_mistral_agent_system_id, preferred_openai_agent_system_id,
     };
@@ -29366,6 +29419,19 @@ mod tests {
             saved.graphics_defaults.linear_sequence_letter_layout_mode,
             LinearSequenceLetterLayoutMode::AutoAdaptive
         );
+    }
+
+    #[test]
+    fn upgrade_persisted_configuration_keeps_default_ui_language_for_legacy_settings() {
+        let mut saved = PersistedConfiguration::default();
+        saved.schema_version = 2;
+        saved.ui_language = UiLanguage::default();
+
+        let upgraded = GENtleApp::upgrade_persisted_configuration(&mut saved);
+
+        assert!(upgraded);
+        assert_eq!(saved.schema_version, APP_CONFIGURATION_SCHEMA_VERSION);
+        assert_eq!(saved.ui_language, UiLanguage::System);
     }
 
     #[test]

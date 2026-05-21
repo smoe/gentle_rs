@@ -13,6 +13,9 @@ helper_genomes.json::
 cutrun.json:: Starter CUT&RUN dataset catalog for processed evidence (BED/BigWig) and future raw-read reuse.
 cutrun.d/:: Additional built-in CUT&RUN catalog shards. The Rostock p73 `E-MTAB-15709` shard records SRA-backed paired-end runs and keeps full raw-read acquisition explicit.
 host_profiles.json:: Starter host/strain catalog for construct-reasoning inspection in GUI/agent-facing workflows.
+i18n/:: Embedded GUI translation catalogs. They localize visible interface
+chrome only; shared shell commands, saved records, protocol fields, and
+scientific identifiers remain deterministic English.
 blast_defaults.json:: Default BLAST option layer (`task`, `max_hits`, optional thresholds) used when no project/request override is provided.
 reporter_catalog.json:: Small V1 reporter-selection catalog used by the
 offline reporter recommender. Records carry source links, license status,
