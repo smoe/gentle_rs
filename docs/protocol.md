@@ -80,6 +80,8 @@ Tutorial manifest + generated outputs:
   - `gentle.tutorial_source.v2`
 - generated runtime manifest: `docs/tutorial/manifest.json`
 - runtime manifest schema: `gentle.tutorial_manifest.v1`
+- review freshness manifest: `docs/tutorial/review_manifest.json`
+- review freshness schema: `gentle.tutorial_review_manifest.v1`
 - committed generated outputs: `docs/tutorial/generated/`
 
 Catalog/manifest split:
@@ -90,9 +92,22 @@ Catalog/manifest split:
   catalog and the executable tutorial runtime manifest.
 - `docs/tutorial/manifest.json` is a generated runtime contract used for
   chapter output and tutorial runtime checks.
+- `docs/tutorial/review_manifest.json` stores non-executable review metadata
+  keyed by tutorial id. The validated tutorial source JSON remains the
+  executable contract; review metadata tracks `tutorial_kind`, active or
+  deprecated status, optional replacement, and optional `codex_reviewed_at` /
+  `human_reviewed_at` dates.
 - GUI help/tutorial discovery may consume the catalog directly for curated
   ordering and metadata, while executable tutorial project materialization still
   resolves through the manifest/workflow example path.
+
+Review-manifest checks are warnings, not hard failures:
+
+- missing entries for known tutorial ids warn
+- entries for unknown tutorial ids warn
+- `human_reviewed_at` older than `warn_after_months` warns
+- `deprecated` tutorials, or entries with `replaced_by`, do not escalate
+  execution failures during tutorial checks
 
 Generate/check tutorial outputs:
 

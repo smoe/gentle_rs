@@ -8,6 +8,7 @@ use std::{
     env, fs,
     io::Read,
     path::{Path, PathBuf},
+    time::{SystemTime, UNIX_EPOCH},
 };
 use tempfile::TempDir;
 
@@ -22,11 +23,13 @@ pub const TUTORIAL_SOURCE_SCHEMA: &str = "gentle.tutorial_source.v3";
 pub const LEGACY_TUTORIAL_SOURCE_SCHEMA_V2: &str = "gentle.tutorial_source.v2";
 pub const TUTORIAL_MANIFEST_SCHEMA: &str = "gentle.tutorial_manifest.v1";
 pub const TUTORIAL_GENERATION_REPORT_SCHEMA: &str = "gentle.tutorial_generation_report.v1";
+pub const TUTORIAL_REVIEW_MANIFEST_SCHEMA: &str = "gentle.tutorial_review_manifest.v1";
 pub const DEFAULT_TUTORIAL_CATALOG_PATH: &str = "docs/tutorial/catalog.json";
 pub const DEFAULT_TUTORIAL_CATALOG_META_PATH: &str = "docs/tutorial/sources/catalog_meta.json";
 pub const DEFAULT_TUTORIAL_SOURCE_DIR: &str = "docs/tutorial/sources";
 pub const DEFAULT_TUTORIAL_MANIFEST_PATH: &str = "docs/tutorial/manifest.json";
 pub const DEFAULT_TUTORIAL_OUTPUT_DIR: &str = "docs/tutorial/generated";
+pub const DEFAULT_TUTORIAL_REVIEW_MANIFEST_PATH: &str = "docs/tutorial/review_manifest.json";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TutorialCatalogGeneratedRuntime {
@@ -301,6 +304,31 @@ pub struct TutorialManifest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TutorialReviewManifest {
+    #[serde(default = "default_tutorial_review_manifest_schema")]
+    pub schema: String,
+    #[serde(default = "default_tutorial_review_warn_after_months")]
+    pub warn_after_months: u32,
+    #[serde(default)]
+    pub entries: Vec<TutorialReviewEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TutorialReviewEntry {
+    pub tutorial_id: String,
+    pub tutorial_kind: String,
+    pub tutorial_status: String,
+    #[serde(default)]
+    pub replaced_by: Option<String>,
+    #[serde(default)]
+    pub codex_reviewed_at: Option<String>,
+    #[serde(default)]
+    pub human_reviewed_at: Option<String>,
+    #[serde(default)]
+    pub human_reviewer: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TutorialGenerationChapter {
     pub id: String,
     pub order: usize,
@@ -323,6 +351,8 @@ pub struct TutorialGenerationReport {
     pub online_enabled: bool,
     pub generated_files: Vec<String>,
     pub file_checksums: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
     pub chapters: Vec<TutorialGenerationChapter>,
 }
 
@@ -404,6 +434,14 @@ fn default_tutorial_manifest_schema() -> String {
 
 fn default_tutorial_generation_report_schema() -> String {
     TUTORIAL_GENERATION_REPORT_SCHEMA.to_string()
+}
+
+fn default_tutorial_review_manifest_schema() -> String {
+    TUTORIAL_REVIEW_MANIFEST_SCHEMA.to_string()
+}
+
+fn default_tutorial_review_warn_after_months() -> u32 {
+    12
 }
 
 #[derive(Debug, Clone)]
@@ -602,6 +640,21 @@ fn parse_tutorial_manifest(manifest_path: &Path) -> Result<TutorialManifest, Str
     serde_json::from_str::<TutorialManifest>(&raw).map_err(|e| {
         format!(
             "Could not parse tutorial manifest '{}': {e}",
+            display_path(manifest_path)
+        )
+    })
+}
+
+fn parse_tutorial_review_manifest(manifest_path: &Path) -> Result<TutorialReviewManifest, String> {
+    let raw = fs::read_to_string(manifest_path).map_err(|e| {
+        format!(
+            "Could not read tutorial review manifest '{}': {e}",
+            display_path(manifest_path)
+        )
+    })?;
+    serde_json::from_str::<TutorialReviewManifest>(&raw).map_err(|e| {
+        format!(
+            "Could not parse tutorial review manifest '{}': {e}",
             display_path(manifest_path)
         )
     })
@@ -1286,6 +1339,97 @@ pub fn load_tutorial_manifest(manifest_path: &Path) -> Result<TutorialManifest, 
     Ok(manifest)
 }
 
+pub fn load_tutorial_review_manifest(
+    manifest_path: &Path,
+) -> Result<TutorialReviewManifest, String> {
+    let manifest = parse_tutorial_review_manifest(manifest_path)?;
+    if manifest.schema != TUTORIAL_REVIEW_MANIFEST_SCHEMA {
+        return Err(format!(
+            "Tutorial review manifest '{}' uses unsupported schema '{}'; expected '{}'",
+            display_path(manifest_path),
+            manifest.schema,
+            TUTORIAL_REVIEW_MANIFEST_SCHEMA
+        ));
+    }
+    if manifest.warn_after_months == 0 {
+        return Err(format!(
+            "Tutorial review manifest '{}' must set warn_after_months greater than 0",
+            display_path(manifest_path)
+        ));
+    }
+    let mut seen_ids: HashSet<String> = HashSet::new();
+    for entry in &manifest.entries {
+        if entry.tutorial_id.trim().is_empty()
+            || entry.tutorial_kind.trim().is_empty()
+            || entry.tutorial_status.trim().is_empty()
+        {
+            return Err(format!(
+                "Tutorial review manifest '{}' contains an entry with empty required fields",
+                display_path(manifest_path)
+            ));
+        }
+        if !matches!(
+            entry.tutorial_kind.as_str(),
+            "guided_walkthrough" | "generated_chapter"
+        ) {
+            return Err(format!(
+                "Tutorial review manifest '{}' entry '{}' has unsupported tutorial_kind '{}'",
+                display_path(manifest_path),
+                entry.tutorial_id,
+                entry.tutorial_kind
+            ));
+        }
+        if !matches!(entry.tutorial_status.as_str(), "active" | "deprecated") {
+            return Err(format!(
+                "Tutorial review manifest '{}' entry '{}' has unsupported tutorial_status '{}'",
+                display_path(manifest_path),
+                entry.tutorial_id,
+                entry.tutorial_status
+            ));
+        }
+        if !seen_ids.insert(entry.tutorial_id.clone()) {
+            return Err(format!(
+                "Tutorial review manifest '{}' has duplicate tutorial id '{}'",
+                display_path(manifest_path),
+                entry.tutorial_id
+            ));
+        }
+        validate_optional_review_date(
+            manifest_path,
+            &entry.tutorial_id,
+            "codex_reviewed_at",
+            entry.codex_reviewed_at.as_deref(),
+        )?;
+        validate_optional_review_date(
+            manifest_path,
+            &entry.tutorial_id,
+            "human_reviewed_at",
+            entry.human_reviewed_at.as_deref(),
+        )?;
+    }
+    Ok(manifest)
+}
+
+fn validate_optional_review_date(
+    manifest_path: &Path,
+    tutorial_id: &str,
+    field: &str,
+    value: Option<&str>,
+) -> Result<(), String> {
+    if let Some(value) = value {
+        parse_review_date(value).map_err(|e| {
+            format!(
+                "Tutorial review manifest '{}' entry '{}' has invalid {} '{}': {e}",
+                display_path(manifest_path),
+                tutorial_id,
+                field,
+                value
+            )
+        })?;
+    }
+    Ok(())
+}
+
 fn example_lookup(examples: &[LoadedWorkflowExample]) -> HashMap<String, LoadedWorkflowExample> {
     let mut by_id = HashMap::new();
     for loaded in examples {
@@ -1323,6 +1467,76 @@ fn concept_occurrences(sorted_chapters: &[TutorialChapter]) -> HashMap<String, V
         }
     }
     occurrences
+}
+
+fn parse_review_date(raw: &str) -> Result<(i32, u32, u32), String> {
+    let mut parts = raw.split('-');
+    let year = parts
+        .next()
+        .ok_or_else(|| "missing year".to_string())?
+        .parse::<i32>()
+        .map_err(|e| format!("invalid year: {e}"))?;
+    let month = parts
+        .next()
+        .ok_or_else(|| "missing month".to_string())?
+        .parse::<u32>()
+        .map_err(|e| format!("invalid month: {e}"))?;
+    let day = parts
+        .next()
+        .ok_or_else(|| "missing day".to_string())?
+        .parse::<u32>()
+        .map_err(|e| format!("invalid day: {e}"))?;
+    if parts.next().is_some() {
+        return Err("expected YYYY-MM-DD".to_string());
+    }
+    if !(1..=12).contains(&month) {
+        return Err("month must be in 1..=12".to_string());
+    }
+    let max_day = match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if is_leap_year(year) => 29,
+        2 => 28,
+        _ => unreachable!(),
+    };
+    if day == 0 || day > max_day {
+        return Err(format!("day must be in 1..={max_day}"));
+    }
+    Ok((year, month, day))
+}
+
+fn is_leap_year(year: i32) -> bool {
+    (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
+}
+
+fn review_date_is_stale(reviewed_at: &str, today: (i32, u32, u32), warn_after_months: u32) -> bool {
+    let Ok((review_year, review_month, review_day)) = parse_review_date(reviewed_at) else {
+        return false;
+    };
+    let review_total_months = review_year as i64 * 12 + review_month as i64;
+    let today_total_months = today.0 as i64 * 12 + today.1 as i64;
+    let month_delta = today_total_months - review_total_months;
+    month_delta > warn_after_months as i64
+        || (month_delta == warn_after_months as i64 && today.2 >= review_day)
+}
+
+fn current_utc_review_date() -> Option<(i32, u32, u32)> {
+    let seconds = SystemTime::now().duration_since(UNIX_EPOCH).ok()?.as_secs();
+    Some(civil_from_unix_days((seconds / 86_400) as i64))
+}
+
+fn civil_from_unix_days(days_since_epoch: i64) -> (i32, u32, u32) {
+    let z = days_since_epoch + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let year = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = mp + if mp < 10 { 3 } else { -9 };
+    let year = year + if month <= 2 { 1 } else { 0 };
+    (year as i32, month as u32, day as u32)
 }
 
 fn chapter_link_label(chapter: &TutorialChapter) -> String {
@@ -1390,6 +1604,117 @@ pub fn validate_tutorial_manifest_against_examples(
         }
     }
     Ok(())
+}
+
+#[derive(Debug, Clone, Default)]
+struct TutorialReviewContext {
+    entries_by_id: HashMap<String, TutorialReviewEntry>,
+    warnings: Vec<String>,
+}
+
+fn tutorial_review_manifest_path_for_manifest(manifest_path: &Path) -> PathBuf {
+    manifest_path
+        .parent()
+        .map(|parent| parent.join("review_manifest.json"))
+        .unwrap_or_else(|| PathBuf::from(DEFAULT_TUTORIAL_REVIEW_MANIFEST_PATH))
+}
+
+fn tutorial_known_review_ids(
+    manifest_path: &Path,
+    manifest: &TutorialManifest,
+) -> Result<BTreeMap<String, String>, String> {
+    let mut known = BTreeMap::new();
+    for chapter in &manifest.chapters {
+        known.insert(chapter.id.clone(), "generated_chapter".to_string());
+    }
+    let tutorial_source_dir = tutorial_source_dir_for_manifest(manifest_path);
+    if tutorial_source_dir.exists() {
+        for unit in load_tutorial_source_units(&tutorial_source_dir)? {
+            let kind = if unit.generated_chapter.is_some() {
+                "generated_chapter"
+            } else {
+                "guided_walkthrough"
+            };
+            known.insert(unit.id, kind.to_string());
+        }
+    }
+    Ok(known)
+}
+
+fn tutorial_review_context(
+    manifest_path: &Path,
+    manifest: &TutorialManifest,
+) -> Result<TutorialReviewContext, String> {
+    tutorial_review_context_for_date(manifest_path, manifest, current_utc_review_date())
+}
+
+fn tutorial_review_context_for_date(
+    manifest_path: &Path,
+    manifest: &TutorialManifest,
+    today: Option<(i32, u32, u32)>,
+) -> Result<TutorialReviewContext, String> {
+    let review_path = tutorial_review_manifest_path_for_manifest(manifest_path);
+    let known = tutorial_known_review_ids(manifest_path, manifest)?;
+    if !review_path.exists() {
+        return Ok(TutorialReviewContext {
+            entries_by_id: HashMap::new(),
+            warnings: vec![format!(
+                "Tutorial review manifest '{}' is missing; review freshness was not checked",
+                display_path(&review_path)
+            )],
+        });
+    }
+    let review_manifest = load_tutorial_review_manifest(&review_path)?;
+    let mut warnings = Vec::new();
+    let mut entries_by_id = HashMap::new();
+    for entry in &review_manifest.entries {
+        if !known.contains_key(&entry.tutorial_id) {
+            warnings.push(format!(
+                "Tutorial review manifest '{}' references unknown tutorial id '{}'",
+                display_path(&review_path),
+                entry.tutorial_id
+            ));
+        }
+        entries_by_id.insert(entry.tutorial_id.clone(), entry.clone());
+    }
+    for id in known.keys() {
+        if !entries_by_id.contains_key(id) {
+            warnings.push(format!(
+                "Tutorial review manifest '{}' is missing entry for tutorial id '{}'",
+                display_path(&review_path),
+                id
+            ));
+        }
+    }
+    if let Some(today) = today {
+        for entry in &review_manifest.entries {
+            if let Some(reviewed_at) = entry.human_reviewed_at.as_deref() {
+                if review_date_is_stale(reviewed_at, today, review_manifest.warn_after_months) {
+                    warnings.push(format!(
+                        "Tutorial '{}' human review date {} is older than {} months",
+                        entry.tutorial_id, reviewed_at, review_manifest.warn_after_months
+                    ));
+                }
+            }
+        }
+    }
+    Ok(TutorialReviewContext {
+        entries_by_id,
+        warnings,
+    })
+}
+
+fn tutorial_review_entry_exempts_execution_failure(entry: Option<&TutorialReviewEntry>) -> bool {
+    entry
+        .map(|entry| {
+            entry.tutorial_status == "deprecated"
+                || entry
+                    .replaced_by
+                    .as_deref()
+                    .map(str::trim)
+                    .is_some_and(|value| !value.is_empty())
+        })
+        .unwrap_or(false)
 }
 
 fn resolve_input_path(path: &str, repo_root: &Path) -> String {
@@ -2878,6 +3203,8 @@ pub fn generate_tutorial_docs(
     let example_by_id = example_lookup(&examples);
     let manifest = load_tutorial_manifest(manifest_path)?;
     validate_tutorial_manifest_against_examples(&manifest, &examples)?;
+    let review_context = tutorial_review_context(manifest_path, &manifest)?;
+    let mut warnings = review_context.warnings.clone();
     let concept_by_id = tutorial_concept_lookup(&manifest.concepts)?;
     let sorted_chapters = sorted_manifest_chapters(&manifest);
     let chapter_by_id = tutorial_chapter_lookup(&sorted_chapters);
@@ -2908,7 +3235,7 @@ pub fn generate_tutorial_docs(
                 )
             })?
             .clone();
-        let executed = chapter.tier.should_execute(online_enabled);
+        let mut executed = chapter.tier.should_execute(online_enabled);
         if chapter.tier == TutorialTier::Online
             && !executed
             && chapter
@@ -2926,8 +3253,23 @@ pub fn generate_tutorial_docs(
         let run_dir =
             TempDir::new().map_err(|e| format!("Could not create temp run directory: {e}"))?;
         if executed {
-            validate_example_required_files(&loaded.example, repo_root)?;
-            run_example_workflow_in_dir(&loaded.example, repo_root, run_dir.path())?;
+            let execution_result = validate_example_required_files(&loaded.example, repo_root)
+                .and_then(|_| {
+                    run_example_workflow_in_dir(&loaded.example, repo_root, run_dir.path())
+                });
+            if let Err(error) = execution_result {
+                if tutorial_review_entry_exempts_execution_failure(
+                    review_context.entries_by_id.get(&chapter.id),
+                ) {
+                    warnings.push(format!(
+                        "Tutorial '{}' is deprecated or replaced and did not block generation despite execution failure: {}",
+                        chapter.id, error
+                    ));
+                    executed = false;
+                } else {
+                    return Err(error);
+                }
+            }
         }
         let mut retained_artifacts = vec![];
         if executed {
@@ -2988,6 +3330,7 @@ pub fn generate_tutorial_docs(
         online_enabled,
         generated_files,
         file_checksums,
+        warnings,
         chapters: chapter_reports,
     };
     let report_path = output_dir.join("report.json");
@@ -3323,6 +3666,31 @@ mod tests {
 
     fn tutorial_output_dir() -> PathBuf {
         PathBuf::from(DEFAULT_TUTORIAL_OUTPUT_DIR)
+    }
+
+    fn minimal_tutorial_chapter(id: &str) -> TutorialChapter {
+        TutorialChapter {
+            id: id.to_string(),
+            order: 1,
+            title: "Minimal Tutorial".to_string(),
+            example_id: "minimal_example".to_string(),
+            tier: TutorialTier::Core,
+            guide_path: None,
+            summary: "Synthetic tutorial chapter.".to_string(),
+            narrative: "Synthetic tutorial narrative.".to_string(),
+            use_cases: vec!["Exercise tutorial review metadata.".to_string()],
+            gui_steps: vec!["Open the tutorial.".to_string()],
+            cli_steps: vec![],
+            step_expectations: vec![],
+            prerequisites: vec![],
+            local_execution_note: None,
+            learning_objectives: vec!["Understand tutorial review metadata.".to_string()],
+            concepts: vec!["concept".to_string()],
+            parameter_notes: vec![],
+            follow_up_commands: vec![],
+            retain_outputs: vec![],
+            checkpoints: vec![],
+        }
     }
 
     fn lock_jaspar_registry_for_test() -> std::sync::MutexGuard<'static, ()> {
@@ -3716,6 +4084,209 @@ mod tests {
     }
 
     #[test]
+    fn tutorial_review_manifest_stale_date_warns() {
+        let dir = TempDir::new().expect("temp tutorial dir");
+        let manifest_path = dir.path().join("manifest.json");
+        let review_path = dir.path().join("review_manifest.json");
+        let manifest = TutorialManifest {
+            schema: TUTORIAL_MANIFEST_SCHEMA.to_string(),
+            description: "test manifest".to_string(),
+            concepts: vec![TutorialConcept {
+                id: "concept".to_string(),
+                name: "Concept".to_string(),
+                description: String::new(),
+            }],
+            chapters: vec![minimal_tutorial_chapter("stale_review")],
+        };
+        fs::write(
+            &review_path,
+            r#"{
+  "schema": "gentle.tutorial_review_manifest.v1",
+  "warn_after_months": 12,
+  "entries": [
+    {
+      "tutorial_id": "stale_review",
+      "tutorial_kind": "generated_chapter",
+      "tutorial_status": "active",
+      "replaced_by": null,
+      "codex_reviewed_at": null,
+      "human_reviewed_at": "2024-01-01",
+      "human_reviewer": "smoe"
+    }
+  ]
+}
+"#,
+        )
+        .expect("write review manifest");
+
+        let context =
+            tutorial_review_context_for_date(&manifest_path, &manifest, Some((2026, 5, 21)))
+                .expect("review context");
+
+        assert!(
+            context
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("older than 12 months")),
+            "expected stale review warning, got {:?}",
+            context.warnings
+        );
+    }
+
+    #[test]
+    fn tutorial_review_manifest_missing_entry_warns() {
+        let dir = TempDir::new().expect("temp tutorial dir");
+        let manifest_path = dir.path().join("manifest.json");
+        let review_path = dir.path().join("review_manifest.json");
+        let manifest = TutorialManifest {
+            schema: TUTORIAL_MANIFEST_SCHEMA.to_string(),
+            description: "test manifest".to_string(),
+            concepts: vec![TutorialConcept {
+                id: "concept".to_string(),
+                name: "Concept".to_string(),
+                description: String::new(),
+            }],
+            chapters: vec![minimal_tutorial_chapter("missing_review")],
+        };
+        fs::write(
+            &review_path,
+            r#"{
+  "schema": "gentle.tutorial_review_manifest.v1",
+  "warn_after_months": 12,
+  "entries": []
+}
+"#,
+        )
+        .expect("write review manifest");
+
+        let context =
+            tutorial_review_context_for_date(&manifest_path, &manifest, Some((2026, 5, 21)))
+                .expect("review context");
+
+        assert!(
+            context
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("missing entry for tutorial id 'missing_review'")),
+            "expected missing-entry warning, got {:?}",
+            context.warnings
+        );
+    }
+
+    #[test]
+    fn deprecated_tutorial_execution_failure_is_nonfatal() {
+        let dir = TempDir::new().expect("temp tutorial dir");
+        let examples_dir = dir.path().join("examples");
+        let tutorial_dir = dir.path().join("tutorial");
+        let output_dir = tutorial_dir.join("generated");
+        fs::create_dir_all(&examples_dir).expect("create examples dir");
+        fs::create_dir_all(&tutorial_dir).expect("create tutorial dir");
+        fs::write(
+            examples_dir.join("deprecated_example.json"),
+            r#"{
+  "schema": "gentle.workflow_example.v1",
+  "id": "deprecated_example",
+  "title": "Deprecated Example",
+  "summary": "Synthetic deprecated tutorial example.",
+  "test_mode": "always",
+  "required_files": [],
+  "tags": [],
+  "workflow": {
+    "run_id": "deprecated_example",
+    "ops": [
+      {
+        "LoadFile": {
+          "path": "missing-input.fa",
+          "as_id": "missing_input"
+        }
+      }
+    ]
+  }
+}
+"#,
+        )
+        .expect("write workflow example");
+        fs::write(
+            tutorial_dir.join("manifest.json"),
+            r#"{
+  "schema": "gentle.tutorial_manifest.v1",
+  "description": "Synthetic tutorial manifest.",
+  "concepts": [
+    {
+      "id": "concept",
+      "name": "Concept",
+      "description": "Synthetic concept."
+    }
+  ],
+  "chapters": [
+    {
+      "id": "deprecated_tutorial",
+      "order": 1,
+      "title": "Deprecated Tutorial",
+      "example_id": "deprecated_example",
+      "tier": "core",
+      "guide_path": null,
+      "summary": "Synthetic deprecated tutorial.",
+      "narrative": "Synthetic narrative.",
+      "use_cases": ["Test deprecated review handling."],
+      "gui_steps": ["Open the synthetic tutorial."],
+      "cli_steps": [],
+      "step_expectations": [],
+      "prerequisites": [],
+      "local_execution_note": null,
+      "learning_objectives": ["Understand deprecated tutorial handling."],
+      "concepts": ["concept"],
+      "parameter_notes": [],
+      "follow_up_commands": [],
+      "retain_outputs": [],
+      "checkpoints": []
+    }
+  ]
+}
+"#,
+        )
+        .expect("write tutorial manifest");
+        fs::write(
+            tutorial_dir.join("review_manifest.json"),
+            r#"{
+  "schema": "gentle.tutorial_review_manifest.v1",
+  "warn_after_months": 12,
+  "entries": [
+    {
+      "tutorial_id": "deprecated_tutorial",
+      "tutorial_kind": "generated_chapter",
+      "tutorial_status": "deprecated",
+      "replaced_by": null,
+      "codex_reviewed_at": null,
+      "human_reviewed_at": null,
+      "human_reviewer": null
+    }
+  ]
+}
+"#,
+        )
+        .expect("write review manifest");
+
+        let report = generate_tutorial_docs(
+            &examples_dir,
+            &tutorial_dir.join("manifest.json"),
+            &output_dir,
+            Path::new("."),
+        )
+        .expect("deprecated tutorial execution failure should warn, not fail");
+
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning
+                    .contains("did not block generation despite execution failure")),
+            "expected deprecated execution warning, got {:?}",
+            report.warnings
+        );
+    }
+
+    #[test]
     fn tutorial_core_chapters_map_to_always_examples() {
         let manifest =
             load_tutorial_manifest(&tutorial_manifest_path()).expect("load tutorial manifest");
@@ -3818,10 +4389,8 @@ mod tests {
         assert!(promoter_markdown.contains("**Prerequisites:** Read [Chapter 1:"));
         assert!(promoter_markdown.contains("### Step 8:"));
         assert!(promoter_markdown.contains("CLI:\n\n```bash\ncargo run --bin gentle_cli"));
-        assert!(
-            promoter_markdown
-                .contains("CLI snippets use GENtle's default `.gentle_state.json` state")
-        );
+        assert!(promoter_markdown
+            .contains("CLI snippets use GENtle's default `.gentle_state.json` state"));
         assert!(promoter_markdown.contains("> Expected: `tfbs_score_tracks.svg`"));
         assert!(!promoter_markdown.contains("## Command Equivalent (After GUI)"));
         assert!(promoter_markdown.contains("## What This Chapter Produces"));
@@ -4051,11 +4620,8 @@ mod tests {
         let message = tutorial_generated_file_count_mismatch_message(&expected, &actual);
 
         assert!(message.contains("expected 1, got 2"));
-        assert!(
-            message.contains(
-                "generated-only files: artifacts/new_demo/artifacts/new_retained_output.md"
-            )
-        );
+        assert!(message
+            .contains("generated-only files: artifacts/new_demo/artifacts/new_retained_output.md"));
         assert!(message.contains("committed-only files: none"));
     }
 
@@ -4184,11 +4750,9 @@ mod tests {
 
         assert!(state.sequences.contains_key("gibson_destination_pgex"));
         assert!(state.sequences.contains_key("gibson_insert_demo"));
-        assert!(
-            state
-                .sequences
-                .contains_key("gibson_destination_pgex_with_gibson_insert_demo")
-        );
+        assert!(state
+            .sequences
+            .contains_key("gibson_destination_pgex_with_gibson_insert_demo"));
 
         let arrangement = state
             .container_state

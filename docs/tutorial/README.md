@@ -8,6 +8,16 @@ Machine-readable catalog source:
 - generated from:
   - [`docs/tutorial/sources/catalog_meta.json`](./sources/catalog_meta.json)
   - [`docs/tutorial/sources/*.json`](./sources/)
+- review metadata:
+  - [`docs/tutorial/review_manifest.json`](./review_manifest.json)
+
+`review_manifest.json` is hand-maintained tutorial review metadata, not test
+fixture data from an external source. It is deterministically recreated from
+the current tutorial ids in `docs/tutorial/catalog.json` and
+`docs/tutorial/manifest.json`, then filled with review dates as tutorials are
+read by Codex or a human reviewer. The tutorial checker treats missing, stale,
+or unknown review entries as warnings so review provenance cannot mask
+execution drift.
 
 GENtle has two tutorial tracks:
 
