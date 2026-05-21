@@ -6,6 +6,11 @@ example_id: "load_branch_reverse_complement_pgex_fasta"
 source_example: "docs/examples/workflows/load_branch_reverse_complement_pgex_fasta.json"
 example_test_mode: "always"
 executed_during_generation: true
+automated_status: "passing"
+review_status: "unreviewed"
+codex_reviewed_at: null
+human_reviewed_at: null
+generated_artifact_dir: "docs/tutorial/generated/artifacts/load_branch_reverse_complement_pgex_fasta"
 ---
 
 # Load FASTA, branch, and reverse-complement
@@ -88,12 +93,34 @@ cargo run --bin gentle_cli -- op '{"ReverseComplement":{"input":"pgex_fasta_bran
 - Workflow executes without warnings or errors.
 - Derived sequence IDs include a branch and reverse-complement product.
 
-## Canonical Source
+## Tutorial Provenance
 
 - Chapter id: `load_branch_reverse_complement_pgex_fasta`
 - Tier: `core`
 - Example id: `load_branch_reverse_complement_pgex_fasta`
+- Tutorial source JSON: `docs/tutorial/sources/11_load_branch_reverse_complement_pgex_fasta.json`
 - Workflow file: `docs/examples/workflows/load_branch_reverse_complement_pgex_fasta.json`
+- Generated artifact dir: `docs/tutorial/generated/artifacts/load_branch_reverse_complement_pgex_fasta`
 - Example test_mode: `always`
 - Executed during generation: `yes`
-- Inspect this JSON file directly when you need full option-level detail.
+- Automated status: `passing`
+- Review status: `unreviewed`
+- Codex reviewed at: `not recorded`
+- Human reviewed at: `not recorded`
+- Inspect the source JSON when you need full option-level detail.
+
+## Feedback
+
+If this tutorial is confusing, execution-stale, biologically suspect, or missing a useful figure, please open the matching tutorial issue template and include the context below.
+
+- Tutorial title: `Load FASTA, branch, and reverse-complement`
+- Tutorial/chapter id: `load_branch_reverse_complement_pgex_fasta`
+- Step reached:
+- Expected vs. actual:
+- Interface used: GUI / CLI / Agent Assistant / ClawBio
+
+Paste the Tutorial feedback context here:
+
+```text
+
+```

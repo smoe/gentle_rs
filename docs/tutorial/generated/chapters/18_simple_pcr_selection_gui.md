@@ -6,6 +6,11 @@ example_id: "simple_pcr_selection_gui"
 source_example: "docs/examples/workflows/simple_pcr_selection_gui.json"
 example_test_mode: "always"
 executed_during_generation: true
+automated_status: "passing"
+review_status: "unreviewed"
+codex_reviewed_at: null
+human_reviewed_at: null
+generated_artifact_dir: "docs/tutorial/generated/artifacts/simple_pcr_selection_gui"
 ---
 
 # Simple PCR From a Selected Core Region
@@ -135,12 +140,34 @@ cargo run --bin gentle_cli -- shell 'primers list-reports'
 - The PCR Designer shows the `Simple PCR starter` block.
 - After primer design, the report preview shows left/right distance from the core ROI and whether the pair cleanly flanks the core.
 
-## Canonical Source
+## Tutorial Provenance
 
 - Chapter id: `simple_pcr_selection_gui`
 - Tier: `core`
 - Example id: `simple_pcr_selection_gui`
+- Tutorial source JSON: `docs/tutorial/sources/06_simple_pcr_selection_gui.json`
 - Workflow file: `docs/examples/workflows/simple_pcr_selection_gui.json`
+- Generated artifact dir: `docs/tutorial/generated/artifacts/simple_pcr_selection_gui`
 - Example test_mode: `always`
 - Executed during generation: `yes`
-- Inspect this JSON file directly when you need full option-level detail.
+- Automated status: `passing`
+- Review status: `unreviewed`
+- Codex reviewed at: `not recorded`
+- Human reviewed at: `not recorded`
+- Inspect the source JSON when you need full option-level detail.
+
+## Feedback
+
+If this tutorial is confusing, execution-stale, biologically suspect, or missing a useful figure, please open the matching tutorial issue template and include the context below.
+
+- Tutorial title: `Simple PCR From a Selected Core Region`
+- Tutorial/chapter id: `simple_pcr_selection_gui`
+- Step reached:
+- Expected vs. actual:
+- Interface used: GUI / CLI / Agent Assistant / ClawBio
+
+Paste the Tutorial feedback context here:
+
+```text
+
+```

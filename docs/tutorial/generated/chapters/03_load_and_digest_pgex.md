@@ -6,6 +6,11 @@ example_id: "load_and_digest_pgex"
 source_example: "docs/examples/workflows/load_and_digest_pgex.json"
 example_test_mode: "always"
 executed_during_generation: true
+automated_status: "passing"
+review_status: "unreviewed"
+codex_reviewed_at: null
+human_reviewed_at: null
+generated_artifact_dir: "docs/tutorial/generated/artifacts/load_and_digest_pgex"
 ---
 
 # Load pGEX and digest with BamHI/EcoRI
@@ -89,12 +94,34 @@ cargo run --bin gentle_cli -- workflow @docs/examples/workflows/load_and_digest_
 - Digest operation completes and creates fragment sequence IDs.
 - Fragment IDs are deterministic across repeated runs.
 
-## Canonical Source
+## Tutorial Provenance
 
 - Chapter id: `load_and_digest_pgex`
 - Tier: `core`
 - Example id: `load_and_digest_pgex`
+- Tutorial source JSON: `docs/tutorial/sources/13_load_and_digest_pgex.json`
 - Workflow file: `docs/examples/workflows/load_and_digest_pgex.json`
+- Generated artifact dir: `docs/tutorial/generated/artifacts/load_and_digest_pgex`
 - Example test_mode: `always`
 - Executed during generation: `yes`
-- Inspect this JSON file directly when you need full option-level detail.
+- Automated status: `passing`
+- Review status: `unreviewed`
+- Codex reviewed at: `not recorded`
+- Human reviewed at: `not recorded`
+- Inspect the source JSON when you need full option-level detail.
+
+## Feedback
+
+If this tutorial is confusing, execution-stale, biologically suspect, or missing a useful figure, please open the matching tutorial issue template and include the context below.
+
+- Tutorial title: `Load pGEX and digest with BamHI/EcoRI`
+- Tutorial/chapter id: `load_and_digest_pgex`
+- Step reached:
+- Expected vs. actual:
+- Interface used: GUI / CLI / Agent Assistant / ClawBio
+
+Paste the Tutorial feedback context here:
+
+```text
+
+```

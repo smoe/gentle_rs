@@ -6,6 +6,11 @@ example_id: "contribute_gentle_development_baseline"
 source_example: "docs/examples/workflows/contribute_gentle_development_baseline.json"
 example_test_mode: "always"
 executed_during_generation: true
+automated_status: "passing"
+review_status: "unreviewed"
+codex_reviewed_at: null
+human_reviewed_at: null
+generated_artifact_dir: "docs/tutorial/generated/artifacts/contribute_to_gentle_development"
 ---
 
 # Contribute to GENtle development
@@ -98,12 +103,34 @@ cargo run --bin gentle_cli -- capabilities
 - Contributor validation commands pass in a clean environment.
 - Tutorial-generated content remains synchronized with source manifests/examples.
 
-## Canonical Source
+## Tutorial Provenance
 
 - Chapter id: `contribute_to_gentle_development`
 - Tier: `advanced`
 - Example id: `contribute_gentle_development_baseline`
+- Tutorial source JSON: `docs/tutorial/sources/18_contribute_to_gentle_development.json`
 - Workflow file: `docs/examples/workflows/contribute_gentle_development_baseline.json`
+- Generated artifact dir: `docs/tutorial/generated/artifacts/contribute_to_gentle_development`
 - Example test_mode: `always`
 - Executed during generation: `yes`
-- Inspect this JSON file directly when you need full option-level detail.
+- Automated status: `passing`
+- Review status: `unreviewed`
+- Codex reviewed at: `not recorded`
+- Human reviewed at: `not recorded`
+- Inspect the source JSON when you need full option-level detail.
+
+## Feedback
+
+If this tutorial is confusing, execution-stale, biologically suspect, or missing a useful figure, please open the matching tutorial issue template and include the context below.
+
+- Tutorial title: `Contribute to GENtle development`
+- Tutorial/chapter id: `contribute_to_gentle_development`
+- Step reached:
+- Expected vs. actual:
+- Interface used: GUI / CLI / Agent Assistant / ClawBio
+
+Paste the Tutorial feedback context here:
+
+```text
+
+```

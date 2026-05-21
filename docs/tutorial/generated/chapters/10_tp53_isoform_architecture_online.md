@@ -6,6 +6,11 @@ example_id: "tp53_isoform_architecture_online"
 source_example: "docs/examples/workflows/tp53_isoform_architecture_online.json"
 example_test_mode: "online"
 executed_during_generation: false
+automated_status: "skipped_online"
+review_status: "unreviewed"
+codex_reviewed_at: null
+human_reviewed_at: null
+generated_artifact_dir: "docs/tutorial/generated/artifacts/tp53_isoform_architecture_online"
 ---
 
 # TP53 isoform architecture expert panel (online)
@@ -104,13 +109,35 @@ cargo run --bin gentle_cli -- save-project tp53_isoform_architecture.project.gen
 - Isoform architecture SVG export succeeds with deterministic lane ordering.
 - Saved project contains TP53 sequence plus imported panel metadata for replay.
 
-## Canonical Source
+## Tutorial Provenance
 
 - Chapter id: `tp53_isoform_architecture_online`
 - Tier: `online`
 - Example id: `tp53_isoform_architecture_online`
+- Tutorial source JSON: `docs/tutorial/sources/20_tp53_isoform_architecture_online.json`
 - Workflow file: `docs/examples/workflows/tp53_isoform_architecture_online.json`
+- Generated artifact dir: `docs/tutorial/generated/artifacts/tp53_isoform_architecture_online`
 - Example test_mode: `online`
 - Executed during generation: `no`
+- Automated status: `skipped_online`
+- Review status: `unreviewed`
+- Codex reviewed at: `not recorded`
+- Human reviewed at: `not recorded`
 - Execution note: set `GENTLE_TEST_ONLINE=1` before `tutorial-generate` to execute this chapter.
-- Inspect this JSON file directly when you need full option-level detail.
+- Inspect the source JSON when you need full option-level detail.
+
+## Feedback
+
+If this tutorial is confusing, execution-stale, biologically suspect, or missing a useful figure, please open the matching tutorial issue template and include the context below.
+
+- Tutorial title: `TP53 isoform architecture expert panel (online)`
+- Tutorial/chapter id: `tp53_isoform_architecture_online`
+- Step reached:
+- Expected vs. actual:
+- Interface used: GUI / CLI / Agent Assistant / ClawBio
+
+Paste the Tutorial feedback context here:
+
+```text
+
+```

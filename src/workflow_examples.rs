@@ -2406,6 +2406,8 @@ fn render_tutorial_front_matter(
     loaded: &LoadedWorkflowExample,
     source_path: &str,
     executed: bool,
+    review_entry: Option<&TutorialReviewEntry>,
+    generated_artifact_dir: &str,
 ) -> String {
     let mut out = String::new();
     out.push_str("---\n");
@@ -2430,8 +2432,84 @@ fn render_tutorial_front_matter(
     out.push_str("executed_during_generation: ");
     out.push_str(if executed { "true" } else { "false" });
     out.push('\n');
+    out.push_str("automated_status: ");
+    out.push_str(&yaml_double_quote(&tutorial_automated_status(
+        chapter, executed,
+    )));
+    out.push('\n');
+    out.push_str("review_status: ");
+    out.push_str(&yaml_double_quote(&tutorial_review_status(review_entry)));
+    out.push('\n');
+    push_yaml_optional_string(
+        &mut out,
+        "codex_reviewed_at",
+        review_entry.and_then(|entry| entry.codex_reviewed_at.as_deref()),
+    );
+    push_yaml_optional_string(
+        &mut out,
+        "human_reviewed_at",
+        review_entry.and_then(|entry| entry.human_reviewed_at.as_deref()),
+    );
+    out.push_str("generated_artifact_dir: ");
+    out.push_str(&yaml_double_quote(generated_artifact_dir));
+    out.push('\n');
     out.push_str("---\n\n");
     out
+}
+
+fn push_yaml_optional_string(out: &mut String, key: &str, value: Option<&str>) {
+    out.push_str(key);
+    out.push_str(": ");
+    if let Some(value) = value {
+        out.push_str(&yaml_double_quote(value));
+    } else {
+        out.push_str("null");
+    }
+    out.push('\n');
+}
+
+fn tutorial_automated_status(chapter: &TutorialChapter, executed: bool) -> String {
+    if executed {
+        "passing".to_string()
+    } else if chapter.tier == TutorialTier::Online {
+        "skipped_online".to_string()
+    } else {
+        "skipped".to_string()
+    }
+}
+
+fn tutorial_review_status(entry: Option<&TutorialReviewEntry>) -> String {
+    let Some(entry) = entry else {
+        return "missing_review_manifest_entry".to_string();
+    };
+    if entry.tutorial_status == "deprecated" {
+        return "deprecated".to_string();
+    }
+    if entry
+        .replaced_by
+        .as_deref()
+        .map(str::trim)
+        .is_some_and(|value| !value.is_empty())
+    {
+        return "replaced".to_string();
+    }
+    if entry
+        .human_reviewed_at
+        .as_deref()
+        .map(str::trim)
+        .is_some_and(|value| !value.is_empty())
+    {
+        return "human_reviewed".to_string();
+    }
+    if entry
+        .codex_reviewed_at
+        .as_deref()
+        .map(str::trim)
+        .is_some_and(|value| !value.is_empty())
+    {
+        return "codex_reviewed".to_string();
+    }
+    "unreviewed".to_string()
 }
 
 fn render_tutorial_concepts_compact(
@@ -2710,23 +2788,117 @@ fn render_tutorial_produced_artifacts(retained_artifacts: &[String], output_dir:
     out
 }
 
+fn render_tutorial_provenance_section(
+    chapter: &TutorialChapter,
+    loaded: &LoadedWorkflowExample,
+    executed: bool,
+    online_enabled: bool,
+    tutorial_source_path: &str,
+    workflow_path: &str,
+    generated_artifact_dir: &str,
+    review_entry: Option<&TutorialReviewEntry>,
+) -> String {
+    let mut out = String::new();
+    out.push_str("\n## Tutorial Provenance\n\n");
+    out.push_str("- Chapter id: `");
+    out.push_str(&chapter.id);
+    out.push_str("`\n");
+    out.push_str("- Tier: `");
+    out.push_str(chapter.tier.as_str());
+    out.push_str("`\n");
+    out.push_str("- Example id: `");
+    out.push_str(&chapter.example_id);
+    out.push_str("`\n");
+    out.push_str("- Tutorial source JSON: `");
+    out.push_str(tutorial_source_path);
+    out.push_str("`\n");
+    out.push_str("- Workflow file: `");
+    out.push_str(workflow_path);
+    out.push_str("`\n");
+    out.push_str("- Generated artifact dir: `");
+    out.push_str(generated_artifact_dir);
+    out.push_str("`\n");
+    out.push_str("- Example test_mode: `");
+    out.push_str(loaded.example.test_mode.as_str());
+    out.push_str("`\n");
+    out.push_str("- Executed during generation: `");
+    out.push_str(if executed { "yes" } else { "no" });
+    out.push_str("`\n");
+    out.push_str("- Automated status: `");
+    out.push_str(&tutorial_automated_status(chapter, executed));
+    out.push_str("`\n");
+    out.push_str("- Review status: `");
+    out.push_str(&tutorial_review_status(review_entry));
+    out.push_str("`\n");
+    out.push_str("- Codex reviewed at: `");
+    out.push_str(
+        review_entry
+            .and_then(|entry| entry.codex_reviewed_at.as_deref())
+            .unwrap_or("not recorded"),
+    );
+    out.push_str("`\n");
+    out.push_str("- Human reviewed at: `");
+    out.push_str(
+        review_entry
+            .and_then(|entry| entry.human_reviewed_at.as_deref())
+            .unwrap_or("not recorded"),
+    );
+    out.push_str("`\n");
+    if chapter.tier == TutorialTier::Online && !online_enabled {
+        out.push_str(
+            "- Execution note: set `GENTLE_TEST_ONLINE=1` before `tutorial-generate` to execute this chapter.\n",
+        );
+    }
+    out.push_str("- Inspect the source JSON when you need full option-level detail.\n");
+    out
+}
+
+fn render_tutorial_feedback_section(chapter: &TutorialChapter) -> String {
+    let mut out = String::new();
+    out.push_str("\n## Feedback\n\n");
+    out.push_str("If this tutorial is confusing, execution-stale, biologically suspect, or missing a useful figure, please open the matching tutorial issue template and include the context below.\n\n");
+    out.push_str("- Tutorial title: `");
+    out.push_str(&chapter.title);
+    out.push_str("`\n");
+    out.push_str("- Tutorial/chapter id: `");
+    out.push_str(&chapter.id);
+    out.push_str("`\n");
+    out.push_str("- Step reached:\n");
+    out.push_str("- Expected vs. actual:\n");
+    out.push_str("- Interface used: GUI / CLI / Agent Assistant / ClawBio\n\n");
+    out.push_str("Paste the Tutorial feedback context here:\n\n");
+    out.push_str("```text\n\n```\n");
+    out
+}
+
 fn render_tutorial_chapter_markdown(
     chapter: &TutorialChapter,
     loaded: &LoadedWorkflowExample,
     executed: bool,
     retained_artifacts: &[String],
     output_dir: &Path,
+    provenance_output_dir: &Path,
+    tutorial_source_dir: &Path,
     online_enabled: bool,
     concept_by_id: &HashMap<String, TutorialConcept>,
     chapter_by_id: &HashMap<String, TutorialChapter>,
+    review_entry: Option<&TutorialReviewEntry>,
 ) -> Result<String, String> {
-    let source_path = display_path(&loaded.path);
+    let workflow_path = display_path(&loaded.path);
+    let tutorial_source_path = tutorial_source_path_for_id_lossy(tutorial_source_dir, &chapter.id);
+    let generated_artifact_dir = display_path(
+        &provenance_output_dir
+            .join("artifacts")
+            .join(markdown_file_stem(&chapter.id)),
+    );
     let mut out = String::new();
     out.push_str(&render_tutorial_front_matter(
         chapter,
         loaded,
-        &source_path,
+        &workflow_path,
         executed,
+        review_entry,
+        &generated_artifact_dir,
     ));
     out.push_str("# ");
     out.push_str(&chapter.title);
@@ -2764,10 +2936,10 @@ fn render_tutorial_chapter_markdown(
         out.push_str("Run the same routine non-interactively once the GUI flow is clear:\n\n");
         out.push_str("```bash\n");
         out.push_str("cargo run --bin gentle_cli -- workflow @");
-        out.push_str(&source_path);
+        out.push_str(&workflow_path);
         out.push_str("\n");
         out.push_str("cargo run --bin gentle_cli -- shell 'workflow @");
-        out.push_str(&source_path);
+        out.push_str(&workflow_path);
         out.push_str("'\n");
         out.push_str("```\n");
     }
@@ -2792,31 +2964,17 @@ fn render_tutorial_chapter_markdown(
         retained_artifacts,
         output_dir,
     ));
-    out.push_str("\n## Canonical Source\n\n");
-    out.push_str("- Chapter id: `");
-    out.push_str(&chapter.id);
-    out.push_str("`\n");
-    out.push_str("- Tier: `");
-    out.push_str(chapter.tier.as_str());
-    out.push_str("`\n");
-    out.push_str("- Example id: `");
-    out.push_str(&chapter.example_id);
-    out.push_str("`\n");
-    out.push_str("- Workflow file: `");
-    out.push_str(&source_path);
-    out.push_str("`\n");
-    out.push_str("- Example test_mode: `");
-    out.push_str(loaded.example.test_mode.as_str());
-    out.push_str("`\n");
-    out.push_str("- Executed during generation: `");
-    out.push_str(if executed { "yes" } else { "no" });
-    out.push_str("`\n");
-    if chapter.tier == TutorialTier::Online && !online_enabled {
-        out.push_str(
-            "- Execution note: set `GENTLE_TEST_ONLINE=1` before `tutorial-generate` to execute this chapter.\n",
-        );
-    }
-    out.push_str("- Inspect this JSON file directly when you need full option-level detail.\n");
+    out.push_str(&render_tutorial_provenance_section(
+        chapter,
+        loaded,
+        executed,
+        online_enabled,
+        &tutorial_source_path,
+        &workflow_path,
+        &generated_artifact_dir,
+        review_entry,
+    ));
+    out.push_str(&render_tutorial_feedback_section(chapter));
     Ok(out)
 }
 
@@ -3068,6 +3226,12 @@ fn tutorial_source_path_lookup_lossy(source_dir: &Path) -> HashMap<String, Strin
     lookup
 }
 
+fn tutorial_source_path_for_id_lossy(source_dir: &Path, tutorial_id: &str) -> String {
+    tutorial_source_path_lookup_lossy(source_dir)
+        .remove(tutorial_id)
+        .unwrap_or_else(|| display_path(&source_dir.join(format!("{tutorial_id}.json"))))
+}
+
 fn tutorial_source_dir_for_manifest(manifest_path: &Path) -> PathBuf {
     manifest_path
         .parent()
@@ -3205,6 +3369,11 @@ pub fn generate_tutorial_docs(
     validate_tutorial_manifest_against_examples(&manifest, &examples)?;
     let review_context = tutorial_review_context(manifest_path, &manifest)?;
     let mut warnings = review_context.warnings.clone();
+    let tutorial_source_dir = tutorial_source_dir_for_manifest(manifest_path);
+    let provenance_output_dir = manifest_path
+        .parent()
+        .map(|parent| parent.join("generated"))
+        .unwrap_or_else(|| PathBuf::from(DEFAULT_TUTORIAL_OUTPUT_DIR));
     let concept_by_id = tutorial_concept_lookup(&manifest.concepts)?;
     let sorted_chapters = sorted_manifest_chapters(&manifest);
     let chapter_by_id = tutorial_chapter_lookup(&sorted_chapters);
@@ -3286,9 +3455,12 @@ pub fn generate_tutorial_docs(
             executed,
             &retained_artifacts,
             output_dir,
+            &provenance_output_dir,
+            &tutorial_source_dir,
             online_enabled,
             &concept_by_id,
             &chapter_by_id,
+            review_context.entries_by_id.get(&chapter.id),
         )?;
         let chapter_file = markdown_path_for_chapter(chapter);
         let chapter_out_path = chapters_dir.join(&chapter_file);
@@ -4365,7 +4537,9 @@ mod tests {
             markdown.find("## Parameters That Matter").unwrap()
                 < markdown.find("## GUI First").unwrap()
         );
-        assert!(markdown.contains("## Canonical Source"));
+        assert!(markdown.contains("## Tutorial Provenance"));
+        assert!(markdown.contains("review_status: "));
+        assert!(markdown.contains("## Feedback"));
 
         let online_chapter = generated.join("chapters/09_prepare_reference_genome_online.md");
         let online_markdown =

@@ -6,6 +6,11 @@ example_id: "tp73_cdna_genomic_dotplot_online"
 source_example: "docs/examples/workflows/tp73_cdna_genomic_dotplot_online.json"
 example_test_mode: "online"
 executed_during_generation: false
+automated_status: "skipped_online"
+review_status: "unreviewed"
+codex_reviewed_at: null
+human_reviewed_at: null
+generated_artifact_dir: "docs/tutorial/generated/artifacts/tp73_cdna_genomic_dotplot_online"
 ---
 
 # Compare TP73 cDNA against TP73 genomic context via dotplot (online)
@@ -102,13 +107,35 @@ cargo run --bin gentle_cli -- shell 'dotplot show tp73_cdna_vs_genomic_dotplot'
 - Pair-forward map shows exon-block style structure rather than one continuous full-length diagonal.
 - GUI tutorial and workflow JSON describe the same parameter baseline.
 
-## Canonical Source
+## Tutorial Provenance
 
 - Chapter id: `tp73_cdna_genomic_dotplot_online`
 - Tier: `online`
 - Example id: `tp73_cdna_genomic_dotplot_online`
+- Tutorial source JSON: `docs/tutorial/sources/24_tp73_cdna_genomic_dotplot_online.json`
 - Workflow file: `docs/examples/workflows/tp73_cdna_genomic_dotplot_online.json`
+- Generated artifact dir: `docs/tutorial/generated/artifacts/tp73_cdna_genomic_dotplot_online`
 - Example test_mode: `online`
 - Executed during generation: `no`
+- Automated status: `skipped_online`
+- Review status: `unreviewed`
+- Codex reviewed at: `not recorded`
+- Human reviewed at: `not recorded`
 - Execution note: set `GENTLE_TEST_ONLINE=1` before `tutorial-generate` to execute this chapter.
-- Inspect this JSON file directly when you need full option-level detail.
+- Inspect the source JSON when you need full option-level detail.
+
+## Feedback
+
+If this tutorial is confusing, execution-stale, biologically suspect, or missing a useful figure, please open the matching tutorial issue template and include the context below.
+
+- Tutorial title: `Compare TP73 cDNA against TP73 genomic context via dotplot (online)`
+- Tutorial/chapter id: `tp73_cdna_genomic_dotplot_online`
+- Step reached:
+- Expected vs. actual:
+- Interface used: GUI / CLI / Agent Assistant / ClawBio
+
+Paste the Tutorial feedback context here:
+
+```text
+
+```

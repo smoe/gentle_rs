@@ -6,6 +6,11 @@ example_id: "promoter_design_artifact_slice_offline"
 source_example: "docs/examples/workflows/promoter_design_artifact_slice_offline.json"
 example_test_mode: "always"
 executed_during_generation: true
+automated_status: "passing"
+review_status: "unreviewed"
+codex_reviewed_at: null
+human_reviewed_at: null
+generated_artifact_dir: "docs/tutorial/generated/artifacts/promoter_design_artifact_slice_offline"
 ---
 
 # Promoter Design Artifact Slice (Offline Synthetic TP73 Locus)
@@ -231,12 +236,34 @@ cargo run --bin gentle_cli -- shell 'features tfbs-track-similarity tp73_promote
 - [`artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.promoter_expression_evidence.json`](../artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.promoter_expression_evidence.json) - schema: `gentle.promoter_expression_evidence.v1`
 - [`artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_similarity.json`](../artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_similarity.json) - schema: `gentle.tfbs_track_similarity.v1`
 
-## Canonical Source
+## Tutorial Provenance
 
 - Chapter id: `promoter_design_artifact_slice_offline`
 - Tier: `core`
 - Example id: `promoter_design_artifact_slice_offline`
+- Tutorial source JSON: `docs/tutorial/sources/32_promoter_design_artifact_slice_offline.json`
 - Workflow file: `docs/examples/workflows/promoter_design_artifact_slice_offline.json`
+- Generated artifact dir: `docs/tutorial/generated/artifacts/promoter_design_artifact_slice_offline`
 - Example test_mode: `always`
 - Executed during generation: `yes`
-- Inspect this JSON file directly when you need full option-level detail.
+- Automated status: `passing`
+- Review status: `unreviewed`
+- Codex reviewed at: `not recorded`
+- Human reviewed at: `not recorded`
+- Inspect the source JSON when you need full option-level detail.
+
+## Feedback
+
+If this tutorial is confusing, execution-stale, biologically suspect, or missing a useful figure, please open the matching tutorial issue template and include the context below.
+
+- Tutorial title: `Promoter Design Artifact Slice (Offline Synthetic TP73 Locus)`
+- Tutorial/chapter id: `promoter_design_artifact_slice_offline`
+- Step reached:
+- Expected vs. actual:
+- Interface used: GUI / CLI / Agent Assistant / ClawBio
+
+Paste the Tutorial feedback context here:
+
+```text
+
+```
