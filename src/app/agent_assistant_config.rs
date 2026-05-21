@@ -77,11 +77,16 @@ pub(super) fn preferred_local_agent_system_id(systems: &[AgentSystemSpec]) -> Op
 pub(super) fn agent_prompt_template_options() -> &'static [(&'static str, &'static str)] {
     &[
         ("structured", "Structured (recommended)"),
+        ("compact_intro", "Compact intro (no state)"),
         ("candidate_anchors", "Candidate between anchors"),
         ("blast_specificity", "BLAST specificity check"),
         ("track_intersection", "Track import + prioritization"),
         ("macro_template", "Macro/template authoring"),
     ]
+}
+
+pub(super) fn agent_prompt_template_includes_state_summary_by_default(id: &str) -> bool {
+    !matches!(id, "compact_intro")
 }
 
 pub(super) fn agent_prompt_template_label(id: &str) -> &'static str {
@@ -94,6 +99,27 @@ pub(super) fn agent_prompt_template_label(id: &str) -> &'static str {
 
 pub(super) fn agent_prompt_template_text(id: &str) -> &'static str {
     match id {
+        "compact_intro" => {
+            r#"Task:
+Introduce yourself briefly as GENtle's internal Agent Assistant.
+
+Context policy:
+- Do not assume any loaded project or sequence context.
+- Answer in the user's language if it is clear from their wording; otherwise use concise English.
+- Keep the reply compact enough for a live demo.
+
+Output wanted:
+- 5-8 bullets about what you can help with inside GENtle.
+- 2-4 safe suggested_commands using GENtle shared-shell commands only.
+- Mark suggestions execution="ask".
+- Mention that external database/network actions require explicit confirmation.
+
+Good demo commands:
+- /help
+- state-summary
+- /paste sequence --sequence-text GAATTCGCGGCCGCTTCTAGA --id demo_seq
+- features restriction-scan demo_seq --enzyme EcoRI"#
+        }
         "candidate_anchors" => {
             r#"Objective:
 Generate candidate windows between two local anchors and rank them.
@@ -287,6 +313,14 @@ mod tests {
             agent_prompt_template_label("unknown"),
             "Structured (recommended)"
         );
+        assert!(
+            !agent_prompt_template_includes_state_summary_by_default("compact_intro"),
+            "compact intro should stay stateless for fast live demos"
+        );
+        assert!(agent_prompt_template_includes_state_summary_by_default(
+            "structured"
+        ));
+        assert!(agent_prompt_template_text("compact_intro").contains("shared-shell"));
         assert!(agent_prompt_template_text("candidate_anchors").contains("candidates"));
         assert!(agent_prompt_template_text("unknown").contains("Objective:"));
     }

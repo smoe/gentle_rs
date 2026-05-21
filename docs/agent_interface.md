@@ -544,10 +544,16 @@ themselves.
 Current template set includes:
 
 - Structured (recommended)
+- Compact intro (no state)
 - Candidate between anchors
 - BLAST specificity check
 - Track import + prioritization
 - Macro/template authoring
+
+`Compact intro (no state)` is optimized for live demonstrations and "what can
+you do?" prompts. Selecting it in the GUI disables project-state summary
+injection for that draft request so the model can answer quickly without
+spending tokens on an empty or irrelevant project snapshot.
 
 Important distinction:
 

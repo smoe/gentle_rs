@@ -202,13 +202,13 @@ use crate::{
     },
 };
 use agent_assistant_config::{
-    AGENT_PROMPT_TEMPLATE_DEFAULT_ID, agent_prompt_template_label, agent_prompt_template_options,
-    agent_prompt_template_text, default_agent_connect_timeout_secs_string,
-    default_agent_max_response_bytes_string, default_agent_max_retries_string,
-    default_agent_read_timeout_secs_string, default_agent_timeout_secs_string,
-    normalize_agent_model_name, preferred_anthropic_agent_system_id,
-    preferred_local_agent_system_id, preferred_mistral_agent_system_id,
-    preferred_openai_agent_system_id,
+    AGENT_PROMPT_TEMPLATE_DEFAULT_ID, agent_prompt_template_includes_state_summary_by_default,
+    agent_prompt_template_label, agent_prompt_template_options, agent_prompt_template_text,
+    default_agent_connect_timeout_secs_string, default_agent_max_response_bytes_string,
+    default_agent_max_retries_string, default_agent_read_timeout_secs_string,
+    default_agent_timeout_secs_string, normalize_agent_model_name,
+    preferred_anthropic_agent_system_id, preferred_local_agent_system_id,
+    preferred_mistral_agent_system_id, preferred_openai_agent_system_id,
 };
 use anyhow::{Result, anyhow};
 use eframe::egui::{self, Key, KeyboardShortcut, Modifiers, Pos2, Ui, Vec2, ViewportId};

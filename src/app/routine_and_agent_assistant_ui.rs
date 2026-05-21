@@ -2652,15 +2652,23 @@ impl GENtleApp {
                 });
             if ui
                 .button("Insert")
-                .on_hover_text("Replace current prompt with selected template")
+                .on_hover_text(
+                    "Replace current prompt with selected template and apply its request defaults",
+                )
                 .clicked()
             {
                 self.agent_prompt =
                     agent_prompt_template_text(&self.agent_prompt_template_id).to_string();
+                self.agent_include_state_summary =
+                    agent_prompt_template_includes_state_summary_by_default(
+                        &self.agent_prompt_template_id,
+                    );
             }
             if ui
                 .button("Append")
-                .on_hover_text("Append selected template below current prompt")
+                .on_hover_text(
+                    "Append selected template below current prompt and apply its request defaults",
+                )
                 .clicked()
             {
                 let template_text = agent_prompt_template_text(&self.agent_prompt_template_id);
@@ -2673,6 +2681,10 @@ impl GENtleApp {
                     self.agent_prompt.push('\n');
                     self.agent_prompt.push_str(template_text);
                 }
+                self.agent_include_state_summary =
+                    agent_prompt_template_includes_state_summary_by_default(
+                        &self.agent_prompt_template_id,
+                    );
             }
         });
         ui.label("Prompt");
