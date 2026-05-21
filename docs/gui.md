@@ -270,6 +270,21 @@ Tabs:
     - linear sequence windows start with the text panel hidden by default
   - `Apply + Refresh Open Windows` forces immediate refresh of all currently open sequence windows.
   - The bottom `Cancel` and `Apply` actions are kept in a persistent footer and remain visible while scrolling.
+- `Language`
+  - Configure the runtime GUI interface language for visible window chrome,
+    top-level menus, and the first translated configuration controls.
+  - The default is `System default (English)`, currently resolved to British
+    English (`en-GB`) until platform locale detection is wired.
+  - Available catalogs are British English (`en-GB`), US English (`en-US`),
+    German (`de-DE`), French (`fr-FR`), Italian (`it-IT`), simplified Chinese
+    (`zh-Hans`), Japanese (`ja-JP`), and Latin (`la`).
+  - Chinese and Japanese are marked experimental until bundled/default font
+    coverage is confirmed on supported platforms; Latin is a playful opt-in.
+  - Changing language is staged like other configuration edits and takes effect
+    after `Apply` without restarting.
+  - Shared shell commands, saved project data, protocol fields, agent payloads,
+    and scientific identifiers stay in deterministic English regardless of the
+    GUI language.
 
 Persistence:
 
@@ -277,6 +292,7 @@ Persistence:
 - Saved settings are restored on app startup.
 - Window-styling color/image selections persist in the same settings file after
   `Apply Window Styling`.
+- The selected GUI language persists in the same settings file after `Apply`.
 
 Configuration screenshots:
 
