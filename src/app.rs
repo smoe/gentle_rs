@@ -1047,6 +1047,7 @@ struct HelpTutorialDocEntry {
     title: String,
     path: String,
     summary: String,
+    audiences: Vec<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -5078,6 +5079,58 @@ Error: `{err}`"
 
     fn active_help_copyable_text(&self) -> String {
         self.active_help_markdown().to_string()
+    }
+
+    fn tutorial_audience_group_label(entry: &HelpTutorialDocEntry) -> &'static str {
+        let has = |needle: &str| entry.audiences.iter().any(|value| value == needle);
+        if has("orientation_interfaces")
+            || has("agent_users")
+            || has("mcp_users")
+            || has("new_users")
+        {
+            return "Orientation And Interfaces";
+        }
+        if has("pcr_qpcr_sequence_inspection") || has("primer_design") {
+            return "PCR, qPCR, And Direct Sequence Inspection";
+        }
+        if has("protein_rna_projection") || has("protein_workflows") {
+            return "Protein, RNA, And Projection Audits";
+        }
+        if has("sequencing_confirmation") || entry.path.contains("sequencing_confirmation") {
+            return "Sequencing Confirmation";
+        }
+        if has("gibson_assembly_physical_layout") || entry.path.contains("gibson") {
+            return "Gibson Assembly And Physical Layout";
+        }
+        if has("cloning_reporter_external_handoff")
+            || has("cloning_planning")
+            || has("synthetic_biology")
+        {
+            return "Cloning, Reporter Design, And External Handoffs";
+        }
+        "Executable Reference Chapters"
+    }
+
+    fn tutorial_audience_group_rank(label: &str) -> usize {
+        match label {
+            "Orientation And Interfaces" => 0,
+            "PCR, qPCR, And Direct Sequence Inspection" => 1,
+            "Cloning, Reporter Design, And External Handoffs" => 2,
+            "Gibson Assembly And Physical Layout" => 3,
+            "Protein, RNA, And Projection Audits" => 4,
+            "Sequencing Confirmation" => 5,
+            _ => 6,
+        }
+    }
+
+    fn sort_help_tutorial_entries_by_audience_group(entries: &mut [HelpTutorialDocEntry]) {
+        entries.sort_by(|left, right| {
+            let left_label = Self::tutorial_audience_group_label(left);
+            let right_label = Self::tutorial_audience_group_label(right);
+            Self::tutorial_audience_group_rank(left_label)
+                .cmp(&Self::tutorial_audience_group_rank(right_label))
+                .then_with(|| left.title.cmp(&right.title))
+        });
     }
 
     fn active_help_search_context(&self) -> Option<String> {
@@ -22086,7 +22139,16 @@ Error: `{err}`"
                         .width(Self::clamp_help_topic_combo_width(ui.available_width()))
                         .selected_text(selected_tutorial_title)
                         .show_ui(ui, |ui| {
+                            let mut last_group: Option<&'static str> = None;
                             for (index, entry) in self.help_tutorial_entries.iter().enumerate() {
+                                let group = Self::tutorial_audience_group_label(entry);
+                                if last_group != Some(group) {
+                                    if last_group.is_some() {
+                                        ui.separator();
+                                    }
+                                    ui.label(egui::RichText::new(group).strong());
+                                    last_group = Some(group);
+                                }
                                 if ui
                                     .selectable_label(
                                         index == self.help_tutorial_selected,
@@ -28074,6 +28136,7 @@ mod tests {
             title: "Tutorial Test".to_string(),
             path: tutorial_path.to_string_lossy().to_string(),
             summary: "docs/tutorial/tutorial.md".to_string(),
+            audiences: vec![],
         }];
         app.help_tutorial_selected = 0;
         app.open_help_tutorial_doc(0);
@@ -28114,6 +28177,21 @@ mod tests {
         assert!(context.contains("simple_pcr_selection_gui"));
         assert!(context.contains("Current search section: line 12: primer"));
         assert!(context.contains("GENtle version: test-version"));
+    }
+
+    #[test]
+    fn tutorial_audience_group_uses_catalog_audiences() {
+        let entry = HelpTutorialDocEntry {
+            title: "qPCR".to_string(),
+            path: "docs/tutorial/qpcr_exon_junctions_gui.md".to_string(),
+            summary: String::new(),
+            audiences: vec!["primer_design".to_string()],
+        };
+
+        assert_eq!(
+            GENtleApp::tutorial_audience_group_label(&entry),
+            "PCR, qPCR, And Direct Sequence Inspection"
+        );
     }
 
     #[test]

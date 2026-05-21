@@ -29,6 +29,8 @@ Maintenance rule:
 - Added a GUI Tutorial help button that copies issue-ready feedback context
   with tutorial id, source JSON, workflow, artifact, version, platform, and
   current search context.
+- Grouped the in-app Tutorial topic picker by catalog audience buckets and
+  added standardized feedback sections to hand-written tutorial pages.
 - Added the read-only `planning consult cloning` route and
   `gentle.planning_cloning_consultation.v1` report so Agent Assistant and
   ClawBio can quote deterministic cloning-strategy/vector advice instead of

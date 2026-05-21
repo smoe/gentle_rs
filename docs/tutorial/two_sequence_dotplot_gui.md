@@ -225,3 +225,19 @@ Optional additions (not required for this template):
    - Could illustrate manual refit only when explicit reference spans are set.
 2. `docs/screenshots/tutorial_cdna_genomic_11_dotplot_reverse_complement_check.png`
    - Could illustrate an optional `pair_reverse_complement` orientation sanity check.
+
+## Feedback
+
+If this tutorial is confusing, execution-stale, biologically suspect, or missing a useful figure, please open the matching tutorial issue template and include the context copied from GENtle Help -> Tutorial -> Copy Feedback Context.
+
+- Tutorial title:
+- Tutorial/chapter id:
+- Step reached:
+- Expected vs. actual:
+- Interface used: GUI / CLI / Agent Assistant / ClawBio
+
+Paste the Tutorial feedback context here:
+
+```text
+
+```

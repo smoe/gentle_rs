@@ -376,3 +376,19 @@ That makes the design review reproducible before primers/probes are ordered.
   [`docs/tutorial/rna_read_batch_gene_support_cli.md`](./rna_read_batch_gene_support_cli.md)
 - For the generated executable PCR batch chapter:
   [`docs/tutorial/generated/chapters/13_pcr_selection_batch_primer_pairs_offline.md`](./generated/chapters/13_pcr_selection_batch_primer_pairs_offline.md)
+
+## Feedback
+
+If this tutorial is confusing, execution-stale, biologically suspect, or missing a useful figure, please open the matching tutorial issue template and include the context copied from GENtle Help -> Tutorial -> Copy Feedback Context.
+
+- Tutorial title:
+- Tutorial/chapter id:
+- Step reached:
+- Expected vs. actual:
+- Interface used: GUI / CLI / Agent Assistant / ClawBio
+
+Paste the Tutorial feedback context here:
+
+```text
+
+```

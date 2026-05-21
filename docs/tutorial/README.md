@@ -54,6 +54,10 @@ These pages are written as tutorials rather than indexes. They are the best
 entry point when you want context, screenshots, GUI orientation, or a
 bench-user narrative before running the exact workflow.
 
+The headings below are the same discipline buckets used by the in-app Tutorial
+topic picker. They are derived from each catalog entry's `audiences[]` values,
+so catalog/source JSON stays the single grouping contract.
+
 ### Orientation And Interfaces
 
 - [`docs/tutorial/landscape_overview.md`](./landscape_overview.md) - Use this when: you want the tutorial map, dependencies, and suggested learning order before choosing a path.

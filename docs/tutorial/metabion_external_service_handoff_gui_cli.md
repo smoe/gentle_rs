@@ -285,3 +285,19 @@ If quote output is handoff-ready but warns about missing templates:
 - use the normalized JSON/CSV and email/WOP checklist as the deterministic
   GENtle-owned handoff layer,
 - fetch official vendor templates manually under local purchasing policy.
+
+## Feedback
+
+If this tutorial is confusing, execution-stale, biologically suspect, or missing a useful figure, please open the matching tutorial issue template and include the context copied from GENtle Help -> Tutorial -> Copy Feedback Context.
+
+- Tutorial title:
+- Tutorial/chapter id:
+- Step reached:
+- Expected vs. actual:
+- Interface used: GUI / CLI / Agent Assistant / ClawBio
+
+Paste the Tutorial feedback context here:
+
+```text
+
+```
