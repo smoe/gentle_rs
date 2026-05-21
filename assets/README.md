@@ -41,6 +41,10 @@ Data notes:
   edited for local vector inventories.
   Entries can use explicit local/remote URLs or `genbank_accession` for
   NCBI EFetch-derived FASTA + GenBank annotation during prepare/index.
+  Metadata-only vector candidates may also record sequence availability,
+  redistribution status, biological-safety notes, source/procurement metadata,
+  marker/origin components, host compatibility, and whether the record is
+  usable as an empty backbone.
   The shipped defaults avoid absolute lab-specific paths.
 - `cutrun.json` is the default CUT&RUN catalog for V1 processed datasets.
   Entries can point at prepared/local or remote peaks/signal assets and are

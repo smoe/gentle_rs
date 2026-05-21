@@ -12,6 +12,12 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-05-21
+
+- Added metadata-only Luebeck S1 vector/resource candidates to the helper
+  catalog, with explicit sequence availability, redistribution, biosafety,
+  procurement, host-compatibility, marker/origin, and empty-backbone fields.
+
 ## 2026-05-19
 
 - Added GUI export for lab-assistant cloning handoff reports and upgraded

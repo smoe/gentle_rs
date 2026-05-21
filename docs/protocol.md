@@ -2320,7 +2320,13 @@ Catalog-backed reference/helper discovery notes:
   display the same catalog facts without re-encoding them
 - helper/reference catalog entries may now carry typed discovery metadata such
   as `summary`, `aliases`, `tags`, `search_terms`, `species`, `helper_kind`,
-  `host_system`, `procurement`, and optional structured `semantics`
+  `host_system`, `sequence_availability`, `redistribution_status`,
+  `biological_safety_note`, `usable_as_empty_backbone`, `procurement`, and
+  optional structured `semantics`
+- metadata-only helper/vector candidates may omit sequence and annotation
+  sources when `sequence_availability`, `redistribution_status`, and
+  `usable_as_empty_backbone` are present; prepare/status paths still require a
+  real source before sequence indexing can proceed
 - helper semantics vocabulary overlays are discovered separately from helper
   sequence catalogs so teams can extend normalized meaning without editing
   GENtle source:

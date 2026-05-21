@@ -3984,6 +3984,10 @@ Helper convenience commands:
   - Helper `entries[]` rows now also include an optional normalized
     `interpretation` record so ClawBio/agents/planners can consume one shared
     helper-meaning layer instead of reparsing raw catalog prose.
+  - Metadata-only vector candidates may expose `sequence_availability`,
+    `redistribution_status`, `biological_safety_note`, and
+    `usable_as_empty_backbone` alongside procurement, markers, origins, host
+    compatibility, and semantic component records.
 - `helpers vocabulary list [--vocabulary PATH] [--filter TEXT]`
   - Lists the resolved helper semantics vocabulary terms that normalize helper
     catalog semantics.
