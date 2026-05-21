@@ -2512,6 +2512,115 @@ fn tutorial_review_status(entry: Option<&TutorialReviewEntry>) -> String {
     "unreviewed".to_string()
 }
 
+pub fn build_tutorial_feedback_context_text(
+    entry: &TutorialCatalogEntry,
+    manifest: Option<&TutorialManifest>,
+    review_manifest: Option<&TutorialReviewManifest>,
+    tutorial_source_dir: &Path,
+    generated_output_dir: &Path,
+    workflow_example_dir: &Path,
+    current_search_section: Option<&str>,
+    gentle_version: &str,
+    platform: &str,
+) -> String {
+    let review_by_id = review_manifest
+        .map(|manifest| {
+            manifest
+                .entries
+                .iter()
+                .map(|entry| (entry.tutorial_id.as_str(), entry))
+                .collect::<HashMap<_, _>>()
+        })
+        .unwrap_or_default();
+    let review_entry = review_by_id.get(entry.id.as_str()).copied();
+    let chapter = manifest.and_then(|manifest| {
+        manifest
+            .chapters
+            .iter()
+            .find(|chapter| chapter.id == entry.id)
+    });
+    let source_json = tutorial_source_path_for_id_lossy(tutorial_source_dir, &entry.id);
+    let workflow_path = chapter
+        .map(|chapter| {
+            workflow_example_path_for_id_lossy(workflow_example_dir, &chapter.example_id)
+        })
+        .unwrap_or_else(|| "not applicable".to_string());
+    let generated_artifact_dir = chapter
+        .map(|chapter| {
+            display_path(
+                &generated_output_dir
+                    .join("artifacts")
+                    .join(markdown_file_stem(&chapter.id)),
+            )
+        })
+        .unwrap_or_else(|| "not applicable".to_string());
+    let tutorial_kind = chapter
+        .map(|_| "generated_chapter")
+        .unwrap_or("hand_written_or_reference");
+    let mut out = String::new();
+    out.push_str("Tutorial feedback context\n");
+    out.push_str("-------------------------\n");
+    out.push_str("Tutorial title: ");
+    out.push_str(&entry.title);
+    out.push('\n');
+    out.push_str("Tutorial id: ");
+    out.push_str(&entry.id);
+    out.push('\n');
+    out.push_str("Tutorial kind: ");
+    out.push_str(tutorial_kind);
+    out.push('\n');
+    out.push_str("Catalog path: ");
+    out.push_str(&entry.path);
+    out.push('\n');
+    out.push_str("Catalog source: ");
+    out.push_str(&entry.source);
+    out.push('\n');
+    out.push_str("Current search section: ");
+    out.push_str(
+        current_search_section
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("none"),
+    );
+    out.push('\n');
+    out.push_str("GENtle version: ");
+    out.push_str(gentle_version);
+    out.push('\n');
+    out.push_str("Platform: ");
+    out.push_str(platform);
+    out.push('\n');
+    out.push_str("Source JSON path: ");
+    out.push_str(&source_json);
+    out.push('\n');
+    out.push_str("Workflow path: ");
+    out.push_str(&workflow_path);
+    out.push('\n');
+    out.push_str("Generated artifact dir: ");
+    out.push_str(&generated_artifact_dir);
+    out.push('\n');
+    out.push_str("Review status: ");
+    out.push_str(&tutorial_review_status(review_entry));
+    out.push('\n');
+    out.push_str("Codex reviewed at: ");
+    out.push_str(
+        review_entry
+            .and_then(|entry| entry.codex_reviewed_at.as_deref())
+            .unwrap_or("not recorded"),
+    );
+    out.push('\n');
+    out.push_str("Human reviewed at: ");
+    out.push_str(
+        review_entry
+            .and_then(|entry| entry.human_reviewed_at.as_deref())
+            .unwrap_or("not recorded"),
+    );
+    out.push('\n');
+    out.push_str("Interface used: GUI / CLI / Agent Assistant / ClawBio\n");
+    out.push_str("Step reached:\n");
+    out.push_str("Expected vs. actual:\n");
+    out
+}
+
 fn render_tutorial_concepts_compact(
     chapter: &TutorialChapter,
     concept_by_id: &HashMap<String, TutorialConcept>,
@@ -3230,6 +3339,33 @@ fn tutorial_source_path_for_id_lossy(source_dir: &Path, tutorial_id: &str) -> St
     tutorial_source_path_lookup_lossy(source_dir)
         .remove(tutorial_id)
         .unwrap_or_else(|| display_path(&source_dir.join(format!("{tutorial_id}.json"))))
+}
+
+fn workflow_example_path_for_id_lossy(example_dir: &Path, example_id: &str) -> String {
+    let mut lookup = HashMap::new();
+    if let Ok(entries) = fs::read_dir(example_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path
+                .extension()
+                .and_then(|value| value.to_str())
+                .map(|value| value.eq_ignore_ascii_case("json"))
+                .unwrap_or(false)
+            {
+                continue;
+            }
+            let Ok(raw) = fs::read_to_string(&path) else {
+                continue;
+            };
+            let Ok(example) = serde_json::from_str::<WorkflowExample>(&raw) else {
+                continue;
+            };
+            lookup.insert(example.id, display_path(&path));
+        }
+    }
+    lookup
+        .remove(example_id)
+        .unwrap_or_else(|| display_path(&example_dir.join(format!("{example_id}.json"))))
 }
 
 fn tutorial_source_dir_for_manifest(manifest_path: &Path) -> PathBuf {

@@ -26,6 +26,9 @@ Maintenance rule:
   entries.
 - Regenerated executable tutorial chapters with review/automation provenance
   front matter and a standardized tutorial feedback section.
+- Added a GUI Tutorial help button that copies issue-ready feedback context
+  with tutorial id, source JSON, workflow, artifact, version, platform, and
+  current search context.
 - Added the read-only `planning consult cloning` route and
   `gentle.planning_cloning_consultation.v1` report so Agent Assistant and
   ClawBio can quote deterministic cloning-strategy/vector advice instead of

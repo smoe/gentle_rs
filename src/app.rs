@@ -192,11 +192,13 @@ use crate::{
         self, WindowBackdropKind, WindowBackdropSettings, with_window_content_inset,
     },
     workflow_examples::{
-        DEFAULT_TUTORIAL_CATALOG_PATH, DEFAULT_TUTORIAL_MANIFEST_PATH,
-        DEFAULT_WORKFLOW_EXAMPLE_DIR, ExampleTestMode, TutorialTier, WorkflowExample,
-        load_tutorial_catalog, load_tutorial_manifest, load_workflow_examples,
+        build_tutorial_feedback_context_text, load_tutorial_catalog, load_tutorial_manifest,
+        load_tutorial_review_manifest, load_workflow_examples,
         run_example_workflow_for_project_state_with_progress, validate_example_required_files,
-        validate_tutorial_manifest_against_examples,
+        validate_tutorial_manifest_against_examples, DEFAULT_TUTORIAL_CATALOG_PATH,
+        DEFAULT_TUTORIAL_MANIFEST_PATH, DEFAULT_TUTORIAL_OUTPUT_DIR,
+        DEFAULT_TUTORIAL_REVIEW_MANIFEST_PATH, DEFAULT_TUTORIAL_SOURCE_DIR,
+        DEFAULT_WORKFLOW_EXAMPLE_DIR, ExampleTestMode, TutorialTier, WorkflowExample,
     },
 };
 use agent_assistant_config::{
@@ -5076,6 +5078,87 @@ Error: `{err}`"
 
     fn active_help_copyable_text(&self) -> String {
         self.active_help_markdown().to_string()
+    }
+
+    fn active_help_search_context(&self) -> Option<String> {
+        if self.help_search_query.trim().is_empty() {
+            return None;
+        }
+        self.help_search_matches
+            .get(self.help_search_selected)
+            .map(|hit| format!("line {}: {}", hit.line_number, hit.snippet))
+    }
+
+    fn selected_tutorial_feedback_context_text(&self) -> String {
+        let Some(entry) = self.help_tutorial_entries.get(self.help_tutorial_selected) else {
+            return "Tutorial feedback context\n-------------------------\nNo tutorial is selected.\n"
+                .to_string();
+        };
+        let search_context = self.active_help_search_context();
+        Self::tutorial_feedback_context_text_for_entry(
+            entry,
+            search_context.as_deref(),
+            env!("CARGO_PKG_VERSION"),
+            std::env::consts::OS,
+        )
+        .unwrap_or_else(|error| {
+            format!(
+                "Tutorial feedback context\n-------------------------\nTutorial title: {}\nTutorial path: {}\nCould not resolve catalog metadata: {}\n",
+                entry.title, entry.path, error
+            )
+        })
+    }
+
+    fn tutorial_feedback_context_text_for_entry(
+        entry: &HelpTutorialDocEntry,
+        current_search_section: Option<&str>,
+        gentle_version: &str,
+        platform: &str,
+    ) -> std::result::Result<String, String> {
+        let repo_root = Self::detect_tutorial_repo_root().ok_or_else(|| {
+            format!(
+                "Could not locate '{}' from current runtime paths",
+                DEFAULT_TUTORIAL_CATALOG_PATH
+            )
+        })?;
+        let catalog_path = repo_root.join(DEFAULT_TUTORIAL_CATALOG_PATH);
+        let catalog = load_tutorial_catalog(&catalog_path)?;
+        let catalog_entry = catalog
+            .entries
+            .iter()
+            .find(|candidate| {
+                let resolved = repo_root.join(&candidate.path).to_string_lossy().to_string();
+                candidate.path == entry.path || resolved == entry.path
+            })
+            .ok_or_else(|| {
+                format!(
+                    "Selected tutorial path '{}' is not listed in '{}'",
+                    entry.path,
+                    catalog_path.display()
+                )
+            })?;
+        let manifest_path = repo_root.join(&catalog.generated_runtime.manifest_path);
+        let manifest = load_tutorial_manifest(&manifest_path).ok();
+        let review_path = repo_root.join(DEFAULT_TUTORIAL_REVIEW_MANIFEST_PATH);
+        let review_manifest = load_tutorial_review_manifest(&review_path).ok();
+        let tutorial_source_dir = repo_root.join(DEFAULT_TUTORIAL_SOURCE_DIR);
+        let generated_output_dir = repo_root.join(&catalog.generated_runtime.generated_readme);
+        let generated_output_dir = generated_output_dir
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| repo_root.join(DEFAULT_TUTORIAL_OUTPUT_DIR));
+        let workflow_example_dir = repo_root.join(DEFAULT_WORKFLOW_EXAMPLE_DIR);
+        Ok(build_tutorial_feedback_context_text(
+            catalog_entry,
+            manifest.as_ref(),
+            review_manifest.as_ref(),
+            &tutorial_source_dir,
+            &generated_output_dir,
+            &workflow_example_dir,
+            current_search_section,
+            gentle_version,
+            platform,
+        ))
     }
 
     fn refresh_help_search_matches(&mut self) {
@@ -22020,6 +22103,15 @@ Error: `{err}`"
                         self.set_help_tutorial_selected(index);
                         active_doc_changed = true;
                     }
+                    if ui
+                        .button("Copy Feedback Context")
+                        .on_hover_text(
+                            "Copy tutorial id, source, workflow, artifact, version, platform, and current search context for issue reports",
+                        )
+                        .clicked()
+                    {
+                        ui.ctx().copy_text(self.selected_tutorial_feedback_context_text());
+                    }
                     ui.separator();
                 }
                 ui.label("Find:");
@@ -27994,6 +28086,34 @@ mod tests {
             app.pending_focus_viewports
                 .contains(&GENtleApp::help_viewport_id())
         );
+    }
+
+    #[test]
+    fn tutorial_feedback_context_includes_id_and_source_path() {
+        let entries = GENtleApp::discover_help_tutorial_entries();
+        let entry = entries
+            .iter()
+            .find(|entry| entry.summary.contains("simple_pcr_selection_gui"))
+            .or_else(|| {
+                entries
+                    .iter()
+                    .find(|entry| entry.path.contains("simple_pcr_selection_gui"))
+            })
+            .expect("simple PCR tutorial entry should be discoverable");
+
+        let context = GENtleApp::tutorial_feedback_context_text_for_entry(
+            entry,
+            Some("line 12: primer"),
+            "test-version",
+            "test-platform",
+        )
+        .expect("feedback context");
+
+        assert!(context.contains("Tutorial id: simple_pcr_selection_gui"));
+        assert!(context.contains("docs/tutorial/sources/"));
+        assert!(context.contains("simple_pcr_selection_gui"));
+        assert!(context.contains("Current search section: line 12: primer"));
+        assert!(context.contains("GENtle version: test-version"));
     }
 
     #[test]
