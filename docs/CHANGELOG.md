@@ -24,6 +24,8 @@ Maintenance rule:
 - Added `gentle.tutorial_review_manifest.v1` review metadata with nonfatal
   tutorial-check warnings for missing, unknown, or stale tutorial review
   entries.
+- Regenerated executable tutorial chapters with review/automation provenance
+  front matter and a standardized tutorial feedback section.
 - Added the read-only `planning consult cloning` route and
   `gentle.planning_cloning_consultation.v1` report so Agent Assistant and
   ClawBio can quote deterministic cloning-strategy/vector advice instead of

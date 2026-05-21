@@ -6,6 +6,11 @@ example_id: "tp63_extend_anchor_online"
 source_example: "docs/examples/workflows/tp63_extend_anchor_online.json"
 example_test_mode: "online"
 executed_during_generation: false
+automated_status: "skipped_online"
+review_status: "unreviewed"
+codex_reviewed_at: null
+human_reviewed_at: null
+generated_artifact_dir: "docs/tutorial/generated/artifacts/tp63_anchor_extension_online"
 ---
 
 # Retrieve TP63 and extend the displayed region by +/-2 kb (online)
@@ -105,13 +110,35 @@ cargo run --bin gentle_cli -- genomes extend-anchor grch38_tp63_ext5_2kb 3p 2000
 - ExtractGenomeGene produces `grch38_tp63` as anchored sequence context.
 - Sequential 5'/3' extension by 2000 bp yields `grch38_tp63_ext5_ext3_2kb` with preserved anchor provenance.
 
-## Canonical Source
+## Tutorial Provenance
 
 - Chapter id: `tp63_anchor_extension_online`
 - Tier: `online`
 - Example id: `tp63_extend_anchor_online`
+- Tutorial source JSON: `docs/tutorial/sources/21_tp63_anchor_extension_online.json`
 - Workflow file: `docs/examples/workflows/tp63_extend_anchor_online.json`
+- Generated artifact dir: `docs/tutorial/generated/artifacts/tp63_anchor_extension_online`
 - Example test_mode: `online`
 - Executed during generation: `no`
+- Automated status: `skipped_online`
+- Review status: `unreviewed`
+- Codex reviewed at: `not recorded`
+- Human reviewed at: `not recorded`
 - Execution note: set `GENTLE_TEST_ONLINE=1` before `tutorial-generate` to execute this chapter.
-- Inspect this JSON file directly when you need full option-level detail.
+- Inspect the source JSON when you need full option-level detail.
+
+## Feedback
+
+If this tutorial is confusing, execution-stale, biologically suspect, or missing a useful figure, please open the matching tutorial issue template and include the context below.
+
+- Tutorial title: `Retrieve TP63 and extend the displayed region by +/-2 kb (online)`
+- Tutorial/chapter id: `tp63_anchor_extension_online`
+- Step reached:
+- Expected vs. actual:
+- Interface used: GUI / CLI / Agent Assistant / ClawBio
+
+Paste the Tutorial feedback context here:
+
+```text
+
+```

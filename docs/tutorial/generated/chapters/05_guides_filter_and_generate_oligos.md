@@ -6,6 +6,11 @@ example_id: "guides_filter_and_generate_oligos"
 source_example: "docs/examples/workflows/guides_filter_and_generate_oligos.json"
 example_test_mode: "always"
 executed_during_generation: true
+automated_status: "passing"
+review_status: "unreviewed"
+codex_reviewed_at: null
+human_reviewed_at: null
+generated_artifact_dir: "docs/tutorial/generated/artifacts/guides_filter_and_generate_oligos"
 ---
 
 # Guide practical filtering and oligo generation
@@ -88,12 +93,34 @@ cargo run --bin gentle_cli -- guides oligos-generate tp73_guides lenti_bsmbi_u6_
 - Guide set and passed guide set are present in metadata.
 - Oligo set generation succeeds for passed guides.
 
-## Canonical Source
+## Tutorial Provenance
 
 - Chapter id: `guides_filter_and_generate_oligos`
 - Tier: `core`
 - Example id: `guides_filter_and_generate_oligos`
+- Tutorial source JSON: `docs/tutorial/sources/15_guides_filter_and_generate_oligos.json`
 - Workflow file: `docs/examples/workflows/guides_filter_and_generate_oligos.json`
+- Generated artifact dir: `docs/tutorial/generated/artifacts/guides_filter_and_generate_oligos`
 - Example test_mode: `always`
 - Executed during generation: `yes`
-- Inspect this JSON file directly when you need full option-level detail.
+- Automated status: `passing`
+- Review status: `unreviewed`
+- Codex reviewed at: `not recorded`
+- Human reviewed at: `not recorded`
+- Inspect the source JSON when you need full option-level detail.
+
+## Feedback
+
+If this tutorial is confusing, execution-stale, biologically suspect, or missing a useful figure, please open the matching tutorial issue template and include the context below.
+
+- Tutorial title: `Guide practical filtering and oligo generation`
+- Tutorial/chapter id: `guides_filter_and_generate_oligos`
+- Step reached:
+- Expected vs. actual:
+- Interface used: GUI / CLI / Agent Assistant / ClawBio
+
+Paste the Tutorial feedback context here:
+
+```text
+
+```

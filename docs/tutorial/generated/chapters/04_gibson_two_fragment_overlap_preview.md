@@ -6,6 +6,11 @@ example_id: "gibson_two_fragment_overlap_preview"
 source_example: "docs/examples/workflows/gibson_two_fragment_overlap_preview.json"
 example_test_mode: "always"
 executed_during_generation: true
+automated_status: "passing"
+review_status: "unreviewed"
+codex_reviewed_at: null
+human_reviewed_at: null
+generated_artifact_dir: "docs/tutorial/generated/artifacts/gibson_two_fragment_overlap_preview"
 ---
 
 # Gibson two-fragment overlap planning baseline
@@ -102,12 +107,34 @@ cargo run --bin gentle_cli -- shell 'macros template-run gibson_two_fragment_ove
 - Mismatch overlap inputs return explicit Gibson overlap diagnostics.
 - Mutating run creates deterministic preview outputs (`${assembly_prefix}_*` and `${output_id}`).
 
-## Canonical Source
+## Tutorial Provenance
 
 - Chapter id: `gibson_two_fragment_overlap_preview`
 - Tier: `core`
 - Example id: `gibson_two_fragment_overlap_preview`
+- Tutorial source JSON: `docs/tutorial/sources/14_gibson_two_fragment_overlap_preview.json`
 - Workflow file: `docs/examples/workflows/gibson_two_fragment_overlap_preview.json`
+- Generated artifact dir: `docs/tutorial/generated/artifacts/gibson_two_fragment_overlap_preview`
 - Example test_mode: `always`
 - Executed during generation: `yes`
-- Inspect this JSON file directly when you need full option-level detail.
+- Automated status: `passing`
+- Review status: `unreviewed`
+- Codex reviewed at: `not recorded`
+- Human reviewed at: `not recorded`
+- Inspect the source JSON when you need full option-level detail.
+
+## Feedback
+
+If this tutorial is confusing, execution-stale, biologically suspect, or missing a useful figure, please open the matching tutorial issue template and include the context below.
+
+- Tutorial title: `Gibson two-fragment overlap planning baseline`
+- Tutorial/chapter id: `gibson_two_fragment_overlap_preview`
+- Step reached:
+- Expected vs. actual:
+- Interface used: GUI / CLI / Agent Assistant / ClawBio
+
+Paste the Tutorial feedback context here:
+
+```text
+
+```

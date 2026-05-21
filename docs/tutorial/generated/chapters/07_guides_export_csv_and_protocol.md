@@ -6,6 +6,11 @@ example_id: "guides_export_csv_and_protocol"
 source_example: "docs/examples/workflows/guides_export_csv_and_protocol.json"
 example_test_mode: "skip"
 executed_during_generation: true
+automated_status: "passing"
+review_status: "unreviewed"
+codex_reviewed_at: null
+human_reviewed_at: null
+generated_artifact_dir: "docs/tutorial/generated/artifacts/guides_export_csv_and_protocol"
 ---
 
 # Guide oligo export (CSV + protocol)
@@ -95,12 +100,34 @@ cargo run --bin gentle_cli -- guides oligos-show demo_lenti
 - [`artifacts/guides_export_csv_and_protocol/exports/demo_guides.csv`](../artifacts/guides_export_csv_and_protocol/exports/demo_guides.csv) - `guide_id,rank,forward_oligo,reverse_oligo,notes`
 - [`artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt`](../artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt) - `GENtle Guide Oligo Protocol`
 
-## Canonical Source
+## Tutorial Provenance
 
 - Chapter id: `guides_export_csv_and_protocol`
 - Tier: `advanced`
 - Example id: `guides_export_csv_and_protocol`
+- Tutorial source JSON: `docs/tutorial/sources/17_guides_export_csv_and_protocol.json`
 - Workflow file: `docs/examples/workflows/guides_export_csv_and_protocol.json`
+- Generated artifact dir: `docs/tutorial/generated/artifacts/guides_export_csv_and_protocol`
 - Example test_mode: `skip`
 - Executed during generation: `yes`
-- Inspect this JSON file directly when you need full option-level detail.
+- Automated status: `passing`
+- Review status: `unreviewed`
+- Codex reviewed at: `not recorded`
+- Human reviewed at: `not recorded`
+- Inspect the source JSON when you need full option-level detail.
+
+## Feedback
+
+If this tutorial is confusing, execution-stale, biologically suspect, or missing a useful figure, please open the matching tutorial issue template and include the context below.
+
+- Tutorial title: `Guide oligo export (CSV + protocol)`
+- Tutorial/chapter id: `guides_export_csv_and_protocol`
+- Step reached:
+- Expected vs. actual:
+- Interface used: GUI / CLI / Agent Assistant / ClawBio
+
+Paste the Tutorial feedback context here:
+
+```text
+
+```

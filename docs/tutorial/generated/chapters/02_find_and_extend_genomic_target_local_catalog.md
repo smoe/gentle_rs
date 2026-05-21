@@ -6,6 +6,11 @@ example_id: "prepare_extract_extend_localproject_gene"
 source_example: "docs/examples/workflows/prepare_extract_extend_localproject_gene.json"
 example_test_mode: "always"
 executed_during_generation: true
+automated_status: "passing"
+review_status: "unreviewed"
+codex_reviewed_at: null
+human_reviewed_at: null
+generated_artifact_dir: "docs/tutorial/generated/artifacts/find_and_extend_genomic_target_local_catalog"
 ---
 
 # Find and extend the right genomic target (local catalog)
@@ -104,12 +109,34 @@ cargo run --bin gentle_cli -- genomes extend-anchor local_etpc 5p 500 --output-i
 - ExtractGenomeGene produces `local_etpc` from annotation-backed lookup.
 - ExtendGenomeAnchor produces `local_etpc_ext5` with widened genomic interval provenance.
 
-## Canonical Source
+## Tutorial Provenance
 
 - Chapter id: `find_and_extend_genomic_target_local_catalog`
 - Tier: `core`
 - Example id: `prepare_extract_extend_localproject_gene`
+- Tutorial source JSON: `docs/tutorial/sources/12_find_and_extend_genomic_target_local_catalog.json`
 - Workflow file: `docs/examples/workflows/prepare_extract_extend_localproject_gene.json`
+- Generated artifact dir: `docs/tutorial/generated/artifacts/find_and_extend_genomic_target_local_catalog`
 - Example test_mode: `always`
 - Executed during generation: `yes`
-- Inspect this JSON file directly when you need full option-level detail.
+- Automated status: `passing`
+- Review status: `unreviewed`
+- Codex reviewed at: `not recorded`
+- Human reviewed at: `not recorded`
+- Inspect the source JSON when you need full option-level detail.
+
+## Feedback
+
+If this tutorial is confusing, execution-stale, biologically suspect, or missing a useful figure, please open the matching tutorial issue template and include the context below.
+
+- Tutorial title: `Find and extend the right genomic target (local catalog)`
+- Tutorial/chapter id: `find_and_extend_genomic_target_local_catalog`
+- Step reached:
+- Expected vs. actual:
+- Interface used: GUI / CLI / Agent Assistant / ClawBio
+
+Paste the Tutorial feedback context here:
+
+```text
+
+```

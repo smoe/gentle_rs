@@ -6,6 +6,11 @@ example_id: "gibson_specialist_testing_baseline"
 source_example: "docs/examples/workflows/gibson_specialist_testing_baseline.json"
 example_test_mode: "always"
 executed_during_generation: true
+automated_status: "passing"
+review_status: "unreviewed"
+codex_reviewed_at: null
+human_reviewed_at: null
+generated_artifact_dir: "docs/tutorial/generated/artifacts/gibson_specialist_testing_baseline"
 ---
 
 # Gibson Specialist Starter Project (offline)
@@ -101,12 +106,34 @@ cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gibson_specialis
 - The destination remains circular and the insert remains linear before entering `Patterns -> Gibson...`.
 - The hand-written Gibson testing guide can start from this baseline without any additional sequence imports.
 
-## Canonical Source
+## Tutorial Provenance
 
 - Chapter id: `gibson_specialist_testing_baseline`
 - Tier: `core`
 - Example id: `gibson_specialist_testing_baseline`
+- Tutorial source JSON: `docs/tutorial/sources/25_gibson_specialist_testing_baseline.json`
 - Workflow file: `docs/examples/workflows/gibson_specialist_testing_baseline.json`
+- Generated artifact dir: `docs/tutorial/generated/artifacts/gibson_specialist_testing_baseline`
 - Example test_mode: `always`
 - Executed during generation: `yes`
-- Inspect this JSON file directly when you need full option-level detail.
+- Automated status: `passing`
+- Review status: `unreviewed`
+- Codex reviewed at: `not recorded`
+- Human reviewed at: `not recorded`
+- Inspect the source JSON when you need full option-level detail.
+
+## Feedback
+
+If this tutorial is confusing, execution-stale, biologically suspect, or missing a useful figure, please open the matching tutorial issue template and include the context below.
+
+- Tutorial title: `Gibson Specialist Starter Project (offline)`
+- Tutorial/chapter id: `gibson_specialist_testing_baseline`
+- Step reached:
+- Expected vs. actual:
+- Interface used: GUI / CLI / Agent Assistant / ClawBio
+
+Paste the Tutorial feedback context here:
+
+```text
+
+```

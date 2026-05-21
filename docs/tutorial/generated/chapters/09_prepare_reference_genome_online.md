@@ -6,6 +6,11 @@ example_id: "prepare_reference_genome_online"
 source_example: "docs/examples/workflows/prepare_reference_genome_online.json"
 example_test_mode: "online"
 executed_during_generation: false
+automated_status: "skipped_online"
+review_status: "unreviewed"
+codex_reviewed_at: null
+human_reviewed_at: null
+generated_artifact_dir: "docs/tutorial/generated/artifacts/prepare_reference_genome_online"
 ---
 
 # Prepare a reference genome cache (online)
@@ -96,13 +101,35 @@ GENTLE_TEST_ONLINE=1 cargo run --bin gentle_examples_docs -- tutorial-generate
 - Genome preparation runs only when GENTLE_TEST_ONLINE is enabled.
 - Offline generation still emits the chapter with execution status noted.
 
-## Canonical Source
+## Tutorial Provenance
 
 - Chapter id: `prepare_reference_genome_online`
 - Tier: `online`
 - Example id: `prepare_reference_genome_online`
+- Tutorial source JSON: `docs/tutorial/sources/19_prepare_reference_genome_online.json`
 - Workflow file: `docs/examples/workflows/prepare_reference_genome_online.json`
+- Generated artifact dir: `docs/tutorial/generated/artifacts/prepare_reference_genome_online`
 - Example test_mode: `online`
 - Executed during generation: `no`
+- Automated status: `skipped_online`
+- Review status: `unreviewed`
+- Codex reviewed at: `not recorded`
+- Human reviewed at: `not recorded`
 - Execution note: set `GENTLE_TEST_ONLINE=1` before `tutorial-generate` to execute this chapter.
-- Inspect this JSON file directly when you need full option-level detail.
+- Inspect the source JSON when you need full option-level detail.
+
+## Feedback
+
+If this tutorial is confusing, execution-stale, biologically suspect, or missing a useful figure, please open the matching tutorial issue template and include the context below.
+
+- Tutorial title: `Prepare a reference genome cache (online)`
+- Tutorial/chapter id: `prepare_reference_genome_online`
+- Step reached:
+- Expected vs. actual:
+- Interface used: GUI / CLI / Agent Assistant / ClawBio
+
+Paste the Tutorial feedback context here:
+
+```text
+
+```

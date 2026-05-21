@@ -6,6 +6,11 @@ example_id: "tp73_uniprot_projection_audit_online"
 source_example: "docs/examples/workflows/tp73_uniprot_projection_audit_online.json"
 example_test_mode: "online"
 executed_during_generation: false
+automated_status: "skipped_online"
+review_status: "unreviewed"
+codex_reviewed_at: null
+human_reviewed_at: null
+generated_artifact_dir: "docs/tutorial/generated/artifacts/tp73_uniprot_projection_audit_cli"
 ---
 
 # Audit a TP73 UniProt Projection Against Ensembl and Derived Coding Sequence (CLI Tutorial)
@@ -156,13 +161,35 @@ cargo run --bin gentle_cli -- shell 'uniprot audit-parity-show tp73_projection_a
 - The parity report stores `tp73_projection_audit_parity` and confirms whether the integrated Rust audit matches the public primitive composition.
 - The shared expert SVG export succeeds so the projected TP73 feature geometry remains inspectable outside the live GUI.
 
-## Canonical Source
+## Tutorial Provenance
 
 - Chapter id: `tp73_uniprot_projection_audit_cli`
 - Tier: `online`
 - Example id: `tp73_uniprot_projection_audit_online`
+- Tutorial source JSON: `docs/tutorial/sources/30_tp73_uniprot_projection_audit_cli.json`
 - Workflow file: `docs/examples/workflows/tp73_uniprot_projection_audit_online.json`
+- Generated artifact dir: `docs/tutorial/generated/artifacts/tp73_uniprot_projection_audit_cli`
 - Example test_mode: `online`
 - Executed during generation: `no`
+- Automated status: `skipped_online`
+- Review status: `unreviewed`
+- Codex reviewed at: `not recorded`
+- Human reviewed at: `not recorded`
 - Execution note: set `GENTLE_TEST_ONLINE=1` before `tutorial-generate` to execute this chapter.
-- Inspect this JSON file directly when you need full option-level detail.
+- Inspect the source JSON when you need full option-level detail.
+
+## Feedback
+
+If this tutorial is confusing, execution-stale, biologically suspect, or missing a useful figure, please open the matching tutorial issue template and include the context below.
+
+- Tutorial title: `Audit a TP73 UniProt Projection Against Ensembl and Derived Coding Sequence (CLI Tutorial)`
+- Tutorial/chapter id: `tp73_uniprot_projection_audit_cli`
+- Step reached:
+- Expected vs. actual:
+- Interface used: GUI / CLI / Agent Assistant / ClawBio
+
+Paste the Tutorial feedback context here:
+
+```text
+
+```

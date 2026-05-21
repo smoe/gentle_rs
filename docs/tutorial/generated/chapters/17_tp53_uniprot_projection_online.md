@@ -6,6 +6,11 @@ example_id: "tp53_uniprot_projection_online"
 source_example: "docs/examples/workflows/tp53_uniprot_projection_online.json"
 example_test_mode: "online"
 executed_during_generation: false
+automated_status: "skipped_online"
+review_status: "unreviewed"
+codex_reviewed_at: null
+human_reviewed_at: null
+generated_artifact_dir: "docs/tutorial/generated/artifacts/tp53_uniprot_projection_online"
 ---
 
 # TP53 UniProt domain mapping and feature-coding DNA query (online)
@@ -151,13 +156,35 @@ cargo run --bin gentle_cli -- shell 'uniprot feature-coding-dna tp53_uniprot_p04
 - Protein-mapping SVG export succeeds directly from the UniProt specialist without requiring a separate protein sequence window.
 - The feature-coding DNA query reports the coding-strand DNA for `DNA-binding` together with transcript-specific exon attribution, including an exon pair when the feature spans a splice junction.
 
-## Canonical Source
+## Tutorial Provenance
 
 - Chapter id: `tp53_uniprot_projection_online`
 - Tier: `online`
 - Example id: `tp53_uniprot_projection_online`
+- Tutorial source JSON: `docs/tutorial/sources/27_tp53_uniprot_projection_online.json`
 - Workflow file: `docs/examples/workflows/tp53_uniprot_projection_online.json`
+- Generated artifact dir: `docs/tutorial/generated/artifacts/tp53_uniprot_projection_online`
 - Example test_mode: `online`
 - Executed during generation: `no`
+- Automated status: `skipped_online`
+- Review status: `unreviewed`
+- Codex reviewed at: `not recorded`
+- Human reviewed at: `not recorded`
 - Execution note: set `GENTLE_TEST_ONLINE=1` before `tutorial-generate` to execute this chapter.
-- Inspect this JSON file directly when you need full option-level detail.
+- Inspect the source JSON when you need full option-level detail.
+
+## Feedback
+
+If this tutorial is confusing, execution-stale, biologically suspect, or missing a useful figure, please open the matching tutorial issue template and include the context below.
+
+- Tutorial title: `TP53 UniProt domain mapping and feature-coding DNA query (online)`
+- Tutorial/chapter id: `tp53_uniprot_projection_online`
+- Step reached:
+- Expected vs. actual:
+- Interface used: GUI / CLI / Agent Assistant / ClawBio
+
+Paste the Tutorial feedback context here:
+
+```text
+
+```
