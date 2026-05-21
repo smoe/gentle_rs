@@ -2533,6 +2533,9 @@ Behavior:
   for explicit selection
 - prompt templates are available via one-click `Insert` / `Append` buttons
   before the prompt editor
+- the `Compact intro (no state)` prompt template is meant for live demos and
+  quick "what can you do?" questions; inserting or appending it disables
+  project-state summary injection for that draft request
 - optional `Include state summary` injects current project summary context
 - optional `Allow auto execute` only applies to suggestions marked with `auto`
 - `Ask Agent` runs in background and reports status in `Background Jobs`
