@@ -25,6 +25,10 @@ Maintenance rule:
   units now use `gentle.tutorial_source.v4`, 38 tutorial units carry derived
   decimal ids, and the generated hub plus landscape overview remain grouped but
   intentionally unnumbered.
+- Began Phase 2 tutorial presentation regrouping: the human tutorial hub,
+  generated reference hub, Help tutorial picker, and `File -> Open Tutorial
+  Project...` menu now present tutorials by content group and decimal id rather
+  than flat lists or tier-only buckets.
 - Archived superseded TP73 promoter/luciferase tutorial pointers and moved the
   planned VKORC1 / Factor X companion tutorial note into the roadmap parking
   lot instead of active tutorial numbering.

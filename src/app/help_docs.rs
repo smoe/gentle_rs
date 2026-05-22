@@ -45,6 +45,10 @@ impl GENtleApp {
             path: resolved_path.to_string_lossy().to_string(),
             summary,
             audiences: entry.audiences,
+            group_label: entry.group_label,
+            group_order: entry.group_order,
+            group_position: entry.group_position,
+            decimal_id: entry.decimal_id,
         })
     }
 
@@ -622,6 +626,10 @@ impl GENtleApp {
                     path: path.to_string_lossy().to_string(),
                     summary: format!("docs/tutorial/{relative}"),
                     audiences: vec![],
+                    group_label: None,
+                    group_order: None,
+                    group_position: None,
+                    decimal_id: None,
                 }
             })
             .collect::<Vec<_>>();
@@ -673,6 +681,10 @@ impl GENtleApp {
                 "agent_users".to_string(),
                 "mcp_users".to_string(),
             ],
+            group_label: Some("Getting Started & Interfaces".to_string()),
+            group_order: Some(1),
+            group_position: Some(1),
+            decimal_id: Some("01.01".to_string()),
         });
     }
 
@@ -776,6 +788,10 @@ impl GENtleApp {
                     path: resolved_string,
                     summary,
                     audiences: vec![],
+                    group_label: None,
+                    group_order: None,
+                    group_position: None,
+                    decimal_id: None,
                 });
                 self.help_tutorial_entries.len() - 1
             }

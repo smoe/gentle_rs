@@ -1040,6 +1040,10 @@ struct TutorialProjectEntry {
     chapter_title: String,
     chapter_summary: String,
     chapter_guide_path: Option<String>,
+    group_label: Option<String>,
+    group_order: Option<usize>,
+    group_position: Option<usize>,
+    decimal_id: Option<String>,
     tier: TutorialTier,
     example: WorkflowExample,
     repo_root: PathBuf,
@@ -1058,6 +1062,10 @@ struct HelpTutorialDocEntry {
     path: String,
     summary: String,
     audiences: Vec<String>,
+    group_label: Option<String>,
+    group_order: Option<usize>,
+    group_position: Option<usize>,
+    decimal_id: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -5112,37 +5120,48 @@ Error: `{err}`"
         self.active_help_markdown().to_string()
     }
 
-    fn tutorial_audience_group_label(entry: &HelpTutorialDocEntry) -> &'static str {
+    fn tutorial_audience_group_label(entry: &HelpTutorialDocEntry) -> String {
+        if let Some(label) = entry
+            .group_label
+            .as_deref()
+            .map(str::trim)
+            .filter(|label| !label.is_empty())
+        {
+            return label.to_string();
+        }
         let has = |needle: &str| entry.audiences.iter().any(|value| value == needle);
         if has("orientation_interfaces")
             || has("agent_users")
             || has("mcp_users")
             || has("new_users")
         {
-            return "Orientation And Interfaces";
+            return "Orientation And Interfaces".to_string();
         }
         if has("pcr_qpcr_sequence_inspection") || has("primer_design") {
-            return "PCR, qPCR, And Direct Sequence Inspection";
+            return "PCR, qPCR, And Direct Sequence Inspection".to_string();
         }
         if has("protein_rna_projection") || has("protein_workflows") {
-            return "Protein, RNA, And Projection Audits";
+            return "Protein, RNA, And Projection Audits".to_string();
         }
         if has("sequencing_confirmation") || entry.path.contains("sequencing_confirmation") {
-            return "Sequencing Confirmation";
+            return "Sequencing Confirmation".to_string();
         }
         if has("gibson_assembly_physical_layout") || entry.path.contains("gibson") {
-            return "Gibson Assembly And Physical Layout";
+            return "Gibson Assembly And Physical Layout".to_string();
         }
         if has("cloning_reporter_external_handoff")
             || has("cloning_planning")
             || has("synthetic_biology")
         {
-            return "Cloning, Reporter Design, And External Handoffs";
+            return "Cloning, Reporter Design, And External Handoffs".to_string();
         }
-        "Executable Reference Chapters"
+        "Executable Reference Chapters".to_string()
     }
 
-    fn tutorial_audience_group_rank(label: &str) -> usize {
+    fn tutorial_audience_group_rank(entry: &HelpTutorialDocEntry, label: &str) -> usize {
+        if let Some(order) = entry.group_order {
+            return order.saturating_sub(1);
+        }
         match label {
             "Orientation And Interfaces" => 0,
             "PCR, qPCR, And Direct Sequence Inspection" => 1,
@@ -5158,10 +5177,29 @@ Error: `{err}`"
         entries.sort_by(|left, right| {
             let left_label = Self::tutorial_audience_group_label(left);
             let right_label = Self::tutorial_audience_group_label(right);
-            Self::tutorial_audience_group_rank(left_label)
-                .cmp(&Self::tutorial_audience_group_rank(right_label))
+            Self::tutorial_audience_group_rank(left, &left_label)
+                .cmp(&Self::tutorial_audience_group_rank(right, &right_label))
+                .then_with(|| {
+                    left.group_position
+                        .unwrap_or(usize::MAX)
+                        .cmp(&right.group_position.unwrap_or(usize::MAX))
+                })
                 .then_with(|| left.title.cmp(&right.title))
         });
+    }
+
+    fn tutorial_display_label(
+        decimal_id: Option<&str>,
+        order: Option<usize>,
+        title: &str,
+    ) -> String {
+        if let Some(decimal_id) = decimal_id.map(str::trim).filter(|value| !value.is_empty()) {
+            return format!("{decimal_id} {title}");
+        }
+        if let Some(order) = order {
+            return format!("{order:02}. {title}");
+        }
+        title.to_string()
     }
 
     fn active_help_search_context(&self) -> Option<String> {
@@ -6782,12 +6820,26 @@ Error: `{err}`"
                 chapter_title: chapter.title,
                 chapter_summary: chapter.summary,
                 chapter_guide_path: chapter.guide_path,
+                group_label: chapter.group_label,
+                group_order: chapter.group_order,
+                group_position: chapter.group_position,
+                decimal_id: chapter.decimal_id,
                 tier: chapter.tier,
                 example,
                 repo_root: repo_root.clone(),
             });
         }
-        entries.sort_by(|left, right| left.chapter_order.cmp(&right.chapter_order));
+        entries.sort_by(|left, right| {
+            left.group_order
+                .unwrap_or(usize::MAX)
+                .cmp(&right.group_order.unwrap_or(usize::MAX))
+                .then_with(|| {
+                    left.group_position
+                        .unwrap_or(usize::MAX)
+                        .cmp(&right.group_position.unwrap_or(usize::MAX))
+                })
+                .then_with(|| left.chapter_order.cmp(&right.chapter_order))
+        });
         Ok(entries)
     }
 
@@ -15221,17 +15273,41 @@ Error: `{err}`"
                                     "Documentation tutorials open in Help; executable chapters build project state.",
                                 );
                                 ui.separator();
+                                let mut by_group: BTreeMap<
+                                    (usize, String),
+                                    Vec<&HelpTutorialDocEntry>,
+                                > =
+                                    BTreeMap::new();
                                 for entry in &guided_entries {
-                                    if ui
-                                        .button(entry.title.as_str())
-                                        .on_hover_text(format!(
-                                            "Open this tutorial guide in Help\n{}",
-                                            entry.summary
+                                    let group = Self::tutorial_audience_group_label(entry);
+                                    by_group
+                                        .entry((
+                                            entry.group_order.unwrap_or(usize::MAX),
+                                            group,
                                         ))
-                                        .clicked()
-                                    {
-                                        selected_guided_tutorial = Some(entry.clone());
-                                    }
+                                        .or_default()
+                                        .push(entry);
+                                }
+                                for ((_group_order, group), rows) in by_group {
+                                    ui.menu_button(format!("{group} ({})", rows.len()), |ui| {
+                                        for entry in rows {
+                                            let label = Self::tutorial_display_label(
+                                                entry.decimal_id.as_deref(),
+                                                None,
+                                                &entry.title,
+                                            );
+                                            if ui
+                                                .button(label)
+                                                .on_hover_text(format!(
+                                                    "Open this tutorial guide in Help\n{}",
+                                                    entry.summary
+                                                ))
+                                                .clicked()
+                                            {
+                                                selected_guided_tutorial = Some(entry.clone());
+                                            }
+                                        }
+                                    });
                                 }
                             },
                         );
@@ -15261,35 +15337,35 @@ Error: `{err}`"
                     }
 
                     let mut selected_chapter_id: Option<String> = None;
-                    for tier in [
-                        TutorialTier::Core,
-                        TutorialTier::Advanced,
-                        TutorialTier::Online,
-                    ] {
-                        let tier_entries = entries
-                            .iter()
-                            .filter(|entry| entry.tier == tier)
-                            .collect::<Vec<_>>();
-                        if tier_entries.is_empty() {
-                            continue;
-                        }
-                        let tier_label = match tier {
-                            TutorialTier::Core => "Core",
-                            TutorialTier::Advanced => "Advanced",
-                            TutorialTier::Online => "Online",
-                        };
-                        ui.menu_button(format!("{tier_label} ({})", tier_entries.len()), |ui| {
-                            for entry in tier_entries {
-                                let mut label =
-                                    format!("{:02}. {}", entry.chapter_order, entry.chapter_title);
+                    let mut by_group: BTreeMap<(usize, String), Vec<&TutorialProjectEntry>> =
+                        BTreeMap::new();
+                    for entry in &entries {
+                        let group = entry
+                            .group_label
+                            .clone()
+                            .unwrap_or_else(|| entry.tier.as_str().to_string());
+                        by_group
+                            .entry((entry.group_order.unwrap_or(usize::MAX), group))
+                            .or_default()
+                            .push(entry);
+                    }
+                    for ((_group_order, group), group_entries) in by_group {
+                        ui.menu_button(format!("{group} ({})", group_entries.len()), |ui| {
+                            for entry in group_entries {
+                                let mut label = Self::tutorial_display_label(
+                                    entry.decimal_id.as_deref(),
+                                    Some(entry.chapter_order),
+                                    &entry.chapter_title,
+                                );
                                 if entry.example.test_mode == ExampleTestMode::Online {
                                     label.push_str(" [online]");
                                 }
                                 let hover = format!(
-                                    "chapter_id: {}\nexample_id: {}\ntier: {}\n{}",
+                                    "chapter_id: {}\nexample_id: {}\ntier: {}\ngroup: {}\n{}",
                                     entry.chapter_id,
                                     entry.example.id,
-                                    tier.as_str(),
+                                    entry.tier.as_str(),
+                                    group,
                                     if entry.chapter_summary.trim().is_empty() {
                                         "No summary provided."
                                     } else {
@@ -22291,27 +22367,37 @@ Error: `{err}`"
                     let selected_tutorial_title = self
                         .help_tutorial_entries
                         .get(self.help_tutorial_selected)
-                        .map(|entry| entry.title.as_str())
-                        .unwrap_or("No tutorial docs found");
+                        .map(|entry| {
+                            Self::tutorial_display_label(
+                                entry.decimal_id.as_deref(),
+                                None,
+                                &entry.title,
+                            )
+                        })
+                        .unwrap_or_else(|| "No tutorial docs found".to_string());
                     let mut selected_tutorial_index = None;
                     egui::ComboBox::from_id_salt("help_tutorial_topic")
                         .width(Self::clamp_help_topic_combo_width(ui.available_width()))
                         .selected_text(selected_tutorial_title)
                         .show_ui(ui, |ui| {
-                            let mut last_group: Option<&'static str> = None;
+                            let mut last_group: Option<String> = None;
                             for (index, entry) in self.help_tutorial_entries.iter().enumerate() {
                                 let group = Self::tutorial_audience_group_label(entry);
-                                if last_group != Some(group) {
+                                if last_group.as_deref() != Some(group.as_str()) {
                                     if last_group.is_some() {
                                         ui.separator();
                                     }
-                                    ui.label(egui::RichText::new(group).strong());
+                                    ui.label(egui::RichText::new(&group).strong());
                                     last_group = Some(group);
                                 }
                                 if ui
                                     .selectable_label(
                                         index == self.help_tutorial_selected,
-                                        entry.title.as_str(),
+                                        Self::tutorial_display_label(
+                                            entry.decimal_id.as_deref(),
+                                            None,
+                                            &entry.title,
+                                        ),
                                     )
                                     .on_hover_text(entry.summary.as_str())
                                     .clicked()
@@ -28340,6 +28426,10 @@ mod tests {
             path: tutorial_path.to_string_lossy().to_string(),
             summary: "docs/tutorial/tutorial.md".to_string(),
             audiences: vec![],
+            group_label: None,
+            group_order: None,
+            group_position: None,
+            decimal_id: None,
         }];
         app.help_tutorial_selected = 0;
         app.open_help_tutorial_doc(0);
@@ -28389,6 +28479,10 @@ mod tests {
             path: "docs/tutorial/qpcr_exon_junctions_gui.md".to_string(),
             summary: String::new(),
             audiences: vec!["primer_design".to_string()],
+            group_label: None,
+            group_order: None,
+            group_position: None,
+            decimal_id: None,
         };
 
         assert_eq!(
@@ -32120,15 +32214,25 @@ mod tests {
                 .any(|entry| entry.chapter_id == "tp63_anchor_extension_online"),
             "Expected TP63 tutorial chapter to be present"
         );
+        let simple_pcr = entries
+            .iter()
+            .find(|entry| entry.chapter_id == "simple_pcr_selection_gui")
+            .expect("simple PCR tutorial chapter should be present");
+        assert_eq!(
+            simple_pcr.group_label.as_deref(),
+            Some("Primers, PCR & qPCR")
+        );
+        assert_eq!(simple_pcr.decimal_id.as_deref(), Some("04.01"));
     }
 
     #[test]
     fn tutorial_help_entries_include_agent_interfaces_from_catalog() {
         let entries = GENtleApp::discover_help_tutorial_entries();
         assert!(
-            entries
-                .iter()
-                .any(|entry| entry.title == "GENtle Agent Assistant and Agent Interfaces Tutorial"),
+            entries.iter().any(|entry| entry.title
+                == "GENtle Agent Assistant and Agent Interfaces Tutorial"
+                && entry.group_label.as_deref() == Some("Getting Started & Interfaces")
+                && entry.decimal_id.as_deref() == Some("01.01")),
             "Expected curated tutorial help entries to include the agent interfaces tutorial"
         );
     }

@@ -50,60 +50,79 @@ If you want machine-checked reproducibility first:
 - Use the executable reference hub:
   [`docs/tutorial/generated/README.md`](./generated/README.md)
 
-## Guided Walkthroughs (hand-written)
+## Tutorials By Content Group
 
-These pages are written as tutorials rather than indexes. They are the best
-entry point when you want context, screenshots, GUI orientation, or a
-bench-user narrative before running the exact workflow.
+Tutorial numbers now describe the topic group first and the learning position second. Guided walkthroughs and executable reference chapters are shown together inside each content group, while the track marker tells you whether a link opens a hand-written guide, a generated executable chapter, or a reference hub.
 
-The headings below are the same discipline buckets used by the in-app Tutorial
-topic picker. They are derived from each catalog entry's `audiences[]` values,
-so catalog/source JSON stays the single grouping contract.
+### Getting Started & Interfaces
 
-### Orientation And Interfaces
+- `01.01` [GENtle Agent Assistant and Agent Interfaces Tutorial](../agent_interfaces_tutorial.md) - reference; status `manual/reference`. Use this when: Practical guide for the in-app Agent Assistant, provider quick starts, reviewed shared-shell suggestions, CLI/shared shell, MCP, and external coding agents.
+- `01.02` [Contribute to GENtle development](./generated/chapters/08_contribute_to_gentle_development.md) - executable reference; status `generated+checked/human-pending`. Use this when: Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.
+- `reference` [GENtle Tutorial (Generated)](./generated/README.md) - reference hub; status `generated+checked`. Use this when: Generated from docs/tutorial/sources plus executable workflows; validated by tutorial-check.
+- `reference` [GENtle Tutorial Landscape Overview](./landscape_overview.md) - reference; status `manual/reference`. Use this when: Graphical overview of current tutorial dependencies, roadmap-grounded additions, and heuristic human-feedback intensity.
 
-- [`docs/tutorial/landscape_overview.md`](./landscape_overview.md) - Use this when: you want the tutorial map, dependencies, and suggested learning order before choosing a path.
-- [`docs/agent_interfaces_tutorial.md`](../agent_interfaces_tutorial.md) - Use this when: you want to work through the in-app Agent Assistant, provider quick starts, reviewed command suggestions, CLI/shared shell, MCP, or external coding agents.
+### Sequence Basics & Lineage
 
-### PCR, qPCR, And Direct Sequence Inspection
+- `02.01` [Load FASTA, branch, and reverse-complement](./generated/chapters/01_load_branch_reverse_complement_pgex_fasta.md) - executable reference; status `generated+checked/human-pending`. Use this when: Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.
+- `02.02` [Stateless Sequence Inspection Tutorial](./stateless_sequence_inspection_gui_cli.md) - guided GUI/CLI; status `manual/hybrid`. Use this when: Parity walkthrough for direct restriction-site, TFBS hit, and TFBS score-track inspection from pasted or local DNA without first creating project state.
+- `02.03` [Retrieve a cDNA and Compare It Against the Genomic Sequence (Dotplot Tutorial)](./two_sequence_dotplot_gui.md) - guided GUI; status `manual`. Use this when: Screenshot-backed manual tutorial for cDNA-vs-genomic comparison.
+- `02.04` [Compare TP73 cDNA against TP73 genomic context via dotplot (online)](./generated/chapters/14_tp73_cdna_genomic_dotplot_online.md) - executable reference; status `generated+checked/human-pending`. Use this when: Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation. Requires explicit online setup for full execution.
 
-- [`docs/tutorial/simple_pcr_selection_gui.md`](./simple_pcr_selection_gui.md) - Use this when: you want the shortest GUI path from one selected core region to PCR primer candidates.
-- [`docs/tutorial/qpcr_exon_junctions_gui.md`](./qpcr_exon_junctions_gui.md) - Use this when: you want qPCR assays from transcript or exon-junction context.
-- [`docs/tutorial/stateless_sequence_inspection_gui_cli.md`](./stateless_sequence_inspection_gui_cli.md) - Use this when: you want to inspect one pasted or local sequence across GUI, CLI, and ClawBio without building a project.
-- [`docs/tutorial/tfbs_similarity_ranking_gui.md`](./tfbs_similarity_ranking_gui.md) - Use this when: you want to sign off anchor-vs-candidate TFBS similarity ranking in the GUI.
-- [`docs/tutorial/two_sequence_dotplot_gui.md`](./two_sequence_dotplot_gui.md) - Use this when: you want a screenshot-backed TP73 cDNA-vs-genomic dotplot walkthrough.
+### Cloning & Assembly
 
-### Cloning, Reporter Design, And External Handoffs
+- `03.01` [Load pGEX and digest with BamHI/EcoRI](./generated/chapters/03_load_and_digest_pgex.md) - executable reference; status `generated+checked/human-pending`. Use this when: Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.
+- `03.02` [Digest -> Ligation -> ExtractRegion minimal slice](./generated/chapters/06_digest_ligation_extract_region_minimal.md) - executable reference; status `generated+checked/human-pending`. Use this when: Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.
+- `03.03` [Gibson two-fragment overlap planning baseline](./generated/chapters/04_gibson_two_fragment_overlap_preview.md) - executable reference; status `generated+checked/human-pending`. Use this when: Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.
+- `03.04` [Gibson Specialist Starter Project (offline)](./generated/chapters/15_gibson_specialist_testing_baseline.md) - executable reference; status `generated+checked/human-pending`. Use this when: Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.
+- `03.05` [Gibson Specialist Testing Tutorial](./gibson_specialist_testing_gui.md) - guided GUI; status `manual/hybrid`. Use this when: Hands-on test script for the destination-first Gibson specialist with shared CLI parity.
+- `03.06` [Gibson Arrangements Starter Project (offline)](./generated/chapters/16_gibson_arrangements_baseline.md) - executable reference; status `generated+checked/human-pending`. Use this when: Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.
+- `03.07` [Gibson Arrangements Tutorial](./gibson_arrangements_gui.md) - guided GUI; status `manual/hybrid`. Use this when: Hands-on walkthrough for Gibson-created arrangements, lane inspection, and arrangement-level gel export.
+- `03.08` [Gibson Physical Rack Tutorial](./gibson_physical_rack_gui.md) - guided GUI; status `manual/hybrid`. Use this when: Hands-on walkthrough for turning one arrangement-ready Gibson result into a linked physical rack, README-grade isometric SVG, carrier labels, and OpenSCAD export.
 
-- [`docs/tutorial/vkorc1_variant_followup_expert_gui.md`](./vkorc1_variant_followup_expert_gui.md) - Use this when: you want the fastest GUI path from one SNP to one portable promoter-design bundle.
-- [`docs/tutorial/vkorc1_warfarin_promoter_luciferase_gui.md`](./vkorc1_warfarin_promoter_luciferase_gui.md) - Use this when: you want the longer VKORC1/rs9923231 PGx-alert-to-mammalian-reporter story with CLI mapping.
-- [`docs/tutorial/reporter_construct_handoff_cli.md`](./reporter_construct_handoff_cli.md) - Use this when: you want a saved promoter-candidate report turned into a read-only macro-readiness plan.
-- [`docs/tutorial/metabion_external_service_handoff_gui_cli.md`](./metabion_external_service_handoff_gui_cli.md) - Use this when: you want to rehearse a safe Metabion oligo or m-block quote handoff.
-- [`docs/tutorial/geneart_external_service_handoff_gui_cli.md`](./geneart_external_service_handoff_gui_cli.md) - Use this when: you want to rehearse a safe GeneArt cloned-gene or protein-expression quote handoff.
+### Primers, PCR & qPCR
 
-### Gibson Assembly And Physical Layout
+- `04.01` [Simple PCR From a Selected Core Region](./simple_pcr_selection_gui.md) - guided GUI; status `manual/hybrid`. Use this when: Beginner-friendly selection-first PCR walkthrough centered on core ROI, maximum primer distance from the core, and maximum amplicon length.
+- `04.02` [Selection-first PCR batch primer design (offline)](./generated/chapters/13_pcr_selection_batch_primer_pairs_offline.md) - executable reference; status `generated+checked/human-pending`. Use this when: Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.
+- `04.03` [qPCR Across Exon Junctions](./qpcr_exon_junctions_gui.md) - guided GUI; status `manual/hybrid`. Use this when: GUI-first walkthrough for seeding shared-transcript or transcript-specific qPCR from Splicing Expert, including junction-only transcript evidence and shared-shell parity commands.
+- `04.04` [Guide practical filtering and oligo generation](./generated/chapters/05_guides_filter_and_generate_oligos.md) - executable reference; status `generated+checked/human-pending`. Use this when: Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.
+- `04.05` [Guide oligo export (CSV + protocol)](./generated/chapters/07_guides_export_csv_and_protocol.md) - executable reference; status `generated+checked/human-pending`. Use this when: Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.
 
-- [`docs/tutorial/gibson_specialist_testing_gui.md`](./gibson_specialist_testing_gui.md) - Use this when: you want to test the destination-first Gibson specialist end to end.
-- [`docs/tutorial/gibson_arrangements_gui.md`](./gibson_arrangements_gui.md) - Use this when: you want to inspect the arrangement created by Gibson apply and export reusable gel lanes.
-- [`docs/tutorial/gibson_physical_rack_gui.md`](./gibson_physical_rack_gui.md) - Use this when: you want to continue from a Gibson arrangement into rack, label, fabrication SVG, and OpenSCAD exports.
+### Genome Context & Coordinates
 
-### Protein, RNA, And Projection Audits
+- `05.01` [Find and extend the right genomic target (local catalog)](./generated/chapters/02_find_and_extend_genomic_target_local_catalog.md) - executable reference; status `generated+checked/human-pending`. Use this when: Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.
+- `05.02` [Prepare a reference genome cache (online)](./generated/chapters/09_prepare_reference_genome_online.md) - executable reference; status `generated+checked/human-pending`. Use this when: Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation. Requires explicit online setup for full execution.
+- `05.03` [Retrieve TP63 and extend the displayed region by +/-2 kb (online)](./generated/chapters/11_tp63_anchor_extension_online.md) - executable reference; status `generated+checked/human-pending`. Use this when: Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation. Requires explicit online setup for full execution.
 
-- [`docs/tutorial/protein_transcript_native_expert_gui.md`](./protein_transcript_native_expert_gui.md) - Use this when: you want a local transcript-native Protein Expert sanity check.
-- [`docs/tutorial/protein_reverse_translation_gui.md`](./protein_reverse_translation_gui.md) - Use this when: you want protein import, reverse translation, provenance inspection, and lineage audit.
-- [`docs/tutorial/rna_read_batch_gene_support_cli.md`](./rna_read_batch_gene_support_cli.md) - Use this when: you want to batch-compare many cDNA `fasta.gz` samples for one target gene.
-- [`docs/tutorial/tp73_uniprot_projection_audit_cli.md`](./tp73_uniprot_projection_audit_cli.md) - Use this when: you want a CLI-first TP73 protein/transcript audit against UniProt and Ensembl.
+### Transcript, Protein & Projection
 
-### Sequencing Confirmation
+- `06.01` [Reverse Translate an Imported Protein and Audit the Result](./protein_reverse_translation_gui.md) - guided GUI; status `manual/hybrid`. Use this when: GUI-first manual check for Ensembl protein import, reverse translation, provenance inspection, and lineage reopen.
+- `06.02` [Transcript-Native Protein Expert Sanity Check](./protein_transcript_native_expert_gui.md) - guided GUI; status `manual/hybrid`. Use this when: Local-first manual check for transcript-native Protein Expert opening, provenance visibility, and derived-only SVG export.
+- `06.03` [TP53 isoform architecture expert panel (online)](./generated/chapters/10_tp53_isoform_architecture_online.md) - executable reference; status `generated+checked/human-pending`. Use this when: Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation. Requires explicit online setup for full execution.
+- `06.04` [TP53 UniProt domain mapping and feature-coding DNA query (online)](./generated/chapters/17_tp53_uniprot_projection_online.md) - executable reference; status `generated+checked/human-pending`. Use this when: Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation. Requires explicit online setup for full execution.
+- `06.05` [Audit a TP73 UniProt Projection Against Ensembl and Derived Coding Sequence (CLI Tutorial)](./tp73_uniprot_projection_audit_cli.md) - guided CLI; status `manual/hybrid`. Use this when: CLI-first walkthrough for the integrated TP73 UniProt/Ensembl projection audit, the reusable low-level primitives, parity comparison, and the unsent maintainer-email draft.
 
-- [`docs/tutorial/sequencing_confirmation_gui.md`](./sequencing_confirmation_gui.md) - Use this when: you want GUI-first trace import, intended-edit review, and chromatogram inspection.
-- [`docs/tutorial/sequencing_confirmation_trace_cli.md`](./sequencing_confirmation_trace_cli.md) - Use this when: you want the matching shell/CLI route for imported trace inspection and report export.
+### RNA Reads, Splicing & Expression
 
-## Executable Reference Chapters (machine-generated)
+- `07.01` [Batch-Compare cDNA FASTA.GZ Samples for One Target Gene (CLI Tutorial)](./rna_read_batch_gene_support_cli.md) - guided CLI; status `manual/hybrid`. Use this when: Hands-on batch workflow for interpreting many gzipped cDNA FASTA files, aligning saved reports, and exporting one target-gene cohort sample sheet.
+- `07.02` [Map TP53 locus reads with multi-gene sparse indexing (online)](./generated/chapters/12_tp53_multi_gene_sparse_mapping_online.md) - executable reference; status `generated+checked/human-pending`. Use this when: Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation. Requires explicit online setup for full execution.
 
-[`docs/tutorial/generated/README.md`](./generated/README.md) lists the numbered
-chapters generated from `docs/examples/workflows/`. Use these when you want to
-run a workflow non-interactively or audit what each operation produces.
+### Regulatory, TFBS & Reporter Design
+
+- `08.01` [TFBS Similarity Ranking Tutorial](./tfbs_similarity_ranking_gui.md) - guided GUI; status `manual/hybrid`. Use this when: GUI sign-off tutorial for ranking candidate transcription-factor motifs against one anchor motif over the same DNA span, with JSON export and workflow/ClawBio replay links.
+- `08.02` [Promoter Design for VKORC1 / rs9923231](./vkorc1_variant_followup_expert_gui.md) - guided GUI; status `manual/hybrid`. Use this when: Shortest GUI path for the current ClawBio-facing story: start from the dbSNP marker, drive the dedicated Promoter design window, and export one portable promoter-reporter handoff bundle.
+- `08.03` [Promoter Design Artifact Slice (Offline Synthetic TP73 Locus)](./generated/chapters/24_promoter_design_artifact_slice_offline.md) - executable reference; status `generated+checked/human-pending`. Use this when: Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.
+- `08.04` [VKORC1 / rs9923231 PGx Alert -> Mammalian Luciferase Reporter (GUI Tutorial with Matching CLI Commands)](./vkorc1_warfarin_promoter_luciferase_gui.md) - guided GUI; status `manual/hybrid`. Use this when: Hand-written GUI-first tutorial for turning the VKORC1/rs9923231 pharmacogenomic alert into one mammalian promoter-reporter planning workflow with explicit engine and CLI mapping.
+- `08.05` [Plan a Reporter Construct Handoff from a Saved Candidate Set](./reporter_construct_handoff_cli.md) - guided CLI; status `manual/hybrid`. Use this when: CLI/agent walkthrough for turning a saved promoter-reporter candidate set into a read-only luciferase macro handoff plan with typed readiness and explicit follow-up commands.
+
+### External Services & Handoffs
+
+- `09.01` [Prepare a Metabion Handoff from Shared External-Service Contracts](./metabion_external_service_handoff_gui_cli.md) - guided GUI/CLI; status `manual/hybrid`. Use this when: Safe handoff rehearsal for Metabion oligo and m-block requests through the shared provider catalog, preflight, and quote bundle contracts; no vendor submission.
+- `09.02` [Prepare a GeneArt Handoff from Shared External-Service Contracts](./geneart_external_service_handoff_gui_cli.md) - guided GUI/CLI; status `manual/hybrid`. Use this when: Safe GeneArt cloned-gene and protein-expression quote-handoff rehearsal through the shared provider catalog, preflight, quote bundle, and return_spec contracts; no vendor submission.
+
+### Sequencing Confirmation & QC
+
+- `10.01` [Confirm a Construct from an Imported Sequencing Trace (CLI Tutorial)](./sequencing_confirmation_trace_cli.md) - guided CLI; status `manual/hybrid`. Use this when: Hands-on local walkthrough for seq-trace import, trace-aware seq-confirm run, and shared report export.
+- `10.02` [Inspect an Imported Sequencing Trace and Confirm a Construct (GUI Tutorial)](./sequencing_confirmation_gui.md) - guided GUI; status `manual/hybrid`. Use this when: GUI-first walkthrough for raw trace import, baseline-aware confirmation, chromatogram inspection, and lineage reopen.
 
 ## Confidence Map
 
@@ -191,7 +210,7 @@ Use the labels above as trust/maintenance signals:
 
 ### Path B1: GUI-first simple PCR
 
-1. Open `File -> Open Tutorial Project...` -> `Core (9)` -> `18. Simple PCR From a Selected Core Region`
+1. Open `File -> Open Tutorial Project...` -> `Primers, PCR & qPCR` -> `04.01 Simple PCR From a Selected Core Region`
 2. Follow [`docs/tutorial/simple_pcr_selection_gui.md`](./simple_pcr_selection_gui.md) from the loaded TP73 starter project
 3. Use the richer executable PCR chapter afterward if you need batch queueing or painted primer windows
 
