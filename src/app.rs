@@ -155,11 +155,11 @@ use crate::{
         DEFAULT_HELPER_GENOME_CATALOG_PATH, DEFAULT_MAKEBLASTDB_BIN, EnsemblCatalogUpdatePreview,
         EnsemblInstallableGenomeCatalog, EnsemblQuickInstallPreview, GenomeBlastReport,
         GenomeCatalog, GenomeCatalogListEntry, GenomeChromosomeRecord, GenomeGeneRecord,
-        GenomeSourcePlan, HelperConstructInterpretation, MAKEBLASTDB_ENV_BIN,
-        PREPARE_GENOME_TIMEOUT_SECS_ENV, PrepareGenomePlan, PrepareGenomePlanStep,
-        PrepareGenomeProgress, PrepareGenomeStepId, PreparedCacheArtifactGroup,
-        PreparedCacheCleanupMode, PreparedCacheCleanupRequest, PreparedCacheInspectionEntry,
-        PreparedCacheInspectionReport, PreparedGenomeInspection,
+        GenomeSourcePlan, HelperConstructInterpretation, HelperVectorCard,
+        HelperVectorCatalogDoctorIssue, MAKEBLASTDB_ENV_BIN, PREPARE_GENOME_TIMEOUT_SECS_ENV,
+        PrepareGenomePlan, PrepareGenomePlanStep, PrepareGenomeProgress, PrepareGenomeStepId,
+        PreparedCacheArtifactGroup, PreparedCacheCleanupMode, PreparedCacheCleanupRequest,
+        PreparedCacheInspectionEntry, PreparedCacheInspectionReport, PreparedGenomeInspection,
         configured_helper_genome_cache_dir, configured_reference_genome_cache_dir,
     },
     gibson_planning::{
@@ -10140,6 +10140,35 @@ Error: `{err}`"
         })
     }
 
+    fn helper_vector_cards_for_catalog_path(
+        &self,
+        catalog_path: &str,
+        filter: Option<&str>,
+    ) -> Result<Vec<HelperVectorCard>, String> {
+        GentleEngine::list_helper_vector_cards(Some(catalog_path), filter)
+            .map(|report| report.cards)
+            .map_err(|e| {
+                format!(
+                    "Could not load helper vector cards from '{}': {}",
+                    catalog_path, e.message
+                )
+            })
+    }
+
+    fn helper_vector_doctor_issues_for_catalog_path(
+        &self,
+        catalog_path: &str,
+    ) -> Result<Vec<HelperVectorCatalogDoctorIssue>, String> {
+        GentleEngine::doctor_helper_vector_catalog(Some(catalog_path))
+            .map(|report| report.issues)
+            .map_err(|e| {
+                format!(
+                    "Could not doctor helper catalog '{}': {}",
+                    catalog_path, e.message
+                )
+            })
+    }
+
     fn helper_catalog_entries_for_scope(
         &self,
         scope: GenomeDialogScope,
@@ -10268,6 +10297,20 @@ Error: `{err}`"
             lines.push("local variant: unpublished".to_string());
         }
         lines
+    }
+
+    fn format_helper_vector_doctor_issue(issue: &HelperVectorCatalogDoctorIssue) -> String {
+        let field = issue
+            .field
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|field| format!(" field={field}"))
+            .unwrap_or_default();
+        format!(
+            "{} [{}] {}{}: {}",
+            issue.helper_id, issue.severity, issue.code, field, issue.message
+        )
     }
 
     fn format_helper_component_summary(
@@ -13881,6 +13924,25 @@ Error: `{err}`"
         ui.small(format!(
             "Browse helper semantics from the current helper catalog: {helper_catalog_path}"
         ));
+        match self.helper_vector_doctor_issues_for_catalog_path(&helper_catalog_path) {
+            Ok(issues) => {
+                if issues.is_empty() {
+                    ui.small("catalog doctor: no deterministic vector-catalog issues");
+                } else {
+                    ui.collapsing(format!("Catalog Doctor Issues ({})", issues.len()), |ui| {
+                        for issue in &issues {
+                            ui.monospace(Self::format_helper_vector_doctor_issue(issue));
+                        }
+                    });
+                }
+            }
+            Err(e) => {
+                ui.colored_label(
+                    egui::Color32::from_rgb(190, 70, 70),
+                    format!("Helper catalog doctor error: {e}"),
+                );
+            }
+        }
         ui.horizontal(|ui| {
             ui.label("filter");
             ui.add(
@@ -13895,6 +13957,16 @@ Error: `{err}`"
                 self.planning_helper_filter.clear();
             }
         });
+        let helper_cards = self.helper_vector_cards_for_catalog_path(
+            &helper_catalog_path,
+            Some(&self.planning_helper_filter),
+        );
+        if let Err(e) = helper_cards.as_ref() {
+            ui.colored_label(
+                egui::Color32::from_rgb(190, 70, 70),
+                format!("Helper vector-card error: {e}"),
+            );
+        }
         match self.helper_catalog_entries_for_catalog_path(
             &helper_catalog_path,
             Some(&self.planning_helper_filter),
@@ -13945,6 +14017,13 @@ Error: `{err}`"
                                 &self.planning_helper_selected_id,
                             )
                         }) {
+                            if let Ok(cards) = helper_cards.as_ref() {
+                                if let Some(card) =
+                                    cards.iter().find(|card| card.helper_id == entry.genome_id)
+                                {
+                                    Self::render_helper_vector_card_panel(&mut columns[1], card);
+                                }
+                            }
                             Self::render_helper_catalog_entry_panel(
                                 &mut columns[1],
                                 entry,
@@ -23868,6 +23947,10 @@ mod tests {
     "search_terms": ["factor xa", "gst", "affinity purification"],
     "helper_kind": "plasmid_vector",
     "host_system": "Escherichia coli",
+    "sequence_availability": "source-backed synthetic test fixture",
+    "redistribution_status": "synthetic fixture; redistribution unrestricted in tests",
+    "biological_safety_note": "synthetic non-biological test data",
+    "usable_as_empty_backbone": true,
     "procurement": {{
       "vendor_name": "ExampleBio",
       "catalog_number": "PGEX-001",
@@ -23926,6 +24009,22 @@ mod tests {
     "description": "Generic cloning backbone",
     "summary": "Neutral helper without typed semantics.",
     "aliases": ["NEUTRAL-1"],
+    "helper_kind": "plasmid_vector",
+    "host_system": "Escherichia coli",
+    "sequence_availability": "source-backed synthetic test fixture",
+    "redistribution_status": "synthetic fixture; redistribution unrestricted in tests",
+    "biological_safety_note": "synthetic non-biological test data",
+    "usable_as_empty_backbone": true,
+    "semantics": {{
+      "schema": "gentle.helper_semantics.v1",
+      "components": [
+        {{
+          "id": "neutral_origin",
+          "kind": "origin",
+          "label": "Neutral origin"
+        }}
+      ]
+    }},
     "sequence_local": "{}",
     "annotations_local": "{}",
     "cache_dir": "{}"
@@ -27392,6 +27491,29 @@ mod tests {
         assert_eq!(rows[0].genome_id, "pGEX_like_vector");
         assert!(rows[0].interpretation.is_some());
         assert_eq!(rows[0].host_system.as_deref(), Some("Escherichia coli"));
+    }
+
+    #[test]
+    fn helper_vector_cards_and_doctor_are_available_to_gui_browser() {
+        let temp = tempdir().expect("tempdir");
+        let helper_catalog_path = write_app_test_helper_catalog(temp.path());
+        let app = GENtleApp::default();
+
+        let cards = app
+            .helper_vector_cards_for_catalog_path(&helper_catalog_path, Some("factor xa"))
+            .expect("helper vector cards");
+        assert_eq!(cards.len(), 1);
+        assert_eq!(cards[0].helper_id, "pGEX_like_vector");
+        assert_eq!(
+            cards[0].sequence_availability.as_deref(),
+            Some("source-backed synthetic test fixture")
+        );
+        assert!(!cards[0].metadata_only_candidate);
+
+        let issues = app
+            .helper_vector_doctor_issues_for_catalog_path(&helper_catalog_path)
+            .expect("helper vector doctor");
+        assert!(issues.is_empty());
     }
 
     #[test]
