@@ -14,6 +14,20 @@ Maintenance rule:
 
 ## 2026-05-22
 
+- Added a Phase 0 tutorial coverage audit for the decimal-numbering overhaul,
+  identifying uncataloged tutorial-like Markdown pages and the TP73/VKORC1
+  promoter-luciferase decision gate before schema or rename work begins.
+- Began Phase 1 of the tutorial presentation overhaul with v2 catalog/manifest
+  schemas, v4 source-unit grouping/graphics fields, a 10-group tutorial
+  taxonomy, and two newly cataloged guided walkthroughs for stateless sequence
+  inspection and TFBS similarity ranking.
+- Completed the Phase 1 tutorial group-assignment review gate: all 40 source
+  units now use `gentle.tutorial_source.v4`, 38 tutorial units carry derived
+  decimal ids, and the generated hub plus landscape overview remain grouped but
+  intentionally unnumbered.
+- Archived superseded TP73 promoter/luciferase tutorial pointers and moved the
+  planned VKORC1 / Factor X companion tutorial note into the roadmap parking
+  lot instead of active tutorial numbering.
 - Added deterministic helper vector-card and catalog-doctor inspection routes
   with GUI Planning-window parity for metadata-only vector candidates.
 

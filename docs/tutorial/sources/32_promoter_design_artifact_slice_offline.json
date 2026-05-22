@@ -1,5 +1,5 @@
 {
-  "schema": "gentle.tutorial_source.v3",
+  "schema": "gentle.tutorial_source.v4",
   "id": "promoter_design_artifact_slice_offline",
   "title": "Promoter Design Artifact Slice (Offline Synthetic TP73 Locus)",
   "catalog": {
@@ -13,7 +13,9 @@
       "cloning_planning",
       "contributors"
     ],
-    "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation."
+    "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+    "group": "08",
+    "group_position": 3
   },
   "generated_chapter": {
     "order": 24,

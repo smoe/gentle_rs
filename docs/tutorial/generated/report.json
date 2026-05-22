@@ -39,7 +39,7 @@
     "report.json"
   ],
   "file_checksums": {
-    "README.md": "97db2385661f403ef6eb1041dbd61f71e0de91ff",
+    "README.md": "6c3e1bcfecc1d77d6e0c5e960cb2f457badc8742",
     "artifacts/gibson_arrangements_baseline/artifacts/gibson_lab_assistant_handoff.md": "ea49d90a537300148ada050060e1b12a48b8b57c",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.csv": "2fd8b22187bb90dcdc0388ed65df4f6c33240893",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt": "ddfcc1b983151b4a7fa444b171065c4d90a6ecfb",

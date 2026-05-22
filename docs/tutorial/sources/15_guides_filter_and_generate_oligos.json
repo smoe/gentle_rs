@@ -1,5 +1,5 @@
 {
-  "schema": "gentle.tutorial_source.v3",
+  "schema": "gentle.tutorial_source.v4",
   "id": "guides_filter_and_generate_oligos",
   "title": "Guide practical filtering and oligo generation",
   "catalog": {
@@ -13,7 +13,9 @@
       "cli_first",
       "contributors"
     ],
-    "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation."
+    "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+    "group": "04",
+    "group_position": 4
   },
   "generated_chapter": {
     "order": 5,

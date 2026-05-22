@@ -1,5 +1,5 @@
 {
-  "schema": "gentle.tutorial_source.v3",
+  "schema": "gentle.tutorial_source.v4",
   "id": "simple_pcr_selection_gui",
   "title": "Simple PCR From a Selected Core Region",
   "catalog": {
@@ -13,7 +13,9 @@
       "new_users",
       "primer_design"
     ],
-    "notes": "Beginner-friendly selection-first PCR walkthrough centered on core ROI, maximum primer distance from the core, and maximum amplicon length."
+    "notes": "Beginner-friendly selection-first PCR walkthrough centered on core ROI, maximum primer distance from the core, and maximum amplicon length.",
+    "group": "04",
+    "group_position": 1
   },
   "generated_chapter": {
     "order": 18,

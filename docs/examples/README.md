@@ -92,10 +92,11 @@ Generated tutorial pages and retained runtime artifacts are committed under:
 Tutorial source layer:
 
 - `docs/tutorial/sources/catalog_meta.json`
-- `docs/tutorial/sources/*.json` (schema `gentle.tutorial_source.v3`;
-  legacy `gentle.tutorial_source.v2` remains readable)
+- `docs/tutorial/sources/*.json` (schema `gentle.tutorial_source.v4`;
+  legacy `gentle.tutorial_source.v3` and `gentle.tutorial_source.v2` remain
+  readable)
 - generated runtime manifest: `docs/tutorial/manifest.json`
-  (schema `gentle.tutorial_manifest.v1`)
+  (schema `gentle.tutorial_manifest.v2`)
 
 Generate tutorial output:
 

@@ -1,5 +1,5 @@
 {
-  "schema": "gentle.tutorial_source.v2",
+  "schema": "gentle.tutorial_source.v4",
   "id": "generated_hub",
   "title": "GENtle Tutorial (Generated)",
   "catalog": {
@@ -13,6 +13,7 @@
       "cli_first",
       "contributors"
     ],
-    "notes": "Generated from docs/tutorial/sources plus executable workflows; validated by tutorial-check."
+    "notes": "Generated from docs/tutorial/sources plus executable workflows; validated by tutorial-check.",
+    "group": "01"
   }
 }

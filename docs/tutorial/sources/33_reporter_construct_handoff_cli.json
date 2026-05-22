@@ -1,5 +1,5 @@
 {
-  "schema": "gentle.tutorial_source.v2",
+  "schema": "gentle.tutorial_source.v4",
   "id": "reporter_construct_handoff_cli",
   "title": "Plan a Reporter Construct Handoff from a Saved Candidate Set",
   "catalog": {
@@ -14,6 +14,8 @@
       "cloning_planning",
       "synthetic_biology"
     ],
-    "notes": "CLI/agent walkthrough for turning a saved promoter-reporter candidate set into a read-only luciferase macro handoff plan with typed readiness and explicit follow-up commands."
+    "notes": "CLI/agent walkthrough for turning a saved promoter-reporter candidate set into a read-only luciferase macro handoff plan with typed readiness and explicit follow-up commands.",
+    "group": "08",
+    "group_position": 5
   }
 }

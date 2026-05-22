@@ -1,5 +1,5 @@
 {
-  "schema": "gentle.tutorial_source.v3",
+  "schema": "gentle.tutorial_source.v4",
   "id": "load_and_digest_pgex",
   "title": "Load pGEX and digest with BamHI/EcoRI",
   "catalog": {
@@ -13,7 +13,9 @@
       "cloning_planning",
       "contributors"
     ],
-    "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation."
+    "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+    "group": "03",
+    "group_position": 1
   },
   "generated_chapter": {
     "order": 3,

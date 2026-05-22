@@ -1,13 +1,65 @@
 {
-  "schema": "gentle.tutorial_catalog_meta.v1",
+  "schema": "gentle.tutorial_catalog_meta.v2",
   "description": "Canonical human/machine-readable discovery catalog for GENtle tutorials. Source units generate both this discovery catalog and the executable tutorial runtime manifest.",
   "entry_page": "docs/tutorial/README.md",
   "generated_runtime": {
     "manifest_path": "docs/tutorial/manifest.json",
-    "manifest_schema": "gentle.tutorial_manifest.v1",
+    "manifest_schema": "gentle.tutorial_manifest.v2",
     "generated_readme": "docs/tutorial/generated/README.md",
     "generation_report": "docs/tutorial/generated/report.json"
   },
+  "groups": [
+    {
+      "code": "01",
+      "label": "Getting Started & Interfaces",
+      "order": 1
+    },
+    {
+      "code": "02",
+      "label": "Sequence Basics & Lineage",
+      "order": 2
+    },
+    {
+      "code": "03",
+      "label": "Cloning & Assembly",
+      "order": 3
+    },
+    {
+      "code": "04",
+      "label": "Primers, PCR & qPCR",
+      "order": 4
+    },
+    {
+      "code": "05",
+      "label": "Genome Context & Coordinates",
+      "order": 5
+    },
+    {
+      "code": "06",
+      "label": "Transcript, Protein & Projection",
+      "order": 6
+    },
+    {
+      "code": "07",
+      "label": "RNA Reads, Splicing & Expression",
+      "order": 7
+    },
+    {
+      "code": "08",
+      "label": "Regulatory, TFBS & Reporter Design",
+      "order": 8
+    },
+    {
+      "code": "09",
+      "label": "External Services & Handoffs",
+      "order": 9
+    },
+    {
+      "code": "10",
+      "label": "Sequencing Confirmation & QC",
+      "order": 10
+    }
+  ],
   "concepts": [
     {
       "id": "shared_engine_contract",

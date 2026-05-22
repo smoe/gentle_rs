@@ -85,7 +85,7 @@ but also what GENtle is being prepared for next.
   - TP73 promoter luciferase planning skeleton workflow and GUI tutorial
     materials added
   - TP73 showcase/tutorial content consolidated into one canonical page:
-    `docs/tutorial/tp73_promoter_luciferase_gui.md`
+    `docs/tutorial/archive/tp73_promoter_luciferase_gui.md`
 - UniProt mapping functionality expanded:
   - import/fetch/projection routes and shell/CLI exposure improved
 - Architecture/protocol/docs hardening:
@@ -153,7 +153,7 @@ but also what GENtle is being prepared for next.
 - Expanded tutorial manifest and generated chapters.
 - Added TP73 promoter luciferase planning skeleton and GUI-focused walkthrough.
 - Added two dedicated GUI tutorials:
-  - `docs/tutorial/tp73_promoter_luciferase_gui.md`
+  - `docs/tutorial/archive/tp73_promoter_luciferase_gui.md`
   - `docs/tutorial/two_sequence_dotplot_gui.md`
 - Added screenshot assets for these tutorial tracks (for release/docs embedding):
   - TP73/luciferase and genomic retrieval screenshots under `docs/screenshots/`

@@ -70,16 +70,17 @@ cargo run --bin gentle_examples_docs -- --check
 Tutorial manifest + generated outputs:
 
 - discovery catalog: `docs/tutorial/catalog.json`
-- discovery schema: `gentle.tutorial_catalog.v1`
+- discovery schema: `gentle.tutorial_catalog.v2`
 - shared tutorial source units:
   - `docs/tutorial/sources/catalog_meta.json`
   - `docs/tutorial/sources/*.json`
 - source-unit schemas:
-  - `gentle.tutorial_catalog_meta.v1`
+  - `gentle.tutorial_catalog_meta.v2`
+  - `gentle.tutorial_source.v4`
   - `gentle.tutorial_source.v3`
   - `gentle.tutorial_source.v2`
 - generated runtime manifest: `docs/tutorial/manifest.json`
-- runtime manifest schema: `gentle.tutorial_manifest.v1`
+- runtime manifest schema: `gentle.tutorial_manifest.v2`
 - review freshness manifest: `docs/tutorial/review_manifest.json`
 - review freshness schema: `gentle.tutorial_review_manifest.v1`
 - committed generated outputs: `docs/tutorial/generated/`
@@ -88,6 +89,9 @@ Catalog/manifest split:
 
 - `docs/tutorial/catalog.json` is the canonical discovery layer for all
   tutorials, including hand-written walkthroughs and agent/reference guides.
+- Catalog/manifest v2 add optional group placement fields. `decimal_id` is
+  nullable/absent so reference/navigation units such as the generated hub and
+  tutorial landscape can stay catalogued without receiving a tutorial number.
 - `docs/tutorial/sources/` is the authoring layer for both the discovery
   catalog and the executable tutorial runtime manifest.
 - `docs/tutorial/manifest.json` is a generated runtime contract used for

@@ -1,5 +1,5 @@
 {
-  "schema": "gentle.tutorial_source.v2",
+  "schema": "gentle.tutorial_source.v4",
   "id": "gibson_physical_rack_gui",
   "title": "Gibson Physical Rack Tutorial",
   "catalog": {
@@ -13,6 +13,8 @@
       "cloning_planning",
       "contributors"
     ],
-    "notes": "Hands-on walkthrough for turning one arrangement-ready Gibson result into a linked physical rack, README-grade isometric SVG, carrier labels, and OpenSCAD export."
+    "notes": "Hands-on walkthrough for turning one arrangement-ready Gibson result into a linked physical rack, README-grade isometric SVG, carrier labels, and OpenSCAD export.",
+    "group": "03",
+    "group_position": 8
   }
 }
