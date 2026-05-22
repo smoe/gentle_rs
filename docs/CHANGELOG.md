@@ -12,6 +12,11 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-05-22
+
+- Added deterministic helper vector-card and catalog-doctor inspection routes
+  with GUI Planning-window parity for metadata-only vector candidates.
+
 ## 2026-05-21
 
 - Added metadata-only Luebeck S1 vector/resource candidates to the helper

@@ -1196,6 +1196,13 @@ pub enum ShellCommand {
         vocabulary_path: Option<String>,
         routine_catalog_path: Option<String>,
     },
+    HelperDoctorCatalog {
+        catalog_path: Option<String>,
+    },
+    HelperShowCard {
+        catalog_path: Option<String>,
+        filter: Option<String>,
+    },
     ReferenceEnsemblAvailable {
         helper_mode: bool,
         collection: Option<String>,
@@ -7147,6 +7154,30 @@ impl ShellCommand {
                 format!(
                     "validate helper semantics vocabulary from '{}' against routine catalog '{}'",
                     vocabulary, routine_catalog
+                )
+            }
+            Self::HelperDoctorCatalog { catalog_path } => {
+                let catalog = catalog_path
+                    .clone()
+                    .unwrap_or_else(|| default_catalog_display_label(true).to_string());
+                format!("doctor helper catalog '{catalog}'")
+            }
+            Self::HelperShowCard {
+                catalog_path,
+                filter,
+            } => {
+                let catalog = catalog_path
+                    .clone()
+                    .unwrap_or_else(|| default_catalog_display_label(true).to_string());
+                format!(
+                    "show helper vector cards from catalog '{}'{}",
+                    catalog,
+                    filter
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(|value| format!(" (filter='{value}')"))
+                        .unwrap_or_default()
                 )
             }
             Self::ReferenceEnsemblAvailable {
@@ -13912,6 +13943,48 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                 catalog_path,
             })
         }
+        "doctor-catalog" if helper_mode => {
+            let mut catalog_path: Option<String> = None;
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--catalog" => {
+                        catalog_path =
+                            Some(parse_option_path(tokens, &mut idx, "--catalog", label)?)
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for {label} doctor-catalog"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::HelperDoctorCatalog { catalog_path })
+        }
+        "show-card" if helper_mode => {
+            let mut catalog_path: Option<String> = None;
+            let mut filter: Option<String> = None;
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--catalog" => {
+                        catalog_path =
+                            Some(parse_option_path(tokens, &mut idx, "--catalog", label)?)
+                    }
+                    "--filter" | "--name" => {
+                        let option = tokens[idx].clone();
+                        filter = Some(parse_option_path(tokens, &mut idx, &option, label)?);
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for {label} show-card"));
+                    }
+                }
+            }
+            Ok(ShellCommand::HelperShowCard {
+                catalog_path,
+                filter,
+            })
+        }
         "preview-ensembl-specs" => {
             let mut catalog_path: Option<String> = None;
             let mut idx = 2usize;
@@ -15346,9 +15419,16 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                 prepared_genome_id,
             })
         }
-        other => Err(format!(
-            "Unknown {label} subcommand '{other}' (expected ensembl-available, install-ensembl, list, validate-catalog, preview-ensembl-specs, update-ensembl-specs, status, genes, prepare, remove-prepared, remove-catalog-entry, blast, blast-start, blast-status, blast-cancel, blast-list, blast-track, extract-region, extract-gene, extract-promoter, promoter-tfbs-summary, promoter-tfbs-svg, extend-anchor, verify-anchor)"
-        )),
+        other => {
+            let helper_only = if helper_mode {
+                ", doctor-catalog, show-card"
+            } else {
+                ""
+            };
+            Err(format!(
+                "Unknown {label} subcommand '{other}' (expected ensembl-available, install-ensembl, list, validate-catalog{helper_only}, preview-ensembl-specs, update-ensembl-specs, status, genes, prepare, remove-prepared, remove-catalog-entry, blast, blast-start, blast-status, blast-cancel, blast-list, blast-track, extract-region, extract-gene, extract-promoter, promoter-tfbs-summary, promoter-tfbs-svg, extend-anchor, verify-anchor)"
+            ))
+        }
     }
 }
 
@@ -23012,6 +23092,8 @@ fn is_reference_or_track_command(command: &ShellCommand) -> bool {
             | ShellCommand::ReferenceList { .. }
             | ShellCommand::HelperVocabularyList { .. }
             | ShellCommand::HelperVocabularyDoctor { .. }
+            | ShellCommand::HelperDoctorCatalog { .. }
+            | ShellCommand::HelperShowCard { .. }
             | ShellCommand::ReferenceEnsemblAvailable { .. }
             | ShellCommand::ReferenceInstallEnsembl { .. }
             | ShellCommand::ReferenceValidateCatalog { .. }
@@ -23067,17 +23149,7 @@ fn execute_stack_safe_reference_command(
 }
 
 fn helper_list_entry_is_metadata_only_candidate(entry: &GenomeCatalogListEntry) -> bool {
-    entry
-        .sequence_availability
-        .as_deref()
-        .map(str::trim)
-        .is_some_and(|value| !value.is_empty())
-        && entry
-            .redistribution_status
-            .as_deref()
-            .map(str::trim)
-            .is_some_and(|value| !value.is_empty())
-        && entry.usable_as_empty_backbone.is_some()
+    entry.metadata_only_candidate
 }
 
 #[inline(never)]
@@ -26365,6 +26437,35 @@ fn execute_reference_and_track_command(
                     "routine_catalog_path": routine_catalog_path
                         .clone()
                         .unwrap_or_else(|| DEFAULT_CLONING_ROUTINE_CATALOG_PATH.to_string()),
+                    "report": report,
+                }),
+            })
+        }
+        ShellCommand::HelperDoctorCatalog { catalog_path } => {
+            let resolved_catalog = resolved_catalog_path(catalog_path, true);
+            let report = GentleEngine::doctor_helper_vector_catalog(resolved_catalog)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "catalog_path": effective_catalog_path(catalog_path, true),
+                    "report": report,
+                }),
+            })
+        }
+        ShellCommand::HelperShowCard {
+            catalog_path,
+            filter,
+        } => {
+            let resolved_catalog = resolved_catalog_path(catalog_path, true);
+            let report =
+                GentleEngine::list_helper_vector_cards(resolved_catalog, filter.as_deref())
+                    .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "catalog_path": effective_catalog_path(catalog_path, true),
+                    "filter": filter,
                     "report": report,
                 }),
             })
@@ -35056,6 +35157,8 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ReferenceList { .. }
         | ShellCommand::HelperVocabularyList { .. }
         | ShellCommand::HelperVocabularyDoctor { .. }
+        | ShellCommand::HelperDoctorCatalog { .. }
+        | ShellCommand::HelperShowCard { .. }
         | ShellCommand::ReferenceEnsemblAvailable { .. }
         | ShellCommand::ReferenceInstallEnsembl { .. }
         | ShellCommand::ReferenceValidateCatalog { .. }

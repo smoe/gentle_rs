@@ -4012,6 +4012,18 @@ Helper convenience commands:
   - Same quick-install contract as `genomes install-ensembl`, but targeting the helper-catalog/cache defaults.
 - `helpers validate-catalog [--catalog PATH]`
   - Same behavior as `genomes validate-catalog`, with helper-catalog default.
+- `helpers doctor-catalog [--catalog PATH]`
+  - Returns `gentle.helper_vector_catalog_doctor.v1` with deterministic
+    helper/vector metadata issues such as missing host system, missing sequence
+    availability, missing redistribution status, missing biosafety note,
+    missing empty-backbone flag, helper phage marked as an empty backbone, and
+    vector records without structured semantic components.
+- `helpers show-card [--catalog PATH] [--filter TEXT|--name TEXT]`
+  - Returns `gentle.helper_vector_card.v1` cards as a pure projection of
+    structured catalog fields: identifiers, aliases, helper kind, host system,
+    sequence/redistribution/biosafety fields, empty-backbone status,
+    metadata-only status, procurement, affordances, constraints, components,
+    and relationships.
 - `helpers update-ensembl-specs [--catalog PATH] [--output-catalog PATH]`
   - Same behavior as `genomes update-ensembl-specs`, with helper-catalog default.
 - `helpers status HELPER_ID [--catalog PATH] [--cache-dir PATH]`

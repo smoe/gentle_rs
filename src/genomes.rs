@@ -542,11 +542,73 @@ pub struct GenomeCatalogListEntry {
     pub biological_safety_note: Option<String>,
     pub usable_as_empty_backbone: Option<bool>,
     #[serde(default)]
+    pub metadata_only_candidate: bool,
+    #[serde(default)]
     pub procurement: Option<CatalogProcurementInfo>,
     #[serde(default)]
     pub semantics: Option<HelperConstructSemantics>,
     #[serde(default)]
     pub interpretation: Option<HelperConstructInterpretation>,
+}
+
+/// Deterministic helper/vector catalog doctor report.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct HelperVectorCatalogDoctorReport {
+    pub schema: String,
+    pub catalog_path: String,
+    pub issue_count: usize,
+    #[serde(default)]
+    pub issues: Vec<HelperVectorCatalogDoctorIssue>,
+}
+
+/// One deterministic helper/vector catalog issue.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct HelperVectorCatalogDoctorIssue {
+    pub helper_id: String,
+    pub code: String,
+    pub severity: String,
+    pub message: String,
+    pub field: Option<String>,
+}
+
+/// Compact helper/vector card report for GUI/CLI/agent inspection.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct HelperVectorCardReport {
+    pub schema: String,
+    pub catalog_path: String,
+    pub filter: Option<String>,
+    pub card_count: usize,
+    #[serde(default)]
+    pub cards: Vec<HelperVectorCard>,
+}
+
+/// Pure projection of structured helper/vector catalog fields.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct HelperVectorCard {
+    pub helper_id: String,
+    pub description: Option<String>,
+    pub summary: Option<String>,
+    #[serde(default)]
+    pub aliases: Vec<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    pub helper_kind: Option<String>,
+    pub host_system: Option<String>,
+    pub sequence_availability: Option<String>,
+    pub redistribution_status: Option<String>,
+    pub biological_safety_note: Option<String>,
+    pub usable_as_empty_backbone: Option<bool>,
+    pub metadata_only_candidate: bool,
+    #[serde(default)]
+    pub procurement: Option<CatalogProcurementInfo>,
+    #[serde(default)]
+    pub affordances: Vec<String>,
+    #[serde(default)]
+    pub constraints: Vec<String>,
+    #[serde(default)]
+    pub components: Vec<HelperConstructComponent>,
+    #[serde(default)]
+    pub relationships: Vec<HelperConstructRelationship>,
 }
 
 /// Ensembl-specific template metadata used to derive refreshable remote URLs.
@@ -3082,12 +3144,223 @@ impl GenomeCatalog {
                 redistribution_status: entry.redistribution_status.clone(),
                 biological_safety_note: entry.biological_safety_note.clone(),
                 usable_as_empty_backbone: entry.usable_as_empty_backbone,
+                metadata_only_candidate: is_metadata_only_catalog_entry(entry),
                 procurement: entry.procurement.clone(),
                 semantics: entry.semantics.clone(),
                 interpretation,
             });
         }
         rows
+    }
+
+    /// Return deterministic catalog-health issues for helper/vector records.
+    ///
+    /// This doctor intentionally checks only structured fields. It does not
+    /// inspect free-text descriptions for implied biology or commercial status.
+    pub fn doctor_helper_vector_catalog(
+        &self,
+        catalog_path: impl Into<String>,
+    ) -> HelperVectorCatalogDoctorReport {
+        let mut issues = vec![];
+        for genome_id in self.list_genomes_unfiltered() {
+            let Some(entry) = self.entries.get(&genome_id) else {
+                continue;
+            };
+            Self::push_helper_vector_catalog_issues(&genome_id, entry, &mut issues);
+        }
+        HelperVectorCatalogDoctorReport {
+            schema: "gentle.helper_vector_catalog_doctor.v1".to_string(),
+            catalog_path: catalog_path.into(),
+            issue_count: issues.len(),
+            issues,
+        }
+    }
+
+    /// Return compact helper/vector cards as a pure structured-field projection.
+    pub fn helper_vector_cards(
+        &self,
+        catalog_path: impl Into<String>,
+        filter: Option<&str>,
+    ) -> HelperVectorCardReport {
+        let filter_text = filter
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+        let cards = self
+            .list_entries(filter_text.as_deref())
+            .into_iter()
+            .map(Self::helper_vector_card_from_list_entry)
+            .collect::<Vec<_>>();
+        HelperVectorCardReport {
+            schema: "gentle.helper_vector_card.v1".to_string(),
+            catalog_path: catalog_path.into(),
+            filter: filter_text,
+            card_count: cards.len(),
+            cards,
+        }
+    }
+
+    fn helper_vector_card_from_list_entry(entry: GenomeCatalogListEntry) -> HelperVectorCard {
+        let (affordances, constraints, components, relationships) =
+            if let Some(semantics) = entry.semantics.as_ref() {
+                (
+                    semantics.affordances.clone(),
+                    semantics.constraints.clone(),
+                    semantics.components.clone(),
+                    semantics.relationships.clone(),
+                )
+            } else {
+                (vec![], vec![], vec![], vec![])
+            };
+        HelperVectorCard {
+            helper_id: entry.genome_id,
+            description: entry.description,
+            summary: entry.summary,
+            aliases: entry.aliases,
+            tags: entry.tags,
+            helper_kind: entry.helper_kind,
+            host_system: entry.host_system,
+            sequence_availability: entry.sequence_availability,
+            redistribution_status: entry.redistribution_status,
+            biological_safety_note: entry.biological_safety_note,
+            usable_as_empty_backbone: entry.usable_as_empty_backbone,
+            metadata_only_candidate: entry.metadata_only_candidate,
+            procurement: entry.procurement,
+            affordances,
+            constraints,
+            components,
+            relationships,
+        }
+    }
+
+    fn push_helper_vector_catalog_issues(
+        genome_id: &str,
+        entry: &GenomeCatalogEntry,
+        issues: &mut Vec<HelperVectorCatalogDoctorIssue>,
+    ) {
+        if Self::helper_vector_doctor_should_skip_host_reference(genome_id, entry) {
+            return;
+        }
+        if !has_non_empty(&entry.helper_kind) {
+            Self::push_helper_vector_catalog_issue(
+                issues,
+                genome_id,
+                "missing-helper-kind",
+                "warning",
+                "helper/vector entries should declare helper_kind for deterministic grouping",
+                Some("helper_kind"),
+            );
+        }
+        if !has_non_empty(&entry.host_system) {
+            Self::push_helper_vector_catalog_issue(
+                issues,
+                genome_id,
+                "missing-host-system",
+                "warning",
+                "helper/vector entries should declare host_system for planning and GUI filtering",
+                Some("host_system"),
+            );
+        }
+        if !has_non_empty(&entry.sequence_availability) {
+            Self::push_helper_vector_catalog_issue(
+                issues,
+                genome_id,
+                "missing-sequence-availability",
+                "warning",
+                "helper/vector entries should state whether sequence data is bundled, public, local, commercial, or pending review",
+                Some("sequence_availability"),
+            );
+        }
+        if !has_non_empty(&entry.redistribution_status) {
+            Self::push_helper_vector_catalog_issue(
+                issues,
+                genome_id,
+                "missing-redistribution-status",
+                "warning",
+                "helper/vector entries should state whether redistribution is clear, restricted, or pending review",
+                Some("redistribution_status"),
+            );
+        }
+        if !has_non_empty(&entry.biological_safety_note) {
+            Self::push_helper_vector_catalog_issue(
+                issues,
+                genome_id,
+                "missing-biological-safety-note",
+                "warning",
+                "helper/vector entries should carry a brief biological-safety note or local-review reminder",
+                Some("biological_safety_note"),
+            );
+        }
+        if entry.usable_as_empty_backbone.is_none() {
+            Self::push_helper_vector_catalog_issue(
+                issues,
+                genome_id,
+                "missing-empty-backbone-flag",
+                "warning",
+                "helper/vector entries should explicitly state whether they are usable as empty backbones",
+                Some("usable_as_empty_backbone"),
+            );
+        }
+        let helper_kind = entry
+            .helper_kind
+            .as_deref()
+            .map(HelperConstructInterpretation::normalize_semantic_token)
+            .unwrap_or_default();
+        if helper_kind == "helper_phage" && entry.usable_as_empty_backbone == Some(true) {
+            Self::push_helper_vector_catalog_issue(
+                issues,
+                genome_id,
+                "helper-phage-marked-empty-backbone",
+                "error",
+                "helper phage records should not be marked usable as empty plasmid backbones",
+                Some("usable_as_empty_backbone"),
+            );
+        }
+        let component_count = entry
+            .semantics
+            .as_ref()
+            .map(|semantics| semantics.components.len())
+            .unwrap_or(0);
+        if helper_kind.contains("vector") && component_count == 0 {
+            Self::push_helper_vector_catalog_issue(
+                issues,
+                genome_id,
+                "missing-structured-components",
+                "warning",
+                "vector records should describe markers, origins, promoters, or cloning/display context as structured semantics components",
+                Some("semantics.components"),
+            );
+        }
+    }
+
+    fn helper_vector_doctor_should_skip_host_reference(
+        genome_id: &str,
+        entry: &GenomeCatalogEntry,
+    ) -> bool {
+        genome_id.starts_with("Host ")
+            || entry
+                .helper_kind
+                .as_deref()
+                .map(HelperConstructInterpretation::normalize_semantic_token)
+                .as_deref()
+                == Some("host_reference")
+    }
+
+    fn push_helper_vector_catalog_issue(
+        issues: &mut Vec<HelperVectorCatalogDoctorIssue>,
+        genome_id: &str,
+        code: &str,
+        severity: &str,
+        message: &str,
+        field: Option<&str>,
+    ) {
+        issues.push(HelperVectorCatalogDoctorIssue {
+            helper_id: genome_id.to_string(),
+            code: code.to_string(),
+            severity: severity.to_string(),
+            message: message.to_string(),
+            field: field.map(str::to_string),
+        });
     }
 
     /// Return the normalized helper-construct interpretation for one catalog
@@ -7872,6 +8145,30 @@ fn allows_metadata_only_catalog_entry(entry: &GenomeCatalogEntry) -> bool {
     has_non_empty(&entry.sequence_availability)
         && has_non_empty(&entry.redistribution_status)
         && entry.usable_as_empty_backbone.is_some()
+}
+
+fn has_catalog_sequence_source(entry: &GenomeCatalogEntry) -> bool {
+    let has_assembly_accession = has_non_empty(&entry.ncbi_assembly_accession);
+    let has_assembly_name = has_non_empty(&entry.ncbi_assembly_name);
+    has_non_empty(&entry.sequence_local)
+        || has_non_empty(&entry.sequence_remote)
+        || (has_assembly_accession && has_assembly_name)
+        || has_non_empty(&entry.genbank_accession)
+}
+
+fn has_catalog_annotation_source(entry: &GenomeCatalogEntry) -> bool {
+    let has_assembly_accession = has_non_empty(&entry.ncbi_assembly_accession);
+    let has_assembly_name = has_non_empty(&entry.ncbi_assembly_name);
+    has_non_empty(&entry.annotations_local)
+        || has_non_empty(&entry.annotations_remote)
+        || (has_assembly_accession && has_assembly_name)
+        || has_non_empty(&entry.genbank_accession)
+}
+
+fn is_metadata_only_catalog_entry(entry: &GenomeCatalogEntry) -> bool {
+    allows_metadata_only_catalog_entry(entry)
+        && !has_catalog_sequence_source(entry)
+        && !has_catalog_annotation_source(entry)
 }
 
 fn validate_catalog_entries(
@@ -14033,6 +14330,88 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].usable_as_empty_backbone, Some(true));
         assert!(catalog.source_plan("Local vector candidate", None).is_err());
+    }
+
+    #[test]
+    fn test_helper_vector_doctor_and_cards_project_structured_fields() {
+        let mut entries = HashMap::new();
+        entries.insert(
+            "Display phagemid".to_string(),
+            GenomeCatalogEntry {
+                summary: Some("Display vector".to_string()),
+                aliases: vec!["pDisplay".to_string()],
+                helper_kind: Some("plasmid_vector".to_string()),
+                host_system: Some("Escherichia coli".to_string()),
+                sequence_availability: Some("metadata-only candidate".to_string()),
+                redistribution_status: Some("review required".to_string()),
+                biological_safety_note: Some("confirm local classification".to_string()),
+                usable_as_empty_backbone: Some(true),
+                semantics: Some(HelperConstructSemantics {
+                    schema: Some("gentle.helper_semantics.v1".to_string()),
+                    affordances: vec!["phagemid_display".to_string()],
+                    constraints: vec!["metadata_only_until_sequence_terms_reviewed".to_string()],
+                    components: vec![HelperConstructComponent {
+                        id: "f1_origin".to_string(),
+                        kind: "origin".to_string(),
+                        label: Some("f1 origin".to_string()),
+                        description: None,
+                        tags: vec!["phagemid".to_string()],
+                        attributes: HashMap::new(),
+                    }],
+                    relationships: vec![],
+                }),
+                ..Default::default()
+            },
+        );
+        entries.insert(
+            "Bad helper phage".to_string(),
+            GenomeCatalogEntry {
+                helper_kind: Some("helper_phage".to_string()),
+                host_system: Some("Escherichia coli".to_string()),
+                sequence_availability: Some("metadata-only candidate".to_string()),
+                redistribution_status: Some("review required".to_string()),
+                biological_safety_note: Some("confirm local classification".to_string()),
+                usable_as_empty_backbone: Some(true),
+                ..Default::default()
+            },
+        );
+        entries.insert(
+            "Host Synthetic coli".to_string(),
+            GenomeCatalogEntry {
+                ncbi_taxonomy_id: Some(562),
+                sequence_remote: Some("https://example.invalid/host.fa.gz".to_string()),
+                annotations_remote: Some("https://example.invalid/host.gff.gz".to_string()),
+                ..Default::default()
+            },
+        );
+        let catalog = GenomeCatalog {
+            entries,
+            catalog_base_dir: PathBuf::from("."),
+            catalog_path: None,
+            catalog_origin_label: "<inline test catalog>".to_string(),
+            helper_semantics_vocabulary: HelperConstructVocabularyIndex::default(),
+        };
+
+        let doctor = catalog.doctor_helper_vector_catalog("test catalog");
+        assert!(doctor.issues.iter().any(|issue| {
+            issue.helper_id == "Bad helper phage"
+                && issue.code == "helper-phage-marked-empty-backbone"
+                && issue.severity == "error"
+        }));
+        assert!(
+            !doctor
+                .issues
+                .iter()
+                .any(|issue| issue.helper_id == "Host Synthetic coli")
+        );
+
+        let cards = catalog.helper_vector_cards("test catalog", Some("pDisplay"));
+        assert_eq!(cards.card_count, 1);
+        let card = &cards.cards[0];
+        assert_eq!(card.helper_id, "Display phagemid");
+        assert!(card.metadata_only_candidate);
+        assert_eq!(card.affordances, vec!["phagemid_display".to_string()]);
+        assert_eq!(card.components[0].kind, "origin");
     }
 
     #[test]

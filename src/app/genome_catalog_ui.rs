@@ -49,6 +49,114 @@ impl GENtleApp {
         }
     }
 
+    fn format_helper_vector_card_component_summary(
+        component: &crate::genomes::HelperConstructComponent,
+    ) -> String {
+        let title = component
+            .label
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or(component.id.as_str());
+        let mut parts = vec![format!("{title} [{}]", component.kind)];
+        if title != component.id {
+            parts.push(format!("id={}", component.id));
+        }
+        if !component.tags.is_empty() {
+            parts.push(format!("tags={}", component.tags.join(",")));
+        }
+        if !component.attributes.is_empty() {
+            let attrs = component
+                .attributes
+                .iter()
+                .map(|(key, value)| format!("{key}={value}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            parts.push(format!("attrs={attrs}"));
+        }
+        if let Some(description) = component
+            .description
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            parts.push(description.to_string());
+        }
+        parts.join(" | ")
+    }
+
+    pub(super) fn render_helper_vector_card_panel(ui: &mut Ui, card: &HelperVectorCard) {
+        ui.separator();
+        ui.heading("Vector Card");
+        ui.monospace(format!("helper id: {}", card.helper_id));
+        if let Some(helper_kind) = card
+            .helper_kind
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            ui.small(format!("helper kind: {helper_kind}"));
+        }
+        if let Some(host_system) = card
+            .host_system
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            ui.small(format!("host system: {host_system}"));
+        }
+        ui.small(format!(
+            "metadata-only candidate: {}",
+            card.metadata_only_candidate
+        ));
+        if let Some(usable) = card.usable_as_empty_backbone {
+            ui.small(format!("usable as empty backbone: {usable}"));
+        }
+        if let Some(sequence_availability) = card
+            .sequence_availability
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            ui.small(format!("sequence availability: {sequence_availability}"));
+        }
+        if let Some(redistribution_status) = card
+            .redistribution_status
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            ui.small(format!("redistribution status: {redistribution_status}"));
+        }
+        if let Some(note) = card
+            .biological_safety_note
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            ui.small(format!("biological-safety note: {note}"));
+        }
+        if !card.affordances.is_empty() {
+            ui.small(format!("affordances: {}", card.affordances.join(", ")));
+        }
+        if !card.constraints.is_empty() {
+            ui.small(format!("constraints: {}", card.constraints.join(", ")));
+        }
+        if !card.components.is_empty() {
+            ui.collapsing("Vector Card Components", |ui| {
+                for component in &card.components {
+                    ui.monospace(Self::format_helper_vector_card_component_summary(component));
+                }
+            });
+        }
+        if !card.relationships.is_empty() {
+            ui.collapsing("Vector Card Relationships", |ui| {
+                for relationship in &card.relationships {
+                    ui.monospace(Self::format_helper_relationship_summary(relationship));
+                }
+            });
+        }
+    }
+
     pub(super) fn render_helper_catalog_entry_panel(
         ui: &mut Ui,
         entry: &GenomeCatalogListEntry,

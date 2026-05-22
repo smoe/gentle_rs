@@ -18896,6 +18896,102 @@ fn execute_helpers_validate_catalog_skips_metadata_only_candidates() {
 }
 
 #[test]
+fn execute_helpers_doctor_catalog_reports_deterministic_vector_issues() {
+    let td = tempdir().expect("tempdir");
+    let fasta = td.path().join("toy.fa");
+    let gtf = td.path().join("toy.gtf");
+    fs::write(&fasta, ">helper\nACGT\n").expect("write fasta");
+    fs::write(
+        &gtf,
+        "helper\tsrc\tgene\t1\t4\t.\t+\t.\tgene_id \"HELPER\"; gene_name \"HELPER\";\n",
+    )
+    .expect("write gtf");
+    let catalog = td.path().join("helper_catalog.json");
+    let catalog_json = format!(
+        r#"{{
+  "Bad helper phage": {{
+    "helper_kind": "helper_phage",
+    "host_system": "Escherichia coli",
+    "sequence_availability": "source-backed toy entry",
+    "redistribution_status": "synthetic test fixture",
+    "biological_safety_note": "synthetic non-biological test data",
+    "usable_as_empty_backbone": true,
+    "sequence_local": "{}",
+    "annotations_local": "{}"
+  }}
+}}"#,
+        fasta.display(),
+        gtf.display()
+    );
+    fs::write(&catalog, catalog_json).expect("write catalog");
+    let mut engine = GentleEngine::new();
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::HelperDoctorCatalog {
+            catalog_path: Some(catalog.to_string_lossy().to_string()),
+        },
+    )
+    .expect("execute helper doctor-catalog");
+    let issues = out.output["report"]["issues"]
+        .as_array()
+        .expect("doctor issues");
+    assert_eq!(issues.len(), 1);
+    assert_eq!(
+        issues[0]["code"].as_str(),
+        Some("helper-phage-marked-empty-backbone")
+    );
+    assert_eq!(issues[0]["severity"].as_str(), Some("error"));
+}
+
+#[test]
+fn execute_helpers_show_card_returns_pure_vector_card_projection() {
+    let td = tempdir().expect("tempdir");
+    let catalog = td.path().join("helper_catalog.json");
+    fs::write(
+        &catalog,
+        r#"{
+  "Metadata vector": {
+    "summary": "Metadata-only vector candidate",
+    "aliases": ["MV-1"],
+    "helper_kind": "plasmid_vector",
+    "host_system": "Escherichia coli",
+    "sequence_availability": "source sequence not yet bundled",
+    "redistribution_status": "review required before redistribution",
+    "biological_safety_note": "synthetic non-biological test data",
+    "usable_as_empty_backbone": true,
+    "semantics": {
+      "schema": "gentle.helper_semantics.v1",
+      "affordances": ["insert_cloning"],
+      "components": [
+        {
+          "id": "ori",
+          "kind": "origin",
+          "label": "origin",
+          "tags": ["bacterial_propagation"]
+        }
+      ]
+    }
+  }
+}"#,
+    )
+    .expect("write catalog");
+    let mut engine = GentleEngine::new();
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::HelperShowCard {
+            catalog_path: Some(catalog.to_string_lossy().to_string()),
+            filter: Some("MV-1".to_string()),
+        },
+    )
+    .expect("execute helper show-card");
+    assert_eq!(out.output["report"]["card_count"].as_u64(), Some(1));
+    let card = &out.output["report"]["cards"][0];
+    assert_eq!(card["helper_id"].as_str(), Some("Metadata vector"));
+    assert_eq!(card["metadata_only_candidate"].as_bool(), Some(true));
+    assert_eq!(card["components"][0]["kind"].as_str(), Some("origin"));
+}
+
+#[test]
 fn execute_cutrun_list_reads_catalog_rows() {
     let _serial = cutrun_test_env_lock()
         .lock()

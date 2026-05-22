@@ -260,6 +260,79 @@ pub(super) fn handle_reference_family(
                 "genome_count": genomes.len(),
             }))
         }
+        "doctor-catalog" if helper_mode => {
+            let mut catalog_path: Option<String> = None;
+            let mut idx = cmd_idx + 2;
+            while idx < args.len() {
+                match args[idx].as_str() {
+                    "--catalog" => {
+                        catalog_path = Some(gentle_cli_args::required_value(
+                            args,
+                            idx,
+                            "--catalog",
+                            "PATH",
+                            &format!("{label} doctor-catalog"),
+                        )?);
+                        idx += 2;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{}' for {label} doctor-catalog",
+                            other
+                        ));
+                    }
+                }
+            }
+            let resolved_catalog = explicit_catalog_arg(&catalog_path);
+            let report = GentleEngine::doctor_helper_vector_catalog(resolved_catalog)
+                .map_err(|e| e.to_string())?;
+            print_json(&json!({
+                "catalog_path": effective_catalog_label(&catalog_path, helper_mode),
+                "report": report,
+            }))
+        }
+        "show-card" if helper_mode => {
+            let mut catalog_path: Option<String> = None;
+            let mut filter: Option<String> = None;
+            let mut idx = cmd_idx + 2;
+            while idx < args.len() {
+                match args[idx].as_str() {
+                    "--catalog" => {
+                        catalog_path = Some(gentle_cli_args::required_value(
+                            args,
+                            idx,
+                            "--catalog",
+                            "PATH",
+                            &format!("{label} show-card"),
+                        )?);
+                        idx += 2;
+                    }
+                    "--filter" | "--name" => {
+                        let option = args[idx].clone();
+                        filter = Some(gentle_cli_args::required_value(
+                            args,
+                            idx,
+                            &option,
+                            "TEXT",
+                            &format!("{label} show-card"),
+                        )?);
+                        idx += 2;
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{}' for {label} show-card", other));
+                    }
+                }
+            }
+            let resolved_catalog = explicit_catalog_arg(&catalog_path);
+            let report =
+                GentleEngine::list_helper_vector_cards(resolved_catalog, filter.as_deref())
+                    .map_err(|e| e.to_string())?;
+            print_json(&json!({
+                "catalog_path": effective_catalog_label(&catalog_path, helper_mode),
+                "filter": filter,
+                "report": report,
+            }))
+        }
         "update-ensembl-specs" => {
             let mut catalog_path: Option<String> = None;
             let mut output_catalog_path: Option<String> = None;
@@ -1270,10 +1343,17 @@ pub(super) fn handle_reference_family(
                 .map_err(|e| e.to_string())?;
             print_json(&result)
         }
-        other => Err(format!(
-            "Unknown {label} subcommand '{}' (expected ensembl-available, list, validate-catalog, update-ensembl-specs, status, genes, prepare, remove-prepared, remove-catalog-entry, extract-region, extract-gene, extract-promoter)",
-            other
-        )),
+        other => {
+            let helper_only = if helper_mode {
+                ", doctor-catalog, show-card"
+            } else {
+                ""
+            };
+            Err(format!(
+                "Unknown {label} subcommand '{}' (expected ensembl-available, list, validate-catalog{helper_only}, update-ensembl-specs, status, genes, prepare, remove-prepared, remove-catalog-entry, extract-region, extract-gene, extract-promoter)",
+                other
+            ))
+        }
     }
 }
 

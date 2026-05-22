@@ -1835,6 +1835,10 @@ Patterns menu:
   - includes a searchable `Helper Construct Browser` backed by the shared
     helper catalog + normalized interpretation layer, so planning work can
     inspect helper semantics without reparsing free text.
+  - the same browser surfaces the shared helper vector-card projection and
+    deterministic catalog-doctor issues used by `helpers show-card` and
+    `helpers doctor-catalog`, preserving GUI/CLI parity for metadata-only
+    vector candidates.
   - the Agent Assistant and GUI Shell can ask the same read-only consultation
     route (`planning consult cloning`) for cloning strategy/vector advice backed
     by the effective profile, host/helper catalogs, and routine estimates;

@@ -40,10 +40,10 @@ use crate::{
         GenomeCatalogEntryRemovalReport, GenomeCatalogListEntry, GenomeGeneRecord,
         GenomeSourcePlan, GenomeTranscriptRecord, HelperConstructInterpretation,
         HelperConstructVocabularyDoctorReport, HelperConstructVocabularyTerm,
-        PrepareGenomeActivityStatus, PrepareGenomePlan, PrepareGenomeProgress, PrepareGenomeReport,
-        PreparedCacheCleanupReport, PreparedCacheInspectionReport,
-        PreparedGenomeCompatibilityInspection, PreparedGenomeFallbackPolicy,
-        PreparedGenomeInspection, PreparedGenomeRemovalReport,
+        HelperVectorCardReport, HelperVectorCatalogDoctorReport, PrepareGenomeActivityStatus,
+        PrepareGenomePlan, PrepareGenomeProgress, PrepareGenomeReport, PreparedCacheCleanupReport,
+        PreparedCacheInspectionReport, PreparedGenomeCompatibilityInspection,
+        PreparedGenomeFallbackPolicy, PreparedGenomeInspection, PreparedGenomeRemovalReport,
         blast_external_binary_preflight_report, build_genbank_efetch_url,
         clear_prepared_cache_roots, default_helper_semantics_vocabulary_discovery_label,
         doctor_helper_construct_vocabulary, inspect_prepared_cache_roots,
@@ -6430,6 +6430,21 @@ impl GentleEngine {
     ) -> Result<Vec<GenomeCatalogListEntry>, EngineError> {
         let (catalog, _) = Self::open_helper_genome_catalog(catalog_path)?;
         Ok(catalog.list_entries(filter))
+    }
+
+    pub fn doctor_helper_vector_catalog(
+        catalog_path: Option<&str>,
+    ) -> Result<HelperVectorCatalogDoctorReport, EngineError> {
+        let (catalog, resolved_path) = Self::open_helper_genome_catalog(catalog_path)?;
+        Ok(catalog.doctor_helper_vector_catalog(resolved_path))
+    }
+
+    pub fn list_helper_vector_cards(
+        catalog_path: Option<&str>,
+        filter: Option<&str>,
+    ) -> Result<HelperVectorCardReport, EngineError> {
+        let (catalog, resolved_path) = Self::open_helper_genome_catalog(catalog_path)?;
+        Ok(catalog.helper_vector_cards(resolved_path, filter))
     }
 
     pub fn list_helper_semantics_vocabulary_terms(

@@ -2369,7 +2369,16 @@ Catalog-backed reference/helper discovery notes:
   - deterministic `components[]` and `relationships[]`
 - that metadata is intended to stay compatible with the emerging
   reasoning/constraint engine and with later ontology-backed helper/vector
-  descriptions rather than forcing a future rewrite of catalog records
+  inspection routes
+- shared shell/CLI inspection command `helpers doctor-catalog [--catalog PATH]`
+  returns `gentle.helper_vector_catalog_doctor.v1` with deterministic
+  structured-field issues only; it does not infer biology, provenance, or
+  commercial status from prose
+- shared shell/CLI inspection command
+  `helpers show-card [--catalog PATH] [--filter TEXT|--name TEXT]` returns
+  `gentle.helper_vector_card.v1` cards as pure projections of helper catalog
+  fields and structured helper semantics components, so GUI/CLI/agent surfaces
+  can inspect vector candidates without re-parsing descriptions
 
 Sequencing-trace evidence notes:
 
