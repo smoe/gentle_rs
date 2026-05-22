@@ -4,12 +4,15 @@
 //! schema fields, persisted scientific records, and adapter contracts stay in
 //! deterministic English even when the GUI chrome is translated.
 
-use std::{collections::BTreeMap, sync::OnceLock};
+use std::{
+    collections::BTreeMap,
+    sync::{OnceLock, RwLock},
+};
 
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub(super) enum UiLanguage {
+pub(crate) enum UiLanguage {
     #[serde(rename = "system")]
     System,
     #[serde(rename = "en-GB")]
@@ -37,7 +40,7 @@ impl Default for UiLanguage {
 }
 
 impl UiLanguage {
-    pub(super) const ALL: [Self; 9] = [
+    pub(crate) const ALL: [Self; 9] = [
         Self::System,
         Self::EnGb,
         Self::EnUs,
@@ -49,7 +52,7 @@ impl UiLanguage {
         Self::La,
     ];
 
-    pub(super) fn id(self) -> &'static str {
+    pub(crate) fn id(self) -> &'static str {
         match self {
             Self::System => "system",
             Self::EnGb => "en-GB",
@@ -63,7 +66,7 @@ impl UiLanguage {
         }
     }
 
-    pub(super) fn label(self) -> &'static str {
+    pub(crate) fn label(self) -> &'static str {
         match self {
             Self::System => "System default (English)",
             Self::EnGb => "English (UK)",
@@ -77,7 +80,7 @@ impl UiLanguage {
         }
     }
 
-    pub(super) fn effective(self) -> Self {
+    pub(crate) fn effective(self) -> Self {
         match self {
             Self::System => Self::EnGb,
             other => other,
@@ -99,7 +102,7 @@ impl UiLanguage {
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct I18n {
+pub(crate) struct I18n {
     language: UiLanguage,
 }
 
@@ -112,17 +115,40 @@ impl Default for I18n {
 }
 
 impl I18n {
-    pub(super) fn language(&self) -> UiLanguage {
+    pub(crate) fn language(&self) -> UiLanguage {
         self.language
     }
 
-    pub(super) fn set_language(&mut self, language: UiLanguage) {
+    pub(crate) fn set_language(&mut self, language: UiLanguage) {
         self.language = language;
+        set_current_language(language);
     }
 
-    pub(super) fn t(&self, key: &str) -> String {
+    pub(crate) fn t(&self, key: &str) -> String {
         translate(self.language, key)
     }
+}
+
+fn current_language_cell() -> &'static RwLock<UiLanguage> {
+    static CURRENT_LANGUAGE: OnceLock<RwLock<UiLanguage>> = OnceLock::new();
+    CURRENT_LANGUAGE.get_or_init(|| RwLock::new(UiLanguage::default()))
+}
+
+pub(crate) fn set_current_language(language: UiLanguage) {
+    if let Ok(mut guard) = current_language_cell().write() {
+        *guard = language;
+    }
+}
+
+pub(crate) fn current_language() -> UiLanguage {
+    current_language_cell()
+        .read()
+        .map(|guard| *guard)
+        .unwrap_or_default()
+}
+
+pub(crate) fn tr(key: &str) -> String {
+    translate(current_language(), key)
 }
 
 fn parse_catalog(language: UiLanguage) -> BTreeMap<String, String> {

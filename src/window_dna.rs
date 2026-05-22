@@ -16,15 +16,15 @@ use crate::{
     engine::GentleEngine,
     main_area_dna::MainAreaDna,
     window_backdrop::{
-        WindowBackdropKind, current_window_backdrop_settings, paint_window_backdrop,
-        with_window_content_inset,
+        current_window_backdrop_settings, paint_window_backdrop, with_window_content_inset,
+        WindowBackdropKind,
     },
 };
 use eframe::egui;
-use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::{
-    Arc, Mutex, RwLock,
     mpsc::{self, Receiver, TryRecvError},
+    Arc, Mutex, RwLock,
 };
 use std::thread;
 
@@ -204,14 +204,14 @@ impl WindowDna {
     fn render_nav_row(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             if ui
-                .button("Help")
+                .button(crate::i18n::tr("button.help"))
                 .on_hover_text("Open GUI help (F1 on Windows/Linux, Cmd+Shift+/ on macOS)")
                 .clicked()
             {
                 request_open_help_from_native_menu();
             }
             if ui
-                .button("Main")
+                .button(crate::i18n::tr("button.main"))
                 .on_hover_text("Bring the main project workspace to front")
                 .clicked()
             {
@@ -223,14 +223,14 @@ impl WindowDna {
                     .send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::Focus);
             }
             if ui
-                .button("Configuration")
+                .button(crate::i18n::tr("button.configuration"))
                 .on_hover_text("Open Configuration window on Graphics settings")
                 .clicked()
             {
                 request_open_graphics_settings_from_native_menu();
             }
             if ui
-                .button("Close")
+                .button(crate::i18n::tr("button.close"))
                 .on_hover_text("Close this sequence window (Cmd/Ctrl+W)")
                 .clicked()
             {
@@ -286,9 +286,7 @@ impl WindowDna {
                                 ui.add_space(48.0);
                                 ui.add(egui::Spinner::new());
                                 ui.add_space(6.0);
-                                ui.label(
-                                    "Opening sequence window: loading sequence content in background...",
-                                );
+                                ui.label(crate::i18n::tr("sequence.loading"));
                             });
                         });
                     },
@@ -362,9 +360,7 @@ impl WindowDna {
                                 ui.add_space(48.0);
                                 ui.add(egui::Spinner::new());
                                 ui.add_space(6.0);
-                                ui.label(
-                                    "Opening sequence window: loading sequence content in background...",
-                                );
+                                ui.label(crate::i18n::tr("sequence.loading"));
                             });
                         });
                     },
