@@ -1,5 +1,5 @@
 {
-  "schema": "gentle.tutorial_source.v2",
+  "schema": "gentle.tutorial_source.v4",
   "id": "metabion_external_service_handoff_gui_cli",
   "title": "Prepare a Metabion Handoff from Shared External-Service Contracts",
   "catalog": {
@@ -14,6 +14,8 @@
       "agent_users",
       "cloning_planning"
     ],
-    "notes": "Safe handoff rehearsal for Metabion oligo and m-block requests through the shared provider catalog, preflight, and quote bundle contracts; no vendor submission."
+    "notes": "Safe handoff rehearsal for Metabion oligo and m-block requests through the shared provider catalog, preflight, and quote bundle contracts; no vendor submission.",
+    "group": "09",
+    "group_position": 1
   }
 }

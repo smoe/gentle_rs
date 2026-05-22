@@ -1,5 +1,5 @@
 {
-  "schema": "gentle.tutorial_source.v2",
+  "schema": "gentle.tutorial_source.v4",
   "id": "sequencing_confirmation_gui",
   "title": "Inspect an Imported Sequencing Trace and Confirm a Construct (GUI Tutorial)",
   "catalog": {
@@ -13,6 +13,8 @@
       "sequence_analysis",
       "contributors"
     ],
-    "notes": "GUI-first walkthrough for raw trace import, baseline-aware confirmation, chromatogram inspection, and lineage reopen."
+    "notes": "GUI-first walkthrough for raw trace import, baseline-aware confirmation, chromatogram inspection, and lineage reopen.",
+    "group": "10",
+    "group_position": 2
   }
 }

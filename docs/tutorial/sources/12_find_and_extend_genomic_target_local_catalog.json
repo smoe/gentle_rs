@@ -1,5 +1,5 @@
 {
-  "schema": "gentle.tutorial_source.v3",
+  "schema": "gentle.tutorial_source.v4",
   "id": "find_and_extend_genomic_target_local_catalog",
   "title": "Find and extend the right genomic target (local catalog)",
   "catalog": {
@@ -13,7 +13,9 @@
       "gui_first",
       "contributors"
     ],
-    "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation."
+    "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+    "group": "05",
+    "group_position": 1
   },
   "generated_chapter": {
     "order": 2,

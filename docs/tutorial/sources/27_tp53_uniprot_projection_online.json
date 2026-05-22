@@ -1,5 +1,5 @@
 {
-  "schema": "gentle.tutorial_source.v3",
+  "schema": "gentle.tutorial_source.v4",
   "id": "tp53_uniprot_projection_online",
   "title": "TP53 UniProt domain mapping and feature-coding DNA query (online)",
   "catalog": {
@@ -13,7 +13,9 @@
       "protein_workflows",
       "contributors"
     ],
-    "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation. Requires explicit online setup for full execution."
+    "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation. Requires explicit online setup for full execution.",
+    "group": "06",
+    "group_position": 4
   },
   "generated_chapter": {
     "order": 17,

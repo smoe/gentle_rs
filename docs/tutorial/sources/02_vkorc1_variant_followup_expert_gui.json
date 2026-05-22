@@ -1,5 +1,5 @@
 {
-  "schema": "gentle.tutorial_source.v2",
+  "schema": "gentle.tutorial_source.v4",
   "id": "vkorc1_variant_followup_expert_gui",
   "title": "Promoter Design for VKORC1 / rs9923231",
   "catalog": {
@@ -13,6 +13,8 @@
       "cloning_planning",
       "pharmacogenomics"
     ],
-    "notes": "Shortest GUI path for the current ClawBio-facing story: start from the dbSNP marker, drive the dedicated Promoter design window, and export one portable promoter-reporter handoff bundle."
+    "notes": "Shortest GUI path for the current ClawBio-facing story: start from the dbSNP marker, drive the dedicated Promoter design window, and export one portable promoter-reporter handoff bundle.",
+    "group": "08",
+    "group_position": 2
   }
 }

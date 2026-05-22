@@ -1,5 +1,5 @@
 {
-  "schema": "gentle.tutorial_source.v3",
+  "schema": "gentle.tutorial_source.v4",
   "id": "tp63_anchor_extension_online",
   "title": "Retrieve TP63 and extend the displayed region by +/-2 kb (online)",
   "catalog": {
@@ -13,7 +13,9 @@
       "genome_catalog_targeting",
       "contributors"
     ],
-    "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation. Requires explicit online setup for full execution."
+    "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation. Requires explicit online setup for full execution.",
+    "group": "05",
+    "group_position": 3
   },
   "generated_chapter": {
     "order": 11,

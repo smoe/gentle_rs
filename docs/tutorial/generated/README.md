@@ -84,6 +84,6 @@ Online execution was disabled (`GENTLE_TEST_ONLINE=0` during generation).
 
 ## Source Summary
 
-- Tutorial schema: `gentle.tutorial_manifest.v1`
+- Tutorial schema: `gentle.tutorial_manifest.v2`
 - Chapter count: `20`
 - Generation report: [`report.json`](./report.json)

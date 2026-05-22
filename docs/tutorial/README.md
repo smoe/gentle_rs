@@ -10,6 +10,8 @@ Machine-readable catalog source:
   - [`docs/tutorial/sources/*.json`](./sources/)
 - review metadata:
   - [`docs/tutorial/review_manifest.json`](./review_manifest.json)
+- presentation-overhaul audit:
+  - [`docs/tutorial/coverage_audit.md`](./coverage_audit.md)
 
 `review_manifest.json` is hand-maintained tutorial review metadata, not test
 fixture data from an external source. It is deterministically recreated from

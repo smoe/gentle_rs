@@ -1,5 +1,5 @@
 {
-  "schema": "gentle.tutorial_source.v3",
+  "schema": "gentle.tutorial_source.v4",
   "id": "tp73_cdna_genomic_dotplot_online",
   "title": "Compare TP73 cDNA against TP73 genomic context via dotplot (online)",
   "catalog": {
@@ -13,7 +13,9 @@
       "sequence_analysis",
       "contributors"
     ],
-    "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation. Requires explicit online setup for full execution."
+    "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation. Requires explicit online setup for full execution.",
+    "group": "02",
+    "group_position": 4
   },
   "generated_chapter": {
     "order": 14,

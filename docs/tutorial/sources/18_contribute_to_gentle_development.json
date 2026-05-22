@@ -1,5 +1,5 @@
 {
-  "schema": "gentle.tutorial_source.v3",
+  "schema": "gentle.tutorial_source.v4",
   "id": "contribute_to_gentle_development",
   "title": "Contribute to GENtle development",
   "catalog": {
@@ -11,7 +11,9 @@
     "audiences": [
       "contributors"
     ],
-    "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation."
+    "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+    "group": "01",
+    "group_position": 2
   },
   "generated_chapter": {
     "order": 8,

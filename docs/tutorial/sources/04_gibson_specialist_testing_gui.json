@@ -1,5 +1,5 @@
 {
-  "schema": "gentle.tutorial_source.v2",
+  "schema": "gentle.tutorial_source.v4",
   "id": "gibson_specialist_testing_gui",
   "title": "Gibson Specialist Testing Tutorial",
   "catalog": {
@@ -13,6 +13,8 @@
       "cloning_planning",
       "contributors"
     ],
-    "notes": "Hands-on test script for the destination-first Gibson specialist with shared CLI parity."
+    "notes": "Hands-on test script for the destination-first Gibson specialist with shared CLI parity.",
+    "group": "03",
+    "group_position": 5
   }
 }

@@ -1,5 +1,5 @@
 {
-  "schema": "gentle.tutorial_source.v2",
+  "schema": "gentle.tutorial_source.v4",
   "id": "tutorial_landscape_overview",
   "title": "GENtle Tutorial Landscape Overview",
   "catalog": {
@@ -13,6 +13,7 @@
       "cli_first",
       "gui_first"
     ],
-    "notes": "Graphical overview of current tutorial dependencies, roadmap-grounded additions, and heuristic human-feedback intensity."
+    "notes": "Graphical overview of current tutorial dependencies, roadmap-grounded additions, and heuristic human-feedback intensity.",
+    "group": "01"
   }
 }

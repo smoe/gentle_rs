@@ -202,6 +202,11 @@ wet-lab conclusions or unconfirmed mutations.
 - Luebeck S1 vector-resource follow-up: resolve sequence/procurement URLs and
   redistribution clearance before bundling actual sequences for the metadata
   candidates.
+- VKORC1 / warfarin Factor X follow-up tutorial idea: after the maintained
+  VKORC1 rs9923231 promoter-reporter tutorial, design a separate companion
+  story for downstream warfarin-relevant Factor X target-site constructs once
+  the construct family, controls, readout, and bench-facing success criteria
+  are stable enough for a validated walkthrough.
 - Primer-walking support and iterative read/contig data management.
 - Helper-construct terminology migration away from legacy "helper genome"
   wording.

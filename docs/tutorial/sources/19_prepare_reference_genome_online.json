@@ -1,5 +1,5 @@
 {
-  "schema": "gentle.tutorial_source.v3",
+  "schema": "gentle.tutorial_source.v4",
   "id": "prepare_reference_genome_online",
   "title": "Prepare a reference genome cache (online)",
   "catalog": {
@@ -13,7 +13,9 @@
       "genome_catalog_targeting",
       "contributors"
     ],
-    "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation. Requires explicit online setup for full execution."
+    "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation. Requires explicit online setup for full execution.",
+    "group": "05",
+    "group_position": 2
   },
   "generated_chapter": {
     "order": 9,

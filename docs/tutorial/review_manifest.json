@@ -343,6 +343,24 @@
       "codex_reviewed_at": null,
       "human_reviewed_at": null,
       "human_reviewer": null
+    },
+    {
+      "tutorial_id": "stateless_sequence_inspection_gui_cli",
+      "tutorial_kind": "guided_walkthrough",
+      "tutorial_status": "active",
+      "replaced_by": null,
+      "codex_reviewed_at": null,
+      "human_reviewed_at": null,
+      "human_reviewer": null
+    },
+    {
+      "tutorial_id": "tfbs_similarity_ranking_gui",
+      "tutorial_kind": "guided_walkthrough",
+      "tutorial_status": "active",
+      "replaced_by": null,
+      "codex_reviewed_at": null,
+      "human_reviewed_at": null,
+      "human_reviewer": null
     }
   ]
 }

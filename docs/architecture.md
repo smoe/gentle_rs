@@ -743,15 +743,18 @@ Practical rule:
       hand-written material are distinguishable at discovery time
   - canonical machine-readable tutorial discovery catalog:
     `docs/tutorial/catalog.json`
-    - schema: `gentle.tutorial_catalog.v1`
+    - schema: `gentle.tutorial_catalog.v2`
     - lists both generated tutorial collections and hand-written pages
+    - supports optional group placement and nullable/absent decimal ids for
+      reference/navigation units
     - current consumer for GUI help/tutorial discovery
     - source of runtime manifest resolution for `Open Tutorial Project...`
   - tutorial discovery authoring source units:
     - `docs/tutorial/sources/catalog_meta.json`
-      (`gentle.tutorial_catalog_meta.v1`)
+      (`gentle.tutorial_catalog_meta.v2`)
     - `docs/tutorial/sources/*.json`
-      (`gentle.tutorial_source.v3`; legacy `gentle.tutorial_source.v2` remains readable)
+      (`gentle.tutorial_source.v4`; legacy `gentle.tutorial_source.v3` and
+      `gentle.tutorial_source.v2` remain readable)
     - generated outputs:
       - `docs/tutorial/catalog.json`
       - `docs/tutorial/manifest.json`
@@ -762,7 +765,7 @@ Practical rule:
       `gentle_examples_docs tutorial-catalog-check`
       `gentle_examples_docs tutorial-manifest-check`
   - generated tutorial runtime manifest: `docs/tutorial/manifest.json`
-  - tutorial runtime schema: `gentle.tutorial_manifest.v1`
+  - tutorial runtime schema: `gentle.tutorial_manifest.v2`
   - committed tutorial runtime outputs: `docs/tutorial/generated/`
   - tutorial generator/check commands:
     - `gentle_examples_docs tutorial-generate`

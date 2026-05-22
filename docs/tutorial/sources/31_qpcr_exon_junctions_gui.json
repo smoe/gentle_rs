@@ -1,5 +1,5 @@
 {
-  "schema": "gentle.tutorial_source.v2",
+  "schema": "gentle.tutorial_source.v4",
   "id": "qpcr_exon_junctions_gui",
   "title": "qPCR Across Exon Junctions",
   "catalog": {
@@ -14,6 +14,8 @@
       "primer_design",
       "contributors"
     ],
-    "notes": "GUI-first walkthrough for seeding shared-transcript or transcript-specific qPCR from Splicing Expert, including junction-only transcript evidence and shared-shell parity commands."
+    "notes": "GUI-first walkthrough for seeding shared-transcript or transcript-specific qPCR from Splicing Expert, including junction-only transcript evidence and shared-shell parity commands.",
+    "group": "04",
+    "group_position": 3
   }
 }

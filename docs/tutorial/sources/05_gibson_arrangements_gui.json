@@ -1,5 +1,5 @@
 {
-  "schema": "gentle.tutorial_source.v2",
+  "schema": "gentle.tutorial_source.v4",
   "id": "gibson_arrangements_gui",
   "title": "Gibson Arrangements Tutorial",
   "catalog": {
@@ -13,6 +13,8 @@
       "cloning_planning",
       "contributors"
     ],
-    "notes": "Hands-on walkthrough for Gibson-created arrangements, lane inspection, and arrangement-level gel export."
+    "notes": "Hands-on walkthrough for Gibson-created arrangements, lane inspection, and arrangement-level gel export.",
+    "group": "03",
+    "group_position": 7
   }
 }

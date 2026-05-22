@@ -1,5 +1,5 @@
 {
-  "schema": "gentle.tutorial_source.v2",
+  "schema": "gentle.tutorial_source.v4",
   "id": "sequencing_confirmation_trace_cli",
   "title": "Confirm a Construct from an Imported Sequencing Trace (CLI Tutorial)",
   "catalog": {
@@ -13,6 +13,8 @@
       "sequence_analysis",
       "contributors"
     ],
-    "notes": "Hands-on local walkthrough for seq-trace import, trace-aware seq-confirm run, and shared report export."
+    "notes": "Hands-on local walkthrough for seq-trace import, trace-aware seq-confirm run, and shared report export.",
+    "group": "10",
+    "group_position": 1
   }
 }
