@@ -60,6 +60,9 @@ pub mod gene_groups;
 pub mod genomes;
 /// Gibson assembly planning contracts and deterministic preview derivation.
 pub mod gibson_planning;
+/// Embedded GUI translation catalogs and runtime presentation-language state.
+#[path = "app/i18n.rs"]
+pub(crate) mod i18n;
 /// Embedded icon/resource helpers for GUI rendering.
 pub mod icons;
 /// IUPAC nucleotide-code conversion and validation helpers.

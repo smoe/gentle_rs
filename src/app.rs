@@ -85,9 +85,6 @@ mod rack_workspace_ui;
 #[path = "app/gibson_ui.rs"]
 mod gibson_ui;
 
-#[path = "app/i18n.rs"]
-mod i18n;
-
 use std::{
     collections::hash_map::DefaultHasher,
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
@@ -104,8 +101,6 @@ use std::{
     },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
-
-use i18n::{I18n, UiLanguage};
 
 use crate::{
     about,
@@ -175,6 +170,7 @@ use crate::{
         GibsonPlanUniquenessChecks, GibsonPlanValidationPolicy, GibsonSuggestedDesignAdjustment,
         suggest_gibson_destination_openings,
     },
+    i18n::{I18n, UiLanguage},
     icons::APP_ICON,
     lineage_export::{
         LineageSvgEdge, LineageSvgNode, LineageSvgNodeKind, export_projected_lineage_svg,
@@ -14968,14 +14964,14 @@ Error: `{err}`"
         let mut close_requested = false;
         ui.horizontal(|ui| {
             if ui
-                .button("Help")
+                .button(self.tr("button.help"))
                 .on_hover_text("Open GUI help (F1 on Windows/Linux, Cmd+Shift+/ on macOS)")
                 .clicked()
             {
                 self.open_help_doc(HelpDoc::Gui);
             }
             if ui
-                .button("Main")
+                .button(self.tr("button.main"))
                 .on_hover_text("Bring the main project window to front")
                 .clicked()
             {
@@ -19800,16 +19796,16 @@ Error: `{err}`"
         path_status_cache: &mut HashMap<String, (egui::Color32, String)>,
     ) {
         const ROW_COUNT: usize = 7;
-        ui.label("Per-window tint and image paths");
+        ui.label(crate::i18n::tr("configuration.window_styling.table_title"));
         egui::Grid::new("window_backdrop_path_grid")
             .num_columns(4)
             .striped(true)
             .spacing(egui::vec2(10.0, 6.0))
             .show(ui, |ui| {
-                ui.strong("Window");
-                ui.strong("Tint");
-                ui.strong("Path");
-                ui.strong("Actions");
+                ui.strong(crate::i18n::tr("configuration.window_styling.window"));
+                ui.strong(crate::i18n::tr("configuration.window_styling.tint"));
+                ui.strong(crate::i18n::tr("configuration.window_styling.path"));
+                ui.strong(crate::i18n::tr("configuration.window_styling.actions"));
                 ui.end_row();
 
                 for row_index in 0..ROW_COUNT {
@@ -19855,7 +19851,7 @@ Error: `{err}`"
                     ui.horizontal(|ui| {
                         let default_tint = window_backdrop::default_tint_rgb_for_kind(kind);
                         if ui
-                            .small_button("Browse...")
+                            .small_button(crate::i18n::tr("button.browse"))
                             .on_hover_text("Pick an image file for this window backdrop")
                             .clicked()
                         {
@@ -19869,7 +19865,10 @@ Error: `{err}`"
                             }
                         }
                         if ui
-                            .add_enabled(!value.trim().is_empty(), egui::Button::new("Clear"))
+                            .add_enabled(
+                                !value.trim().is_empty(),
+                                egui::Button::new(crate::i18n::tr("button.clear")),
+                            )
                             .on_hover_text("Clear custom image path for this window type")
                             .clicked()
                         {
@@ -19880,7 +19879,7 @@ Error: `{err}`"
                         if ui
                             .add_enabled(
                                 *tint_rgb != default_tint,
-                                egui::Button::new("Reset Color"),
+                                egui::Button::new(crate::i18n::tr("button.reset_color")),
                             )
                             .on_hover_text("Reset tint color for this window type")
                             .clicked()
@@ -19893,7 +19892,9 @@ Error: `{err}`"
                     ui.end_row();
                 }
             });
-        ui.small("Color and image settings are saved to app settings after Apply Window Styling.");
+        ui.small(crate::i18n::tr(
+            "configuration.window_styling.saved_after_apply",
+        ));
     }
 
     fn refresh_open_sequence_windows(&mut self, ctx: &egui::Context) -> usize {
@@ -19918,9 +19919,9 @@ Error: `{err}`"
     }
 
     fn render_configuration_external_tab(&mut self, ui: &mut Ui) {
-        ui.label("Configure external application integration used by shared engine features.");
+        ui.label(self.tr("configuration.external.description"));
         ui.separator();
-        ui.label("rnapkin executable override");
+        ui.label(self.tr("configuration.external.rnapkin_override"));
         let rnapkin_edit_response = ui.add(
             egui::TextEdit::singleline(&mut self.configuration_rnapkin_executable)
                 .hint_text("Leave empty to use PATH lookup for 'rnapkin'"),
@@ -19930,10 +19931,13 @@ Error: `{err}`"
         }
         let active_rnapkin =
             tool_overrides::active_resolution_label("GENTLE_RNAPKIN_BIN", "rnapkin");
-        ui.monospace(format!("Active resolution: {active_rnapkin}"));
+        ui.monospace(format!(
+            "{}: {active_rnapkin}",
+            self.tr("configuration.external.active_resolution")
+        ));
 
         ui.separator();
-        ui.label("makeblastdb executable override");
+        ui.label(self.tr("configuration.external.makeblastdb_override"));
         let makeblastdb_edit_response = ui.add(
             egui::TextEdit::singleline(&mut self.configuration_makeblastdb_executable).hint_text(
                 format!(
@@ -19947,9 +19951,12 @@ Error: `{err}`"
         }
         let active_makeblastdb =
             tool_overrides::active_resolution_label(MAKEBLASTDB_ENV_BIN, DEFAULT_MAKEBLASTDB_BIN);
-        ui.monospace(format!("Active makeblastdb: {active_makeblastdb}"));
+        ui.monospace(format!(
+            "{}: {active_makeblastdb}",
+            self.tr("configuration.external.active_makeblastdb")
+        ));
 
-        ui.label("blastn executable override");
+        ui.label(self.tr("configuration.external.blastn_override"));
         let blastn_edit_response = ui.add(
             egui::TextEdit::singleline(&mut self.configuration_blastn_executable).hint_text(
                 format!(
@@ -19963,10 +19970,13 @@ Error: `{err}`"
         }
         let active_blastn =
             tool_overrides::active_resolution_label(BLASTN_ENV_BIN, DEFAULT_BLASTN_BIN);
-        ui.monospace(format!("Active blastn: {active_blastn}"));
+        ui.monospace(format!(
+            "{}: {active_blastn}",
+            self.tr("configuration.external.active_blastn")
+        ));
 
         ui.separator();
-        ui.label("bigWigToBedGraph executable override");
+        ui.label(self.tr("configuration.external.bigwig_override"));
         ui.add(
             egui::TextEdit::singleline(&mut self.configuration_bigwig_to_bedgraph_executable)
                 .hint_text(format!(
@@ -19978,11 +19988,14 @@ Error: `{err}`"
             BIGWIG_TO_BEDGRAPH_ENV_BIN,
             DEFAULT_BIGWIG_TO_BEDGRAPH_BIN,
         );
-        ui.monospace(format!("Active bigWigToBedGraph: {active_bigwig}"));
+        ui.monospace(format!(
+            "{}: {active_bigwig}",
+            self.tr("configuration.external.active_bigwig")
+        ));
 
         ui.horizontal_wrapped(|ui| {
             if ui
-                .button("Use PATH")
+                .button(self.tr("configuration.external.use_path"))
                 .on_hover_text("Clear rnapkin override and use PATH lookup")
                 .clicked()
             {
@@ -19990,7 +20003,7 @@ Error: `{err}`"
                 self.clear_rnapkin_validation();
             }
             if ui
-                .button("Use PATH (BLAST)")
+                .button(self.tr("configuration.external.use_path_blast"))
                 .on_hover_text("Clear makeblastdb/blastn overrides and use PATH lookup")
                 .clicked()
             {
@@ -19999,28 +20012,28 @@ Error: `{err}`"
                 self.clear_blast_validation();
             }
             if ui
-                .button("Use PATH (BigWig)")
+                .button(self.tr("configuration.external.use_path_bigwig"))
                 .on_hover_text("Clear bigWigToBedGraph override and use PATH lookup")
                 .clicked()
             {
                 self.configuration_bigwig_to_bedgraph_executable.clear();
             }
             if ui
-                .button("Validate rnapkin")
+                .button(self.tr("configuration.external.validate_rnapkin"))
                 .on_hover_text("Run rnapkin --version and capture validation status")
                 .clicked()
             {
                 self.validate_rnapkin_executable();
             }
             if ui
-                .button("Validate BLAST tools")
+                .button(self.tr("configuration.external.validate_blast"))
                 .on_hover_text("Run makeblastdb/blastn --version checks")
                 .clicked()
             {
                 self.validate_blast_executables();
             }
             if ui
-                .button("Apply External Settings")
+                .button(self.tr("configuration.external.apply"))
                 .on_hover_text("Apply executable overrides to current runtime environment")
                 .clicked()
             {
@@ -20135,9 +20148,10 @@ Error: `{err}`"
             self.configuration_graphics_dirty = true;
         }
 
-        ui.label("Configure project-level graphics visibility defaults.");
+        ui.label(self.tr("configuration.graphics.description"));
         ui.small(format!(
-            "Current project feature-detail font: {:.2} px",
+            "{}: {:.2} px",
+            self.tr("configuration.graphics.current_feature_font"),
             self.configuration_graphics.feature_details_font_size
         ));
         ui.separator();
@@ -20145,21 +20159,23 @@ Error: `{err}`"
         let mut live_font_changed = false;
         let mut backdrop_changed = false;
 
-        ui.heading("Panels");
+        ui.heading(self.tr("configuration.graphics.panels"));
         changed |= ui
             .checkbox(
                 &mut self.configuration_graphics.show_sequence_panel,
-                "Show sequence panel in circular windows",
+                crate::i18n::tr("configuration.graphics.show_sequence_panel_circular"),
             )
             .changed();
         changed |= ui
             .checkbox(
                 &mut self.configuration_graphics.show_linear_sequence_panel,
-                "Show sequence panel in linear windows",
+                crate::i18n::tr("configuration.graphics.show_sequence_panel_linear"),
             )
             .changed();
         ui.horizontal(|ui| {
-            ui.label("Sequence panel max text length");
+            ui.label(crate::i18n::tr(
+                "configuration.graphics.sequence_panel_max_text_length",
+            ));
             if ui
                 .add(
                     egui::DragValue::new(
@@ -20182,7 +20198,7 @@ Error: `{err}`"
         changed |= ui
             .checkbox(
                 &mut self.configuration_graphics.show_map_panel,
-                "Show map panel",
+                crate::i18n::tr("configuration.graphics.show_map_panel"),
             )
             .changed();
         changed |= ui
@@ -20190,23 +20206,23 @@ Error: `{err}`"
                 &mut self
                     .configuration_graphics
                     .auto_hide_sequence_panel_when_linear_bases_visible,
-                "Auto-hide sequence panel when linear DNA letters are visible",
+                crate::i18n::tr("configuration.graphics.auto_hide_sequence_panel"),
             )
             .changed();
 
         ui.separator();
-        ui.heading("Linear DNA Base Rendering");
+        ui.heading(self.tr("configuration.graphics.linear_dna_base_rendering"));
         changed |= ui
             .checkbox(
                 &mut self.configuration_graphics.linear_show_double_strand_bases,
-                "Show reverse-strand DNA letters in linear view",
+                crate::i18n::tr("configuration.graphics.show_reverse_letters"),
             )
             .changed();
         if self.configuration_graphics.linear_show_double_strand_bases {
             changed |= ui
                 .checkbox(
                     &mut self.configuration_graphics.linear_helical_parallel_strands,
-                    "Keep helical strands parallel (same slant direction)",
+                    crate::i18n::tr("sequence.keep_helical_parallel"),
                 )
                 .on_hover_text(
                     "When enabled, forward and reverse strands move in parallel during helical rendering; disable for mirrored/cross-over slant.",
@@ -20218,7 +20234,7 @@ Error: `{err}`"
                 &mut self
                     .configuration_graphics
                     .linear_hide_backbone_when_sequence_bases_visible,
-                "Hide DNA backbone line when letters are shown",
+                crate::i18n::tr("sequence.hide_backbone_when_letters_visible"),
             )
             .changed();
         changed |= hide_backbone_changed;
@@ -20227,7 +20243,7 @@ Error: `{err}`"
                 &mut self
                     .configuration_graphics
                     .linear_sequence_helical_letters_enabled,
-                "Enable compressed DNA letters in Auto routing mode",
+                crate::i18n::tr("sequence.enable_compressed_letters"),
             )
             .on_hover_text(
                 "In Auto mode: disabled means dense views switch letters OFF instead of helical/condensed. Forced modes ignore this toggle.",
@@ -20235,7 +20251,7 @@ Error: `{err}`"
             .changed();
         changed |= helical_letters_enabled_changed;
         ui.horizontal(|ui| {
-            ui.label("DNA letter routing mode");
+            ui.label(crate::i18n::tr("sequence.dna_letter_routing_mode"));
             let mut selected = self
                 .configuration_graphics
                 .linear_sequence_letter_layout_mode;
@@ -20292,11 +20308,11 @@ Error: `{err}`"
                 &mut self
                     .configuration_graphics
                     .linear_reverse_strand_use_upside_down_letters,
-                "Rotate reverse strand letters by 180°",
+                crate::i18n::tr("sequence.rotate_reverse_letters"),
             )
             .changed();
         ui.horizontal(|ui| {
-            ui.label("Reverse-strand letter opacity");
+            ui.label(crate::i18n::tr("sequence.reverse_letter_opacity"));
             if ui
                 .add(
                     egui::Slider::new(
@@ -20314,7 +20330,7 @@ Error: `{err}`"
             }
         });
         ui.horizontal(|ui| {
-            ui.label("Helical phase offset (mod 10 seam shift)");
+            ui.label(crate::i18n::tr("sequence.helical_phase_offset"));
             if ui
                 .add(
                     egui::DragValue::new(
@@ -20395,35 +20411,35 @@ Error: `{err}`"
         });
 
         ui.separator();
-        ui.heading("Feature Layers");
+        ui.heading(self.tr("configuration.graphics.feature_layers"));
         changed |= ui
             .checkbox(
                 &mut self.configuration_graphics.show_features,
-                "Show feature overlays",
+                crate::i18n::tr("configuration.graphics.show_features"),
             )
             .changed();
         changed |= ui
             .checkbox(
                 &mut self.configuration_graphics.show_cds_features,
-                "Show CDS features",
+                crate::i18n::tr("configuration.graphics.show_cds"),
             )
             .changed();
         changed |= ui
             .checkbox(
                 &mut self.configuration_graphics.show_gene_features,
-                "Show gene features",
+                crate::i18n::tr("configuration.graphics.show_gene"),
             )
             .changed();
         changed |= ui
             .checkbox(
                 &mut self.configuration_graphics.show_mrna_features,
-                "Show mRNA features",
+                crate::i18n::tr("configuration.graphics.show_mrna"),
             )
             .changed();
         changed |= ui
             .checkbox(
                 &mut self.configuration_graphics.show_repeat_features,
-                "Show repeat features",
+                crate::i18n::tr("configuration.graphics.show_repeats"),
             )
             .on_hover_text(
                 "Show RepeatMasker/rmsk-derived repeat_region and mobile-element features",
@@ -20432,24 +20448,26 @@ Error: `{err}`"
         changed |= ui
             .checkbox(
                 &mut self.configuration_graphics.show_array_features,
-                "Show array tracks",
+                crate::i18n::tr("configuration.graphics.show_arrays"),
             )
             .on_hover_text("Show genome-projected microarray contrast features")
             .changed();
         changed |= ui
             .checkbox(
                 &mut self.configuration_graphics.show_tfbs,
-                "Show TFBS features",
+                crate::i18n::tr("configuration.graphics.show_tfbs"),
             )
             .changed();
         changed |= ui
             .checkbox(
                 &mut self.configuration_graphics.regulatory_tracks_near_baseline,
-                "Place regulatory features near DNA/GC strip",
+                crate::i18n::tr("configuration.graphics.regulatory_near_baseline"),
             )
             .changed();
         ui.horizontal(|ui| {
-            ui.label("Regulatory max view span");
+            ui.label(crate::i18n::tr(
+                "configuration.graphics.regulatory_max_view_span",
+            ));
             if ui
                 .add(
                     egui::DragValue::new(
@@ -20469,15 +20487,17 @@ Error: `{err}`"
         });
 
         ui.separator();
-        ui.heading("Overlays");
+        ui.heading(self.tr("configuration.graphics.overlays"));
         changed |= ui
             .checkbox(
                 &mut self.configuration_graphics.show_restriction_enzymes,
-                "Show restriction enzymes",
+                crate::i18n::tr("configuration.graphics.show_restriction_enzymes"),
             )
             .changed();
         ui.horizontal(|ui| {
-            ui.label("Restriction display mode");
+            ui.label(crate::i18n::tr(
+                "configuration.graphics.restriction_display_mode",
+            ));
             let mut selected = self.configuration_graphics.restriction_enzyme_display_mode;
             let mut mode_changed = false;
             egui::ComboBox::from_id_salt("config_restriction_display_mode")
@@ -20521,7 +20541,7 @@ Error: `{err}`"
                 changed = true;
             }
         });
-        ui.label("Preferred restriction enzymes");
+        ui.label(self.tr("configuration.graphics.preferred_restriction_enzymes"));
         let mut preferred_csv = self
             .configuration_graphics
             .preferred_restriction_enzymes
@@ -20566,11 +20586,11 @@ Error: `{err}`"
         changed |= ui
             .checkbox(
                 &mut self.configuration_graphics.show_gc_contents,
-                "Show GC contents",
+                crate::i18n::tr("configuration.graphics.show_gc_contents"),
             )
             .changed();
         ui.horizontal(|ui| {
-            ui.label("GC bin size");
+            ui.label(crate::i18n::tr("sequence.gc_bin_size"));
             if ui
                 .add(
                     egui::DragValue::new(&mut self.configuration_graphics.gc_content_bin_size_bp)
@@ -20589,41 +20609,41 @@ Error: `{err}`"
         changed |= ui
             .checkbox(
                 &mut self.configuration_graphics.show_open_reading_frames,
-                "Show ORFs",
+                crate::i18n::tr("configuration.graphics.show_orfs"),
             )
             .changed();
         changed |= ui
             .checkbox(
                 &mut self.configuration_graphics.show_methylation_sites,
-                "Show methylation sites",
+                crate::i18n::tr("configuration.graphics.show_methylation"),
             )
             .changed();
 
         ui.separator();
-        ui.heading("Window Styling (experimental)");
+        ui.heading(self.tr("configuration.graphics.window_styling"));
         backdrop_changed |= ui
             .checkbox(
                 &mut self.configuration_window_backdrops.enabled,
-                "Enable themed window backdrops",
+                crate::i18n::tr("configuration.window_styling.enable_backdrops"),
             )
             .on_hover_text("Apply subtle per-window-type color/image styling")
             .changed();
         backdrop_changed |= ui
             .checkbox(
                 &mut self.configuration_window_backdrops.draw_images,
-                "Use background images",
+                crate::i18n::tr("configuration.window_styling.use_images"),
             )
             .on_hover_text("Render optional image watermark per window type")
             .changed();
         backdrop_changed |= ui
             .checkbox(
                 &mut self.configuration_window_backdrops.show_text_watermark,
-                "Show text watermark fallback",
+                crate::i18n::tr("configuration.window_styling.show_text_watermark"),
             )
             .on_hover_text("Show low-contrast type text when no image is configured")
             .changed();
         ui.horizontal(|ui| {
-            ui.label("Tint opacity");
+            ui.label(crate::i18n::tr("configuration.window_styling.tint_opacity"));
             if ui
                 .add(
                     egui::Slider::new(
@@ -20639,7 +20659,9 @@ Error: `{err}`"
             }
         });
         ui.horizontal(|ui| {
-            ui.label("Image opacity");
+            ui.label(crate::i18n::tr(
+                "configuration.window_styling.image_opacity",
+            ));
             if ui
                 .add(
                     egui::Slider::new(
@@ -20689,7 +20711,7 @@ Error: `{err}`"
 
         ui.horizontal_wrapped(|ui| {
             if ui
-                .button("Reset Defaults")
+                .button(self.tr("configuration.graphics.reset_defaults"))
                 .on_hover_text("Reset graphics settings to built-in defaults")
                 .clicked()
             {
@@ -20698,7 +20720,7 @@ Error: `{err}`"
             if ui
                 .add_enabled(
                     self.configuration_graphics_dirty,
-                    egui::Button::new("Apply Graphics Settings"),
+                    egui::Button::new(self.tr("configuration.graphics.apply_graphics")),
                 )
                 .on_hover_text("Apply graphics settings to project state")
                 .clicked()
@@ -20706,7 +20728,7 @@ Error: `{err}`"
                 self.apply_configuration_graphics();
             }
             if ui
-                .button("Apply + Refresh Open Windows")
+                .button(self.tr("configuration.graphics.apply_refresh"))
                 .on_hover_text("Apply settings and refresh currently open sequence windows")
                 .clicked()
             {
@@ -20718,7 +20740,7 @@ Error: `{err}`"
                 ));
             }
             if ui
-                .button("Reset Window Styling")
+                .button(self.tr("configuration.graphics.reset_window_styling"))
                 .on_hover_text("Reset themed backdrop settings to defaults")
                 .clicked()
             {
@@ -20727,7 +20749,7 @@ Error: `{err}`"
             if ui
                 .add_enabled(
                     self.configuration_window_backdrops_dirty,
-                    egui::Button::new("Apply Window Styling"),
+                    egui::Button::new(self.tr("configuration.graphics.apply_window_styling")),
                 )
                 .on_hover_text("Apply themed backdrop settings to all windows")
                 .clicked()
@@ -23608,7 +23630,7 @@ mod tests {
         ROUTINE_DECISION_TRACES_METADATA_KEY, RackDragState, RetryCleanupAuditActionFilter,
         RetrySnapshotKindFilter, RetrySnapshotPendingCleanupAction, RoutineAssistantStage,
         TutorialProjectOpenOutcome, TutorialProjectTask, TutorialProjectTaskMessage,
-        TutorialProjectTaskProgress, UiLanguage, gui_prominent_glossary_entries,
+        TutorialProjectTaskProgress, gui_prominent_glossary_entries,
         preferred_anthropic_agent_system_id, preferred_local_agent_system_id,
         preferred_mistral_agent_system_id, preferred_openai_agent_system_id,
     };
@@ -23648,6 +23670,7 @@ mod tests {
             GibsonPrimerSuggestion, GibsonResolvedJunctionPreview, GibsonRoutineHandoffPreview,
             GibsonSuggestedDesignAdjustment,
         },
+        i18n::UiLanguage,
         uniprot::UniprotEntrySummary,
         window::Window,
     };
