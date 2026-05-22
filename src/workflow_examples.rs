@@ -459,6 +459,16 @@ pub struct TutorialGenerationChapter {
     pub id: String,
     pub order: usize,
     pub title: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group_order: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group_position: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decimal_id: Option<String>,
     pub tier: String,
     pub example_id: String,
     pub example_source: String,
@@ -3373,12 +3383,45 @@ fn render_tutorial_index(
     out.push_str(" during generation).\n\n");
     out.push_str("## Chapters\n\n");
     let mut ordered = chapters.to_vec();
-    ordered.sort_by(|a, b| a.order.cmp(&b.order).then_with(|| a.id.cmp(&b.id)));
+    ordered.sort_by(|a, b| {
+        a.group_order
+            .unwrap_or(usize::MAX)
+            .cmp(&b.group_order.unwrap_or(usize::MAX))
+            .then_with(|| {
+                a.group_position
+                    .unwrap_or(usize::MAX)
+                    .cmp(&b.group_position.unwrap_or(usize::MAX))
+            })
+            .then_with(|| a.order.cmp(&b.order))
+            .then_with(|| a.id.cmp(&b.id))
+    });
+    let mut last_group: Option<String> = None;
     for chapter in &ordered {
+        let group = chapter
+            .group_label
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or("Ungrouped");
+        if last_group.as_deref() != Some(group) {
+            if last_group.is_some() {
+                out.push('\n');
+            }
+            out.push_str("### ");
+            out.push_str(group);
+            out.push_str("\n\n");
+            last_group = Some(group.to_string());
+        }
         let chapter_file = chapter_markdown_filename(chapter.order, &chapter.id);
         out.push_str("- ");
-        out.push_str(&chapter.order.to_string());
-        out.push_str(". [");
+        if let Some(decimal_id) = chapter.decimal_id.as_deref() {
+            out.push_str("`");
+            out.push_str(decimal_id);
+            out.push_str("` ");
+        } else {
+            out.push_str(&chapter.order.to_string());
+            out.push_str(". ");
+        }
+        out.push_str("[");
         out.push_str(&chapter.title);
         out.push_str("](./chapters/");
         out.push_str(&chapter_file);
@@ -3848,6 +3891,11 @@ pub fn generate_tutorial_docs(
             id: chapter.id.clone(),
             order: chapter.order,
             title: chapter.title.clone(),
+            group: chapter.group.clone(),
+            group_label: chapter.group_label.clone(),
+            group_order: chapter.group_order,
+            group_position: chapter.group_position,
+            decimal_id: chapter.decimal_id.clone(),
             tier: chapter.tier.as_str().to_string(),
             example_id: chapter.example_id.clone(),
             example_source: display_path(&loaded.path),
@@ -5003,6 +5051,8 @@ mod tests {
         let readme_markdown = std::fs::read_to_string(&readme).expect("read generated README");
         assert!(readme_markdown.contains("reference material - not first-time walkthroughs"));
         assert!(readme_markdown.contains("guided walkthroughs in [`../README.md`](../README.md)"));
+        assert!(readme_markdown.contains("### Sequence Basics & Lineage"));
+        assert!(readme_markdown.contains("`02.01` [Load FASTA, branch, and reverse-complement]"));
 
         let chapter = generated.join("chapters/01_load_branch_reverse_complement_pgex_fasta.md");
         let markdown = std::fs::read_to_string(&chapter).expect("read generated chapter markdown");
@@ -5042,8 +5092,10 @@ mod tests {
         assert!(promoter_markdown.contains("**Prerequisites:** Read [Chapter 1:"));
         assert!(promoter_markdown.contains("### Step 8:"));
         assert!(promoter_markdown.contains("CLI:\n\n```bash\ncargo run --bin gentle_cli"));
-        assert!(promoter_markdown
-            .contains("CLI snippets use GENtle's default `.gentle_state.json` state"));
+        assert!(
+            promoter_markdown
+                .contains("CLI snippets use GENtle's default `.gentle_state.json` state")
+        );
         assert!(promoter_markdown.contains("> Expected: `tfbs_score_tracks.svg`"));
         assert!(!promoter_markdown.contains("## Command Equivalent (After GUI)"));
         assert!(promoter_markdown.contains("## What This Chapter Produces"));
@@ -5273,8 +5325,11 @@ mod tests {
         let message = tutorial_generated_file_count_mismatch_message(&expected, &actual);
 
         assert!(message.contains("expected 1, got 2"));
-        assert!(message
-            .contains("generated-only files: artifacts/new_demo/artifacts/new_retained_output.md"));
+        assert!(
+            message.contains(
+                "generated-only files: artifacts/new_demo/artifacts/new_retained_output.md"
+            )
+        );
         assert!(message.contains("committed-only files: none"));
     }
 
@@ -5403,9 +5458,11 @@ mod tests {
 
         assert!(state.sequences.contains_key("gibson_destination_pgex"));
         assert!(state.sequences.contains_key("gibson_insert_demo"));
-        assert!(state
-            .sequences
-            .contains_key("gibson_destination_pgex_with_gibson_insert_demo"));
+        assert!(
+            state
+                .sequences
+                .contains_key("gibson_destination_pgex_with_gibson_insert_demo")
+        );
 
         let arrangement = state
             .container_state

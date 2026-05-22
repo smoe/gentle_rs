@@ -32,26 +32,49 @@ Online execution was disabled (`GENTLE_TEST_ONLINE=0` during generation).
 
 ## Chapters
 
-- 1. [Load FASTA, branch, and reverse-complement](./chapters/01_load_branch_reverse_complement_pgex_fasta.md) - `core` - example `load_branch_reverse_complement_pgex_fasta` - executed `yes`
-- 2. [Find and extend the right genomic target (local catalog)](./chapters/02_find_and_extend_genomic_target_local_catalog.md) - `core` - example `prepare_extract_extend_localproject_gene` - executed `yes`
-- 3. [Load pGEX and digest with BamHI/EcoRI](./chapters/03_load_and_digest_pgex.md) - `core` - example `load_and_digest_pgex` - executed `yes`
-- 4. [Gibson two-fragment overlap planning baseline](./chapters/04_gibson_two_fragment_overlap_preview.md) - `core` - example `gibson_two_fragment_overlap_preview` - executed `yes`
-- 5. [Guide practical filtering and oligo generation](./chapters/05_guides_filter_and_generate_oligos.md) - `core` - example `guides_filter_and_generate_oligos` - executed `yes`
-- 6. [Digest -> Ligation -> ExtractRegion minimal slice](./chapters/06_digest_ligation_extract_region_minimal.md) - `core` - example `digest_ligation_extract_region_minimal` - executed `yes`
-- 7. [Guide oligo export (CSV + protocol)](./chapters/07_guides_export_csv_and_protocol.md) - `advanced` - example `guides_export_csv_and_protocol` - executed `yes`
-- 8. [Contribute to GENtle development](./chapters/08_contribute_to_gentle_development.md) - `advanced` - example `contribute_gentle_development_baseline` - executed `yes`
-- 9. [Prepare a reference genome cache (online)](./chapters/09_prepare_reference_genome_online.md) - `online` - example `prepare_reference_genome_online` - executed `no`
-- 10. [TP53 isoform architecture expert panel (online)](./chapters/10_tp53_isoform_architecture_online.md) - `online` - example `tp53_isoform_architecture_online` - executed `no`
-- 11. [Retrieve TP63 and extend the displayed region by +/-2 kb (online)](./chapters/11_tp63_anchor_extension_online.md) - `online` - example `tp63_extend_anchor_online` - executed `no`
-- 12. [Map TP53 locus reads with multi-gene sparse indexing (online)](./chapters/12_tp53_multi_gene_sparse_mapping_online.md) - `online` - example `tp53_multi_gene_sparse_mapping_online` - executed `no`
-- 13. [Selection-first PCR batch primer design (offline)](./chapters/13_pcr_selection_batch_primer_pairs_offline.md) - `core` - example `pcr_selection_batch_primer_pairs_offline` - executed `yes`
-- 14. [Compare TP73 cDNA against TP73 genomic context via dotplot (online)](./chapters/14_tp73_cdna_genomic_dotplot_online.md) - `online` - example `tp73_cdna_genomic_dotplot_online` - executed `no`
-- 15. [Gibson Specialist Starter Project (offline)](./chapters/15_gibson_specialist_testing_baseline.md) - `core` - example `gibson_specialist_testing_baseline` - executed `yes`
-- 16. [Gibson Arrangements Starter Project (offline)](./chapters/16_gibson_arrangements_baseline.md) - `core` - example `gibson_arrangements_baseline` - executed `yes`
-- 17. [TP53 UniProt domain mapping and feature-coding DNA query (online)](./chapters/17_tp53_uniprot_projection_online.md) - `online` - example `tp53_uniprot_projection_online` - executed `no`
-- 18. [Simple PCR From a Selected Core Region](./chapters/18_simple_pcr_selection_gui.md) - `core` - example `simple_pcr_selection_gui` - executed `yes`
-- 19. [Audit a TP73 UniProt Projection Against Ensembl and Derived Coding Sequence (CLI Tutorial)](./chapters/19_tp73_uniprot_projection_audit_cli.md) - `online` - example `tp73_uniprot_projection_audit_online` - executed `no`
-- 24. [Promoter Design Artifact Slice (Offline Synthetic TP73 Locus)](./chapters/24_promoter_design_artifact_slice_offline.md) - `core` - example `promoter_design_artifact_slice_offline` - executed `yes`
+### Getting Started & Interfaces
+
+- `01.02` [Contribute to GENtle development](./chapters/08_contribute_to_gentle_development.md) - `advanced` - example `contribute_gentle_development_baseline` - executed `yes`
+
+### Sequence Basics & Lineage
+
+- `02.01` [Load FASTA, branch, and reverse-complement](./chapters/01_load_branch_reverse_complement_pgex_fasta.md) - `core` - example `load_branch_reverse_complement_pgex_fasta` - executed `yes`
+- `02.04` [Compare TP73 cDNA against TP73 genomic context via dotplot (online)](./chapters/14_tp73_cdna_genomic_dotplot_online.md) - `online` - example `tp73_cdna_genomic_dotplot_online` - executed `no`
+
+### Cloning & Assembly
+
+- `03.01` [Load pGEX and digest with BamHI/EcoRI](./chapters/03_load_and_digest_pgex.md) - `core` - example `load_and_digest_pgex` - executed `yes`
+- `03.02` [Digest -> Ligation -> ExtractRegion minimal slice](./chapters/06_digest_ligation_extract_region_minimal.md) - `core` - example `digest_ligation_extract_region_minimal` - executed `yes`
+- `03.03` [Gibson two-fragment overlap planning baseline](./chapters/04_gibson_two_fragment_overlap_preview.md) - `core` - example `gibson_two_fragment_overlap_preview` - executed `yes`
+- `03.04` [Gibson Specialist Starter Project (offline)](./chapters/15_gibson_specialist_testing_baseline.md) - `core` - example `gibson_specialist_testing_baseline` - executed `yes`
+- `03.06` [Gibson Arrangements Starter Project (offline)](./chapters/16_gibson_arrangements_baseline.md) - `core` - example `gibson_arrangements_baseline` - executed `yes`
+
+### Primers, PCR & qPCR
+
+- `04.01` [Simple PCR From a Selected Core Region](./chapters/18_simple_pcr_selection_gui.md) - `core` - example `simple_pcr_selection_gui` - executed `yes`
+- `04.02` [Selection-first PCR batch primer design (offline)](./chapters/13_pcr_selection_batch_primer_pairs_offline.md) - `core` - example `pcr_selection_batch_primer_pairs_offline` - executed `yes`
+- `04.04` [Guide practical filtering and oligo generation](./chapters/05_guides_filter_and_generate_oligos.md) - `core` - example `guides_filter_and_generate_oligos` - executed `yes`
+- `04.05` [Guide oligo export (CSV + protocol)](./chapters/07_guides_export_csv_and_protocol.md) - `advanced` - example `guides_export_csv_and_protocol` - executed `yes`
+
+### Genome Context & Coordinates
+
+- `05.01` [Find and extend the right genomic target (local catalog)](./chapters/02_find_and_extend_genomic_target_local_catalog.md) - `core` - example `prepare_extract_extend_localproject_gene` - executed `yes`
+- `05.02` [Prepare a reference genome cache (online)](./chapters/09_prepare_reference_genome_online.md) - `online` - example `prepare_reference_genome_online` - executed `no`
+- `05.03` [Retrieve TP63 and extend the displayed region by +/-2 kb (online)](./chapters/11_tp63_anchor_extension_online.md) - `online` - example `tp63_extend_anchor_online` - executed `no`
+
+### Transcript, Protein & Projection
+
+- `06.03` [TP53 isoform architecture expert panel (online)](./chapters/10_tp53_isoform_architecture_online.md) - `online` - example `tp53_isoform_architecture_online` - executed `no`
+- `06.04` [TP53 UniProt domain mapping and feature-coding DNA query (online)](./chapters/17_tp53_uniprot_projection_online.md) - `online` - example `tp53_uniprot_projection_online` - executed `no`
+- `06.05` [Audit a TP73 UniProt Projection Against Ensembl and Derived Coding Sequence (CLI Tutorial)](./chapters/19_tp73_uniprot_projection_audit_cli.md) - `online` - example `tp73_uniprot_projection_audit_online` - executed `no`
+
+### RNA Reads, Splicing & Expression
+
+- `07.02` [Map TP53 locus reads with multi-gene sparse indexing (online)](./chapters/12_tp53_multi_gene_sparse_mapping_online.md) - `online` - example `tp53_multi_gene_sparse_mapping_online` - executed `no`
+
+### Regulatory, TFBS & Reporter Design
+
+- `08.03` [Promoter Design Artifact Slice (Offline Synthetic TP73 Locus)](./chapters/24_promoter_design_artifact_slice_offline.md) - `core` - example `promoter_design_artifact_slice_offline` - executed `yes`
 
 ## Concepts and Where They Recur
 
