@@ -21,6 +21,10 @@ Maintenance rule:
   tutorial outputs now carry dependency-aware stale reasons, feedback issue
   template links, and the two May 18 human reviews are recorded as stale after
   the subsequent tutorial source changes.
+- Began Phase 5 of the tutorial presentation overhaul by carrying declared
+  `graphics[]` metadata through catalog/manifest/report outputs, embedding the
+  promoter-design generated TFBS SVG beside its tutorial step, and tracking one
+  existing screenshot-backed dotplot tutorial figure as review-staleness input.
 
 ## 2026-05-22
 

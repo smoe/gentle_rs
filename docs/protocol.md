@@ -97,6 +97,12 @@ Catalog/manifest split:
   `review_issue_template_path`. These are derived from
   `docs/tutorial/review_manifest.json` and from dependency freshness checks;
   they are not authored in tutorial source JSON.
+- Tutorial source units may declare `graphics[]` entries with `kind`
+  (`generated` or `screenshot`), `path`, `caption`, `illustrates_step`, and
+  either `regen_command` or `capture_date`. Generated chapters carry those
+  declarations through the manifest/report, embed declared generated figures at
+  the step they illustrate, and keep the trailing artifact list as an audit
+  appendix. Declared graphics also participate in review-staleness checks.
 - `docs/tutorial/sources/` is the authoring layer for both the discovery
   catalog and the executable tutorial runtime manifest.
 - `docs/tutorial/manifest.json` is a generated runtime contract used for

@@ -76,7 +76,7 @@ Online execution was disabled (`GENTLE_TEST_ONLINE=0` during generation).
 
 ### Regulatory, TFBS & Reporter Design
 
-- `08.03` [Promoter Design Artifact Slice (Offline Synthetic TP73 Locus)](./chapters/08-03_promoter_design_artifact_slice_offline.md) - `core` - example `promoter_design_artifact_slice_offline` - executed `yes` - review `human_reviewed` `stale` - human 2026-05-18 by smoe - [file feedback](../../../.github/ISSUE_TEMPLATE/tutorial-confusion.md)
+- `08.03` [Promoter Design Artifact Slice (Offline Synthetic TP73 Locus)](./chapters/08-03_promoter_design_artifact_slice_offline.md) - `core` - example `promoter_design_artifact_slice_offline` - executed `yes` - review `human_reviewed` `stale` - human 2026-05-18 by smoe - [file feedback](../../../.github/ISSUE_TEMPLATE/tutorial-artifact-figure.md)
 
 ## Concepts and Where They Recur
 
