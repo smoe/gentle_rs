@@ -12,6 +12,9 @@ review_stale: false
 codex_reviewed_at: null
 human_reviewed_at: null
 human_reviewer: null
+review_stale_reason: null
+review_issue_template: "Tutorial confusion"
+review_issue_template_path: ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
 generated_artifact_dir: "docs/tutorial/generated/artifacts/load_and_digest_pgex"
 ---
 

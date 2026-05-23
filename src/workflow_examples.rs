@@ -34,6 +34,12 @@ pub const DEFAULT_TUTORIAL_SOURCE_DIR: &str = "docs/tutorial/sources";
 pub const DEFAULT_TUTORIAL_MANIFEST_PATH: &str = "docs/tutorial/manifest.json";
 pub const DEFAULT_TUTORIAL_OUTPUT_DIR: &str = "docs/tutorial/generated";
 pub const DEFAULT_TUTORIAL_REVIEW_MANIFEST_PATH: &str = "docs/tutorial/review_manifest.json";
+pub const TUTORIAL_CONFUSION_ISSUE_TEMPLATE_PATH: &str =
+    ".github/ISSUE_TEMPLATE/tutorial-confusion.md";
+pub const TUTORIAL_ARTIFACT_ISSUE_TEMPLATE_PATH: &str =
+    ".github/ISSUE_TEMPLATE/tutorial-artifact-figure.md";
+pub const TUTORIAL_EXECUTION_ISSUE_TEMPLATE_PATH: &str =
+    ".github/ISSUE_TEMPLATE/tutorial-execution-failure.md";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TutorialCatalogGeneratedRuntime {
@@ -76,6 +82,12 @@ pub struct TutorialCatalogEntry {
     pub human_reviewer: Option<String>,
     #[serde(default, skip_serializing_if = "is_false")]
     pub review_stale: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review_stale_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review_issue_template: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review_issue_template_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -128,6 +140,15 @@ struct TutorialReviewProjection {
     human_reviewed_at: Option<String>,
     human_reviewer: Option<String>,
     stale: bool,
+    stale_reason: Option<String>,
+    issue_template: Option<String>,
+    issue_template_path: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct TutorialReviewDependency {
+    label: String,
+    path: PathBuf,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -242,6 +263,9 @@ impl TutorialSourceCatalogSection {
             human_reviewed_at: review.human_reviewed_at,
             human_reviewer: review.human_reviewer,
             review_stale: review.stale,
+            review_stale_reason: review.stale_reason,
+            review_issue_template: review.issue_template,
+            review_issue_template_path: review.issue_template_path,
         }
     }
 }
@@ -290,13 +314,17 @@ impl TutorialSourceUnit {
         review_by_id: &HashMap<String, TutorialReviewEntry>,
         review_today: Option<(i32, u32, u32)>,
         review_warn_after_months: u32,
+        repo_root: &Path,
+        source_path_by_id: &HashMap<String, PathBuf>,
     ) -> Result<Option<(usize, TutorialCatalogEntry)>, String> {
         let TutorialSourceUnit {
             id,
             title,
             group,
             group_position,
+            graphics,
             catalog,
+            generated_chapter,
             ..
         } = self;
         let Some(catalog) = catalog else {
@@ -314,6 +342,17 @@ impl TutorialSourceUnit {
             review_by_id.get(&id),
             review_today,
             review_warn_after_months,
+            tutorial_review_dependency_stale_reason(
+                review_by_id.get(&id),
+                &tutorial_source_dependencies(
+                    &id,
+                    source_path_by_id.get(&id),
+                    catalog.path.as_str(),
+                    generated_chapter.as_ref().map(|chapter| chapter.example_id.as_str()),
+                    &graphics,
+                    repo_root,
+                ),
+            ),
         );
         Ok(Some({
             let order = catalog.order;
@@ -517,6 +556,12 @@ pub struct TutorialGenerationChapter {
     pub human_reviewer: Option<String>,
     #[serde(default, skip_serializing_if = "is_false")]
     pub review_stale: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review_stale_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review_issue_template: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review_issue_template_path: Option<String>,
     pub retained_artifacts: Vec<String>,
 }
 
@@ -1236,6 +1281,8 @@ pub fn generate_tutorial_catalog_from_sources(
     let (review_by_id, review_warn_after_months) =
         tutorial_review_entries_for_source_dir(source_dir)?;
     let review_today = current_utc_review_date();
+    let repo_root = tutorial_repo_root_for_source_dir(source_dir);
+    let source_path_by_id = tutorial_source_path_lookup(source_dir);
     let mut entries = Vec::new();
     for unit in units {
         if let Some(entry) = unit.into_catalog_entry(
@@ -1243,6 +1290,8 @@ pub fn generate_tutorial_catalog_from_sources(
             &review_by_id,
             review_today,
             review_warn_after_months,
+            &repo_root,
+            &source_path_by_id,
         )? {
             entries.push(entry);
         }
@@ -1827,6 +1876,39 @@ fn review_date_is_stale(reviewed_at: &str, today: (i32, u32, u32), warn_after_mo
         || (month_delta == warn_after_months as i64 && today.2 >= review_day)
 }
 
+fn review_date_after(left: (i32, u32, u32), right: (i32, u32, u32)) -> bool {
+    left > right
+}
+
+fn system_time_review_date(time: SystemTime) -> Option<(i32, u32, u32)> {
+    let seconds = time.duration_since(UNIX_EPOCH).ok()?.as_secs();
+    Some(civil_from_unix_days((seconds / 86_400) as i64))
+}
+
+fn path_modified_review_date(path: &Path) -> Option<(i32, u32, u32)> {
+    fs::metadata(path)
+        .ok()
+        .and_then(|metadata| metadata.modified().ok())
+        .and_then(system_time_review_date)
+}
+
+fn tutorial_repo_root_for_source_dir(source_dir: &Path) -> PathBuf {
+    source_dir
+        .parent()
+        .and_then(Path::parent)
+        .and_then(Path::parent)
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
+fn tutorial_issue_template_name(path: &str) -> &'static str {
+    match path {
+        TUTORIAL_ARTIFACT_ISSUE_TEMPLATE_PATH => "Tutorial artifact/figure problem",
+        TUTORIAL_EXECUTION_ISSUE_TEMPLATE_PATH => "Tutorial execution failure",
+        _ => "Tutorial confusion",
+    }
+}
+
 fn current_utc_review_date() -> Option<(i32, u32, u32)> {
     let seconds = SystemTime::now().duration_since(UNIX_EPOCH).ok()?.as_secs();
     Some(civil_from_unix_days((seconds / 86_400) as i64))
@@ -1916,6 +1998,7 @@ pub fn validate_tutorial_manifest_against_examples(
 #[derive(Debug, Clone, Default)]
 struct TutorialReviewContext {
     entries_by_id: HashMap<String, TutorialReviewEntry>,
+    stale_reasons_by_id: HashMap<String, String>,
     warn_after_months: u32,
     today: Option<(i32, u32, u32)>,
     warnings: Vec<String>,
@@ -1992,6 +2075,7 @@ fn tutorial_review_context_for_date(
     if !review_path.exists() {
         return Ok(TutorialReviewContext {
             entries_by_id: HashMap::new(),
+            stale_reasons_by_id: HashMap::new(),
             warn_after_months: default_tutorial_review_warn_after_months(),
             today,
             warnings: vec![format!(
@@ -2034,8 +2118,19 @@ fn tutorial_review_context_for_date(
             }
         }
     }
+    let stale_reasons_by_id =
+        tutorial_review_dependency_stale_reasons(manifest_path, manifest, &entries_by_id)?;
+    let mut stale_reason_rows = stale_reasons_by_id.iter().collect::<Vec<_>>();
+    stale_reason_rows.sort_by(|left, right| left.0.cmp(right.0));
+    for (id, reason) in stale_reason_rows {
+        warnings.push(format!(
+            "Tutorial '{}' review is stale because {}",
+            id, reason
+        ));
+    }
     Ok(TutorialReviewContext {
         entries_by_id,
+        stale_reasons_by_id,
         warn_after_months: review_manifest.warn_after_months,
         today,
         warnings,
@@ -2756,6 +2851,7 @@ fn render_tutorial_front_matter(
     source_path: &str,
     executed: bool,
     review_entry: Option<&TutorialReviewEntry>,
+    review_stale_reason: Option<&str>,
     generated_artifact_dir: &str,
 ) -> String {
     let mut out = String::new();
@@ -2794,6 +2890,7 @@ fn render_tutorial_front_matter(
         review_entry,
         current_utc_review_date(),
         default_tutorial_review_warn_after_months(),
+        review_stale_reason.map(str::to_string),
     );
     out.push_str(if review_projection.stale {
         "true"
@@ -2815,6 +2912,21 @@ fn render_tutorial_front_matter(
         &mut out,
         "human_reviewer",
         review_entry.and_then(|entry| entry.human_reviewer.as_deref()),
+    );
+    push_yaml_optional_string(
+        &mut out,
+        "review_stale_reason",
+        review_projection.stale_reason.as_deref(),
+    );
+    push_yaml_optional_string(
+        &mut out,
+        "review_issue_template",
+        review_projection.issue_template.as_deref(),
+    );
+    push_yaml_optional_string(
+        &mut out,
+        "review_issue_template_path",
+        review_projection.issue_template_path.as_deref(),
     );
     out.push_str("generated_artifact_dir: ");
     out.push_str(&yaml_double_quote(generated_artifact_dir));
@@ -2882,21 +2994,61 @@ fn tutorial_review_projection(
     entry: Option<&TutorialReviewEntry>,
     today: Option<(i32, u32, u32)>,
     warn_after_months: u32,
+    dependency_stale_reason: Option<String>,
 ) -> TutorialReviewProjection {
     let status = tutorial_review_status(entry);
-    let stale = entry
+    let age_stale_reason = entry
         .and_then(|entry| entry.human_reviewed_at.as_deref())
         .zip(today)
-        .is_some_and(|(reviewed_at, today)| {
-            review_date_is_stale(reviewed_at, today, warn_after_months)
+        .and_then(|(reviewed_at, today)| {
+            review_date_is_stale(reviewed_at, today, warn_after_months).then(|| {
+                format!(
+                    "human review date {} is older than {} months",
+                    reviewed_at, warn_after_months
+                )
+            })
         });
+    let stale_reason = dependency_stale_reason.or(age_stale_reason);
+    let stale = stale_reason.is_some();
+    let issue_template_path = tutorial_review_issue_template_for_projection(
+        &status,
+        stale_reason.as_deref(),
+    );
     TutorialReviewProjection {
         status,
         codex_reviewed_at: entry.and_then(|entry| entry.codex_reviewed_at.clone()),
         human_reviewed_at: entry.and_then(|entry| entry.human_reviewed_at.clone()),
         human_reviewer: entry.and_then(|entry| entry.human_reviewer.clone()),
         stale,
+        stale_reason,
+        issue_template: issue_template_path.map(tutorial_issue_template_name).map(str::to_string),
+        issue_template_path: issue_template_path.map(str::to_string),
     }
+}
+
+fn tutorial_review_issue_template_for_projection(
+    status: &str,
+    stale_reason: Option<&str>,
+) -> Option<&'static str> {
+    if matches!(status, "deprecated" | "replaced") {
+        return None;
+    }
+    if let Some(reason) = stale_reason {
+        let lower = reason.to_ascii_lowercase();
+        if lower.contains("declared graphic")
+            || lower.contains(".svg")
+            || lower.contains(".png")
+            || lower.contains(".jpg")
+            || lower.contains(".jpeg")
+        {
+            return Some(TUTORIAL_ARTIFACT_ISSUE_TEMPLATE_PATH);
+        }
+        return Some(TUTORIAL_CONFUSION_ISSUE_TEMPLATE_PATH);
+    }
+    if matches!(status, "unreviewed" | "missing_review_manifest_entry") {
+        return Some(TUTORIAL_CONFUSION_ISSUE_TEMPLATE_PATH);
+    }
+    None
 }
 
 fn tutorial_review_badge_markdown(
@@ -2905,6 +3057,8 @@ fn tutorial_review_badge_markdown(
     codex_reviewed_at: Option<&str>,
     human_reviewed_at: Option<&str>,
     human_reviewer: Option<&str>,
+    issue_template_path: Option<&str>,
+    issue_link_prefix: &str,
 ) -> String {
     let mut badge = format!("review `{status}`");
     if stale {
@@ -2929,6 +3083,15 @@ fn tutorial_review_badge_markdown(
     {
         badge.push_str(" - codex ");
         badge.push_str(codex_reviewed_at);
+    }
+    if let Some(path) = issue_template_path
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        badge.push_str(" - [file feedback](");
+        badge.push_str(issue_link_prefix);
+        badge.push_str(path);
+        badge.push(')');
     }
     badge
 }
@@ -3059,6 +3222,25 @@ pub fn build_tutorial_feedback_context_text(
     out.push('\n');
     out.push_str("Review status: ");
     out.push_str(&tutorial_review_status(review_entry));
+    out.push('\n');
+    out.push_str("Review stale: ");
+    out.push_str(if entry.review_stale { "yes" } else { "no" });
+    out.push('\n');
+    out.push_str("Review stale reason: ");
+    out.push_str(
+        entry
+            .review_stale_reason
+            .as_deref()
+            .unwrap_or("not recorded"),
+    );
+    out.push('\n');
+    out.push_str("Suggested issue template: ");
+    out.push_str(
+        entry
+            .review_issue_template_path
+            .as_deref()
+            .unwrap_or("not recorded"),
+    );
     out.push('\n');
     out.push_str("Codex reviewed at: ");
     out.push_str(
@@ -3451,6 +3633,7 @@ fn render_tutorial_chapter_markdown(
     concept_by_id: &HashMap<String, TutorialConcept>,
     chapter_by_id: &HashMap<String, TutorialChapter>,
     review_entry: Option<&TutorialReviewEntry>,
+    review_stale_reason: Option<&str>,
 ) -> Result<String, String> {
     let workflow_path = display_path(&loaded.path);
     let tutorial_source_path = tutorial_source_path_for_id_lossy(tutorial_source_dir, &chapter.id);
@@ -3466,6 +3649,7 @@ fn render_tutorial_chapter_markdown(
         &workflow_path,
         executed,
         review_entry,
+        review_stale_reason,
         &generated_artifact_dir,
     ));
     out.push_str("# ");
@@ -3650,6 +3834,8 @@ fn render_tutorial_index(
             chapter.codex_reviewed_at.as_deref(),
             chapter.human_reviewed_at.as_deref(),
             chapter.human_reviewer.as_deref(),
+            chapter.review_issue_template_path.as_deref(),
+            "../../../",
         ));
         out.push('\n');
     }
@@ -3840,6 +4026,32 @@ fn tutorial_source_path_lookup_lossy(source_dir: &Path) -> HashMap<String, Strin
     lookup
 }
 
+fn tutorial_source_path_lookup(source_dir: &Path) -> HashMap<String, PathBuf> {
+    let mut lookup = HashMap::new();
+    let Ok(entries) = fs::read_dir(source_dir) else {
+        return lookup;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path
+            .extension()
+            .and_then(|value| value.to_str())
+            .map(|value| value.eq_ignore_ascii_case("json"))
+            .unwrap_or(false)
+        {
+            continue;
+        }
+        let Ok(raw) = fs::read_to_string(&path) else {
+            continue;
+        };
+        let Ok(unit) = serde_json::from_str::<TutorialSourceUnit>(&raw) else {
+            continue;
+        };
+        lookup.insert(unit.id, path);
+    }
+    lookup
+}
+
 fn tutorial_source_path_for_id_lossy(source_dir: &Path, tutorial_id: &str) -> String {
     tutorial_source_path_lookup_lossy(source_dir)
         .remove(tutorial_id)
@@ -3871,6 +4083,148 @@ fn workflow_example_path_for_id_lossy(example_dir: &Path, example_id: &str) -> S
     lookup
         .remove(example_id)
         .unwrap_or_else(|| display_path(&example_dir.join(format!("{example_id}.json"))))
+}
+
+fn resolve_tutorial_dependency_path(repo_root: &Path, path: impl AsRef<Path>) -> PathBuf {
+    let path = path.as_ref();
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        repo_root.join(path)
+    }
+}
+
+fn tutorial_source_dependencies(
+    tutorial_id: &str,
+    source_path: Option<&PathBuf>,
+    catalog_path: &str,
+    example_id: Option<&str>,
+    graphics: &[TutorialGraphic],
+    repo_root: &Path,
+) -> Vec<TutorialReviewDependency> {
+    let mut dependencies = Vec::new();
+    if let Some(path) = source_path {
+        dependencies.push(TutorialReviewDependency {
+            label: "source JSON".to_string(),
+            path: path.clone(),
+        });
+    }
+    if !catalog_path.trim().is_empty() {
+        dependencies.push(TutorialReviewDependency {
+            label: "tutorial Markdown".to_string(),
+            path: resolve_tutorial_dependency_path(repo_root, catalog_path.trim()),
+        });
+    }
+    if let Some(example_id) = example_id.map(str::trim).filter(|value| !value.is_empty()) {
+        dependencies.push(TutorialReviewDependency {
+            label: "workflow JSON".to_string(),
+            path: resolve_tutorial_dependency_path(
+                repo_root,
+                Path::new(DEFAULT_WORKFLOW_EXAMPLE_DIR).join(format!("{example_id}.json")),
+            ),
+        });
+    }
+    for graphic in graphics {
+        if graphic.path.trim().is_empty() {
+            continue;
+        }
+        dependencies.push(TutorialReviewDependency {
+            label: format!("declared graphic for tutorial '{}'", tutorial_id),
+            path: resolve_tutorial_dependency_path(repo_root, graphic.path.trim()),
+        });
+    }
+    dependencies
+}
+
+fn tutorial_review_dependency_stale_reason(
+    entry: Option<&TutorialReviewEntry>,
+    dependencies: &[TutorialReviewDependency],
+) -> Option<String> {
+    let reviewed_at = entry?.human_reviewed_at.as_deref()?.trim();
+    if reviewed_at.is_empty() {
+        return None;
+    }
+    let reviewed_date = parse_review_date(reviewed_at).ok()?;
+    let mut stale_dependencies = dependencies
+        .iter()
+        .filter_map(|dependency| {
+            let modified = path_modified_review_date(&dependency.path)?;
+            review_date_after(modified, reviewed_date).then(|| {
+                (
+                    modified,
+                    format!(
+                        "{} '{}' changed after human review date {}",
+                        dependency.label,
+                        display_path(&dependency.path),
+                        reviewed_at
+                    ),
+                )
+            })
+        })
+        .collect::<Vec<_>>();
+    stale_dependencies.sort_by(|left, right| {
+        right
+            .0
+            .cmp(&left.0)
+            .then_with(|| left.1.cmp(&right.1))
+    });
+    stale_dependencies
+        .into_iter()
+        .next()
+        .map(|(_, reason)| reason)
+}
+
+fn tutorial_review_dependency_stale_reasons(
+    manifest_path: &Path,
+    manifest: &TutorialManifest,
+    review_by_id: &HashMap<String, TutorialReviewEntry>,
+) -> Result<HashMap<String, String>, String> {
+    let source_dir = tutorial_source_dir_for_manifest(manifest_path);
+    let source_path_by_id = tutorial_source_path_lookup(&source_dir);
+    let repo_root = tutorial_repo_root_for_source_dir(&source_dir);
+    let mut reasons = HashMap::new();
+    if source_dir.exists() {
+        for unit in load_tutorial_source_units(&source_dir)? {
+            let Some(reason) = tutorial_review_dependency_stale_reason(
+                review_by_id.get(&unit.id),
+                &tutorial_source_dependencies(
+                    &unit.id,
+                    source_path_by_id.get(&unit.id),
+                    unit.catalog
+                        .as_ref()
+                        .map(|catalog| catalog.path.as_str())
+                        .unwrap_or_default(),
+                    unit.generated_chapter
+                        .as_ref()
+                        .map(|chapter| chapter.example_id.as_str()),
+                    &unit.graphics,
+                    &repo_root,
+                ),
+            ) else {
+                continue;
+            };
+            reasons.insert(unit.id, reason);
+        }
+    }
+    for chapter in &manifest.chapters {
+        if reasons.contains_key(&chapter.id) {
+            continue;
+        }
+        let workflow_dependency = TutorialReviewDependency {
+            label: "workflow JSON".to_string(),
+            path: resolve_tutorial_dependency_path(
+                &repo_root,
+                Path::new(DEFAULT_WORKFLOW_EXAMPLE_DIR).join(format!("{}.json", chapter.example_id)),
+            ),
+        };
+        if let Some(reason) = tutorial_review_dependency_stale_reason(
+            review_by_id.get(&chapter.id),
+            &[workflow_dependency],
+        ) {
+            reasons.insert(chapter.id.clone(), reason);
+        }
+    }
+    Ok(reasons)
 }
 
 fn tutorial_source_dir_for_manifest(manifest_path: &Path) -> PathBuf {
@@ -4102,6 +4456,10 @@ pub fn generate_tutorial_docs(
             &concept_by_id,
             &chapter_by_id,
             review_context.entries_by_id.get(&chapter.id),
+            review_context
+                .stale_reasons_by_id
+                .get(&chapter.id)
+                .map(String::as_str),
         )?;
         let chapter_file = markdown_path_for_chapter(chapter);
         let chapter_out_path = chapters_dir.join(&chapter_file);
@@ -4111,6 +4469,7 @@ pub fn generate_tutorial_docs(
             review_context.entries_by_id.get(&chapter.id),
             review_context.today,
             review_context.warn_after_months,
+            review_context.stale_reasons_by_id.get(&chapter.id).cloned(),
         );
         chapter_reports.push(TutorialGenerationChapter {
             id: chapter.id.clone(),
@@ -4131,6 +4490,9 @@ pub fn generate_tutorial_docs(
             human_reviewed_at: review_projection.human_reviewed_at,
             human_reviewer: review_projection.human_reviewer,
             review_stale: review_projection.stale,
+            review_stale_reason: review_projection.stale_reason,
+            review_issue_template: review_projection.issue_template,
+            review_issue_template_path: review_projection.issue_template_path,
             retained_artifacts,
         });
     }
@@ -5068,6 +5430,192 @@ mod tests {
     }
 
     #[test]
+    fn tutorial_review_dependency_staleness_marks_source_changes() {
+        let dir = TempDir::new().expect("temp tutorial dir");
+        let repo_root = dir.path();
+        let tutorial_dir = repo_root.join("docs/tutorial");
+        let source_dir = tutorial_dir.join("sources");
+        let manifest_path = tutorial_dir.join("manifest.json");
+        let review_path = tutorial_dir.join("review_manifest.json");
+        fs::create_dir_all(&source_dir).expect("create source dir");
+        fs::create_dir_all(repo_root.join("docs/examples/workflows")).expect("create workflow dir");
+        fs::write(
+            source_dir.join("01_stale_dependency.json"),
+            r#"{
+  "schema": "gentle.tutorial_source.v4",
+  "id": "stale_dependency",
+  "title": "Stale Dependency",
+  "group": "01",
+  "group_position": 1,
+  "catalog": {
+    "order": 1,
+    "path": "docs/tutorial/stale_dependency.md",
+    "group": "01",
+    "group_position": 1,
+    "type": "guided_walkthrough",
+    "status": "manual",
+    "source": "synthetic",
+    "audiences": ["test"],
+    "notes": "Synthetic source for dependency staleness tests."
+  }
+}
+"#,
+        )
+        .expect("write source");
+        fs::write(tutorial_dir.join("stale_dependency.md"), "# Stale Dependency\n")
+            .expect("write markdown");
+        fs::write(
+            &review_path,
+            r#"{
+  "schema": "gentle.tutorial_review_manifest.v1",
+  "warn_after_months": 240,
+  "entries": [
+    {
+      "tutorial_id": "stale_dependency",
+      "tutorial_kind": "guided_walkthrough",
+      "tutorial_status": "active",
+      "replaced_by": null,
+      "codex_reviewed_at": null,
+      "human_reviewed_at": "2024-01-01",
+      "human_reviewer": "smoe"
+    }
+  ]
+}
+"#,
+        )
+        .expect("write review manifest");
+        let manifest = TutorialManifest {
+            schema: TUTORIAL_MANIFEST_SCHEMA.to_string(),
+            description: "test manifest".to_string(),
+            concepts: vec![TutorialConcept {
+                id: "concept".to_string(),
+                name: "Concept".to_string(),
+                description: String::new(),
+            }],
+            chapters: vec![],
+        };
+
+        let context =
+            tutorial_review_context_for_date(&manifest_path, &manifest, Some((2024, 1, 2)))
+                .expect("review context");
+        let reason = context
+            .stale_reasons_by_id
+            .get("stale_dependency")
+            .expect("stale dependency reason");
+
+        assert!(
+            reason.contains("source JSON") && reason.contains("changed after human review date"),
+            "expected source-json stale reason, got {reason}"
+        );
+        assert!(
+            context
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("review is stale because source JSON")),
+            "expected dependency stale warning, got {:?}",
+            context.warnings
+        );
+    }
+
+    #[test]
+    fn tutorial_catalog_projects_stale_reason_and_feedback_template() {
+        let dir = TempDir::new().expect("temp tutorial dir");
+        let repo_root = dir.path();
+        let tutorial_dir = repo_root.join("docs/tutorial");
+        let source_dir = tutorial_dir.join("sources");
+        let meta_path = source_dir.join("catalog_meta.json");
+        let review_path = tutorial_dir.join("review_manifest.json");
+        fs::create_dir_all(&source_dir).expect("create source dir");
+        fs::write(
+            &meta_path,
+            r#"{
+  "schema": "gentle.tutorial_catalog_meta.v2",
+  "description": "Synthetic tutorial catalog metadata.",
+  "entry_page": "docs/tutorial/README.md",
+  "generated_runtime": {
+    "manifest_path": "docs/tutorial/manifest.json",
+    "manifest_schema": "gentle.tutorial_manifest.v2",
+    "generated_readme": "docs/tutorial/generated/README.md",
+    "generation_report": "docs/tutorial/generated/report.json"
+  },
+  "groups": [
+    { "code": "01", "label": "Getting Started", "order": 1 }
+  ],
+  "concepts": []
+}
+"#,
+        )
+        .expect("write catalog meta");
+        fs::write(
+            source_dir.join("01_stale_catalog.json"),
+            r#"{
+  "schema": "gentle.tutorial_source.v4",
+  "id": "stale_catalog",
+  "title": "Stale Catalog",
+  "group": "01",
+  "group_position": 1,
+  "catalog": {
+    "order": 1,
+    "path": "docs/tutorial/stale_catalog.md",
+    "group": "01",
+    "group_position": 1,
+    "type": "guided_walkthrough",
+    "status": "manual",
+    "source": "synthetic",
+    "audiences": ["test"],
+    "notes": "Synthetic source for stale catalog projection tests."
+  }
+}
+"#,
+        )
+        .expect("write source");
+        fs::write(tutorial_dir.join("stale_catalog.md"), "# Stale Catalog\n")
+            .expect("write markdown");
+        fs::write(
+            &review_path,
+            r#"{
+  "schema": "gentle.tutorial_review_manifest.v1",
+  "warn_after_months": 240,
+  "entries": [
+    {
+      "tutorial_id": "stale_catalog",
+      "tutorial_kind": "guided_walkthrough",
+      "tutorial_status": "active",
+      "replaced_by": null,
+      "codex_reviewed_at": null,
+      "human_reviewed_at": "2024-01-01",
+      "human_reviewer": "smoe"
+    }
+  ]
+}
+"#,
+        )
+        .expect("write review manifest");
+
+        let catalog = generate_tutorial_catalog_from_sources(&meta_path, &source_dir)
+            .expect("generate tutorial catalog");
+        let entry = catalog
+            .entries
+            .iter()
+            .find(|entry| entry.id == "stale_catalog")
+            .expect("catalog entry");
+
+        assert!(entry.review_stale, "expected stale review projection");
+        assert!(
+            entry
+                .review_stale_reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("source JSON")),
+            "expected source JSON stale reason, got {:?}",
+            entry.review_stale_reason
+        );
+        assert_eq!(
+            entry.review_issue_template_path.as_deref(),
+            Some(TUTORIAL_CONFUSION_ISSUE_TEMPLATE_PATH)
+        );
+    }
+
+    #[test]
     fn tutorial_review_manifest_missing_entry_warns() {
         let dir = TempDir::new().expect("temp tutorial dir");
         let manifest_path = dir.path().join("manifest.json");
@@ -5304,7 +5852,8 @@ mod tests {
         );
         assert!(markdown.contains("## Tutorial Provenance"));
         assert!(markdown.contains("review_status: "));
-        assert!(markdown.contains("review_stale: false"));
+        assert!(markdown.contains("review_stale: "));
+        assert!(markdown.contains("review_issue_template_path: "));
         assert!(markdown.contains("## Feedback"));
 
         let online_chapter = generated.join("chapters/05-02_prepare_reference_genome_online.md");

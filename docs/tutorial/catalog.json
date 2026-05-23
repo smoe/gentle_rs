@@ -25,7 +25,9 @@
         "contributors"
       ],
       "notes": "Generated from docs/tutorial/sources plus executable workflows; validated by tutorial-check.",
-      "review_status": "unreviewed"
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "vkorc1_warfarin_promoter_luciferase_gui",
@@ -45,7 +47,9 @@
         "pharmacogenomics"
       ],
       "notes": "Hand-written GUI-first tutorial for turning the VKORC1/rs9923231 pharmacogenomic alert into one mammalian promoter-reporter planning workflow with explicit engine and CLI mapping.",
-      "review_status": "unreviewed"
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "tp73_cdna_genomic_dotplot_gui",
@@ -65,7 +69,9 @@
         "visual_learning"
       ],
       "notes": "Screenshot-backed manual tutorial for cDNA-vs-genomic comparison.",
-      "review_status": "unreviewed"
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "gibson_specialist_testing_gui",
@@ -85,7 +91,9 @@
         "contributors"
       ],
       "notes": "Hands-on test script for the destination-first Gibson specialist with shared CLI parity.",
-      "review_status": "unreviewed"
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "gibson_arrangements_gui",
@@ -105,7 +113,9 @@
         "contributors"
       ],
       "notes": "Hands-on walkthrough for Gibson-created arrangements, lane inspection, and arrangement-level gel export.",
-      "review_status": "unreviewed"
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "gibson_physical_rack_gui",
@@ -125,7 +135,9 @@
         "contributors"
       ],
       "notes": "Hands-on walkthrough for turning one arrangement-ready Gibson result into a linked physical rack, README-grade isometric SVG, carrier labels, and OpenSCAD export.",
-      "review_status": "unreviewed"
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "sequencing_confirmation_trace_cli",
@@ -145,7 +157,9 @@
         "contributors"
       ],
       "notes": "Hands-on local walkthrough for seq-trace import, trace-aware seq-confirm run, and shared report export.",
-      "review_status": "unreviewed"
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "sequencing_confirmation_gui",
@@ -165,7 +179,9 @@
         "contributors"
       ],
       "notes": "GUI-first walkthrough for raw trace import, baseline-aware confirmation, chromatogram inspection, and lineage reopen.",
-      "review_status": "unreviewed"
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "rna_read_batch_gene_support_cli",
@@ -185,7 +201,9 @@
         "contributors"
       ],
       "notes": "Hands-on batch workflow for interpreting many gzipped cDNA FASTA files, aligning saved reports, and exporting one target-gene cohort sample sheet.",
-      "review_status": "unreviewed"
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "tutorial_landscape_overview",
@@ -203,7 +221,9 @@
         "gui_first"
       ],
       "notes": "Graphical overview of current tutorial dependencies, roadmap-grounded additions, and heuristic human-feedback intensity.",
-      "review_status": "unreviewed"
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "agent_interfaces",
@@ -224,7 +244,9 @@
         "contributors"
       ],
       "notes": "Practical guide for the in-app Agent Assistant, provider quick starts, reviewed shared-shell suggestions, CLI/shared shell, MCP, and external coding agents.",
-      "review_status": "unreviewed"
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "metabion_external_service_handoff_gui_cli",
@@ -245,7 +267,9 @@
         "cloning_planning"
       ],
       "notes": "Safe handoff rehearsal for Metabion oligo and m-block requests through the shared provider catalog, preflight, and quote bundle contracts; no vendor submission.",
-      "review_status": "unreviewed"
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "geneart_external_service_handoff_gui_cli",
@@ -268,7 +292,9 @@
         "protein_workflows"
       ],
       "notes": "Safe GeneArt cloned-gene and protein-expression quote-handoff rehearsal through the shared provider catalog, preflight, quote bundle, and return_spec contracts; no vendor submission.",
-      "review_status": "unreviewed"
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "simple_pcr_selection_gui",
@@ -288,7 +314,9 @@
         "primer_design"
       ],
       "notes": "Beginner-friendly selection-first PCR walkthrough centered on core ROI, maximum primer distance from the core, and maximum amplicon length.",
-      "review_status": "unreviewed"
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "protein_transcript_native_expert_gui",
@@ -308,7 +336,9 @@
         "contributors"
       ],
       "notes": "Local-first manual check for transcript-native Protein Expert opening, provenance visibility, and derived-only SVG export.",
-      "review_status": "unreviewed"
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "protein_reverse_translation_gui",
@@ -328,7 +358,9 @@
         "contributors"
       ],
       "notes": "GUI-first manual check for Ensembl protein import, reverse translation, provenance inspection, and lineage reopen.",
-      "review_status": "unreviewed"
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "vkorc1_variant_followup_expert_gui",
@@ -348,7 +380,9 @@
         "pharmacogenomics"
       ],
       "notes": "Shortest GUI path for the current ClawBio-facing story: start from the dbSNP marker, drive the dedicated Promoter design window, and export one portable promoter-reporter handoff bundle.",
-      "review_status": "unreviewed"
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "tp73_uniprot_projection_audit_cli",
@@ -369,7 +403,9 @@
         "contributors"
       ],
       "notes": "CLI-first walkthrough for the integrated TP73 UniProt/Ensembl projection audit, the reusable low-level primitives, parity comparison, and the unsent maintainer-email draft.",
-      "review_status": "unreviewed"
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "qpcr_exon_junctions_gui",
@@ -390,7 +426,9 @@
         "contributors"
       ],
       "notes": "GUI-first walkthrough for seeding shared-transcript or transcript-specific qPCR from Splicing Expert, including junction-only transcript evidence and shared-shell parity commands.",
-      "review_status": "unreviewed"
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "load_branch_reverse_complement_pgex_fasta",
@@ -410,7 +448,13 @@
         "contributors"
       ],
       "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
-      "review_status": "unreviewed"
+      "review_status": "human_reviewed",
+      "human_reviewed_at": "2026-05-18",
+      "human_reviewer": "smoe",
+      "review_stale": true,
+      "review_stale_reason": "source JSON 'docs/tutorial/sources/02-01_load_branch_reverse_complement_pgex_fasta.json' changed after human review date 2026-05-18",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "find_and_extend_genomic_target_local_catalog",
@@ -430,7 +474,9 @@
         "contributors"
       ],
       "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
-      "review_status": "unreviewed"
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "load_and_digest_pgex",
@@ -450,7 +496,9 @@
         "contributors"
       ],
       "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
-      "review_status": "unreviewed"
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "gibson_two_fragment_overlap_preview",
@@ -470,7 +518,9 @@
         "contributors"
       ],
       "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
-      "review_status": "unreviewed"
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "guides_filter_and_generate_oligos",
@@ -490,7 +540,9 @@
         "contributors"
       ],
       "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
-      "review_status": "unreviewed"
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "digest_ligation_extract_region_minimal",
@@ -510,7 +562,9 @@
         "contributors"
       ],
       "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
-      "review_status": "unreviewed"
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "guides_export_csv_and_protocol",
@@ -529,7 +583,9 @@
         "contributors"
       ],
       "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
-      "review_status": "unreviewed"
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "contribute_to_gentle_development",
@@ -547,7 +603,9 @@
         "contributors"
       ],
       "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
-      "review_status": "unreviewed"
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "prepare_reference_genome_online",
@@ -567,7 +625,9 @@
         "contributors"
       ],
       "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation. Requires explicit online setup for full execution.",
-      "review_status": "unreviewed"
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "tp53_isoform_architecture_online",
@@ -587,7 +647,9 @@
         "contributors"
       ],
       "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation. Requires explicit online setup for full execution.",
-      "review_status": "unreviewed"
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "tp63_anchor_extension_online",
@@ -607,7 +669,9 @@
         "contributors"
       ],
       "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation. Requires explicit online setup for full execution.",
-      "review_status": "unreviewed"
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "tp53_multi_gene_sparse_mapping_online",
@@ -627,7 +691,9 @@
         "contributors"
       ],
       "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation. Requires explicit online setup for full execution.",
-      "review_status": "unreviewed"
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "pcr_selection_batch_primer_pairs_offline",
@@ -647,7 +713,9 @@
         "contributors"
       ],
       "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
-      "review_status": "unreviewed"
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "tp73_cdna_genomic_dotplot_online",
@@ -667,7 +735,9 @@
         "contributors"
       ],
       "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation. Requires explicit online setup for full execution.",
-      "review_status": "unreviewed"
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "gibson_specialist_testing_baseline",
@@ -687,7 +757,9 @@
         "contributors"
       ],
       "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
-      "review_status": "unreviewed"
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "gibson_arrangements_baseline",
@@ -707,7 +779,9 @@
         "contributors"
       ],
       "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
-      "review_status": "unreviewed"
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "tp53_uniprot_projection_online",
@@ -727,7 +801,9 @@
         "contributors"
       ],
       "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation. Requires explicit online setup for full execution.",
-      "review_status": "unreviewed"
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "promoter_design_artifact_slice_offline",
@@ -747,7 +823,13 @@
         "contributors"
       ],
       "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
-      "review_status": "unreviewed"
+      "review_status": "human_reviewed",
+      "human_reviewed_at": "2026-05-18",
+      "human_reviewer": "smoe",
+      "review_stale": true,
+      "review_stale_reason": "source JSON 'docs/tutorial/sources/08-03_promoter_design_artifact_slice_offline.json' changed after human review date 2026-05-18",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "reporter_construct_handoff_cli",
@@ -768,7 +850,9 @@
         "synthetic_biology"
       ],
       "notes": "CLI/agent walkthrough for turning a saved promoter-reporter candidate set into a read-only luciferase macro handoff plan with typed readiness and explicit follow-up commands.",
-      "review_status": "unreviewed"
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "stateless_sequence_inspection_gui_cli",
@@ -789,7 +873,9 @@
         "sequence_analysis"
       ],
       "notes": "Parity walkthrough for direct restriction-site, TFBS hit, and TFBS score-track inspection from pasted or local DNA without first creating project state.",
-      "review_status": "unreviewed"
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
       "id": "tfbs_similarity_ranking_gui",
@@ -810,7 +896,9 @@
         "clawbio"
       ],
       "notes": "GUI sign-off tutorial for ranking candidate transcription-factor motifs against one anchor motif over the same DNA span, with JSON export and workflow/ClawBio replay links.",
-      "review_status": "unreviewed"
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     }
   ]
 }

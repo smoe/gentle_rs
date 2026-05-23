@@ -179,8 +179,8 @@
       "tutorial_status": "active",
       "replaced_by": null,
       "codex_reviewed_at": null,
-      "human_reviewed_at": null,
-      "human_reviewer": null
+      "human_reviewed_at": "2026-05-18",
+      "human_reviewer": "smoe"
     },
     {
       "tutorial_id": "find_and_extend_genomic_target_local_catalog",
@@ -332,8 +332,8 @@
       "tutorial_status": "active",
       "replaced_by": null,
       "codex_reviewed_at": null,
-      "human_reviewed_at": null,
-      "human_reviewer": null
+      "human_reviewed_at": "2026-05-18",
+      "human_reviewer": "smoe"
     },
     {
       "tutorial_id": "reporter_construct_handoff_cli",

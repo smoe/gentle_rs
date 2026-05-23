@@ -36,47 +36,47 @@ Online execution was disabled (`GENTLE_TEST_ONLINE=0` during generation).
 
 ### Getting Started & Interfaces
 
-- `01.02` [Contribute to GENtle development](./chapters/01-02_contribute_to_gentle_development.md) - `advanced` - example `contribute_gentle_development_baseline` - executed `yes` - review `unreviewed`
+- `01.02` [Contribute to GENtle development](./chapters/01-02_contribute_to_gentle_development.md) - `advanced` - example `contribute_gentle_development_baseline` - executed `yes` - review `unreviewed` - [file feedback](../../../.github/ISSUE_TEMPLATE/tutorial-confusion.md)
 
 ### Sequence Basics & Lineage
 
-- `02.01` [Load FASTA, branch, and reverse-complement](./chapters/02-01_load_branch_reverse_complement_pgex_fasta.md) - `core` - example `load_branch_reverse_complement_pgex_fasta` - executed `yes` - review `unreviewed`
-- `02.04` [Compare TP73 cDNA against TP73 genomic context via dotplot (online)](./chapters/02-04_tp73_cdna_genomic_dotplot_online.md) - `online` - example `tp73_cdna_genomic_dotplot_online` - executed `no` - review `unreviewed`
+- `02.01` [Load FASTA, branch, and reverse-complement](./chapters/02-01_load_branch_reverse_complement_pgex_fasta.md) - `core` - example `load_branch_reverse_complement_pgex_fasta` - executed `yes` - review `human_reviewed` `stale` - human 2026-05-18 by smoe - [file feedback](../../../.github/ISSUE_TEMPLATE/tutorial-confusion.md)
+- `02.04` [Compare TP73 cDNA against TP73 genomic context via dotplot (online)](./chapters/02-04_tp73_cdna_genomic_dotplot_online.md) - `online` - example `tp73_cdna_genomic_dotplot_online` - executed `no` - review `unreviewed` - [file feedback](../../../.github/ISSUE_TEMPLATE/tutorial-confusion.md)
 
 ### Cloning & Assembly
 
-- `03.01` [Load pGEX and digest with BamHI/EcoRI](./chapters/03-01_load_and_digest_pgex.md) - `core` - example `load_and_digest_pgex` - executed `yes` - review `unreviewed`
-- `03.02` [Digest -> Ligation -> ExtractRegion minimal slice](./chapters/03-02_digest_ligation_extract_region_minimal.md) - `core` - example `digest_ligation_extract_region_minimal` - executed `yes` - review `unreviewed`
-- `03.03` [Gibson two-fragment overlap planning baseline](./chapters/03-03_gibson_two_fragment_overlap_preview.md) - `core` - example `gibson_two_fragment_overlap_preview` - executed `yes` - review `unreviewed`
-- `03.04` [Gibson Specialist Starter Project (offline)](./chapters/03-04_gibson_specialist_testing_baseline.md) - `core` - example `gibson_specialist_testing_baseline` - executed `yes` - review `unreviewed`
-- `03.06` [Gibson Arrangements Starter Project (offline)](./chapters/03-06_gibson_arrangements_baseline.md) - `core` - example `gibson_arrangements_baseline` - executed `yes` - review `unreviewed`
+- `03.01` [Load pGEX and digest with BamHI/EcoRI](./chapters/03-01_load_and_digest_pgex.md) - `core` - example `load_and_digest_pgex` - executed `yes` - review `unreviewed` - [file feedback](../../../.github/ISSUE_TEMPLATE/tutorial-confusion.md)
+- `03.02` [Digest -> Ligation -> ExtractRegion minimal slice](./chapters/03-02_digest_ligation_extract_region_minimal.md) - `core` - example `digest_ligation_extract_region_minimal` - executed `yes` - review `unreviewed` - [file feedback](../../../.github/ISSUE_TEMPLATE/tutorial-confusion.md)
+- `03.03` [Gibson two-fragment overlap planning baseline](./chapters/03-03_gibson_two_fragment_overlap_preview.md) - `core` - example `gibson_two_fragment_overlap_preview` - executed `yes` - review `unreviewed` - [file feedback](../../../.github/ISSUE_TEMPLATE/tutorial-confusion.md)
+- `03.04` [Gibson Specialist Starter Project (offline)](./chapters/03-04_gibson_specialist_testing_baseline.md) - `core` - example `gibson_specialist_testing_baseline` - executed `yes` - review `unreviewed` - [file feedback](../../../.github/ISSUE_TEMPLATE/tutorial-confusion.md)
+- `03.06` [Gibson Arrangements Starter Project (offline)](./chapters/03-06_gibson_arrangements_baseline.md) - `core` - example `gibson_arrangements_baseline` - executed `yes` - review `unreviewed` - [file feedback](../../../.github/ISSUE_TEMPLATE/tutorial-confusion.md)
 
 ### Primers, PCR & qPCR
 
-- `04.01` [Simple PCR From a Selected Core Region](./chapters/04-01_simple_pcr_selection_gui.md) - `core` - example `simple_pcr_selection_gui` - executed `yes` - review `unreviewed`
-- `04.02` [Selection-first PCR batch primer design (offline)](./chapters/04-02_pcr_selection_batch_primer_pairs_offline.md) - `core` - example `pcr_selection_batch_primer_pairs_offline` - executed `yes` - review `unreviewed`
-- `04.04` [Guide practical filtering and oligo generation](./chapters/04-04_guides_filter_and_generate_oligos.md) - `core` - example `guides_filter_and_generate_oligos` - executed `yes` - review `unreviewed`
-- `04.05` [Guide oligo export (CSV + protocol)](./chapters/04-05_guides_export_csv_and_protocol.md) - `advanced` - example `guides_export_csv_and_protocol` - executed `yes` - review `unreviewed`
+- `04.01` [Simple PCR From a Selected Core Region](./chapters/04-01_simple_pcr_selection_gui.md) - `core` - example `simple_pcr_selection_gui` - executed `yes` - review `unreviewed` - [file feedback](../../../.github/ISSUE_TEMPLATE/tutorial-confusion.md)
+- `04.02` [Selection-first PCR batch primer design (offline)](./chapters/04-02_pcr_selection_batch_primer_pairs_offline.md) - `core` - example `pcr_selection_batch_primer_pairs_offline` - executed `yes` - review `unreviewed` - [file feedback](../../../.github/ISSUE_TEMPLATE/tutorial-confusion.md)
+- `04.04` [Guide practical filtering and oligo generation](./chapters/04-04_guides_filter_and_generate_oligos.md) - `core` - example `guides_filter_and_generate_oligos` - executed `yes` - review `unreviewed` - [file feedback](../../../.github/ISSUE_TEMPLATE/tutorial-confusion.md)
+- `04.05` [Guide oligo export (CSV + protocol)](./chapters/04-05_guides_export_csv_and_protocol.md) - `advanced` - example `guides_export_csv_and_protocol` - executed `yes` - review `unreviewed` - [file feedback](../../../.github/ISSUE_TEMPLATE/tutorial-confusion.md)
 
 ### Genome Context & Coordinates
 
-- `05.01` [Find and extend the right genomic target (local catalog)](./chapters/05-01_find_and_extend_genomic_target_local_catalog.md) - `core` - example `prepare_extract_extend_localproject_gene` - executed `yes` - review `unreviewed`
-- `05.02` [Prepare a reference genome cache (online)](./chapters/05-02_prepare_reference_genome_online.md) - `online` - example `prepare_reference_genome_online` - executed `no` - review `unreviewed`
-- `05.03` [Retrieve TP63 and extend the displayed region by +/-2 kb (online)](./chapters/05-03_tp63_anchor_extension_online.md) - `online` - example `tp63_extend_anchor_online` - executed `no` - review `unreviewed`
+- `05.01` [Find and extend the right genomic target (local catalog)](./chapters/05-01_find_and_extend_genomic_target_local_catalog.md) - `core` - example `prepare_extract_extend_localproject_gene` - executed `yes` - review `unreviewed` - [file feedback](../../../.github/ISSUE_TEMPLATE/tutorial-confusion.md)
+- `05.02` [Prepare a reference genome cache (online)](./chapters/05-02_prepare_reference_genome_online.md) - `online` - example `prepare_reference_genome_online` - executed `no` - review `unreviewed` - [file feedback](../../../.github/ISSUE_TEMPLATE/tutorial-confusion.md)
+- `05.03` [Retrieve TP63 and extend the displayed region by +/-2 kb (online)](./chapters/05-03_tp63_anchor_extension_online.md) - `online` - example `tp63_extend_anchor_online` - executed `no` - review `unreviewed` - [file feedback](../../../.github/ISSUE_TEMPLATE/tutorial-confusion.md)
 
 ### Transcript, Protein & Projection
 
-- `06.03` [TP53 isoform architecture expert panel (online)](./chapters/06-03_tp53_isoform_architecture_online.md) - `online` - example `tp53_isoform_architecture_online` - executed `no` - review `unreviewed`
-- `06.04` [TP53 UniProt domain mapping and feature-coding DNA query (online)](./chapters/06-04_tp53_uniprot_projection_online.md) - `online` - example `tp53_uniprot_projection_online` - executed `no` - review `unreviewed`
-- `06.05` [Audit a TP73 UniProt Projection Against Ensembl and Derived Coding Sequence (CLI Tutorial)](./chapters/06-05_tp73_uniprot_projection_audit_cli.md) - `online` - example `tp73_uniprot_projection_audit_online` - executed `no` - review `unreviewed`
+- `06.03` [TP53 isoform architecture expert panel (online)](./chapters/06-03_tp53_isoform_architecture_online.md) - `online` - example `tp53_isoform_architecture_online` - executed `no` - review `unreviewed` - [file feedback](../../../.github/ISSUE_TEMPLATE/tutorial-confusion.md)
+- `06.04` [TP53 UniProt domain mapping and feature-coding DNA query (online)](./chapters/06-04_tp53_uniprot_projection_online.md) - `online` - example `tp53_uniprot_projection_online` - executed `no` - review `unreviewed` - [file feedback](../../../.github/ISSUE_TEMPLATE/tutorial-confusion.md)
+- `06.05` [Audit a TP73 UniProt Projection Against Ensembl and Derived Coding Sequence (CLI Tutorial)](./chapters/06-05_tp73_uniprot_projection_audit_cli.md) - `online` - example `tp73_uniprot_projection_audit_online` - executed `no` - review `unreviewed` - [file feedback](../../../.github/ISSUE_TEMPLATE/tutorial-confusion.md)
 
 ### RNA Reads, Splicing & Expression
 
-- `07.02` [Map TP53 locus reads with multi-gene sparse indexing (online)](./chapters/07-02_tp53_multi_gene_sparse_mapping_online.md) - `online` - example `tp53_multi_gene_sparse_mapping_online` - executed `no` - review `unreviewed`
+- `07.02` [Map TP53 locus reads with multi-gene sparse indexing (online)](./chapters/07-02_tp53_multi_gene_sparse_mapping_online.md) - `online` - example `tp53_multi_gene_sparse_mapping_online` - executed `no` - review `unreviewed` - [file feedback](../../../.github/ISSUE_TEMPLATE/tutorial-confusion.md)
 
 ### Regulatory, TFBS & Reporter Design
 
-- `08.03` [Promoter Design Artifact Slice (Offline Synthetic TP73 Locus)](./chapters/08-03_promoter_design_artifact_slice_offline.md) - `core` - example `promoter_design_artifact_slice_offline` - executed `yes` - review `unreviewed`
+- `08.03` [Promoter Design Artifact Slice (Offline Synthetic TP73 Locus)](./chapters/08-03_promoter_design_artifact_slice_offline.md) - `core` - example `promoter_design_artifact_slice_offline` - executed `yes` - review `human_reviewed` `stale` - human 2026-05-18 by smoe - [file feedback](../../../.github/ISSUE_TEMPLATE/tutorial-confusion.md)
 
 ## Concepts and Where They Recur
 

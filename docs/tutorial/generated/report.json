@@ -39,7 +39,7 @@
     "report.json"
   ],
   "file_checksums": {
-    "README.md": "48639308dc13556a8404f9d78f71ef7457aca178",
+    "README.md": "5d41eb19f3a2be3af1e406e6c7bbe7dbeafb79df",
     "artifacts/gibson_arrangements_baseline/artifacts/gibson_lab_assistant_handoff.md": "ea49d90a537300148ada050060e1b12a48b8b57c",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.csv": "2fd8b22187bb90dcdc0388ed65df4f6c33240893",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt": "ddfcc1b983151b4a7fa444b171065c4d90a6ecfb",
@@ -50,27 +50,31 @@
     "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.promoter_expression_evidence.json": "cd6f53a7f4c78b3e5096ce8678beee574185a7b9",
     "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg": "b35113f6bae05715c0759d55acd5b78503f5a9c0",
     "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_similarity.json": "552e99f01f41c48e015e9739e17ae4ec9aa6f4fc",
-    "chapters/01-02_contribute_to_gentle_development.md": "aa824292e61759418d9f7032b73d35c93c78cea3",
-    "chapters/02-01_load_branch_reverse_complement_pgex_fasta.md": "674ed4aa45b6bf6d27676d6574359d6be674f257",
-    "chapters/02-04_tp73_cdna_genomic_dotplot_online.md": "cc540c7d7cd8b784b98bf100c68e7c3aba4faf30",
-    "chapters/03-01_load_and_digest_pgex.md": "60d278f4fd753bee2ac11ee7a2ab5f5c7c751965",
-    "chapters/03-02_digest_ligation_extract_region_minimal.md": "313831db427ec13eb001083e5720c6f39c466584",
-    "chapters/03-03_gibson_two_fragment_overlap_preview.md": "23f36b9cdba11dcccdba3af18a6474d1588633a4",
-    "chapters/03-04_gibson_specialist_testing_baseline.md": "8e2ec2439d0bff30f6114b7c6fea3c3b53fe67ec",
-    "chapters/03-06_gibson_arrangements_baseline.md": "0660f8ac6583fa574821cbf3d93c3909142b2646",
-    "chapters/04-01_simple_pcr_selection_gui.md": "d5b59ccc2e9b4b6cc999b1da238ca503ef6541e2",
-    "chapters/04-02_pcr_selection_batch_primer_pairs_offline.md": "35ce5446164bd244f90760d021590dab908ecf65",
-    "chapters/04-04_guides_filter_and_generate_oligos.md": "d8a3001f8ea0af1a388e494bbd507d13def787aa",
-    "chapters/04-05_guides_export_csv_and_protocol.md": "7edcc4cc46533a14d1436fae2e0cb038626404f2",
-    "chapters/05-01_find_and_extend_genomic_target_local_catalog.md": "a9bc3721ae1b122eee100a1f94f2dc39bc6c85a5",
-    "chapters/05-02_prepare_reference_genome_online.md": "62b9f58b34289a618185da82cad3e70c4dfdd419",
-    "chapters/05-03_tp63_anchor_extension_online.md": "f5473e216768618de0f34e6f22bfc6a4cd8b7075",
-    "chapters/06-03_tp53_isoform_architecture_online.md": "6c3e22f7ea25a9ba02c436f837e6af5ffc051c4c",
-    "chapters/06-04_tp53_uniprot_projection_online.md": "7b638ceef49c9d9972d965755ec5ea9aeafd5dcb",
-    "chapters/06-05_tp73_uniprot_projection_audit_cli.md": "0458300a110b0d9dbd6c7a46bc97a474b6f8b115",
-    "chapters/07-02_tp53_multi_gene_sparse_mapping_online.md": "1072f0e1a5a8dfe54812c316026eae99046107bc",
-    "chapters/08-03_promoter_design_artifact_slice_offline.md": "e471e1d2c655cfe29dc1c87c9af29729a52c0308"
+    "chapters/01-02_contribute_to_gentle_development.md": "0db4226e18469fbf4ff2b492c6de38ce68801097",
+    "chapters/02-01_load_branch_reverse_complement_pgex_fasta.md": "189f6af229942642565f8fbf72aedc3055c3b7a1",
+    "chapters/02-04_tp73_cdna_genomic_dotplot_online.md": "c996b0d17b56d112ee40e31ecf7c04903ca565de",
+    "chapters/03-01_load_and_digest_pgex.md": "d5e64f717c9ae40b57244fc037c489f5d1a24a1a",
+    "chapters/03-02_digest_ligation_extract_region_minimal.md": "0eef632b136a8f35d1dfa9d4f1df03764f2764da",
+    "chapters/03-03_gibson_two_fragment_overlap_preview.md": "090fd6373f07c153a30aa557994147924a6f59ea",
+    "chapters/03-04_gibson_specialist_testing_baseline.md": "93c961686812d71d2dfb0a04a127bb49614ede9f",
+    "chapters/03-06_gibson_arrangements_baseline.md": "6049a0bfade9114953f15d5c718e837b80739083",
+    "chapters/04-01_simple_pcr_selection_gui.md": "915ddb33e58737a447e7908780c5379c3386aba8",
+    "chapters/04-02_pcr_selection_batch_primer_pairs_offline.md": "f07c856bf8df7ecf5c19d681e9ff360209c1971f",
+    "chapters/04-04_guides_filter_and_generate_oligos.md": "35b4f5d8fd30649e516f4916810eaf86e3dcbe77",
+    "chapters/04-05_guides_export_csv_and_protocol.md": "8c634d127e44798630d4ed7299e99056e4a13d53",
+    "chapters/05-01_find_and_extend_genomic_target_local_catalog.md": "bad7d354dee8c7653d3e9286a053e6ef0d3f19c3",
+    "chapters/05-02_prepare_reference_genome_online.md": "7b1dfc124719d2683d687082d86be62102e87bd5",
+    "chapters/05-03_tp63_anchor_extension_online.md": "0a2e38a10aa7a4400f670ec35848b4a6a16f0bf4",
+    "chapters/06-03_tp53_isoform_architecture_online.md": "24bcf2ff9f64db6cbe67b1fab746c3a7a4db1c80",
+    "chapters/06-04_tp53_uniprot_projection_online.md": "90a59ea04f54b4d1938e3bfca7cd48ceeed352e9",
+    "chapters/06-05_tp73_uniprot_projection_audit_cli.md": "0487f1a7940dc711f32930e87de868ab99d6a363",
+    "chapters/07-02_tp53_multi_gene_sparse_mapping_online.md": "6014e363084dca60f5732f0e2ff8b7629976a7d2",
+    "chapters/08-03_promoter_design_artifact_slice_offline.md": "6d9bb7d8514d607588346e81c1800028129c63be"
   },
+  "warnings": [
+    "Tutorial 'load_branch_reverse_complement_pgex_fasta' review is stale because source JSON 'docs/tutorial/sources/02-01_load_branch_reverse_complement_pgex_fasta.json' changed after human review date 2026-05-18",
+    "Tutorial 'promoter_design_artifact_slice_offline' review is stale because source JSON 'docs/tutorial/sources/08-03_promoter_design_artifact_slice_offline.json' changed after human review date 2026-05-18"
+  ],
   "chapters": [
     {
       "id": "load_branch_reverse_complement_pgex_fasta",
@@ -90,7 +94,13 @@
         "sequence_lineage"
       ],
       "executed": true,
-      "review_status": "unreviewed",
+      "review_status": "human_reviewed",
+      "human_reviewed_at": "2026-05-18",
+      "human_reviewer": "smoe",
+      "review_stale": true,
+      "review_stale_reason": "source JSON 'docs/tutorial/sources/02-01_load_branch_reverse_complement_pgex_fasta.json' changed after human review date 2026-05-18",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
       "retained_artifacts": []
     },
     {
@@ -113,6 +123,8 @@
       ],
       "executed": true,
       "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
       "retained_artifacts": []
     },
     {
@@ -133,6 +145,8 @@
       ],
       "executed": true,
       "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
       "retained_artifacts": []
     },
     {
@@ -154,6 +168,8 @@
       ],
       "executed": true,
       "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
       "retained_artifacts": []
     },
     {
@@ -174,6 +190,8 @@
       ],
       "executed": true,
       "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
       "retained_artifacts": []
     },
     {
@@ -194,6 +212,8 @@
       ],
       "executed": true,
       "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
       "retained_artifacts": []
     },
     {
@@ -214,6 +234,8 @@
       ],
       "executed": true,
       "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
       "retained_artifacts": [
         "artifacts/guides_export_csv_and_protocol/exports/demo_guides.csv",
         "artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt"
@@ -238,6 +260,8 @@
       ],
       "executed": true,
       "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
       "retained_artifacts": []
     },
     {
@@ -259,6 +283,8 @@
       ],
       "executed": false,
       "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
       "retained_artifacts": []
     },
     {
@@ -282,6 +308,8 @@
       ],
       "executed": false,
       "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
       "retained_artifacts": []
     },
     {
@@ -304,6 +332,8 @@
       ],
       "executed": false,
       "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
       "retained_artifacts": []
     },
     {
@@ -326,6 +356,8 @@
       ],
       "executed": false,
       "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
       "retained_artifacts": []
     },
     {
@@ -347,6 +379,8 @@
       ],
       "executed": true,
       "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
       "retained_artifacts": []
     },
     {
@@ -370,6 +404,8 @@
       ],
       "executed": false,
       "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
       "retained_artifacts": []
     },
     {
@@ -391,6 +427,8 @@
       ],
       "executed": true,
       "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
       "retained_artifacts": []
     },
     {
@@ -412,6 +450,8 @@
       ],
       "executed": true,
       "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
       "retained_artifacts": [
         "artifacts/gibson_arrangements_baseline/artifacts/gibson_lab_assistant_handoff.md"
       ]
@@ -439,6 +479,8 @@
       ],
       "executed": false,
       "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
       "retained_artifacts": []
     },
     {
@@ -459,6 +501,8 @@
       ],
       "executed": true,
       "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
       "retained_artifacts": []
     },
     {
@@ -483,6 +527,8 @@
       ],
       "executed": false,
       "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
       "retained_artifacts": []
     },
     {
@@ -504,7 +550,13 @@
         "tutorial_drift_checks"
       ],
       "executed": true,
-      "review_status": "unreviewed",
+      "review_status": "human_reviewed",
+      "human_reviewed_at": "2026-05-18",
+      "human_reviewer": "smoe",
+      "review_stale": true,
+      "review_stale_reason": "source JSON 'docs/tutorial/sources/08-03_promoter_design_artifact_slice_offline.json' changed after human review date 2026-05-18",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
       "retained_artifacts": [
         "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.alternative_promoters.json",
         "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.evidence_matrix.json",
