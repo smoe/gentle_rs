@@ -115,33 +115,33 @@ flowchart LR
 
 ### High human feedback-loop intensity
 
-- [`docs/tutorial/gibson_specialist_testing_gui.md`](./gibson_specialist_testing_gui.md)
+- [`docs/tutorial/03-05_gibson_specialist_testing_gui.md`](./03-05_gibson_specialist_testing_gui.md)
   - explicit GUI checkpoints and shared CLI parity check
-- [`docs/tutorial/sequencing_confirmation_gui.md`](./sequencing_confirmation_gui.md)
+- [`docs/tutorial/10-02_sequencing_confirmation_gui.md`](./10-02_sequencing_confirmation_gui.md)
   - specialist-driven GUI workflow with concrete review checkpoints
-- [`docs/tutorial/sequencing_confirmation_trace_cli.md`](./sequencing_confirmation_trace_cli.md)
+- [`docs/tutorial/10-01_sequencing_confirmation_trace_cli.md`](./10-01_sequencing_confirmation_trace_cli.md)
   - CLI/shared-shell parity route around one deterministic real trace fixture
-- [`docs/tutorial/rna_read_batch_gene_support_cli.md`](./rna_read_batch_gene_support_cli.md)
+- [`docs/tutorial/07-01_rna_read_batch_gene_support_cli.md`](./07-01_rna_read_batch_gene_support_cli.md)
   - recent workflow shaped directly around a real batch-analysis need
 
 ### Medium human feedback-loop intensity
 
-- [`docs/tutorial/vkorc1_warfarin_promoter_luciferase_gui.md`](./vkorc1_warfarin_promoter_luciferase_gui.md)
+- [`docs/tutorial/08-04_vkorc1_warfarin_promoter_luciferase_gui.md`](./08-04_vkorc1_warfarin_promoter_luciferase_gui.md)
   - long-form manual walkthrough with explicit engine/CLI mapping
-- [`docs/tutorial/gibson_arrangements_gui.md`](./gibson_arrangements_gui.md)
+- [`docs/tutorial/03-07_gibson_arrangements_gui.md`](./03-07_gibson_arrangements_gui.md)
   - deterministic starter-project grounding plus arrangement export flow
 - generated starter chapters:
-  - [`docs/tutorial/generated/chapters/15_gibson_specialist_testing_baseline.md`](./generated/chapters/15_gibson_specialist_testing_baseline.md)
-  - [`docs/tutorial/generated/chapters/16_gibson_arrangements_baseline.md`](./generated/chapters/16_gibson_arrangements_baseline.md)
+  - [`docs/tutorial/generated/chapters/03-04_gibson_specialist_testing_baseline.md`](./generated/chapters/03-04_gibson_specialist_testing_baseline.md)
+  - [`docs/tutorial/generated/chapters/03-06_gibson_arrangements_baseline.md`](./generated/chapters/03-06_gibson_arrangements_baseline.md)
 
 ### Lower direct human feedback-loop intensity
 
 - [`docs/tutorial/generated/README.md`](./generated/README.md)
   - strong automation and drift checks, but less direct human narrative shaping
-- [`docs/tutorial/two_sequence_dotplot_gui.md`](./two_sequence_dotplot_gui.md)
+- [`docs/tutorial/02-03_tp73_cdna_genomic_dotplot_gui.md`](./02-03_tp73_cdna_genomic_dotplot_gui.md)
   - screenshot-backed and useful, but still awaiting fuller screenshot/checklist
     completion
-- [`docs/agent_interfaces_tutorial.md`](../agent_interfaces_tutorial.md)
+- [`docs/tutorial/01-01_agent_interfaces.md`](./01-01_agent_interfaces.md)
   - operational/reference value is high, but it is less of a bench workflow
     feedback loop than the specialist tutorials
 

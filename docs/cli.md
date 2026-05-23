@@ -53,7 +53,7 @@ Structured workflow examples:
 - includes GUI-first parity skeleton:
   - `docs/examples/workflows/vkorc1_rs9923231_promoter_luciferase_assay_planning.json`
   - merged canonical tutorial:
-    `docs/tutorial/vkorc1_warfarin_promoter_luciferase_gui.md`
+    `docs/tutorial/08-04_vkorc1_warfarin_promoter_luciferase_gui.md`
 - on-demand snippet generation (CLI/shell/JS/Lua):
   - `cargo run --bin gentle_examples_docs -- generate`
 - validation only:
@@ -2430,9 +2430,9 @@ Shared shell command:
       - aligned reads
       - full-length exact / near / strict subsets
     - tutorial reference (TP53 basis + multi-gene sparse mapping):
-      `docs/tutorial/generated/chapters/12_tp53_multi_gene_sparse_mapping_online.md`
+      `docs/tutorial/generated/chapters/07-02_tp53_multi_gene_sparse_mapping_online.md`
     - batch target-gene cohort tutorial:
-      `docs/tutorial/rna_read_batch_gene_support_cli.md`
+      `docs/tutorial/07-01_rna_read_batch_gene_support_cli.md`
     - `rna-reads export-sample-sheet` includes sparse-origin provenance columns
       (`report_mode`, `input_orientation_mode`, `input_orientation_label`,
       `origin_mode`, `target_gene_count`, `target_gene_ids_json`,
@@ -3407,7 +3407,7 @@ Service and resource commands:
 
 Tutorial companion:
 
-- `docs/tutorial/metabion_external_service_handoff_gui_cli.md` walks through
+- `docs/tutorial/09-01_metabion_external_service_handoff_gui_cli.md` walks through
   provider doctor, capability listing, preflight, quote-handoff generation, and
   GUI parity using bundled synthetic Metabion oligo and m-block request JSON.
 - `resources status`
@@ -3723,7 +3723,7 @@ Agent bridge commands:
 
 Conceptual/tutorial companion:
 
-- `docs/agent_interfaces_tutorial.md` (role map + interface comparison:
+- `docs/tutorial/01-01_agent_interfaces.md` (role map + interface comparison:
   CLI/shared shell vs MCP vs Agent Assistant vs external coding agents).
 
 - `agents list [--catalog PATH]`

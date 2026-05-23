@@ -217,7 +217,7 @@ future direct integrations.
 
 Tutorial companion:
 
-- [`docs/tutorial/metabion_external_service_handoff_gui_cli.md`](./tutorial/metabion_external_service_handoff_gui_cli.md)
+- [`docs/tutorial/09-01_metabion_external_service_handoff_gui_cli.md`](./tutorial/metabion_external_service_handoff_gui_cli.md)
 
 ## Configuration Window
 
@@ -1038,7 +1038,7 @@ Feature tree grouping:
     planned annotation-independent capture-layer request (warning emitted until
     this layer is implemented)
   - tutorial reference for TP53-basis multi-gene mapping:
-    - `docs/tutorial/generated/chapters/12_tp53_multi_gene_sparse_mapping_online.md`
+    - `docs/tutorial/generated/chapters/07-02_tp53_multi_gene_sparse_mapping_online.md`
   - scope presets are explicit:
     - `all-overlap / any-strand`: all overlapping transcripts, including
       antisense/opposite-strand genes relative to the selected target gene/group
@@ -1733,7 +1733,7 @@ Patterns menu:
   - shared mutating command parity:
     - `gibson apply PLAN_JSON_OR_@FILE`
   - GUI-first testing tutorial:
-    - `docs/tutorial/gibson_specialist_testing_gui.md`
+    - `docs/tutorial/03-05_gibson_specialist_testing_gui.md`
   - deliberately does not embed the generic PCR/qPCR specialist UI
 - `Patterns -> Sequencing Confirmation...`
   - opens a dedicated called-read construct-confirmation specialist for the
@@ -2467,7 +2467,7 @@ configured external/internal agent systems.
 
 Conceptual/tutorial companion:
 
-- `docs/agent_interfaces_tutorial.md` (who runs what where, and how Agent
+- `docs/tutorial/01-01_agent_interfaces.md` (who runs what where, and how Agent
   Assistant differs from CLI, MCP, and external coding agents).
 - external MCP clients discover available GENtle tools/capabilities with
   `tools/list` and `capabilities` before calling operations.
@@ -3204,7 +3204,7 @@ Serial gel export is available in two places:
 
 Tutorial companion:
 
-- [`docs/tutorial/gibson_arrangements_gui.md`](./tutorial/gibson_arrangements_gui.md)
+- [`docs/tutorial/03-07_gibson_arrangements_gui.md`](./tutorial/gibson_arrangements_gui.md)
   walks through how a Gibson apply step creates singleton output containers,
   records one reusable serial arrangement, and then exports the arrangement as
   one ladder-flanked gel.
@@ -3606,7 +3606,7 @@ Buttons:
 
 Beginner tutorial:
 
-- [`docs/tutorial/simple_pcr_selection_gui.md`](./tutorial/simple_pcr_selection_gui.md)
+- [`docs/tutorial/04-01_simple_pcr_selection_gui.md`](./tutorial/simple_pcr_selection_gui.md)
 - primer-report helpers (uses current primer `report_id` field):
   - `List Primer Reports`
   - `Show report_id`
@@ -3713,7 +3713,7 @@ end for construct verification from called reads and imported sequencing traces.
 
 Tutorial:
 
-- [`docs/tutorial/sequencing_confirmation_gui.md`](./tutorial/sequencing_confirmation_gui.md)
+- [`docs/tutorial/10-02_sequencing_confirmation_gui.md`](./tutorial/sequencing_confirmation_gui.md)
 
 Current scope:
 
@@ -4525,7 +4525,7 @@ Tutorial projects:
     progress when they support it
   - some remote/network waits still only expose the coarse phase label
 - Additional GUI-first manual tutorial:
-  - `docs/tutorial/vkorc1_warfarin_promoter_luciferase_gui.md`
+  - `docs/tutorial/08-04_vkorc1_warfarin_promoter_luciferase_gui.md`
   - includes a stepwise GUI workflow for `VKORC1` / `rs9923231`
     promoter-luciferase planning using the dbSNP fetch path, derived
     promoter-window / promoter-context reasoning, and one pinned local
@@ -4676,28 +4676,28 @@ Tutorial projects:
     `docs/examples/workflows/vkorc1_rs9923231_promoter_luciferase_assay_planning.json`
     (`test_mode: skip`, offline local backbone import plus shared promoter
     reasoning ops).
-  - `docs/tutorial/gibson_specialist_testing_gui.md`
+  - `docs/tutorial/03-05_gibson_specialist_testing_gui.md`
     - focused end-to-end test script for `Patterns -> Gibson...`
     - uses local committed inputs plus `gibson preview` parity checking
-  - `docs/tutorial/gibson_arrangements_gui.md`
+  - `docs/tutorial/03-07_gibson_arrangements_gui.md`
     - opens from a dedicated arrangement-ready starter project where the
       deterministic single-insert Gibson result and stored three-lane
       arrangement are already present, then walks through singleton output
       containers, arrangement inspection, and arrangement-level gel export
   - generated tutorial-project baseline:
-    - `docs/tutorial/generated/chapters/15_gibson_specialist_testing_baseline.md`
+    - `docs/tutorial/generated/chapters/03-04_gibson_specialist_testing_baseline.md`
     - preloads stable `gibson_destination_pgex` and `gibson_insert_demo`
       sequence IDs for the manual Gibson specialist walkthrough
     - `Gibson Specialist Starter Project (offline)` also opens the matching
       Help/Tutorial guide automatically
-    - `docs/tutorial/generated/chapters/16_gibson_arrangements_baseline.md`
+    - `docs/tutorial/generated/chapters/03-06_gibson_arrangements_baseline.md`
     - prebuilds the deterministic `gibson_destination_pgex` +
       `gibson_insert_demo` starter through the canonical single-insert Gibson
       apply so the assembled product and stored arrangement already exist
     - `Gibson Arrangements Starter Project (offline)` now lands on the
       arrangement walkthrough with a distinct arrangement-ready state instead
       of reusing the chapter-15 pre-apply baseline
-  - `docs/tutorial/two_sequence_dotplot_gui.md`
+  - `docs/tutorial/02-03_tp73_cdna_genomic_dotplot_gui.md`
     - retrieve two GenBank sequences and compare them in `Dotplot map` using
       pair modes (`pair_forward` / `pair_reverse_complement`).
 
@@ -4911,8 +4911,8 @@ Protein-evidence behavior:
   protein sequences imported from Ensembl or derived from transcripts can now
   drive reverse-translation workflows from the same specialist.
 - Manual GUI sanity-check walkthroughs for these newer protein paths now live in:
-  - [`docs/tutorial/protein_transcript_native_expert_gui.md`](./tutorial/protein_transcript_native_expert_gui.md)
-  - [`docs/tutorial/protein_reverse_translation_gui.md`](./tutorial/protein_reverse_translation_gui.md)
+  - [`docs/tutorial/06-02_protein_transcript_native_expert_gui.md`](./tutorial/protein_transcript_native_expert_gui.md)
+  - [`docs/tutorial/06-01_protein_reverse_translation_gui.md`](./tutorial/protein_reverse_translation_gui.md)
 - Use one stable `entry_id` in that window when you plan to project repeatedly.
 - Persisted UniProt projections now also appear in the project lineage
   graph/table as analysis artifacts linked from the source sequence.
