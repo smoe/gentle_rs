@@ -8,8 +8,10 @@ example_test_mode: "always"
 executed_during_generation: true
 automated_status: "passing"
 review_status: "unreviewed"
+review_stale: false
 codex_reviewed_at: null
 human_reviewed_at: null
+human_reviewer: null
 generated_artifact_dir: "docs/tutorial/generated/artifacts/guides_filter_and_generate_oligos"
 ---
 

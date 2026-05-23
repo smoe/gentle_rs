@@ -1044,6 +1044,11 @@ struct TutorialProjectEntry {
     group_order: Option<usize>,
     group_position: Option<usize>,
     decimal_id: Option<String>,
+    review_status: Option<String>,
+    codex_reviewed_at: Option<String>,
+    human_reviewed_at: Option<String>,
+    human_reviewer: Option<String>,
+    review_stale: bool,
     tier: TutorialTier,
     example: WorkflowExample,
     repo_root: PathBuf,
@@ -1066,6 +1071,11 @@ struct HelpTutorialDocEntry {
     group_order: Option<usize>,
     group_position: Option<usize>,
     decimal_id: Option<String>,
+    review_status: Option<String>,
+    codex_reviewed_at: Option<String>,
+    human_reviewed_at: Option<String>,
+    human_reviewer: Option<String>,
+    review_stale: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -5202,6 +5212,16 @@ Error: `{err}`"
         title.to_string()
     }
 
+    fn help_tutorial_review_label(entry: &HelpTutorialDocEntry) -> String {
+        crate::workflow_examples::tutorial_review_badge_label(
+            entry.review_status.as_deref(),
+            entry.review_stale,
+            entry.codex_reviewed_at.as_deref(),
+            entry.human_reviewed_at.as_deref(),
+            entry.human_reviewer.as_deref(),
+        )
+    }
+
     fn active_help_search_context(&self) -> Option<String> {
         if self.help_search_query.trim().is_empty() {
             return None;
@@ -6802,6 +6822,16 @@ Error: `{err}`"
         let manifest = load_tutorial_manifest(&manifest_path)?;
         let loaded_examples = load_workflow_examples(&examples_dir)?;
         validate_tutorial_manifest_against_examples(&manifest, &loaded_examples)?;
+        let review_by_id = Self::resolve_runtime_doc_path(DEFAULT_TUTORIAL_CATALOG_PATH)
+            .and_then(|path| load_tutorial_catalog(&path).ok())
+            .map(|catalog| {
+                catalog
+                    .entries
+                    .into_iter()
+                    .map(|entry| (entry.id.clone(), entry))
+                    .collect::<HashMap<_, _>>()
+            })
+            .unwrap_or_default();
         let mut by_id: HashMap<String, WorkflowExample> = HashMap::new();
         for loaded in loaded_examples {
             by_id.insert(loaded.example.id.clone(), loaded.example);
@@ -6814,6 +6844,7 @@ Error: `{err}`"
                     chapter.id, chapter.example_id
                 )
             })?;
+            let review_entry = review_by_id.get(&chapter.id);
             entries.push(TutorialProjectEntry {
                 chapter_id: chapter.id,
                 chapter_order: chapter.order,
@@ -6824,6 +6855,13 @@ Error: `{err}`"
                 group_order: chapter.group_order,
                 group_position: chapter.group_position,
                 decimal_id: chapter.decimal_id,
+                review_status: review_entry.and_then(|entry| entry.review_status.clone()),
+                codex_reviewed_at: review_entry.and_then(|entry| entry.codex_reviewed_at.clone()),
+                human_reviewed_at: review_entry.and_then(|entry| entry.human_reviewed_at.clone()),
+                human_reviewer: review_entry.and_then(|entry| entry.human_reviewer.clone()),
+                review_stale: review_entry
+                    .map(|entry| entry.review_stale)
+                    .unwrap_or(false),
                 tier: chapter.tier,
                 example,
                 repo_root: repo_root.clone(),
@@ -15311,7 +15349,8 @@ Error: `{err}`"
                                             if ui
                                                 .button(label)
                                                 .on_hover_text(format!(
-                                                    "Open this tutorial guide in Help\n{}",
+                                                    "Open this tutorial guide in Help\n{}\n{}",
+                                                    Self::help_tutorial_review_label(entry),
                                                     entry.summary
                                                 ))
                                                 .clicked()
@@ -15373,11 +15412,18 @@ Error: `{err}`"
                                     label.push_str(" [online]");
                                 }
                                 let hover = format!(
-                                    "chapter_id: {}\nexample_id: {}\ntier: {}\ngroup: {}\n{}",
+                                    "chapter_id: {}\nexample_id: {}\ntier: {}\ngroup: {}\n{}\n{}",
                                     entry.chapter_id,
                                     entry.example.id,
                                     entry.tier.as_str(),
                                     group,
+                                    crate::workflow_examples::tutorial_review_badge_label(
+                                        entry.review_status.as_deref(),
+                                        entry.review_stale,
+                                        entry.codex_reviewed_at.as_deref(),
+                                        entry.human_reviewed_at.as_deref(),
+                                        entry.human_reviewer.as_deref(),
+                                    ),
                                     if entry.chapter_summary.trim().is_empty() {
                                         "No summary provided."
                                     } else {
@@ -22411,7 +22457,11 @@ Error: `{err}`"
                                             &entry.title,
                                         ),
                                     )
-                                    .on_hover_text(entry.summary.as_str())
+                                    .on_hover_text(format!(
+                                        "{}\n{}",
+                                        Self::help_tutorial_review_label(entry),
+                                        entry.summary
+                                    ))
                                     .clicked()
                                 {
                                     selected_tutorial_index = Some(index);
@@ -28442,6 +28492,11 @@ mod tests {
             group_order: None,
             group_position: None,
             decimal_id: None,
+            review_status: None,
+            codex_reviewed_at: None,
+            human_reviewed_at: None,
+            human_reviewer: None,
+            review_stale: false,
         }];
         app.help_tutorial_selected = 0;
         app.open_help_tutorial_doc(0);
@@ -28495,6 +28550,11 @@ mod tests {
             group_order: None,
             group_position: None,
             decimal_id: None,
+            review_status: None,
+            codex_reviewed_at: None,
+            human_reviewed_at: None,
+            human_reviewer: None,
+            review_stale: false,
         };
 
         assert_eq!(

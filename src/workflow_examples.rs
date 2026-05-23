@@ -66,6 +66,16 @@ pub struct TutorialCatalogEntry {
     pub audiences: Vec<String>,
     #[serde(default)]
     pub notes: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review_status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub codex_reviewed_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub human_reviewed_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub human_reviewer: Option<String>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub review_stale: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -109,6 +119,15 @@ struct TutorialPlacement {
     group_order: Option<usize>,
     group_position: Option<usize>,
     decimal_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct TutorialReviewProjection {
+    status: String,
+    codex_reviewed_at: Option<String>,
+    human_reviewed_at: Option<String>,
+    human_reviewer: Option<String>,
+    stale: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -202,6 +221,7 @@ impl TutorialSourceCatalogSection {
         id: String,
         title: String,
         placement: TutorialPlacement,
+        review: TutorialReviewProjection,
     ) -> TutorialCatalogEntry {
         TutorialCatalogEntry {
             id,
@@ -217,6 +237,11 @@ impl TutorialSourceCatalogSection {
             source: self.source,
             audiences: self.audiences,
             notes: self.notes,
+            review_status: Some(review.status),
+            codex_reviewed_at: review.codex_reviewed_at,
+            human_reviewed_at: review.human_reviewed_at,
+            human_reviewer: review.human_reviewer,
+            review_stale: review.stale,
         }
     }
 }
@@ -262,6 +287,9 @@ impl TutorialSourceUnit {
     fn into_catalog_entry(
         self,
         group_lookup: &HashMap<String, TutorialGroupDefinition>,
+        review_by_id: &HashMap<String, TutorialReviewEntry>,
+        review_today: Option<(i32, u32, u32)>,
+        review_warn_after_months: u32,
     ) -> Result<Option<(usize, TutorialCatalogEntry)>, String> {
         let TutorialSourceUnit {
             id,
@@ -282,9 +310,14 @@ impl TutorialSourceUnit {
             effective_group_position,
             group_lookup,
         )?;
+        let review = tutorial_review_projection(
+            review_by_id.get(&id),
+            review_today,
+            review_warn_after_months,
+        );
         Ok(Some({
             let order = catalog.order;
-            let entry = catalog.into_catalog_entry(id, title, placement);
+            let entry = catalog.into_catalog_entry(id, title, placement, review);
             (order, entry)
         }))
     }
@@ -474,6 +507,16 @@ pub struct TutorialGenerationChapter {
     pub example_source: String,
     pub concepts: Vec<String>,
     pub executed: bool,
+    #[serde(default)]
+    pub review_status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub codex_reviewed_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub human_reviewed_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub human_reviewer: Option<String>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub review_stale: bool,
     pub retained_artifacts: Vec<String>,
 }
 
@@ -551,6 +594,10 @@ fn default_tutorial_catalog_schema() -> String {
 
 fn default_tutorial_catalog_meta_schema() -> String {
     TUTORIAL_CATALOG_META_SCHEMA.to_string()
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 fn default_tutorial_source_schema() -> String {
@@ -1186,9 +1233,17 @@ pub fn generate_tutorial_catalog_from_sources(
     } else {
         tutorial_group_lookup(&meta.groups)?
     };
+    let (review_by_id, review_warn_after_months) =
+        tutorial_review_entries_for_source_dir(source_dir)?;
+    let review_today = current_utc_review_date();
     let mut entries = Vec::new();
     for unit in units {
-        if let Some(entry) = unit.into_catalog_entry(&group_lookup)? {
+        if let Some(entry) = unit.into_catalog_entry(
+            &group_lookup,
+            &review_by_id,
+            review_today,
+            review_warn_after_months,
+        )? {
             entries.push(entry);
         }
     }
@@ -1861,6 +1916,8 @@ pub fn validate_tutorial_manifest_against_examples(
 #[derive(Debug, Clone, Default)]
 struct TutorialReviewContext {
     entries_by_id: HashMap<String, TutorialReviewEntry>,
+    warn_after_months: u32,
+    today: Option<(i32, u32, u32)>,
     warnings: Vec<String>,
 }
 
@@ -1869,6 +1926,31 @@ fn tutorial_review_manifest_path_for_manifest(manifest_path: &Path) -> PathBuf {
         .parent()
         .map(|parent| parent.join("review_manifest.json"))
         .unwrap_or_else(|| PathBuf::from(DEFAULT_TUTORIAL_REVIEW_MANIFEST_PATH))
+}
+
+fn tutorial_review_manifest_path_for_source_dir(source_dir: &Path) -> PathBuf {
+    source_dir
+        .parent()
+        .map(|parent| parent.join("review_manifest.json"))
+        .unwrap_or_else(|| PathBuf::from(DEFAULT_TUTORIAL_REVIEW_MANIFEST_PATH))
+}
+
+fn tutorial_review_entries_for_source_dir(
+    source_dir: &Path,
+) -> Result<(HashMap<String, TutorialReviewEntry>, u32), String> {
+    let review_path = tutorial_review_manifest_path_for_source_dir(source_dir);
+    if !review_path.exists() {
+        return Ok((HashMap::new(), default_tutorial_review_warn_after_months()));
+    }
+    let review_manifest = load_tutorial_review_manifest(&review_path)?;
+    Ok((
+        review_manifest
+            .entries
+            .into_iter()
+            .map(|entry| (entry.tutorial_id.clone(), entry))
+            .collect(),
+        review_manifest.warn_after_months,
+    ))
 }
 
 fn tutorial_known_review_ids(
@@ -1910,6 +1992,8 @@ fn tutorial_review_context_for_date(
     if !review_path.exists() {
         return Ok(TutorialReviewContext {
             entries_by_id: HashMap::new(),
+            warn_after_months: default_tutorial_review_warn_after_months(),
+            today,
             warnings: vec![format!(
                 "Tutorial review manifest '{}' is missing; review freshness was not checked",
                 display_path(&review_path)
@@ -1952,6 +2036,8 @@ fn tutorial_review_context_for_date(
     }
     Ok(TutorialReviewContext {
         entries_by_id,
+        warn_after_months: review_manifest.warn_after_months,
+        today,
         warnings,
     })
 }
@@ -2703,6 +2789,18 @@ fn render_tutorial_front_matter(
     out.push_str("review_status: ");
     out.push_str(&yaml_double_quote(&tutorial_review_status(review_entry)));
     out.push('\n');
+    out.push_str("review_stale: ");
+    let review_projection = tutorial_review_projection(
+        review_entry,
+        current_utc_review_date(),
+        default_tutorial_review_warn_after_months(),
+    );
+    out.push_str(if review_projection.stale {
+        "true"
+    } else {
+        "false"
+    });
+    out.push('\n');
     push_yaml_optional_string(
         &mut out,
         "codex_reviewed_at",
@@ -2712,6 +2810,11 @@ fn render_tutorial_front_matter(
         &mut out,
         "human_reviewed_at",
         review_entry.and_then(|entry| entry.human_reviewed_at.as_deref()),
+    );
+    push_yaml_optional_string(
+        &mut out,
+        "human_reviewer",
+        review_entry.and_then(|entry| entry.human_reviewer.as_deref()),
     );
     out.push_str("generated_artifact_dir: ");
     out.push_str(&yaml_double_quote(generated_artifact_dir));
@@ -2773,6 +2876,99 @@ fn tutorial_review_status(entry: Option<&TutorialReviewEntry>) -> String {
         return "codex_reviewed".to_string();
     }
     "unreviewed".to_string()
+}
+
+fn tutorial_review_projection(
+    entry: Option<&TutorialReviewEntry>,
+    today: Option<(i32, u32, u32)>,
+    warn_after_months: u32,
+) -> TutorialReviewProjection {
+    let status = tutorial_review_status(entry);
+    let stale = entry
+        .and_then(|entry| entry.human_reviewed_at.as_deref())
+        .zip(today)
+        .is_some_and(|(reviewed_at, today)| {
+            review_date_is_stale(reviewed_at, today, warn_after_months)
+        });
+    TutorialReviewProjection {
+        status,
+        codex_reviewed_at: entry.and_then(|entry| entry.codex_reviewed_at.clone()),
+        human_reviewed_at: entry.and_then(|entry| entry.human_reviewed_at.clone()),
+        human_reviewer: entry.and_then(|entry| entry.human_reviewer.clone()),
+        stale,
+    }
+}
+
+fn tutorial_review_badge_markdown(
+    status: &str,
+    stale: bool,
+    codex_reviewed_at: Option<&str>,
+    human_reviewed_at: Option<&str>,
+    human_reviewer: Option<&str>,
+) -> String {
+    let mut badge = format!("review `{status}`");
+    if stale {
+        badge.push_str(" `stale`");
+    }
+    if let Some(human_reviewed_at) = human_reviewed_at
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        badge.push_str(" - human ");
+        badge.push_str(human_reviewed_at);
+        if let Some(reviewer) = human_reviewer
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            badge.push_str(" by ");
+            badge.push_str(reviewer);
+        }
+    } else if let Some(codex_reviewed_at) = codex_reviewed_at
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        badge.push_str(" - codex ");
+        badge.push_str(codex_reviewed_at);
+    }
+    badge
+}
+
+pub fn tutorial_review_badge_label(
+    status: Option<&str>,
+    stale: bool,
+    codex_reviewed_at: Option<&str>,
+    human_reviewed_at: Option<&str>,
+    human_reviewer: Option<&str>,
+) -> String {
+    let status = status
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("missing_review_manifest_entry");
+    let mut badge = format!("review: {status}");
+    if stale {
+        badge.push_str(", stale");
+    }
+    if let Some(human_reviewed_at) = human_reviewed_at
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        badge.push_str(", human ");
+        badge.push_str(human_reviewed_at);
+        if let Some(reviewer) = human_reviewer
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            badge.push_str(" by ");
+            badge.push_str(reviewer);
+        }
+    } else if let Some(codex_reviewed_at) = codex_reviewed_at
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        badge.push_str(", codex ");
+        badge.push_str(codex_reviewed_at);
+    }
+    badge
 }
 
 pub fn build_tutorial_feedback_context_text(
@@ -3383,6 +3579,7 @@ fn render_tutorial_index(
     );
     out.push_str("- Then use the command equivalents for repeatable runs and automation.\n\n");
     out.push_str("These chapters are generated from executable workflow JSON. They are stable, regenerable, and machine-checked, but they are reference material - not first-time walkthroughs. If you are new to GENtle, start with the guided walkthroughs in [`../README.md`](../README.md).\n\n");
+    out.push_str("Each chapter row includes a review badge from `../review_manifest.json`; `review unreviewed` means the workflow is machine-checked but still needs a readability/biology pass from Codex or a human reviewer.\n\n");
     out.push_str("Online execution was ");
     out.push_str(if online_enabled {
         "enabled"
@@ -3446,7 +3643,15 @@ fn render_tutorial_index(
         out.push_str(&chapter.example_id);
         out.push_str("` - executed `");
         out.push_str(if chapter.executed { "yes" } else { "no" });
-        out.push_str("`\n");
+        out.push_str("` - ");
+        out.push_str(&tutorial_review_badge_markdown(
+            &chapter.review_status,
+            chapter.review_stale,
+            chapter.codex_reviewed_at.as_deref(),
+            chapter.human_reviewed_at.as_deref(),
+            chapter.human_reviewer.as_deref(),
+        ));
+        out.push('\n');
     }
     out.push_str("\n## Concepts and Where They Recur\n\n");
     for concept in &manifest.concepts {
@@ -3902,6 +4107,11 @@ pub fn generate_tutorial_docs(
         let chapter_out_path = chapters_dir.join(&chapter_file);
         fs::write(&chapter_out_path, chapter_markdown)
             .map_err(|e| format!("Could not write '{}': {e}", display_path(&chapter_out_path)))?;
+        let review_projection = tutorial_review_projection(
+            review_context.entries_by_id.get(&chapter.id),
+            review_context.today,
+            review_context.warn_after_months,
+        );
         chapter_reports.push(TutorialGenerationChapter {
             id: chapter.id.clone(),
             order: chapter.order,
@@ -3916,6 +4126,11 @@ pub fn generate_tutorial_docs(
             example_source: display_path(&loaded.path),
             concepts: chapter.concepts.clone(),
             executed,
+            review_status: review_projection.status,
+            codex_reviewed_at: review_projection.codex_reviewed_at,
+            human_reviewed_at: review_projection.human_reviewed_at,
+            human_reviewer: review_projection.human_reviewer,
+            review_stale: review_projection.stale,
             retained_artifacts,
         });
     }
@@ -4616,6 +4831,11 @@ mod tests {
                 entry.id,
                 display_path(&path)
             );
+            assert!(
+                entry.review_status.as_deref().is_some(),
+                "tutorial catalog entry '{}' should surface review status",
+                entry.id
+            );
         }
         let generated_manifest = PathBuf::from(&catalog.generated_runtime.manifest_path);
         assert!(
@@ -5068,6 +5288,7 @@ mod tests {
         assert!(readme_markdown.contains("guided walkthroughs in [`../README.md`](../README.md)"));
         assert!(readme_markdown.contains("### Sequence Basics & Lineage"));
         assert!(readme_markdown.contains("`02.01` [Load FASTA, branch, and reverse-complement]"));
+        assert!(readme_markdown.contains("review `unreviewed`"));
 
         let chapter = generated.join("chapters/02-01_load_branch_reverse_complement_pgex_fasta.md");
         let markdown = std::fs::read_to_string(&chapter).expect("read generated chapter markdown");
@@ -5083,6 +5304,7 @@ mod tests {
         );
         assert!(markdown.contains("## Tutorial Provenance"));
         assert!(markdown.contains("review_status: "));
+        assert!(markdown.contains("review_stale: false"));
         assert!(markdown.contains("## Feedback"));
 
         let online_chapter = generated.join("chapters/05-02_prepare_reference_genome_online.md");

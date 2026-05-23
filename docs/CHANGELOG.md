@@ -12,6 +12,12 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-05-23
+
+- Started Phase 4 of the tutorial presentation overhaul by surfacing
+  `review_manifest.json` status in `catalog.json`, generated tutorial
+  front matter, generated and human tutorial hubs, and GUI tutorial hover text.
+
 ## 2026-05-22
 
 - Added a Phase 0 tutorial coverage audit for the decimal-numbering overhaul,

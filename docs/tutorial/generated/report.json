@@ -39,7 +39,7 @@
     "report.json"
   ],
   "file_checksums": {
-    "README.md": "af4f98ffa3d40ecfe8e558d9193df3152e6bfff5",
+    "README.md": "48639308dc13556a8404f9d78f71ef7457aca178",
     "artifacts/gibson_arrangements_baseline/artifacts/gibson_lab_assistant_handoff.md": "ea49d90a537300148ada050060e1b12a48b8b57c",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.csv": "2fd8b22187bb90dcdc0388ed65df4f6c33240893",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt": "ddfcc1b983151b4a7fa444b171065c4d90a6ecfb",
@@ -50,26 +50,26 @@
     "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.promoter_expression_evidence.json": "cd6f53a7f4c78b3e5096ce8678beee574185a7b9",
     "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg": "b35113f6bae05715c0759d55acd5b78503f5a9c0",
     "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_similarity.json": "552e99f01f41c48e015e9739e17ae4ec9aa6f4fc",
-    "chapters/01-02_contribute_to_gentle_development.md": "0edcd3e7bf312a7648ae232c3a111b8f9510f291",
-    "chapters/02-01_load_branch_reverse_complement_pgex_fasta.md": "68b5bb7f8fd7af5eb8f6bfe9bc45a23a26b4fc77",
-    "chapters/02-04_tp73_cdna_genomic_dotplot_online.md": "68ffae39761e96c0109d3cf5f6ad86554c5c5028",
-    "chapters/03-01_load_and_digest_pgex.md": "8cb935b1b30e2afedbf442e4b53ba5eda807f21f",
-    "chapters/03-02_digest_ligation_extract_region_minimal.md": "ce2498a4edd3dd0c9dcd73173d716eb95b1ed1a7",
-    "chapters/03-03_gibson_two_fragment_overlap_preview.md": "d15a0d1a6ca477873f35a82e75b7d3935d46d2cb",
-    "chapters/03-04_gibson_specialist_testing_baseline.md": "eb13c640d74473224a4bcddfbcaf2a11ae6446ab",
-    "chapters/03-06_gibson_arrangements_baseline.md": "8dc163a738acc89f4aaa2f1068c86828aab1849f",
-    "chapters/04-01_simple_pcr_selection_gui.md": "4709b0d3fc8f8a76d696ca1d7da63524127e052f",
-    "chapters/04-02_pcr_selection_batch_primer_pairs_offline.md": "69c24a22ca0037ee6a3dd1f1f19817d55a00c00a",
-    "chapters/04-04_guides_filter_and_generate_oligos.md": "62d3c871cd4eb6223e12d197ea7c3a9a185160e1",
-    "chapters/04-05_guides_export_csv_and_protocol.md": "e945241f736ec0bb5b33a545c629d3663fe1f3dd",
-    "chapters/05-01_find_and_extend_genomic_target_local_catalog.md": "ecdc1b24941534be5af0643adfb38023fdac9683",
-    "chapters/05-02_prepare_reference_genome_online.md": "43cb5d38e14019881e364b8022b5311b70c871ac",
-    "chapters/05-03_tp63_anchor_extension_online.md": "d3553017bd405c6f1de6446d47499fa547e0677f",
-    "chapters/06-03_tp53_isoform_architecture_online.md": "eca214b4284966df63267248dd58bd13644c9823",
-    "chapters/06-04_tp53_uniprot_projection_online.md": "a8fd482e427522dbf5323322ac29143227699cfc",
-    "chapters/06-05_tp73_uniprot_projection_audit_cli.md": "0c7bc74898a2eec4cb8ce9649b2b1e6fa41c337f",
-    "chapters/07-02_tp53_multi_gene_sparse_mapping_online.md": "7796bed3c8605efe71e06e1d2ec622d5bda311d9",
-    "chapters/08-03_promoter_design_artifact_slice_offline.md": "efad3b54f5bf74be84c428b97f010cf44e867438"
+    "chapters/01-02_contribute_to_gentle_development.md": "aa824292e61759418d9f7032b73d35c93c78cea3",
+    "chapters/02-01_load_branch_reverse_complement_pgex_fasta.md": "674ed4aa45b6bf6d27676d6574359d6be674f257",
+    "chapters/02-04_tp73_cdna_genomic_dotplot_online.md": "cc540c7d7cd8b784b98bf100c68e7c3aba4faf30",
+    "chapters/03-01_load_and_digest_pgex.md": "60d278f4fd753bee2ac11ee7a2ab5f5c7c751965",
+    "chapters/03-02_digest_ligation_extract_region_minimal.md": "313831db427ec13eb001083e5720c6f39c466584",
+    "chapters/03-03_gibson_two_fragment_overlap_preview.md": "23f36b9cdba11dcccdba3af18a6474d1588633a4",
+    "chapters/03-04_gibson_specialist_testing_baseline.md": "8e2ec2439d0bff30f6114b7c6fea3c3b53fe67ec",
+    "chapters/03-06_gibson_arrangements_baseline.md": "0660f8ac6583fa574821cbf3d93c3909142b2646",
+    "chapters/04-01_simple_pcr_selection_gui.md": "d5b59ccc2e9b4b6cc999b1da238ca503ef6541e2",
+    "chapters/04-02_pcr_selection_batch_primer_pairs_offline.md": "35ce5446164bd244f90760d021590dab908ecf65",
+    "chapters/04-04_guides_filter_and_generate_oligos.md": "d8a3001f8ea0af1a388e494bbd507d13def787aa",
+    "chapters/04-05_guides_export_csv_and_protocol.md": "7edcc4cc46533a14d1436fae2e0cb038626404f2",
+    "chapters/05-01_find_and_extend_genomic_target_local_catalog.md": "a9bc3721ae1b122eee100a1f94f2dc39bc6c85a5",
+    "chapters/05-02_prepare_reference_genome_online.md": "62b9f58b34289a618185da82cad3e70c4dfdd419",
+    "chapters/05-03_tp63_anchor_extension_online.md": "f5473e216768618de0f34e6f22bfc6a4cd8b7075",
+    "chapters/06-03_tp53_isoform_architecture_online.md": "6c3e22f7ea25a9ba02c436f837e6af5ffc051c4c",
+    "chapters/06-04_tp53_uniprot_projection_online.md": "7b638ceef49c9d9972d965755ec5ea9aeafd5dcb",
+    "chapters/06-05_tp73_uniprot_projection_audit_cli.md": "0458300a110b0d9dbd6c7a46bc97a474b6f8b115",
+    "chapters/07-02_tp53_multi_gene_sparse_mapping_online.md": "1072f0e1a5a8dfe54812c316026eae99046107bc",
+    "chapters/08-03_promoter_design_artifact_slice_offline.md": "e471e1d2c655cfe29dc1c87c9af29729a52c0308"
   },
   "chapters": [
     {
@@ -90,6 +90,7 @@
         "sequence_lineage"
       ],
       "executed": true,
+      "review_status": "unreviewed",
       "retained_artifacts": []
     },
     {
@@ -111,6 +112,7 @@
         "genome_catalog_targeting"
       ],
       "executed": true,
+      "review_status": "unreviewed",
       "retained_artifacts": []
     },
     {
@@ -130,6 +132,7 @@
         "sequence_lineage"
       ],
       "executed": true,
+      "review_status": "unreviewed",
       "retained_artifacts": []
     },
     {
@@ -150,6 +153,7 @@
         "sequence_lineage"
       ],
       "executed": true,
+      "review_status": "unreviewed",
       "retained_artifacts": []
     },
     {
@@ -169,6 +173,7 @@
         "guide_design_pipeline"
       ],
       "executed": true,
+      "review_status": "unreviewed",
       "retained_artifacts": []
     },
     {
@@ -188,6 +193,7 @@
         "sequence_lineage"
       ],
       "executed": true,
+      "review_status": "unreviewed",
       "retained_artifacts": []
     },
     {
@@ -207,6 +213,7 @@
         "artifact_exports"
       ],
       "executed": true,
+      "review_status": "unreviewed",
       "retained_artifacts": [
         "artifacts/guides_export_csv_and_protocol/exports/demo_guides.csv",
         "artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt"
@@ -230,6 +237,7 @@
         "contribution_loop"
       ],
       "executed": true,
+      "review_status": "unreviewed",
       "retained_artifacts": []
     },
     {
@@ -250,6 +258,7 @@
         "genome_catalog_targeting"
       ],
       "executed": false,
+      "review_status": "unreviewed",
       "retained_artifacts": []
     },
     {
@@ -272,6 +281,7 @@
         "artifact_exports"
       ],
       "executed": false,
+      "review_status": "unreviewed",
       "retained_artifacts": []
     },
     {
@@ -293,6 +303,7 @@
         "online_opt_in"
       ],
       "executed": false,
+      "review_status": "unreviewed",
       "retained_artifacts": []
     },
     {
@@ -314,6 +325,7 @@
         "online_opt_in"
       ],
       "executed": false,
+      "review_status": "unreviewed",
       "retained_artifacts": []
     },
     {
@@ -334,6 +346,7 @@
         "sequence_lineage"
       ],
       "executed": true,
+      "review_status": "unreviewed",
       "retained_artifacts": []
     },
     {
@@ -356,6 +369,7 @@
         "online_opt_in"
       ],
       "executed": false,
+      "review_status": "unreviewed",
       "retained_artifacts": []
     },
     {
@@ -376,6 +390,7 @@
         "sequence_lineage"
       ],
       "executed": true,
+      "review_status": "unreviewed",
       "retained_artifacts": []
     },
     {
@@ -396,6 +411,7 @@
         "sequence_lineage"
       ],
       "executed": true,
+      "review_status": "unreviewed",
       "retained_artifacts": [
         "artifacts/gibson_arrangements_baseline/artifacts/gibson_lab_assistant_handoff.md"
       ]
@@ -422,6 +438,7 @@
         "artifact_exports"
       ],
       "executed": false,
+      "review_status": "unreviewed",
       "retained_artifacts": []
     },
     {
@@ -441,6 +458,7 @@
         "deterministic_workflows"
       ],
       "executed": true,
+      "review_status": "unreviewed",
       "retained_artifacts": []
     },
     {
@@ -464,6 +482,7 @@
         "artifact_exports"
       ],
       "executed": false,
+      "review_status": "unreviewed",
       "retained_artifacts": []
     },
     {
@@ -485,6 +504,7 @@
         "tutorial_drift_checks"
       ],
       "executed": true,
+      "review_status": "unreviewed",
       "retained_artifacts": [
         "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.alternative_promoters.json",
         "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.evidence_matrix.json",
