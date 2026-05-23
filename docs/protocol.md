@@ -92,6 +92,11 @@ Catalog/manifest split:
 - Catalog/manifest v2 add optional group placement fields. `decimal_id` is
   nullable/absent so reference/navigation units such as the generated hub and
   tutorial landscape can stay catalogued without receiving a tutorial number.
+- Catalog entries and generated chapter reports expose derived review routing
+  fields: `review_stale_reason`, `review_issue_template`, and
+  `review_issue_template_path`. These are derived from
+  `docs/tutorial/review_manifest.json` and from dependency freshness checks;
+  they are not authored in tutorial source JSON.
 - `docs/tutorial/sources/` is the authoring layer for both the discovery
   catalog and the executable tutorial runtime manifest.
 - `docs/tutorial/manifest.json` is a generated runtime contract used for
@@ -110,6 +115,9 @@ Review-manifest checks are warnings, not hard failures:
 - missing entries for known tutorial ids warn
 - entries for unknown tutorial ids warn
 - `human_reviewed_at` older than `warn_after_months` warns
+- if a human review date predates the tutorial source JSON, workflow JSON,
+  catalog Markdown page, or declared graphics file, the tutorial is marked
+  stale with a dependency-specific reason
 - `deprecated` tutorials, or entries with `replaced_by`, do not escalate
   execution failures during tutorial checks
 

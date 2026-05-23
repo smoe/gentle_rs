@@ -17,6 +17,10 @@ Maintenance rule:
 - Started Phase 4 of the tutorial presentation overhaul by surfacing
   `review_manifest.json` status in `catalog.json`, generated tutorial
   front matter, generated and human tutorial hubs, and GUI tutorial hover text.
+- Completed the second Phase 4 tutorial review slice: catalog/generated
+  tutorial outputs now carry dependency-aware stale reasons, feedback issue
+  template links, and the two May 18 human reviews are recorded as stale after
+  the subsequent tutorial source changes.
 
 ## 2026-05-22
 

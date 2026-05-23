@@ -7,11 +7,14 @@ source_example: "docs/examples/workflows/promoter_design_artifact_slice_offline.
 example_test_mode: "always"
 executed_during_generation: true
 automated_status: "passing"
-review_status: "unreviewed"
-review_stale: false
+review_status: "human_reviewed"
+review_stale: true
 codex_reviewed_at: null
-human_reviewed_at: null
-human_reviewer: null
+human_reviewed_at: "2026-05-18"
+human_reviewer: "smoe"
+review_stale_reason: "source JSON 'docs/tutorial/sources/08-03_promoter_design_artifact_slice_offline.json' changed after human review date 2026-05-18"
+review_issue_template: "Tutorial confusion"
+review_issue_template_path: ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
 generated_artifact_dir: "docs/tutorial/generated/artifacts/promoter_design_artifact_slice_offline"
 ---
 
@@ -249,9 +252,9 @@ cargo run --bin gentle_cli -- shell 'features tfbs-track-similarity tp73_promote
 - Example test_mode: `always`
 - Executed during generation: `yes`
 - Automated status: `passing`
-- Review status: `unreviewed`
+- Review status: `human_reviewed`
 - Codex reviewed at: `not recorded`
-- Human reviewed at: `not recorded`
+- Human reviewed at: `2026-05-18`
 - Inspect the source JSON when you need full option-level detail.
 
 ## Feedback
