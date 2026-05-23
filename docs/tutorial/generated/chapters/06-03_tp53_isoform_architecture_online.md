@@ -8,8 +8,10 @@ example_test_mode: "online"
 executed_during_generation: false
 automated_status: "skipped_online"
 review_status: "unreviewed"
+review_stale: false
 codex_reviewed_at: null
 human_reviewed_at: null
+human_reviewer: null
 generated_artifact_dir: "docs/tutorial/generated/artifacts/tp53_isoform_architecture_online"
 ---
 

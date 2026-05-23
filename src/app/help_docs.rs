@@ -36,6 +36,14 @@ impl GENtleApp {
             "{}\ntype: {}\nstatus: {}",
             entry.path, entry.entry_type, entry.status
         );
+        summary.push('\n');
+        summary.push_str(&crate::workflow_examples::tutorial_review_badge_label(
+            entry.review_status.as_deref(),
+            entry.review_stale,
+            entry.codex_reviewed_at.as_deref(),
+            entry.human_reviewed_at.as_deref(),
+            entry.human_reviewer.as_deref(),
+        ));
         if !entry.notes.trim().is_empty() {
             summary.push('\n');
             summary.push_str(entry.notes.trim());
@@ -49,6 +57,11 @@ impl GENtleApp {
             group_order: entry.group_order,
             group_position: entry.group_position,
             decimal_id: entry.decimal_id,
+            review_status: entry.review_status,
+            codex_reviewed_at: entry.codex_reviewed_at,
+            human_reviewed_at: entry.human_reviewed_at,
+            human_reviewer: entry.human_reviewer,
+            review_stale: entry.review_stale,
         })
     }
 
@@ -630,6 +643,11 @@ impl GENtleApp {
                     group_order: None,
                     group_position: None,
                     decimal_id: None,
+                    review_status: None,
+                    codex_reviewed_at: None,
+                    human_reviewed_at: None,
+                    human_reviewer: None,
+                    review_stale: false,
                 }
             })
             .collect::<Vec<_>>();
@@ -685,6 +703,11 @@ impl GENtleApp {
             group_order: Some(1),
             group_position: Some(1),
             decimal_id: Some("01.01".to_string()),
+            review_status: Some("unreviewed".to_string()),
+            codex_reviewed_at: None,
+            human_reviewed_at: None,
+            human_reviewer: None,
+            review_stale: false,
         });
     }
 
@@ -792,6 +815,11 @@ impl GENtleApp {
                     group_order: None,
                     group_position: None,
                     decimal_id: None,
+                    review_status: None,
+                    codex_reviewed_at: None,
+                    human_reviewed_at: None,
+                    human_reviewer: None,
+                    review_stale: false,
                 });
                 self.help_tutorial_entries.len() - 1
             }
