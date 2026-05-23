@@ -378,12 +378,29 @@ impl WindowDna {
                     },
                 );
             } else {
-                self.main_area.render_inside_without_auxiliary_windows(ui);
+                self.render_bounded_embedded_main_area(ui);
             }
         }));
         if result.is_err() {
             eprintln!("E WindowDna: recovered from panic while rendering embedded DNA window");
         }
+    }
+
+    fn render_bounded_embedded_main_area(&mut self, ui: &mut egui::Ui) {
+        let body_rect = ui.available_rect_before_wrap();
+        let body_id = egui::Id::new(("window_dna_embedded_body", self.main_area.panel_scope_key()));
+        // Do not allocate the child's expanded min_rect in the parent: the DNA
+        // panels can overflow while the hosted window remains user-sized.
+        let mut body_ui = ui.new_child(
+            egui::UiBuilder::new()
+                .id_salt(body_id)
+                .max_rect(body_rect)
+                .layout(*ui.layout()),
+        );
+        body_ui.set_clip_rect(body_rect.intersect(ui.clip_rect()));
+        self.main_area
+            .render_inside_without_auxiliary_windows(&mut body_ui);
+        ui.advance_cursor_after_rect(body_rect);
     }
 
     /// Keep detached auxiliary workspaces alive without redrawing the parent

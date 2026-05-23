@@ -266,8 +266,11 @@ const GUI_MISTRAL_DEFAULT_MODEL: &str = "mistral-large-latest";
 const GUI_MISTRAL_DEFAULT_BASE_URL: &str = "https://api.mistral.ai/v1";
 const GUI_OPENAI_COMPAT_DEFAULT_BASE_URL: &str = "http://127.0.0.1:11434/v1";
 const WINDOW_OPEN_SLOW_THRESHOLD_MS: u128 = 400;
-const EMBEDDED_SEQUENCE_WINDOW_DRAG_MARGIN_X_PX: f32 = 140.0;
-const EMBEDDED_SEQUENCE_WINDOW_DRAG_MARGIN_Y_PX: f32 = 72.0;
+// This margin is subtracted on both sides from the hosted window's inner
+// max-size, so keep it small; large values cap DNA viewers far inside the
+// root window, while zero lets inner content fight the outer chrome.
+const EMBEDDED_SEQUENCE_WINDOW_DRAG_MARGIN_X_PX: f32 = 32.0;
+const EMBEDDED_SEQUENCE_WINDOW_DRAG_MARGIN_Y_PX: f32 = 32.0;
 const HELP_MARKDOWN_REFLOW_DELTA_PX: f32 = 8.0;
 const MACOS_NATIVE_CHILD_VIEWPORTS_ENV: &str = "GENTLE_MACOS_NATIVE_CHILD_VIEWPORTS";
 static NATIVE_HELP_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
@@ -15988,7 +15991,9 @@ Error: `{err}`"
                     let min_size = Vec2::new(820.0, 520.0);
                     let spec = crate::egui_compat::HostedWindowSpec::new(
                         window_title.clone(),
-                        egui::Id::new(("hosted_sequence_window", id)),
+                        // Versioned to drop stale persisted egui Resize state
+                        // from pre-fix embedded sequence shells.
+                        egui::Id::new(("hosted_sequence_window_v2", id)),
                         Vec2::new(1200.0, 860.0),
                         min_size,
                     )
@@ -31027,7 +31032,7 @@ mod tests {
             app.embedded_window_layer_id_for_viewport(viewport_id),
             Some(egui::LayerId::new(
                 egui::Order::Middle,
-                egui::Id::new(("hosted_sequence_window", viewport_id)),
+                egui::Id::new(("hosted_sequence_window_v2", viewport_id)),
             ))
         );
     }
@@ -31051,7 +31056,7 @@ mod tests {
             .expect("window name");
         let hosted_layer_id = egui::LayerId::new(
             egui::Order::Middle,
-            egui::Id::new(("hosted_sequence_window", viewport_id)),
+            egui::Id::new(("hosted_sequence_window_v2", viewport_id)),
         );
         let stale_viewport_layer_id =
             egui::LayerId::new(egui::Order::Middle, egui::Id::new(viewport_id));
@@ -31062,19 +31067,22 @@ mod tests {
             ui.label("legacy title shell");
         });
         assert!(ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer_id)));
+        let _ = ctx.end_pass();
+
+        ctx.begin_pass(egui::RawInput::default());
         app.pending_focus_viewports.clear();
         app.pending_viewport_focus_timestamps.clear();
 
         let initial_position = app.pending_window_initial_positions.remove(&viewport_id);
         app.show_window(&ctx, viewport_id, window, initial_position);
         assert!(ctx.memory(|mem| mem.areas().is_visible(&hosted_layer_id)));
-        assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer_id)));
         assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_viewport_layer_id)));
         let _ = ctx.end_pass();
+        assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer_id)));
     }
 
     #[test]
-    fn embedded_sequence_viewport_resets_stale_full_width_shell() {
+    fn embedded_sequence_viewport_clamps_stale_full_width_shell() {
         let ctx = egui::Context::default();
         ctx.set_embed_viewports(true);
         let screen_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1600.0, 1000.0));
@@ -31088,7 +31096,7 @@ mod tests {
             .cloned()
             .expect("registered sequence window");
         const OUTER_CHROME_TOLERANCE_PX: f32 = 96.0;
-        let stable_id = egui::Id::new(("hosted_sequence_window", viewport_id));
+        let stable_id = egui::Id::new(("hosted_sequence_window_v2", viewport_id));
         let safe = crate::egui_compat::hosted_window_safe_rect_for_rect(screen_rect);
         let max_size = crate::egui_compat::hosted_window_max_inner_size(
             safe,
@@ -31097,6 +31105,10 @@ mod tests {
                 super::EMBEDDED_SEQUENCE_WINDOW_DRAG_MARGIN_X_PX,
                 super::EMBEDDED_SEQUENCE_WINDOW_DRAG_MARGIN_Y_PX,
             ),
+        );
+        assert!(
+            max_size.x >= safe.width() - 65.0 && max_size.y >= safe.height() - 65.0,
+            "embedded sequence windows should reserve only a small chrome/drag allowance: safe={safe:?}, max_size={max_size:?}"
         );
 
         ctx.begin_pass(egui::RawInput {
@@ -31150,6 +31162,222 @@ mod tests {
     }
 
     #[test]
+    fn embedded_sequence_stale_clamp_keeps_project_window_area() {
+        let ctx = egui::Context::default();
+        ctx.set_embed_viewports(true);
+        let screen_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1600.0, 1000.0));
+        let dna = DNAsequence::from_sequence("ACGTACGT").expect("sequence");
+        let mut app = GENtleApp::default();
+        let viewport_id =
+            app.register_window(Window::new_dna(dna, "seq1".to_string(), app.engine.clone()));
+        let window = app
+            .windows
+            .get(&viewport_id)
+            .cloned()
+            .expect("registered sequence window");
+        let sequence_stable_id = egui::Id::new(("hosted_sequence_window_v2", viewport_id));
+        let project_window_id = GENtleApp::main_workspace_hosted_window_id();
+        let project_spec = crate::egui_compat::HostedWindowSpec::new(
+            "Project Test",
+            project_window_id,
+            egui::vec2(980.0, 640.0),
+            egui::vec2(900.0, 560.0),
+        )
+        .initial_pos(Some(egui::pos2(220.0, 140.0)));
+
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(screen_rect),
+            ..Default::default()
+        });
+        let mut stale_open = true;
+        crate::egui_compat::show_hosted_window(
+            &ctx,
+            &crate::egui_compat::HostedWindowSpec::new(
+                "seq1",
+                sequence_stable_id,
+                egui::vec2(5000.0, 5000.0),
+                egui::vec2(820.0, 520.0),
+            ),
+            &mut stale_open,
+            |ui| {
+                ui.set_min_size(egui::vec2(5000.0, 5000.0));
+                ui.label("stale full-width sequence shell");
+            },
+        );
+        let _ = ctx.end_pass();
+
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(screen_rect),
+            ..Default::default()
+        });
+        let mut project_open = true;
+        crate::egui_compat::show_hosted_window(&ctx, &project_spec, &mut project_open, |ui| {
+            ui.label("project content");
+        });
+        let project_rect_before = ctx
+            .memory(|mem| mem.area_rect(project_window_id))
+            .expect("project area rect before sequence render");
+        let initial_position = app.pending_window_initial_positions.remove(&viewport_id);
+        app.show_window(&ctx, viewport_id, window, initial_position);
+
+        let (project_rect_after, sequence_rect) = ctx.memory(|mem| {
+            (
+                mem.area_rect(project_window_id)
+                    .expect("project area rect after sequence render"),
+                mem.area_rect(sequence_stable_id)
+                    .expect("sequence area rect"),
+            )
+        });
+        assert_eq!(project_rect_after, project_rect_before);
+        assert!(
+            project_rect_after.min.x > 0.0 && project_rect_after.min.y > 0.0,
+            "project_rect_after={project_rect_after:?}"
+        );
+        assert!(
+            sequence_rect.width() >= 820.0 && sequence_rect.height() >= 520.0,
+            "sequence_rect={sequence_rect:?}"
+        );
+        let _ = ctx.end_pass();
+    }
+
+    #[test]
+    fn embedded_sequence_window_does_not_auto_expand_to_safe_rect_with_overflowing_content() {
+        let ctx = egui::Context::default();
+        ctx.set_embed_viewports(true);
+        let screen_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(2000.0, 1200.0));
+        let safe = crate::egui_compat::hosted_window_safe_rect_for_rect(screen_rect);
+        let sequence = "ACGT".repeat(1_250);
+        let dna = DNAsequence::from_sequence(&sequence).expect("sequence");
+        let mut app = GENtleApp::default();
+        let viewport_id =
+            app.register_window(Window::new_dna(dna, "seq1".to_string(), app.engine.clone()));
+        let sequence_stable_id = egui::Id::new(("hosted_sequence_window_v2", viewport_id));
+
+        for _ in 0..3 {
+            let window = app
+                .windows
+                .get(&viewport_id)
+                .cloned()
+                .expect("registered sequence window");
+            let initial_position = app.pending_window_initial_positions.remove(&viewport_id);
+            ctx.begin_pass(egui::RawInput {
+                screen_rect: Some(screen_rect),
+                ..Default::default()
+            });
+            app.show_window(&ctx, viewport_id, window, initial_position);
+            let _ = ctx.end_pass();
+        }
+
+        let rect = ctx
+            .memory(|mem| mem.area_rect(sequence_stable_id))
+            .expect("sequence area should be visible");
+        assert!(
+            rect.width() < safe.width() * 0.9,
+            "embedded sequence window should keep its default user-resizable width instead of auto-expanding to the safe viewport: rect={rect:?}, safe={safe:?}"
+        );
+        assert!(
+            rect.height() < safe.height() * 0.9,
+            "embedded sequence window should keep its default user-resizable height instead of auto-expanding to the safe viewport: rect={rect:?}, safe={safe:?}"
+        );
+    }
+
+    #[test]
+    fn embedded_sequence_window_can_shrink_after_overflowing_content_render() {
+        let ctx = egui::Context::default();
+        ctx.set_embed_viewports(true);
+        let screen_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(2000.0, 1200.0));
+        let sequence = "ACGT".repeat(1_250);
+        let dna = DNAsequence::from_sequence(&sequence).expect("sequence");
+        let mut app = GENtleApp::default();
+        let viewport_id =
+            app.register_window(Window::new_dna(dna, "seq1".to_string(), app.engine.clone()));
+        let sequence_stable_id = egui::Id::new(("hosted_sequence_window_v2", viewport_id));
+
+        for _ in 0..2 {
+            let window = app
+                .windows
+                .get(&viewport_id)
+                .cloned()
+                .expect("registered sequence window");
+            let initial_position = app.pending_window_initial_positions.remove(&viewport_id);
+            ctx.begin_pass(egui::RawInput {
+                screen_rect: Some(screen_rect),
+                ..Default::default()
+            });
+            app.show_window(&ctx, viewport_id, window, initial_position);
+            let _ = ctx.end_pass();
+        }
+        let initial_rect = ctx
+            .memory(|mem| mem.area_rect(sequence_stable_id))
+            .expect("sequence area should be visible");
+        let drag_start = initial_rect.right_bottom() - egui::vec2(4.0, 4.0);
+
+        let window = app
+            .windows
+            .get(&viewport_id)
+            .cloned()
+            .expect("registered sequence window");
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(screen_rect),
+            events: vec![
+                egui::Event::PointerMoved(drag_start),
+                egui::Event::PointerButton {
+                    pos: drag_start,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::default(),
+                },
+            ],
+            ..Default::default()
+        });
+        app.show_window(&ctx, viewport_id, window, None);
+        let _ = ctx.end_pass();
+
+        let drag_end = drag_start - egui::vec2(180.0, 120.0);
+        let window = app
+            .windows
+            .get(&viewport_id)
+            .cloned()
+            .expect("registered sequence window");
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(screen_rect),
+            events: vec![egui::Event::PointerMoved(drag_end)],
+            ..Default::default()
+        });
+        app.show_window(&ctx, viewport_id, window, None);
+        let shrunken_rect = ctx
+            .memory(|mem| mem.area_rect(sequence_stable_id))
+            .expect("sequence area should remain visible");
+        assert!(
+            shrunken_rect.width() < initial_rect.width() - 80.0,
+            "initial_rect={initial_rect:?}, shrunken_rect={shrunken_rect:?}"
+        );
+        assert!(
+            shrunken_rect.height() < initial_rect.height() - 60.0,
+            "initial_rect={initial_rect:?}, shrunken_rect={shrunken_rect:?}"
+        );
+        let _ = ctx.end_pass();
+
+        let window = app
+            .windows
+            .get(&viewport_id)
+            .cloned()
+            .expect("registered sequence window");
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(screen_rect),
+            events: vec![egui::Event::PointerButton {
+                pos: drag_end,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: egui::Modifiers::default(),
+            }],
+            ..Default::default()
+        });
+        app.show_window(&ctx, viewport_id, window, None);
+        let _ = ctx.end_pass();
+    }
+
+    #[test]
     fn newly_focused_embedded_sequence_window_renders_above_hosted_project_window() {
         let ctx = egui::Context::default();
         ctx.set_embed_viewports(true);
@@ -31166,7 +31394,7 @@ mod tests {
         let project_window_id = GENtleApp::main_workspace_hosted_window_id();
         let sequence_layer_id = egui::LayerId::new(
             egui::Order::Foreground,
-            egui::Id::new(("hosted_sequence_window", viewport_id)),
+            egui::Id::new(("hosted_sequence_window_v2", viewport_id)),
         );
 
         ctx.begin_pass(egui::RawInput {
@@ -31323,11 +31551,11 @@ mod tests {
             .remove(&owner_viewport_id);
         let sequence_layer_id = egui::LayerId::new(
             egui::Order::Middle,
-            egui::Id::new(("hosted_sequence_window", owner_viewport_id)),
+            egui::Id::new(("hosted_sequence_window_v2", owner_viewport_id)),
         );
         let foreground_sequence_layer_id = egui::LayerId::new(
             egui::Order::Foreground,
-            egui::Id::new(("hosted_sequence_window", owner_viewport_id)),
+            egui::Id::new(("hosted_sequence_window_v2", owner_viewport_id)),
         );
         let mapping_layer_id = egui::LayerId::new(
             egui::Order::Foreground,
@@ -31424,11 +31652,11 @@ mod tests {
             .remove(&owner_viewport_id);
         let sequence_layer_id = egui::LayerId::new(
             egui::Order::Middle,
-            egui::Id::new(("hosted_sequence_window", owner_viewport_id)),
+            egui::Id::new(("hosted_sequence_window_v2", owner_viewport_id)),
         );
         let foreground_sequence_layer_id = egui::LayerId::new(
             egui::Order::Foreground,
-            egui::Id::new(("hosted_sequence_window", owner_viewport_id)),
+            egui::Id::new(("hosted_sequence_window_v2", owner_viewport_id)),
         );
         let promoter_layer_id = egui::LayerId::new(
             egui::Order::Foreground,
