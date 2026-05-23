@@ -71,6 +71,41 @@ fn make_feature(kind: &str, qualifiers: Vec<(&str, &str)>) -> Feature {
 }
 
 #[test]
+fn sequence_description_panel_text_unwraps_prose_but_keeps_metadata_rows() {
+    let lines = vec![
+        "REFSEQ INFORMATION: The reference sequence is identical to".to_string(),
+        "CM000663.2.".to_string(),
+        String::new(),
+        "The DNA sequence is composed of genomic sequence, primarily".to_string(),
+        "finished clones that were sequenced as part of the Human Genome".to_string(),
+        "Project.".to_string(),
+        String::new(),
+        "##Genome-Annotation-Data-START##".to_string(),
+        "Annotation Pipeline         :: NCBI eukaryotic genome annotation".to_string(),
+        "pipeline".to_string(),
+        "Annotation Method           :: Best-placed RefSeq; Gnomon;".to_string(),
+        "RefSeqFE; cmsearch; tRNAscan-SE".to_string(),
+        "##Genome-Annotation-Data-END##".to_string(),
+    ];
+
+    let text = MainAreaDna::sequence_description_panel_text(&lines);
+
+    assert!(text.contains("identical to CM000663.2."));
+    assert!(
+        text.contains(
+            "The DNA sequence is composed of genomic sequence, primarily finished clones"
+        )
+    );
+    assert!(
+        text.contains("Annotation Pipeline         :: NCBI eukaryotic genome annotation pipeline")
+    );
+    assert!(text.contains(
+        "Annotation Method           :: Best-placed RefSeq; Gnomon; RefSeqFE; cmsearch; tRNAscan-SE"
+    ));
+    assert!(!text.contains("identical to\nCM000663.2."));
+}
+
+#[test]
 fn feature_copy_identifier_prefers_transcript_id() {
     let feature = make_feature(
         "mRNA",

@@ -21640,6 +21640,63 @@ impl MainAreaDna {
         "Run RNA-read interpretation"
     }
 
+    fn sequence_description_panel_text(lines: &[String]) -> String {
+        let mut sections: Vec<String> = Vec::new();
+        let mut prose = String::new();
+        let mut metadata: Vec<String> = Vec::new();
+
+        let flush_prose = |sections: &mut Vec<String>, prose: &mut String| {
+            let trimmed = prose.trim();
+            if !trimmed.is_empty() {
+                sections.push(trimmed.to_string());
+            }
+            prose.clear();
+        };
+        let flush_metadata = |sections: &mut Vec<String>, metadata: &mut Vec<String>| {
+            if !metadata.is_empty() {
+                sections.push(metadata.join("\n"));
+            }
+            metadata.clear();
+        };
+        let push_prose = |prose: &mut String, text: &str| {
+            if !prose.is_empty() {
+                prose.push(' ');
+            }
+            prose.push_str(text);
+        };
+
+        for raw in lines {
+            for line in raw.lines() {
+                let trimmed = line.trim();
+                if trimmed.is_empty() {
+                    flush_prose(&mut sections, &mut prose);
+                    flush_metadata(&mut sections, &mut metadata);
+                    continue;
+                }
+
+                let is_marker = trimmed.starts_with("##") && trimmed.ends_with("##");
+                let is_metadata_field = trimmed.contains("::");
+                if is_marker || is_metadata_field {
+                    flush_prose(&mut sections, &mut prose);
+                    metadata.push(trimmed.to_string());
+                } else if let Some(last_metadata_line) = metadata.last_mut() {
+                    if last_metadata_line.starts_with("##") {
+                        metadata.push(trimmed.to_string());
+                    } else {
+                        last_metadata_line.push(' ');
+                        last_metadata_line.push_str(trimmed);
+                    }
+                } else {
+                    push_prose(&mut prose, trimmed);
+                }
+            }
+        }
+
+        flush_prose(&mut sections, &mut prose);
+        flush_metadata(&mut sections, &mut metadata);
+        sections.join("\n\n")
+    }
+
     fn splicing_nanopore_cdna_panel_help_text() -> &'static str {
         "RNA-read mapping here is a two-phase, ROI-first workflow.\n\nThe current built-in long-read profile is `nanopore_cdna_v1`, but the main controls in this workspace are shared across mapping profiles.\n\nPhase 1 (`InterpretRnaReads`): stream FASTA input, optionally reverse-complement cDNA-like reads with a T-rich 5' head, hash full-read k-mers, and score each read against transcript templates admitted by Scope and Origin mode. Indexed evidence includes exon-body seeds and exon-exon junction transition seeds.\n\nThe retained top-hit report is stored under Report ID and can already be inspected or exported before alignment.\n\nPhase 2 (`AlignRnaReadReport`): reopen that saved report, align the selected retained rows with reference-guided pairwise alignment, and refresh mapping, exon-transition, and isoform-support summaries.\n\nThis panel compares reads against locally admitted transcript models for the current locus; it is not a whole-genome mapper."
     }
@@ -21702,7 +21759,8 @@ impl MainAreaDna {
                 } else {
                     clear_invalid_selection = true;
                     self.description_cache_selected_id = None;
-                    self.description_cache_title = dna.description().join("\n");
+                    self.description_cache_title =
+                        Self::sequence_description_panel_text(dna.description());
                     self.description_cache_range = None;
                     self.description_cache_details.clear();
                 }
@@ -21716,7 +21774,8 @@ impl MainAreaDna {
                 } else {
                     clear_invalid_reasoning_selection = true;
                     self.description_cache_selected_reasoning_evidence_id = None;
-                    self.description_cache_title = dna.description().join("\n");
+                    self.description_cache_title =
+                        Self::sequence_description_panel_text(dna.description());
                     self.description_cache_range = None;
                     self.description_cache_details.clear();
                 }
@@ -21766,7 +21825,8 @@ impl MainAreaDna {
                     recognition_end_1based: Some(key.to().max(0) as usize),
                 });
             } else {
-                self.description_cache_title = dna.description().join("\n");
+                self.description_cache_title =
+                    Self::sequence_description_panel_text(dna.description());
                 self.description_cache_range = None;
                 self.description_cache_details.clear();
             }
