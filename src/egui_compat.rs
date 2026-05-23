@@ -10,8 +10,6 @@ use eframe::egui;
 const HOSTED_WINDOW_SAFE_INSET_X_PX: f32 = 28.0;
 const HOSTED_WINDOW_SAFE_INSET_TOP_PX: f32 = 36.0;
 const HOSTED_WINDOW_SAFE_INSET_BOTTOM_PX: f32 = 42.0;
-const HOSTED_WINDOW_STALE_OUTER_SIZE_TOLERANCE_PX: f32 = 96.0;
-const HOSTED_WINDOW_STALE_ROOT_OCCUPANCY_THRESHOLD: f32 = 0.92;
 
 pub(crate) fn hosted_window_safe_rect_for_rect(rect: egui::Rect) -> egui::Rect {
     let shrunk = egui::Rect::from_min_max(
@@ -74,30 +72,6 @@ pub(crate) fn hosted_window_max_inner_size(
         available_width.max(min_size.x),
         available_height.max(min_size.y),
     )
-}
-
-pub(crate) fn reset_hosted_window_area_if_stale_oversized(
-    ctx: &egui::Context,
-    stable_id: egui::Id,
-    constrain_rect: egui::Rect,
-    max_inner_size: egui::Vec2,
-) -> bool {
-    let Some(rect) = ctx.memory(|mem| mem.area_rect(stable_id)) else {
-        return false;
-    };
-    let tolerance = HOSTED_WINDOW_STALE_OUTER_SIZE_TOLERANCE_PX;
-    let over_width = rect.width() > max_inner_size.x + tolerance;
-    let over_height = rect.height() > max_inner_size.y + tolerance;
-    let fills_root_width =
-        rect.width() > constrain_rect.width() * HOSTED_WINDOW_STALE_ROOT_OCCUPANCY_THRESHOLD;
-    let fills_root_height =
-        rect.height() > constrain_rect.height() * HOSTED_WINDOW_STALE_ROOT_OCCUPANCY_THRESHOLD;
-    if !(over_width && fills_root_width || over_height && fills_root_height) {
-        return false;
-    }
-    ctx.memory_mut(|mem| mem.reset_areas());
-    ctx.request_repaint();
-    true
 }
 
 #[derive(Clone, Debug)]
@@ -177,17 +151,9 @@ pub(crate) fn hosted_window_title_layer_id(title: &str) -> egui::LayerId {
     egui::LayerId::new(egui::Order::Middle, egui::Id::new(title.to_string()))
 }
 
-pub(crate) fn reset_hosted_window_areas_if_legacy_title_layer_visible(
-    ctx: &egui::Context,
-    title: &str,
-) -> bool {
+pub(crate) fn hosted_window_title_layer_visible(ctx: &egui::Context, title: &str) -> bool {
     let stale_title_layer = hosted_window_title_layer_id(title);
-    if ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer)) {
-        ctx.memory_mut(|mem| mem.reset_areas());
-        true
-    } else {
-        false
-    }
+    ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer))
 }
 
 pub(crate) fn viewport_builder_for_hosted_window(spec: &HostedWindowSpec) -> egui::ViewportBuilder {
@@ -279,17 +245,10 @@ pub(crate) fn show_hosted_window<R>(
         .legacy_layer_ids
         .iter()
         .any(|layer_id| ctx.memory(|mem| mem.areas().is_visible(layer_id)));
-    let legacy_title_layer_reset = stale_extra_visible
-        || (spec.cleanup_legacy_title_layer
-            && reset_hosted_window_areas_if_legacy_title_layer_visible(ctx, spec.title.as_str()));
-    if legacy_title_layer_reset {
-        if stale_extra_visible {
-            ctx.memory_mut(|mem| mem.reset_areas());
-        }
+    let stale_title_visible = spec.cleanup_legacy_title_layer
+        && hosted_window_title_layer_visible(ctx, spec.title.as_str());
+    if stale_extra_visible || stale_title_visible {
         ctx.request_repaint();
-    }
-    if spec.drag_margin != egui::Vec2::ZERO {
-        reset_hosted_window_area_if_stale_oversized(ctx, spec.stable_id, constrain_rect, max_size);
     }
     let default_size = egui::vec2(
         spec.default_size.x.clamp(spec.min_size.x, max_size.x),
@@ -376,11 +335,10 @@ pub(crate) fn show_bottom_panel_inside<R>(
 mod tests {
     use super::{
         HOSTED_WINDOW_SAFE_INSET_BOTTOM_PX, HOSTED_WINDOW_SAFE_INSET_TOP_PX,
-        HOSTED_WINDOW_SAFE_INSET_X_PX, HOSTED_WINDOW_STALE_OUTER_SIZE_TOLERANCE_PX,
-        HOSTED_WINDOW_STALE_ROOT_OCCUPANCY_THRESHOLD, HostedWindowSpec, ModalWindowSpec,
+        HOSTED_WINDOW_SAFE_INSET_X_PX, HostedWindowSpec, ModalWindowSpec,
         clamp_hosted_window_default_pos, clamp_hosted_window_default_size,
-        hosted_window_max_inner_size, hosted_window_safe_rect_for_rect,
-        reset_hosted_window_area_if_stale_oversized, show_hosted_window, show_modal_window,
+        hosted_window_max_inner_size, hosted_window_safe_rect_for_rect, show_hosted_window,
+        show_modal_window,
     };
     use eframe::egui::{self, Rect, pos2, vec2};
 
@@ -471,28 +429,99 @@ mod tests {
     }
 
     #[test]
-    fn show_hosted_window_resets_legacy_title_layer() {
+    fn show_hosted_window_legacy_title_layer_expires_without_resetting_sibling() {
         let ctx = egui::Context::default();
         let stable_id = egui::Id::new("legacy_cleanup_stable_id");
+        let sibling_id = egui::Id::new("legacy_cleanup_sibling_id");
         let spec = HostedWindowSpec::new(
             "Legacy Cleanup",
             stable_id,
             vec2(300.0, 220.0),
             vec2(160.0, 120.0),
         );
+        let sibling_spec = HostedWindowSpec::new(
+            "Sibling",
+            sibling_id,
+            vec2(360.0, 260.0),
+            vec2(160.0, 120.0),
+        )
+        .initial_pos(Some(pos2(180.0, 130.0)));
         let stale_title_layer = super::hosted_window_title_layer_id("Legacy Cleanup");
         let mut open = true;
+        let mut sibling_open = true;
 
         ctx.begin_pass(egui::RawInput::default());
         egui::Window::new("Legacy Cleanup").show(&ctx, |ui| {
             ui.label("legacy shell");
         });
         assert!(ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer)));
+        let _ = ctx.end_pass();
+
+        ctx.begin_pass(egui::RawInput::default());
+        show_hosted_window(&ctx, &sibling_spec, &mut sibling_open, |ui| {
+            ui.label("sibling shell");
+        });
+        let sibling_before = ctx
+            .memory(|mem| mem.area_rect(sibling_id))
+            .expect("sibling area should be visible");
         show_hosted_window(&ctx, &spec, &mut open, |ui| {
             ui.label("stable shell");
         });
-        assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer)));
+        let sibling_after = ctx
+            .memory(|mem| mem.area_rect(sibling_id))
+            .expect("sibling area should remain visible");
+        assert_eq!(sibling_after, sibling_before);
         let _ = ctx.end_pass();
+        assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer)));
+    }
+
+    #[test]
+    fn show_hosted_window_legacy_extra_layer_expires_without_resetting_sibling() {
+        let ctx = egui::Context::default();
+        let stable_id = egui::Id::new("legacy_extra_cleanup_stable_id");
+        let sibling_id = egui::Id::new("legacy_extra_cleanup_sibling_id");
+        let stale_extra_id = egui::Id::new("legacy_extra_layer");
+        let stale_extra_layer = egui::LayerId::new(egui::Order::Middle, stale_extra_id);
+        let spec = HostedWindowSpec::new(
+            "Legacy Extra Cleanup",
+            stable_id,
+            vec2(300.0, 220.0),
+            vec2(160.0, 120.0),
+        )
+        .legacy_layer_id(stale_extra_layer);
+        let sibling_spec = HostedWindowSpec::new(
+            "Extra Sibling",
+            sibling_id,
+            vec2(360.0, 260.0),
+            vec2(160.0, 120.0),
+        )
+        .initial_pos(Some(pos2(180.0, 130.0)));
+        let mut open = true;
+        let mut sibling_open = true;
+
+        ctx.begin_pass(egui::RawInput::default());
+        egui::Area::new(stale_extra_id).show(&ctx, |ui| {
+            ui.label("legacy extra shell");
+        });
+        assert!(ctx.memory(|mem| mem.areas().is_visible(&stale_extra_layer)));
+        let _ = ctx.end_pass();
+
+        ctx.begin_pass(egui::RawInput::default());
+        show_hosted_window(&ctx, &sibling_spec, &mut sibling_open, |ui| {
+            ui.label("sibling shell");
+        });
+        let sibling_before = ctx
+            .memory(|mem| mem.area_rect(sibling_id))
+            .expect("sibling area should be visible");
+        show_hosted_window(&ctx, &spec, &mut open, |ui| {
+            ui.label("stable shell");
+        });
+        let sibling_after = ctx
+            .memory(|mem| mem.area_rect(sibling_id))
+            .expect("sibling area should remain visible");
+        assert_eq!(sibling_after, sibling_before);
+        let _ = ctx.end_pass();
+        assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_extra_layer)));
     }
 
     #[test]
@@ -541,7 +570,7 @@ mod tests {
     }
 
     #[test]
-    fn show_hosted_window_drag_margin_resets_stale_oversized_area() {
+    fn show_hosted_window_drag_margin_clamps_stale_oversized_area() {
         let ctx = egui::Context::default();
         let stable_id = egui::Id::new("drag_margin_hosted_layer");
         let spec = HostedWindowSpec::new(
@@ -578,8 +607,7 @@ mod tests {
             .memory(|mem| mem.area_rect(stable_id))
             .expect("stale hosted area should be visible");
         assert!(
-            stale_rect.width() > max_size.x + HOSTED_WINDOW_STALE_OUTER_SIZE_TOLERANCE_PX
-                || stale_rect.height() > max_size.y + HOSTED_WINDOW_STALE_OUTER_SIZE_TOLERANCE_PX,
+            stale_rect.width() > max_size.x || stale_rect.height() > max_size.y,
             "stale_rect={stale_rect:?}, max_size={max_size:?}"
         );
         let _ = ctx.end_pass();
@@ -595,53 +623,67 @@ mod tests {
             .memory(|mem| mem.area_rect(stable_id))
             .expect("hosted area should be visible");
         assert!(
-            rect.width() <= max_size.x + HOSTED_WINDOW_STALE_OUTER_SIZE_TOLERANCE_PX,
+            rect.width() <= max_size.x,
             "rect={rect:?}, max_size={max_size:?}"
         );
         assert!(
-            rect.height() <= max_size.y + HOSTED_WINDOW_STALE_OUTER_SIZE_TOLERANCE_PX,
+            rect.height() <= max_size.y,
             "rect={rect:?}, max_size={max_size:?}"
         );
         let _ = ctx.end_pass();
     }
 
     #[test]
-    fn hosted_window_stale_reset_ignores_non_full_root_natural_width() {
+    fn stale_oversized_hosted_window_does_not_reset_sibling_area() {
         let ctx = egui::Context::default();
-        let stable_id = egui::Id::new("natural_width_hosted_layer");
-        let screen_rect = Rect::from_min_size(pos2(0.0, 0.0), vec2(1400.0, 900.0));
-        let safe = hosted_window_safe_rect_for_rect(screen_rect);
-        let max_size = hosted_window_max_inner_size(safe, vec2(820.0, 520.0), vec2(140.0, 72.0));
-        let natural_width = max_size.x + 120.0;
+        let sibling_id = egui::Id::new("sibling_hosted_layer");
+        let stale_id = egui::Id::new("stale_hosted_layer");
+        let mut sibling_open = true;
+        let mut stale_open = true;
+        let screen_rect = Rect::from_min_size(pos2(0.0, 0.0), vec2(1000.0, 720.0));
+        let sibling_spec = HostedWindowSpec::new(
+            "Sibling",
+            sibling_id,
+            vec2(420.0, 280.0),
+            vec2(180.0, 120.0),
+        )
+        .initial_pos(Some(pos2(240.0, 160.0)));
+        let stale_spec =
+            HostedWindowSpec::new("Stale", stale_id, vec2(900.0, 620.0), vec2(180.0, 120.0))
+                .drag_margin(vec2(96.0, 48.0));
 
         ctx.begin_pass(egui::RawInput {
             screen_rect: Some(screen_rect),
             ..Default::default()
         });
-        egui::Area::new(stable_id)
-            .fixed_pos(safe.min)
-            .show(&ctx, |ui| {
-                ui.set_min_size(vec2(natural_width, 240.0));
-            });
-        let rect = ctx
-            .memory(|mem| mem.area_rect(stable_id))
-            .expect("test area should be visible");
-        assert!(
-            rect.width() > max_size.x + HOSTED_WINDOW_STALE_OUTER_SIZE_TOLERANCE_PX,
-            "rect={rect:?}, max_size={max_size:?}"
+        show_hosted_window(
+            &ctx,
+            &HostedWindowSpec::new("Stale", stale_id, vec2(5000.0, 5000.0), vec2(180.0, 120.0)),
+            &mut stale_open,
+            |ui| {
+                ui.set_min_size(vec2(5000.0, 5000.0));
+                ui.label("stale full-size shell");
+            },
         );
-        assert!(
-            rect.width() < safe.width() * HOSTED_WINDOW_STALE_ROOT_OCCUPANCY_THRESHOLD,
-            "rect={rect:?}, safe={safe:?}"
-        );
-        assert!(
-            !reset_hosted_window_area_if_stale_oversized(&ctx, stable_id, safe, max_size),
-            "natural-width content should not be treated like a stale full-root shell"
-        );
-        let retained_rect = ctx
-            .memory(|mem| mem.area_rect(stable_id))
-            .expect("test area should remain visible");
-        assert_eq!(retained_rect, rect);
+        let _ = ctx.end_pass();
+
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(screen_rect),
+            ..Default::default()
+        });
+        show_hosted_window(&ctx, &sibling_spec, &mut sibling_open, |ui| {
+            ui.label("sibling content");
+        });
+        let sibling_before = ctx
+            .memory(|mem| mem.area_rect(sibling_id))
+            .expect("sibling hosted area should be visible");
+        show_hosted_window(&ctx, &stale_spec, &mut stale_open, |ui| {
+            ui.label("normal content");
+        });
+        let sibling_after = ctx
+            .memory(|mem| mem.area_rect(sibling_id))
+            .expect("sibling hosted area should remain visible");
+        assert_eq!(sibling_after, sibling_before);
         let _ = ctx.end_pass();
     }
 

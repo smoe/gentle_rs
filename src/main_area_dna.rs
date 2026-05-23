@@ -768,7 +768,9 @@ const EXTENDED_TOP_PANEL_MIN_HEIGHT_PX: f32 = 180.0;
 const EXTENDED_TOP_PANEL_HANDLE_HEIGHT_PX: f32 = 8.0;
 const FEATURE_TREE_DEFAULT_WIDTH_PX: f32 = 320.0;
 const FEATURE_TREE_MIN_WIDTH_PX: f32 = 180.0;
-const FEATURE_TREE_MAX_WIDTH_PX: f32 = 680.0;
+// The map pane already has its own minimum width; avoid an extra small absolute
+// cap that makes the splitter feel stuck on wide windows.
+const FEATURE_TREE_MAX_WIDTH_PX: f32 = UI_SIZE_MAX_PX;
 const FEATURE_TREE_DEFAULT_SPLIT_FRACTION: f32 = 0.62;
 const SPLICING_MATRIX_EAGER_CELL_THRESHOLD: usize = 16_000;
 const SPLICING_TRANSITION_EAGER_CELL_THRESHOLD: usize = 6_400;
@@ -3878,6 +3880,7 @@ impl MainAreaDna {
         let allow_roi_tools = self.dna_presentation_mode.allows_roi_tools();
         let allow_derivation_tools = self.dna_presentation_mode.allows_derivation_tools();
         let allow_engine_shell_panels = self.dna_presentation_mode.allows_engine_shell_panels();
+        let top_toolbar_available_width = ui.available_width().max(0.0);
 
         ui.horizontal_wrapped(|ui| {
             let button = egui::Button::image(
@@ -4050,6 +4053,23 @@ impl MainAreaDna {
                             false,
                         );
                     }
+                    let mut pan_start = start_bp;
+                    let max_start = sequence_length.saturating_sub(span_bp);
+                    let pan_slider_width =
+                        (top_toolbar_available_width * 0.125).clamp(40.0, 72.0);
+                    let previous_slider_width = ui.spacing().slider_width;
+                    ui.spacing_mut().slider_width = pan_slider_width;
+                    let pan = ui
+                        .add_enabled(
+                            max_start > 0,
+                            egui::Slider::new(&mut pan_start, 0..=max_start)
+                                .show_value(false),
+                        )
+                        .on_hover_text("Pan linear map viewport left/right");
+                    ui.spacing_mut().slider_width = previous_slider_width;
+                    if pan.changed() {
+                        self.set_linear_viewport(pan_start, span_bp);
+                    }
                     if ui
                         .small_button("+")
                         .on_hover_text("Zoom in linear map")
@@ -4076,17 +4096,6 @@ impl MainAreaDna {
                         .clicked()
                     {
                         self.fit_linear_features_in_view();
-                    }
-                    let mut pan_start = start_bp;
-                    let max_start = sequence_length.saturating_sub(span_bp);
-                    let pan = ui
-                        .add_enabled(
-                            max_start > 0,
-                            egui::Slider::new(&mut pan_start, 0..=max_start).text("Pan"),
-                        )
-                        .on_hover_text("Pan linear map viewport left/right");
-                    if pan.changed() {
-                        self.set_linear_viewport(pan_start, span_bp);
                     }
                     let view_end = start_bp.saturating_add(span_bp).min(sequence_length);
                     ui.monospace(format!(
@@ -8898,37 +8907,35 @@ impl MainAreaDna {
     }
 
     fn render_pcr_paint_role_controls(&mut self, ui: &mut egui::Ui, include_clear_all: bool) {
-        ui.horizontal_wrapped(|ui| {
-            ui.label("PCR paint role:");
-            for role in [
-                PcrPaintRole::Roi,
-                PcrPaintRole::UpstreamPrimerWindow,
-                PcrPaintRole::DownstreamPrimerWindow,
-            ] {
-                let label = egui::RichText::new(role.short_label()).color(role.color());
-                let response = ui.selectable_value(&mut self.pcr_paint_role, role, label);
-                response.on_hover_text(role.hover_text());
-            }
-            if ui
-                .small_button("Clear role")
-                .on_hover_text("Clear currently selected paint role interval")
+        ui.label("PCR paint role:");
+        for role in [
+            PcrPaintRole::Roi,
+            PcrPaintRole::UpstreamPrimerWindow,
+            PcrPaintRole::DownstreamPrimerWindow,
+        ] {
+            let label = egui::RichText::new(role.short_label()).color(role.color());
+            let response = ui.selectable_value(&mut self.pcr_paint_role, role, label);
+            response.on_hover_text(role.hover_text());
+        }
+        if ui
+            .small_button("Clear role")
+            .on_hover_text("Clear currently selected paint role interval")
+            .clicked()
+        {
+            self.clear_pcr_paint_interval_for_role(self.pcr_paint_role);
+            self.op_status = format!("Cleared {}", self.pcr_paint_role.label());
+            self.save_engine_ops_state();
+        }
+        if include_clear_all
+            && ui
+                .small_button("Clear all")
+                .on_hover_text("Clear ROI/upstream/downstream painted intervals")
                 .clicked()
-            {
-                self.clear_pcr_paint_interval_for_role(self.pcr_paint_role);
-                self.op_status = format!("Cleared {}", self.pcr_paint_role.label());
-                self.save_engine_ops_state();
-            }
-            if include_clear_all
-                && ui
-                    .small_button("Clear all")
-                    .on_hover_text("Clear ROI/upstream/downstream painted intervals")
-                    .clicked()
-            {
-                self.clear_all_pcr_paint_intervals();
-                self.op_status = "Cleared all PCR paint intervals".to_string();
-                self.save_engine_ops_state();
-            }
-        });
+        {
+            self.clear_all_pcr_paint_intervals();
+            self.op_status = "Cleared all PCR paint intervals".to_string();
+            self.save_engine_ops_state();
+        }
     }
 
     fn render_pcr_paint_interval_summary(&self, ui: &mut egui::Ui) {
@@ -22331,12 +22338,21 @@ impl MainAreaDna {
                 let mut tree_width = Self::clamp_feature_tree_panel_width(self.feature_tree_panel_width)
                     .min(max_tree_width);
 
-                ui.allocate_ui_with_layout(
+                let (feature_tree_rect, _) = ui.allocate_exact_size(
                     Vec2::new(tree_width, side_panel_height),
-                    egui::Layout::top_down(egui::Align::Min),
-                    |ui| {
-                        ui.set_min_height(side_panel_height);
-                        ui.vertical(|ui| {
+                    egui::Sense::hover(),
+                );
+                let mut feature_tree_ui = ui.new_child(
+                    egui::UiBuilder::new()
+                        .id_salt(("feature_tree_side_panel", self.panel_scope_key()))
+                        .max_rect(feature_tree_rect)
+                        .layout(egui::Layout::top_down(egui::Align::Min)),
+                );
+                feature_tree_ui.set_clip_rect(feature_tree_rect.intersect(ui.clip_rect()));
+                feature_tree_ui.set_width(tree_width);
+                feature_tree_ui.set_max_width(tree_width);
+                feature_tree_ui.set_min_height(side_panel_height);
+                feature_tree_ui.vertical(|ui| {
                             if self.feature_tree_deferred_until_interaction {
                                 let feature_count = self
                                     .dna
@@ -22488,8 +22504,6 @@ impl MainAreaDna {
                                 );
                             }
                         });
-                    },
-                );
 
                 let (split_rect, _) = ui.allocate_exact_size(
                     Vec2::new(FEATURE_PANE_SPLIT_HANDLE_WIDTH_PX, side_panel_height),

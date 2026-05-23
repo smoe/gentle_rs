@@ -32,6 +32,9 @@ pub mod dna_display;
 pub mod dna_ladder;
 /// Core DNA sequence model and sequence-level biological operations.
 pub mod dna_sequence;
+/// Local GUI repro harness for bisecting DNA-viewer layout surfaces.
+#[doc(hidden)]
+pub mod dna_viewer_repro;
 /// Internal egui compatibility helpers used during GUI API migrations.
 pub(crate) mod egui_compat;
 /// Shared deterministic operation engine and state model.

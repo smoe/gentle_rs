@@ -54,6 +54,12 @@ jobs:
       - name: Cargo check (all features)
         run: cargo check --all-features -q
 
+      - name: DNA viewer repro binary smoke
+        run: |
+          modes="$(cargo run -q --bin gentle_dna_viewer_repro -- --list-modes)"
+          test -n "$modes"
+          printf '%s\n' "$modes"
+
       - name: Script adapter version smoke
         run: |
           cargo run --features js-interface --bin gentle_js -- --version
@@ -222,6 +228,12 @@ jobs:
 
       - name: Cargo check (all features)
         run: cargo check --all-features -q
+
+      - name: DNA viewer repro binary smoke
+        run: |
+          modes="$(cargo run -q --bin gentle_dna_viewer_repro -- --list-modes)"
+          test -n "$modes"
+          printf '%s\n' "$modes"
 
       - name: Script adapter version smoke
         run: |

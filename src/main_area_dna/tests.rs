@@ -11,23 +11,21 @@ use crate::{
     dna_sequence::DNAsequence,
     engine::{
         AlternativePromoterComparisonRow, AnnotationCandidateSummary, AttractRegionClass,
-        AttractSpeciesMatchMode, AttractSplicingEvidenceHitRow,
-        AttractSplicingEvidenceSettings, AttractSplicingEvidenceView, ConstructRole,
-        CutRunAlignConfig, CutRunInputFormat, CutRunReadLayout, CutRunSeedFilterConfig,
-        DotplotMode, DotplotOverlayAnchorExonRef, DotplotOverlayXAxisMode, DotplotView,
-        EditableStatus, Engine, EvidenceClass, FlexibilityModel, FlexibilityTrack,
-        GentleEngine, LinearSequenceLetterLayoutMode, OpResult, Operation,
-        PairwiseAlignmentMode, PrimerDesignBackend, PrimerDesignPairConstraint,
+        AttractSpeciesMatchMode, AttractSplicingEvidenceHitRow, AttractSplicingEvidenceSettings,
+        AttractSplicingEvidenceView, ConstructRole, CutRunAlignConfig, CutRunInputFormat,
+        CutRunReadLayout, CutRunSeedFilterConfig, DotplotMode, DotplotOverlayAnchorExonRef,
+        DotplotOverlayXAxisMode, DotplotView, EditableStatus, Engine, EvidenceClass,
+        FlexibilityModel, FlexibilityTrack, GentleEngine, LinearSequenceLetterLayoutMode, OpResult,
+        Operation, PairwiseAlignmentMode, PrimerDesignBackend, PrimerDesignPairConstraint,
         PrimerDesignProgress, PrimerDesignSideConstraint, ProjectState,
         PromoterReporterCandidateSet, ProtocolCartoonPreviewTelemetry,
-        QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting,
-        QpcrTranscriptTargetingMode, RestrictionCloningPcrHandoffMode,
-        RestrictionEnzymeDisplayMode, RnaReadAlignmentEffect, RnaReadAlignmentInspection,
-        RnaReadAlignmentInspectionRow, RnaReadHitSelection, RnaReadInputFormat,
-        RnaReadInterpretProgress, RnaReadInterpretationHit, RnaReadInterpretationProfile,
-        RnaReadInterpretationReport, RnaReadInterpretationReportSummary,
-        RnaReadIsoformSupportRow, RnaReadIsoformTriageBin, RnaReadMappingHit,
-        RnaReadOriginMode, RnaReadReportMode, RnaReadScoreDensityVariant,
+        QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting, QpcrTranscriptTargetingMode,
+        RestrictionCloningPcrHandoffMode, RestrictionEnzymeDisplayMode, RnaReadAlignmentEffect,
+        RnaReadAlignmentInspection, RnaReadAlignmentInspectionRow, RnaReadHitSelection,
+        RnaReadInputFormat, RnaReadInterpretProgress, RnaReadInterpretationHit,
+        RnaReadInterpretationProfile, RnaReadInterpretationReport,
+        RnaReadInterpretationReportSummary, RnaReadIsoformSupportRow, RnaReadIsoformTriageBin,
+        RnaReadMappingHit, RnaReadOriginMode, RnaReadReportMode, RnaReadScoreDensityVariant,
         RnaReadSeedFilterConfig, SequenceAlignmentReport, SequenceGenomeAnchorSummary,
         SequencingConfirmationReadResult, SequencingConfirmationReport,
         SequencingConfirmationStatus, SequencingConfirmationTargetKind,
@@ -970,53 +968,51 @@ fn sequencing_confirmation_unresolved_summary_markdown_uses_matching_primer_over
         }),
     );
     area.engine = Some(Arc::new(RwLock::new(GentleEngine::from_state(state))));
-    area.sequencing_confirmation_ui.primer_overlay_report =
-        Some(SequencingPrimerOverlayReport {
-            schema: "gentle.sequencing_primer_overlay_report.v1".to_string(),
-            expected_seq_id: "expected_seq".to_string(),
-            confirmation_report_id: Some("confirm_report".to_string()),
-            min_3prime_anneal_bp: 20,
-            predicted_read_length_bp: 650,
-            primer_seq_ids: vec!["primer_a".to_string()],
-            problem_guidance_count: 1,
-            problem_guidance: vec![crate::engine::SequencingPrimerProblemGuidanceRow {
-                problem_id: "junction_1".to_string(),
-                problem_kind: SequencingPrimerProblemKind::Target,
-                problem_label: "Insert junction".to_string(),
-                problem_summary: "No retained evidence row spans the junction yet.".to_string(),
-                recommended_primer_seq_id: Some("primer_a".to_string()),
-                recommended_orientation: Some(SequencingPrimerOrientation::ForwardRead),
-                recommended_three_prime_distance_bp: Some(42),
-                candidate_count: 1,
-                reason: "Closest existing sequencing primer covers the unresolved junction."
-                    .to_string(),
-                ..Default::default()
-            }],
-            proposal_count: 1,
-            proposals: vec![SequencingPrimerProposalRow {
-                proposal_id: "proposal_a".to_string(),
-                problem_id: "junction_1".to_string(),
-                problem_kind: SequencingPrimerProblemKind::Target,
-                problem_label: "Insert junction".to_string(),
-                problem_summary: "No retained evidence row spans the junction yet.".to_string(),
-                orientation: SequencingPrimerOrientation::ForwardRead,
-                primer_sequence: "ACGTACGTACGTACGTACGT".to_string(),
-                anneal_sequence: "ACGTACGTACGTACGTACGT".to_string(),
-                anneal_start_0based: 0,
-                anneal_end_0based_exclusive: 20,
-                three_prime_position_0based: 19,
-                predicted_read_span_start_0based: 0,
-                predicted_read_span_end_0based_exclusive: 120,
-                three_prime_distance_bp: 19,
-                tm_c: 61.5,
-                gc_fraction: 0.5,
-                anneal_hits: 1,
-                reason: "Fresh primer would cover the unresolved junction directly."
-                    .to_string(),
-                ..Default::default()
-            }],
+    area.sequencing_confirmation_ui.primer_overlay_report = Some(SequencingPrimerOverlayReport {
+        schema: "gentle.sequencing_primer_overlay_report.v1".to_string(),
+        expected_seq_id: "expected_seq".to_string(),
+        confirmation_report_id: Some("confirm_report".to_string()),
+        min_3prime_anneal_bp: 20,
+        predicted_read_length_bp: 650,
+        primer_seq_ids: vec!["primer_a".to_string()],
+        problem_guidance_count: 1,
+        problem_guidance: vec![crate::engine::SequencingPrimerProblemGuidanceRow {
+            problem_id: "junction_1".to_string(),
+            problem_kind: SequencingPrimerProblemKind::Target,
+            problem_label: "Insert junction".to_string(),
+            problem_summary: "No retained evidence row spans the junction yet.".to_string(),
+            recommended_primer_seq_id: Some("primer_a".to_string()),
+            recommended_orientation: Some(SequencingPrimerOrientation::ForwardRead),
+            recommended_three_prime_distance_bp: Some(42),
+            candidate_count: 1,
+            reason: "Closest existing sequencing primer covers the unresolved junction."
+                .to_string(),
             ..Default::default()
-        });
+        }],
+        proposal_count: 1,
+        proposals: vec![SequencingPrimerProposalRow {
+            proposal_id: "proposal_a".to_string(),
+            problem_id: "junction_1".to_string(),
+            problem_kind: SequencingPrimerProblemKind::Target,
+            problem_label: "Insert junction".to_string(),
+            problem_summary: "No retained evidence row spans the junction yet.".to_string(),
+            orientation: SequencingPrimerOrientation::ForwardRead,
+            primer_sequence: "ACGTACGTACGTACGTACGT".to_string(),
+            anneal_sequence: "ACGTACGTACGTACGTACGT".to_string(),
+            anneal_start_0based: 0,
+            anneal_end_0based_exclusive: 20,
+            three_prime_position_0based: 19,
+            predicted_read_span_start_0based: 0,
+            predicted_read_span_end_0based_exclusive: 120,
+            three_prime_distance_bp: 19,
+            tm_c: 61.5,
+            gc_fraction: 0.5,
+            anneal_hits: 1,
+            reason: "Fresh primer would cover the unresolved junction directly.".to_string(),
+            ..Default::default()
+        }],
+        ..Default::default()
+    });
 
     let (_report, text) = area
         .build_sequencing_confirmation_unresolved_summary_markdown("confirm_report")
@@ -1487,9 +1483,8 @@ fn sequencing_confirmation_selected_read_falls_back_to_first_row() {
         ..Default::default()
     };
 
-    let selected =
-        MainAreaDna::sequencing_confirmation_selected_read(&report, "missing_evidence")
-            .expect("fallback read");
+    let selected = MainAreaDna::sequencing_confirmation_selected_read(&report, "missing_evidence")
+        .expect("fallback read");
     assert_eq!(selected.evidence_id, "evidence_a");
 }
 
@@ -1511,9 +1506,8 @@ fn sequencing_confirmation_selected_evidence_id_prefers_matching_row() {
         ..Default::default()
     };
 
-    let selected =
-        MainAreaDna::sequencing_confirmation_selected_evidence_id(&report, "EVIDENCE_B")
-            .expect("selected evidence id");
+    let selected = MainAreaDna::sequencing_confirmation_selected_evidence_id(&report, "EVIDENCE_B")
+        .expect("selected evidence id");
     assert_eq!(selected, "evidence_b");
 }
 
@@ -1646,8 +1640,7 @@ fn sequencing_confirmation_apply_overview_selection_coverage_gap_selects_gap_tar
 }
 
 #[test]
-fn sequencing_confirmation_apply_overview_selection_coverage_gap_without_target_keeps_gap_focus()
- {
+fn sequencing_confirmation_apply_overview_selection_coverage_gap_without_target_keeps_gap_focus() {
     let dna = DNAsequence::from_sequence("ACGTACGTACGTACGTACGT").expect("dna");
     let mut area = MainAreaDna::new(dna, Some("expected_seq".to_string()), None);
     let report = SequencingConfirmationReport::default();
@@ -1722,8 +1715,7 @@ fn sequencing_confirmation_gap_flanking_reads_pick_nearest_edges() {
         ..Default::default()
     };
 
-    let (left, right) =
-        MainAreaDna::sequencing_confirmation_gap_flanking_reads(&report, 12, 18);
+    let (left, right) = MainAreaDna::sequencing_confirmation_gap_flanking_reads(&report, 12, 18);
 
     assert_eq!(left.expect("left flank").evidence_id, "left_near");
     assert_eq!(right.expect("right flank").evidence_id, "right_near");
@@ -1929,8 +1921,7 @@ fn restriction_layer_counts_respect_display_mode_and_total_sites() {
     let area = MainAreaDna::new(dna, Some("s".to_string()), None);
     {
         let mut display = area.dna_display.write().expect("display");
-        display
-            .set_restriction_enzyme_display_mode(RestrictionEnzymeDisplayMode::PreferredOnly);
+        display.set_restriction_enzyme_display_mode(RestrictionEnzymeDisplayMode::PreferredOnly);
         display.set_preferred_restriction_enzymes(vec!["EcoRI".to_string()]);
     }
     let preferred_counts = area.compute_layer_visibility_counts();
@@ -2018,8 +2009,7 @@ fn current_engine_ops_state_records_tfbs_track_similarity_controls() {
     area.tfbs_track_similarity_species_filters = "human,mouse".to_string();
     area.tfbs_track_similarity_include_remote_metadata = true;
     area.tfbs_track_similarity_limit = "15".to_string();
-    area.tfbs_track_similarity_ranking_metric =
-        TfbsTrackSimilarityRankingMetric::SmoothedPearson;
+    area.tfbs_track_similarity_ranking_metric = TfbsTrackSimilarityRankingMetric::SmoothedPearson;
 
     let state = area.current_engine_ops_state();
 
@@ -3165,10 +3155,8 @@ fn format_support_fraction_formats_percent() {
 fn prepared_genome_choice_dialog_opens_for_verify_when_always_explicit() {
     let (mut area, _td, seq_id, prepared_genome_id) =
         make_area_with_unique_compatible_anchor("always_explicit");
-    let opened =
-        area.maybe_prompt_prepared_genome_choice(super::PendingGenomeAnchorAction::Verify {
-            seq_id,
-        });
+    let opened = area
+        .maybe_prompt_prepared_genome_choice(super::PendingGenomeAnchorAction::Verify { seq_id });
     assert!(
         opened,
         "always_explicit should force explicit prepared choice"
@@ -3185,10 +3173,8 @@ fn prepared_genome_choice_dialog_opens_for_verify_when_always_explicit() {
 fn prepared_genome_choice_dialog_stays_closed_for_verify_when_single_compatible() {
     let (mut area, _td, seq_id, _prepared_genome_id) =
         make_area_with_unique_compatible_anchor("single_compatible");
-    let opened =
-        area.maybe_prompt_prepared_genome_choice(super::PendingGenomeAnchorAction::Verify {
-            seq_id,
-        });
+    let opened = area
+        .maybe_prompt_prepared_genome_choice(super::PendingGenomeAnchorAction::Verify { seq_id });
     assert!(
         !opened,
         "single_compatible should auto-resolve unique compatible prepared genome"
@@ -3324,8 +3310,7 @@ fn apply_restriction_cloning_single_site_recommendation_sets_mode_and_clears_sav
     area.primer_design_ui
         .restriction_cloning
         .selected_saved_report_id = "handoff_old".to_string();
-    area.primer_design_ui.restriction_cloning.mode =
-        RestrictionCloningPcrHandoffMode::DirectedPair;
+    area.primer_design_ui.restriction_cloning.mode = RestrictionCloningPcrHandoffMode::DirectedPair;
     area.primer_design_ui.restriction_cloning.reverse_enzyme = "HindIII".to_string();
 
     area.apply_restriction_cloning_single_site_recommendation("EcoRI");
@@ -3804,12 +3789,7 @@ fn painted_role_interval_updates_selected_role_only() {
 
     area.apply_pcr_painted_interval_0based(PcrPaintRole::Roi, 20, 90, false);
     area.apply_pcr_painted_interval_0based(PcrPaintRole::UpstreamPrimerWindow, 5, 30, false);
-    area.apply_pcr_painted_interval_0based(
-        PcrPaintRole::DownstreamPrimerWindow,
-        90,
-        130,
-        false,
-    );
+    area.apply_pcr_painted_interval_0based(PcrPaintRole::DownstreamPrimerWindow, 90, 130, false);
 
     assert_eq!(area.pcr_paint_intervals.roi, Some((20, 90)));
     assert_eq!(area.pcr_paint_intervals.upstream_window, Some((5, 30)));
@@ -3856,12 +3836,7 @@ fn painted_pair_geometry_requires_all_three_regions() {
     area.apply_pcr_painted_interval_0based(PcrPaintRole::Roi, 20, 90, false);
     area.apply_pcr_painted_interval_0based(PcrPaintRole::UpstreamPrimerWindow, 5, 30, false);
     assert!(area.painted_pair_geometry_bp().is_none());
-    area.apply_pcr_painted_interval_0based(
-        PcrPaintRole::DownstreamPrimerWindow,
-        90,
-        120,
-        false,
-    );
+    area.apply_pcr_painted_interval_0based(PcrPaintRole::DownstreamPrimerWindow, 90, 120, false);
     assert_eq!(area.painted_pair_geometry_bp(), Some((70, 25, 30)));
 }
 
@@ -5151,9 +5126,7 @@ fn qpcr_report_targeting_summary_and_ui_sync_preserve_specificity_details() {
             transcript_count_considered: 3,
             transcript_id: Some("NR_187362.1".to_string()),
             transcript_label: Some("TP73 antisense RNA 3, transcript variant 1".to_string()),
-            realized_specificity_evidence: Some(
-                QpcrTranscriptSpecificityEvidence::JunctionOnly,
-            ),
+            realized_specificity_evidence: Some(QpcrTranscriptSpecificityEvidence::JunctionOnly),
             selected_support_transcript_count: 1,
             selected_support_transcript_fraction: 1.0 / 3.0,
             used_shared_support_fallback: false,
@@ -5162,8 +5135,7 @@ fn qpcr_report_targeting_summary_and_ui_sync_preserve_specificity_details() {
         ..Default::default()
     };
 
-    let summary =
-        MainAreaDna::qpcr_report_targeting_summary(&report).expect("targeting summary");
+    let summary = MainAreaDna::qpcr_report_targeting_summary(&report).expect("targeting summary");
     assert!(summary.contains("requested=specific transcript"));
     assert!(summary.contains("requested evidence=Either (prefer junction)"));
     assert!(summary.contains("realized evidence=Junction only"));
@@ -5354,8 +5326,7 @@ fn qpcr_persisted_context_summary_preserves_transcript_aware_details() {
         rank: 1,
         transcript_context: Some(crate::engine::QpcrTranscriptAssayContext {
             assay_class_label: "distinguishing junction primer".to_string(),
-            explanation: "Forward primer spans a transcript-specific exon junction."
-                .to_string(),
+            explanation: "Forward primer spans a transcript-specific exon junction.".to_string(),
             probe_placement: "inside_shared_exon".to_string(),
             design_transcript_feature_id: 11,
             design_transcript_id: "NR_187362.1".to_string(),
@@ -5377,9 +5348,7 @@ fn qpcr_persisted_context_summary_preserves_transcript_aware_details() {
             genomic_carryover_risk: "low".to_string(),
             genomic_carryover_rationale: "Forward primer spans a junction.".to_string(),
             transcript_distinguishing_primer: Some("forward".to_string()),
-            realized_specificity_evidence: Some(
-                QpcrTranscriptSpecificityEvidence::JunctionOnly,
-            ),
+            realized_specificity_evidence: Some(QpcrTranscriptSpecificityEvidence::JunctionOnly),
             satisfies_requested_targeting: true,
         }),
         ..Default::default()
@@ -5805,8 +5774,7 @@ fn seed_restriction_cloning_handoff_ui_uses_engine_recommendation_when_enzymes_b
     area.primer_design_ui
         .restriction_cloning
         .destination_vector_seq_id = "vec".to_string();
-    area.primer_design_ui.restriction_cloning.mode =
-        RestrictionCloningPcrHandoffMode::SingleSite;
+    area.primer_design_ui.restriction_cloning.mode = RestrictionCloningPcrHandoffMode::SingleSite;
     area.primer_design_ui
         .restriction_cloning
         .forward_enzyme
@@ -5919,8 +5887,7 @@ fn seed_restriction_cloning_handoff_ui_surfaces_engine_order_validation() {
     area.primer_design_ui
         .restriction_cloning
         .destination_vector_seq_id = "vec".to_string();
-    area.primer_design_ui.restriction_cloning.mode =
-        RestrictionCloningPcrHandoffMode::DirectedPair;
+    area.primer_design_ui.restriction_cloning.mode = RestrictionCloningPcrHandoffMode::DirectedPair;
     area.primer_design_ui.restriction_cloning.forward_enzyme = "HindIII".to_string();
     area.primer_design_ui.restriction_cloning.reverse_enzyme = "EcoRI".to_string();
 
@@ -6519,11 +6486,9 @@ fn derive_regulatory_feature_grouping_accepts_active_region_colon_prefix_variant
             ("note", "active region: 122"),
         ],
     );
-    let grouped = MainAreaDna::derive_regulatory_feature_grouping(
-        &feature,
-        "silencer: active region: 122",
-    )
-    .expect("expected active-region grouping");
+    let grouped =
+        MainAreaDna::derive_regulatory_feature_grouping(&feature, "silencer: active region: 122")
+            .expect("expected active-region grouping");
     assert_eq!(grouped.primary_key, "silencer");
     assert_eq!(grouped.secondary_key.as_deref(), Some("active_region"));
     assert_eq!(grouped.secondary_label.as_deref(), Some("active region"));
@@ -6844,8 +6809,7 @@ fn replace_active_dna_limits_initial_linear_view_after_circular_topology_switch(
 
 #[test]
 fn replace_active_dna_invalidates_feature_tree_cache() {
-    let mut initial_dna =
-        DNAsequence::from_sequence("A".repeat(100).as_str()).expect("sequence");
+    let mut initial_dna = DNAsequence::from_sequence("A".repeat(100).as_str()).expect("sequence");
     initial_dna
         .features_mut()
         .push(make_feature("gene", vec![("label", "TP53")]));
@@ -6986,9 +6950,8 @@ fn linear_base_status_and_auto_hide_follow_shared_adaptive_routing() {
         let mut display = area.dna_display.write().expect("display lock");
         display.set_linear_viewport(0, 300);
         display.set_linear_sequence_helical_letters_enabled(true);
-        display.set_linear_sequence_letter_layout_mode(
-            LinearSequenceLetterLayoutMode::AutoAdaptive,
-        );
+        display
+            .set_linear_sequence_letter_layout_mode(LinearSequenceLetterLayoutMode::AutoAdaptive);
         display.set_auto_hide_sequence_panel_when_linear_bases_visible(true);
     }
 
@@ -7030,9 +6993,8 @@ fn linear_base_auto_hide_uses_width_cache_fallback() {
         let mut display = area.dna_display.write().expect("display lock");
         display.set_linear_viewport(0, 3000);
         display.set_linear_sequence_helical_letters_enabled(true);
-        display.set_linear_sequence_letter_layout_mode(
-            LinearSequenceLetterLayoutMode::AutoAdaptive,
-        );
+        display
+            .set_linear_sequence_letter_layout_mode(LinearSequenceLetterLayoutMode::AutoAdaptive);
         display.set_auto_hide_sequence_panel_when_linear_bases_visible(true);
     }
 
@@ -7100,12 +7062,8 @@ fn linear_vertical_fit_delta_clamp_limits_extreme_pan() {
 fn view_svg_export_profiles_scale_canvas_and_context() {
     let screen =
         MainAreaDna::view_svg_export_layout(ViewSvgExportProfile::Screen, 1280.0, true, true);
-    let wide = MainAreaDna::view_svg_export_layout(
-        ViewSvgExportProfile::WideContext,
-        1280.0,
-        true,
-        true,
-    );
+    let wide =
+        MainAreaDna::view_svg_export_layout(ViewSvgExportProfile::WideContext, 1280.0, true, true);
     let print = MainAreaDna::view_svg_export_layout(
         ViewSvgExportProfile::PrintA3Landscape,
         1280.0,
@@ -7226,8 +7184,7 @@ fn isoform_expert_window_title_uses_protein_expert_for_transcript_native_source(
         gene_symbol: "TP73".to_string(),
         transcript_geometry_mode: "cds".to_string(),
         panel_source: Some(
-            "Transcript-native protein derivation (external protein opinions optional)"
-                .to_string(),
+            "Transcript-native protein derivation (external protein opinions optional)".to_string(),
         ),
         region_start_1based: 1,
         region_end_1based: 4,
@@ -7314,8 +7271,7 @@ fn isoform_expert_embed_mode_uses_single_hosted_shell_without_viewport_title_lay
         gene_symbol: "TP73".to_string(),
         transcript_geometry_mode: "cds".to_string(),
         panel_source: Some(
-            "Transcript-native proteins with optional Ensembl opinion ENSP00000362111"
-                .to_string(),
+            "Transcript-native proteins with optional Ensembl opinion ENSP00000362111".to_string(),
         ),
         region_start_1based: 1,
         region_end_1based: 4,
@@ -8237,9 +8193,10 @@ fn rna_read_gene_scope_summary_mentions_explicit_sparse_gene_list() {
         RnaReadOriginMode::MultiGeneSparse,
         "TP73, TP53",
     );
-    assert!(summary.contains(
-        "all genes overlapping seq1:10..50 on the selected target gene/group strand"
-    ));
+    assert!(
+        summary
+            .contains("all genes overlapping seq1:10..50 on the selected target gene/group strand")
+    );
     assert!(summary.contains("TP73, TP53"));
 }
 
@@ -8397,8 +8354,8 @@ fn open_rna_read_mapping_workspace_replaces_stale_report_id_with_matching_report
 
 #[test]
 fn open_current_rna_read_mapping_workspace_uses_selected_splicing_feature() {
-    let mut dna = DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-        .expect("sequence");
+    let mut dna =
+        DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA").expect("sequence");
     dna.features_mut().push(Feature {
         kind: "mRNA".into(),
         location: Location::Join(vec![
@@ -8433,8 +8390,8 @@ fn open_current_rna_read_mapping_workspace_uses_selected_splicing_feature() {
 
 #[test]
 fn open_current_rna_read_mapping_workspace_falls_back_when_description_cache_is_empty() {
-    let mut dna = DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-        .expect("sequence");
+    let mut dna =
+        DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA").expect("sequence");
     dna.features_mut().push(Feature {
         kind: "mRNA".into(),
         location: Location::Join(vec![
@@ -8470,8 +8427,8 @@ fn open_current_rna_read_mapping_workspace_falls_back_when_description_cache_is_
 
 #[test]
 fn open_rna_read_mapping_for_feature_opens_workspace_on_explicit_request() {
-    let mut dna = DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-        .expect("sequence");
+    let mut dna =
+        DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA").expect("sequence");
     dna.features_mut().push(Feature {
         kind: "gene".into(),
         location: Location::simple_range(2, 34),
@@ -8514,8 +8471,8 @@ fn open_rna_read_mapping_for_feature_opens_workspace_on_explicit_request() {
 
 #[test]
 fn open_variant_followup_for_feature_seeds_window_from_variation_feature() {
-    let mut dna = DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-        .expect("sequence");
+    let mut dna =
+        DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA").expect("sequence");
     dna.features_mut().push(Feature {
         kind: "variation".into(),
         location: Location::simple_range(10, 11),
@@ -8588,8 +8545,8 @@ fn open_variant_followup_for_feature_seeds_window_from_variation_feature() {
 
 #[test]
 fn feature_supports_variant_followup_accepts_gene_mrna_promoter_and_variation() {
-    let mut dna = DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-        .expect("sequence");
+    let mut dna =
+        DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA").expect("sequence");
     dna.features_mut().push(Feature {
         kind: "variation".into(),
         location: Location::simple_range(10, 11),
@@ -8620,8 +8577,8 @@ fn feature_supports_variant_followup_accepts_gene_mrna_promoter_and_variation() 
 
 #[test]
 fn open_variant_followup_for_gene_feature_seeds_promoter_design_presets() {
-    let mut dna = DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-        .expect("sequence");
+    let mut dna =
+        DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA").expect("sequence");
     dna.features_mut().push(Feature {
         kind: "gene".into(),
         location: Location::simple_range(2, 20),
@@ -9036,8 +8993,8 @@ fn splicing_intron_regulatory_rows_merge_cached_attract_hits_with_intron_signals
 
 #[test]
 fn variant_followup_handoff_result_uses_bundle_relative_artifacts() {
-    let dna = DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-        .expect("sequence");
+    let dna =
+        DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA").expect("sequence");
     let mut area = MainAreaDna::new(dna, Some("vkorc1_context".to_string()), None);
     area.variant_followup_ui.source_seq_id = "vkorc1_context".to_string();
     area.variant_followup_ui.variant_label_or_id = "rs9923231".to_string();
@@ -9163,8 +9120,8 @@ fn variant_followup_handoff_result_uses_bundle_relative_artifacts() {
 
 #[test]
 fn variant_followup_handoff_commands_render_svg_paths_expand_bundle_dir() {
-    let dna = DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-        .expect("sequence");
+    let dna =
+        DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA").expect("sequence");
     let mut area = MainAreaDna::new(dna, Some("vkorc1_context".to_string()), None);
     area.variant_followup_ui.source_seq_id = "vkorc1_context".to_string();
     area.variant_followup_ui.variant_label_or_id = "rs9923231".to_string();
@@ -9243,8 +9200,7 @@ fn variant_followup_handoff_commands_render_svg_paths_expand_bundle_dir() {
         rationale: "Top-ranked reverse-strand promoter fragment".to_string(),
     };
 
-    let commands =
-        area.build_variant_followup_handoff_commands(&artifacts, &report, &recommended);
+    let commands = area.build_variant_followup_handoff_commands(&artifacts, &report, &recommended);
 
     assert!(commands.contains("render-svg vkorc1_context linear \"$BUNDLE_DIR/"));
     assert!(commands.contains("render-svg rs9923231_reference circular \"$BUNDLE_DIR/"));
@@ -9256,8 +9212,8 @@ fn variant_followup_handoff_commands_render_svg_paths_expand_bundle_dir() {
 
 #[test]
 fn open_dotplot_for_feature_opens_transcript_dotplot_on_explicit_request() {
-    let mut dna = DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-        .expect("sequence");
+    let mut dna =
+        DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA").expect("sequence");
     dna.features_mut().push(Feature {
         kind: "gene".into(),
         location: Location::simple_range(2, 34),
@@ -10132,8 +10088,7 @@ fn select_rna_read_report_score_bin_record_indices_matches_requested_bin() {
 }
 
 #[test]
-fn select_rna_read_report_score_bin_record_indices_composite_gate_respects_passed_seed_filter()
-{
+fn select_rna_read_report_score_bin_record_indices_composite_gate_respects_passed_seed_filter() {
     let report = RnaReadInterpretationReport {
         hits: vec![
             RnaReadInterpretationHit {
@@ -10251,27 +10206,21 @@ fn rna_read_alignment_selection_summary_explains_all_vs_seed_passed_counts() {
         ..RnaReadInterpretationReport::default()
     };
 
-    let summary_all = MainAreaDna::format_rna_read_alignment_selection_summary(
-        &report,
-        RnaReadHitSelection::All,
-    );
+    let summary_all =
+        MainAreaDna::format_rna_read_alignment_selection_summary(&report, RnaReadHitSelection::All);
     assert!(summary_all.contains("aligns all retained saved-report rows (3)"));
     assert!(
-        summary_all
-            .contains("1 currently pass the composite seed gate recorded for this report")
+        summary_all.contains("1 currently pass the composite seed gate recorded for this report")
     );
     assert!(summary_all.contains("2 are at or above raw min_hit=0.30"));
-    assert!(
-        summary_all.contains("The red histogram line marks only that raw min_hit component")
-    );
+    assert!(summary_all.contains("The red histogram line marks only that raw min_hit component"));
 
     let summary_seed_passed = MainAreaDna::format_rna_read_alignment_selection_summary(
         &report,
         RnaReadHitSelection::SeedPassed,
     );
     assert!(
-        summary_seed_passed
-            .contains("aligns the retained saved-report rows that currently pass")
+        summary_seed_passed.contains("aligns the retained saved-report rows that currently pass")
     );
     assert!(summary_seed_passed.contains("(1)"));
     assert!(summary_seed_passed.contains("passed_seed_filter=yes"));
@@ -10283,8 +10232,7 @@ fn rna_read_support_and_preview_tables_reserve_practical_minimum_heights() {
     ctx.begin_pass(egui::RawInput::default());
     egui::Area::new("rna_read_table_height_probe".into()).show(&ctx, |ui| {
         let support_height = MainAreaDna::default_rna_read_support_table_height(ui);
-        let preview_height =
-            MainAreaDna::default_rna_read_preview_table_height_for_rows(ui, 12);
+        let preview_height = MainAreaDna::default_rna_read_preview_table_height_for_rows(ui, 12);
 
         assert!(
             support_height >= 170.0,
@@ -11557,8 +11505,8 @@ fn splicing_map_placeholder_svg_mentions_selected_sequence() {
 
 #[test]
 fn refresh_description_cache_builds_splicing_view_for_gene_seed_feature() {
-    let mut dna = DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-        .expect("sequence");
+    let mut dna =
+        DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA").expect("sequence");
     dna.features_mut().push(Feature {
         kind: "mRNA".into(),
         location: Location::Join(vec![
@@ -11600,8 +11548,8 @@ fn refresh_description_cache_builds_splicing_view_for_gene_seed_feature() {
 
 #[test]
 fn refresh_description_cache_builds_splicing_view_for_misc_rna_seed_feature() {
-    let mut dna = DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-        .expect("sequence");
+    let mut dna =
+        DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA").expect("sequence");
     dna.features_mut().push(Feature {
         kind: "misc_RNA".into(),
         location: Location::Join(vec![
@@ -11635,8 +11583,8 @@ fn refresh_description_cache_builds_splicing_view_for_misc_rna_seed_feature() {
 
 #[test]
 fn refresh_description_cache_does_not_auto_open_splicing_window() {
-    let mut dna = DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-        .expect("sequence");
+    let mut dna =
+        DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA").expect("sequence");
     dna.features_mut().push(Feature {
         kind: "mRNA".into(),
         location: Location::Join(vec![
@@ -11774,8 +11722,7 @@ fn refresh_description_cache_includes_non_sequence_construct_reasoning_context()
         )
         .expect("build graph");
     let engine = Arc::new(RwLock::new(engine));
-    let mut area =
-        MainAreaDna::new(dna, Some("seq_reasoning_context".to_string()), Some(engine));
+    let mut area = MainAreaDna::new(dna, Some("seq_reasoning_context".to_string()), Some(engine));
 
     area.refresh_description_cache();
 
@@ -11842,8 +11789,7 @@ fn refresh_description_cache_includes_annotation_summary_entries() {
         graph.annotation_candidate_summaries
     );
     let engine = Arc::new(RwLock::new(engine));
-    let mut area =
-        MainAreaDna::new(dna, Some("seq_reasoning_summary".to_string()), Some(engine));
+    let mut area = MainAreaDna::new(dna, Some("seq_reasoning_summary".to_string()), Some(engine));
 
     area.focus_construct_reasoning_graph(&graph.graph_id);
     area.refresh_description_cache();
@@ -12165,8 +12111,7 @@ fn set_construct_reasoning_annotation_candidate_status_refreshes_overlay_and_det
         .find(|candidate| candidate.role == ConstructRole::Exon)
         .expect("annotation candidate");
     let engine = Arc::new(RwLock::new(engine));
-    let mut area =
-        MainAreaDna::new(dna, Some("seq_reasoning_status".to_string()), Some(engine));
+    let mut area = MainAreaDna::new(dna, Some("seq_reasoning_status".to_string()), Some(engine));
 
     area.focus_construct_reasoning_graph("graph_reasoning_status");
     area.map_dna
@@ -12354,8 +12299,7 @@ fn refresh_description_cache_includes_variant_reasoning_context() {
         .build_construct_reasoning_graph("seq_reasoning_variant", None, None)
         .expect("build graph");
     let engine = Arc::new(RwLock::new(engine));
-    let mut area =
-        MainAreaDna::new(dna, Some("seq_reasoning_variant".to_string()), Some(engine));
+    let mut area = MainAreaDna::new(dna, Some("seq_reasoning_variant".to_string()), Some(engine));
 
     area.refresh_description_cache();
 
@@ -12389,8 +12333,8 @@ fn refresh_description_cache_includes_variant_reasoning_context() {
 
 #[test]
 fn open_splicing_expert_for_feature_opens_window_on_explicit_request() {
-    let mut dna = DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-        .expect("sequence");
+    let mut dna =
+        DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA").expect("sequence");
     dna.features_mut().push(Feature {
         kind: "mRNA".into(),
         location: Location::Join(vec![
@@ -12527,15 +12471,15 @@ fn rna_read_progress_eta_text_reports_remaining_time_for_known_working_set() {
 
 #[cfg(test)]
 mod embedded_scope_tests {
-use super::MainAreaDna;
-use crate::dna_sequence::DNAsequence;
+    use super::MainAreaDna;
+    use crate::dna_sequence::DNAsequence;
 
-#[test]
-fn panel_scope_key_uses_window_scope_id_when_present() {
-    let dna = DNAsequence::from_sequence("ACGT").expect("valid DNA");
-    let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
-    assert_eq!(area.panel_scope_key(), "seq1");
-    area.set_window_scope_id("viewport-42");
-    assert_eq!(area.panel_scope_key(), "seq1::viewport-42");
-}
+    #[test]
+    fn panel_scope_key_uses_window_scope_id_when_present() {
+        let dna = DNAsequence::from_sequence("ACGT").expect("valid DNA");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        assert_eq!(area.panel_scope_key(), "seq1");
+        area.set_window_scope_id("viewport-42");
+        assert_eq!(area.panel_scope_key(), "seq1::viewport-42");
+    }
 }

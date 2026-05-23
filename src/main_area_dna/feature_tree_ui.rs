@@ -288,7 +288,9 @@ impl MainAreaDna {
         ))
     }
 
-    pub(super) fn feature_tree_layer_summary(model: &FeatureTreeComputedModel) -> FeatureTreeLayerSummary {
+    pub(super) fn feature_tree_layer_summary(
+        model: &FeatureTreeComputedModel,
+    ) -> FeatureTreeLayerSummary {
         let mut summary = FeatureTreeLayerSummary::default();
         for group in &model.groups {
             for entry in &group.entries {
@@ -454,7 +456,10 @@ impl MainAreaDna {
         lines.join("\n")
     }
 
-    pub(super) fn feature_copy_payload(feature: &gb_io::seq::Feature, kind: FeatureCopyPayloadKind) -> String {
+    pub(super) fn feature_copy_payload(
+        feature: &gb_io::seq::Feature,
+        kind: FeatureCopyPayloadKind,
+    ) -> String {
         match kind {
             FeatureCopyPayloadKind::Identifier => Self::feature_copy_identifier_text(feature),
             FeatureCopyPayloadKind::Description => Self::feature_copy_description_text(feature),
@@ -1060,7 +1065,9 @@ impl MainAreaDna {
         })
     }
 
-    pub(super) fn parse_feature_tree_filter_terms(filter_text: &str) -> Vec<(Option<String>, String)> {
+    pub(super) fn parse_feature_tree_filter_terms(
+        filter_text: &str,
+    ) -> Vec<(Option<String>, String)> {
         filter_text
             .split_whitespace()
             .filter_map(|raw_term| {
@@ -1269,7 +1276,10 @@ impl MainAreaDna {
         }
     }
 
-    pub(super) fn build_feature_tree_model(&self, key: &FeatureTreeCacheKey) -> FeatureTreeComputedModel {
+    pub(super) fn build_feature_tree_model(
+        &self,
+        key: &FeatureTreeCacheKey,
+    ) -> FeatureTreeComputedModel {
         let filter_active = !key.feature_filter_text.is_empty();
         let mut filter_total_count = 0usize;
         let mut filter_matched_count = 0usize;
