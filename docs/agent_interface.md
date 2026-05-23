@@ -9,7 +9,7 @@ For a self-standing narrative tutorial with role-based usage, step-by-step
 flows, and explicit comparisons (CLI vs MCP vs Agent Assistant vs external
 coding agents like Codex), start with:
 
-- `docs/agent_interfaces_tutorial.md`
+- `docs/tutorial/01-01_agent_interfaces.md`
 
 For the shortest working-tree loop an agent can run while editing GENtle, use:
 

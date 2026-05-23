@@ -11,10 +11,10 @@
 
 use super::*;
 
-pub(super) const AGENT_INTERFACES_TUTORIAL_PATH: &str = "docs/agent_interfaces_tutorial.md";
+pub(super) const AGENT_INTERFACES_TUTORIAL_PATH: &str = "docs/tutorial/01-01_agent_interfaces.md";
 pub(super) const AGENT_INTERFACES_TUTORIAL_TITLE: &str =
     "GENtle Agent Assistant and Agent Interfaces Tutorial";
-pub(super) const AGENT_INTERFACES_TUTORIAL_SUMMARY: &str = "docs/agent_interfaces_tutorial.md\n\
+pub(super) const AGENT_INTERFACES_TUTORIAL_SUMMARY: &str = "docs/tutorial/01-01_agent_interfaces.md\n\
 type: operational_reference\n\
 status: manual/reference\n\
 Practical guide for the in-app Agent Assistant, provider quick starts, reviewed shared-shell suggestions, CLI/shared shell, MCP, and external coding agents.";

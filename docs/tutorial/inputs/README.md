@@ -65,10 +65,10 @@ Provenance:
 Current intended use in GENtle:
 
 - Load `trace_demo_construct` in
-  [`docs/tutorial/sequencing_confirmation_trace_cli.md`](../sequencing_confirmation_trace_cli.md)
+  [`docs/tutorial/10-01_sequencing_confirmation_trace_cli.md`](../10-01_sequencing_confirmation_trace_cli.md)
   for the shell/CLI path.
 - Load both `trace_demo_construct` and `trace_demo_baseline` in
-  [`docs/tutorial/sequencing_confirmation_gui.md`](../sequencing_confirmation_gui.md)
+  [`docs/tutorial/10-02_sequencing_confirmation_gui.md`](../10-02_sequencing_confirmation_gui.md)
   for the GUI-first path.
 - Pair them with the bundled `3100.ab1` trace via either:
   - `seq-trace import` + `seq-confirm run --trace-id ...`, or
@@ -101,10 +101,10 @@ Provenance:
 Current intended use in GENtle:
 
 - Load in
-  [`docs/tutorial/stateless_sequence_inspection_gui_cli.md`](../stateless_sequence_inspection_gui_cli.md)
+  [`docs/tutorial/02-02_stateless_sequence_inspection_gui_cli.md`](../02-02_stateless_sequence_inspection_gui_cli.md)
   for the GUI toolbar path (`RE scan`, `TFBS scan`, `TFBS score tracks`).
 - Load in
-  [`docs/tutorial/tfbs_similarity_ranking_gui.md`](../tfbs_similarity_ranking_gui.md)
+  [`docs/tutorial/08-01_tfbs_similarity_ranking_gui.md`](../08-01_tfbs_similarity_ranking_gui.md)
   for the GUI sign-off path of `TFBS similarity` on the same tiny local
   sequence.
 - Compare against the matching workflow example

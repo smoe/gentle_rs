@@ -5,7 +5,7 @@ community-facing promoter/luciferase walkthrough.
 
 Use this page instead:
 
-- [`docs/tutorial/vkorc1_warfarin_promoter_luciferase_gui.md`](../vkorc1_warfarin_promoter_luciferase_gui.md)
+- [`docs/tutorial/08-04_vkorc1_warfarin_promoter_luciferase_gui.md`](../08-04_vkorc1_warfarin_promoter_luciferase_gui.md)
 
 That VKORC1 tutorial is now the maintained source for:
 

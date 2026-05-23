@@ -73,7 +73,7 @@
     "Adenoviral delivery is reserved as a later escalation only if transfection efficiency becomes the bottleneck."
   ],
   "artifacts": {
-    "tutorial_markdown": "docs/tutorial/vkorc1_warfarin_promoter_luciferase_gui.md",
+    "tutorial_markdown": "docs/tutorial/08-04_vkorc1_warfarin_promoter_luciferase_gui.md",
     "workflow_json": "docs/examples/workflows/vkorc1_rs9923231_promoter_luciferase_assay_planning.json",
     "report_md": "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/report.md",
     "commands_sh": "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/commands.sh"

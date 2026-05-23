@@ -1171,7 +1171,7 @@
       "decimal_id": "03.04",
       "example_id": "gibson_specialist_testing_baseline",
       "tier": "core",
-      "guide_path": "docs/tutorial/gibson_specialist_testing_gui.md",
+      "guide_path": "docs/tutorial/03-05_gibson_specialist_testing_gui.md",
       "summary": "Build a ready-to-open tutorial project with one circular destination and one linear insert so the Gibson specialist can be tested without setup drift.",
       "narrative": "This chapter exists to remove setup friction from Gibson specialist testing. The executable workflow loads a known circular pGEX destination and one small synthetic insert under stable IDs, so `File -> Open Tutorial Project...` can hand you a reproducible starting state before you continue in the dedicated GUI specialist.",
       "use_cases": [
@@ -1251,7 +1251,7 @@
       "decimal_id": "03.06",
       "example_id": "gibson_arrangements_baseline",
       "tier": "core",
-      "guide_path": "docs/tutorial/gibson_arrangements_gui.md",
+      "guide_path": "docs/tutorial/03-07_gibson_arrangements_gui.md",
       "summary": "Open directly into an arrangement-ready Gibson result with vector, insert, assembled product, a stored three-lane lane set, and an assistant-facing bench handoff already present.",
       "narrative": "This chapter now uses its own deterministic workflow example instead of reusing the Gibson specialist starter. `File -> Open Tutorial Project...` builds the pGEX + insert starter, applies the canonical single-insert Gibson plan, exports a lab-assistant handoff Markdown file, and then opens the arrangement guide so the user can inspect singleton outputs, stored arrangements, gel export, and bench-facing instructions without first repeating the cloning step.",
       "use_cases": [
@@ -1461,7 +1461,7 @@
       "decimal_id": "04.01",
       "example_id": "simple_pcr_selection_gui",
       "tier": "core",
-      "guide_path": "docs/tutorial/simple_pcr_selection_gui.md",
+      "guide_path": "docs/tutorial/04-01_simple_pcr_selection_gui.md",
       "summary": "Open a ready local TP73 sequence and walk through the smallest useful PCR story: select the core ROI, limit primer distance from the core, and cap the amplicon length.",
       "narrative": "This chapter is intentionally minimal. The tutorial project opens one stable local TP73 locus so you can stay in the GUI, paint or select one region of interest, launch `Simple PCR from selection`, and reason about primer placement in beginner terms before moving on to the richer batch-PCR chapter.",
       "use_cases": [
@@ -1549,7 +1549,7 @@
       "decimal_id": "06.05",
       "example_id": "tp73_uniprot_projection_audit_online",
       "tier": "online",
-      "guide_path": "docs/tutorial/tp73_uniprot_projection_audit_cli.md",
+      "guide_path": "docs/tutorial/06-05_tp73_uniprot_projection_audit_cli.md",
       "summary": "Build a TP73 locus project, fetch UniProt and Ensembl protein evidence, persist the integrated audit plus parity report, and keep the matching expert SVG as an inspectable artifact.",
       "narrative": "This executable chapter turns the TP73 UniProt/Ensembl audit into a reproducible online workflow. It prepares GRCh38, extracts TP73, fetches the reviewed UniProt entry and matching Ensembl protein evidence, projects the protein onto the locus, persists the integrated audit and direct-vs-composed parity report, and keeps one shared expert SVG export alongside the stored report artifacts. The companion hand-written tutorial then explains how to inspect the same outcome through the public primitive commands.",
       "use_cases": [

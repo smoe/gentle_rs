@@ -351,7 +351,7 @@ python3 docs/figures/render_serial_gel_hero.py \
 ```
 
 The corresponding GUI/CLI tutorial for this export lives in
-[`docs/tutorial/gibson_physical_rack_gui.md`](docs/tutorial/gibson_physical_rack_gui.md).
+[`docs/tutorial/03-08_gibson_physical_rack_gui.md`](docs/tutorial/03-08_gibson_physical_rack_gui.md).
 
 ### Overlap-Extension PCR Substitution Mechanism
 
@@ -617,7 +617,7 @@ Canonical offline workflow example:
 
 Matching GUI/CLI tutorial:
 
-- [`docs/tutorial/stateless_sequence_inspection_gui_cli.md`](docs/tutorial/stateless_sequence_inspection_gui_cli.md)
+- [`docs/tutorial/02-02_stateless_sequence_inspection_gui_cli.md`](docs/tutorial/02-02_stateless_sequence_inspection_gui_cli.md)
 
 Matching ClawBio workflow request:
 
@@ -682,7 +682,7 @@ and the reproducibility bundle under
 
 GENtle also ships guided GUI tutorials. For example, the Gibson specialist has
 a dedicated walkthrough in
-[`docs/tutorial/gibson_specialist_testing_gui.md`](docs/tutorial/gibson_specialist_testing_gui.md),
+[`docs/tutorial/03-05_gibson_specialist_testing_gui.md`](docs/tutorial/03-05_gibson_specialist_testing_gui.md),
 and that guide is available directly through the Help window with associated
 screenshots. This keeps the interactive workflow teachable and reproducible:
 users can follow a stable step-by-step path inside the GUI, and contributors
@@ -847,5 +847,5 @@ what is actively being built next, see [`docs/roadmap.md`](docs/roadmap.md).
 - CLI manual: [`docs/cli.md`](docs/cli.md)
 - Tutorial guide: [`docs/tutorial/README.md`](docs/tutorial/README.md)
 - Executable tutorial hub: [`docs/tutorial/generated/README.md`](docs/tutorial/generated/README.md)
-- Agent interfaces tutorial: [`docs/agent_interfaces_tutorial.md`](docs/agent_interfaces_tutorial.md)
+- Agent interfaces tutorial: [`docs/tutorial/01-01_agent_interfaces.md`](docs/tutorial/01-01_agent_interfaces.md)
 - Acknowledgements: [`ACKNOWLEDGEMENTS.md`](ACKNOWLEDGEMENTS.md)

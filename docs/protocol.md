@@ -2706,7 +2706,7 @@ Adapter utility contracts (current, non-engine operations):
 For narrative/operator guidance on when to use CLI, MCP, Agent Assistant, or an
 external coding agent runtime, see:
 
-- `docs/agent_interfaces_tutorial.md`
+- `docs/tutorial/01-01_agent_interfaces.md`
 
 - `help [COMMAND ...] [--format text|json|markdown] [--interface ...]`
   - backed by structured glossary source `docs/glossary.json`

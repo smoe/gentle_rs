@@ -104,7 +104,7 @@ but also what GENtle is being prepared for next.
 - Added ClawBio/OpenClaw skill bridge:
   - `integrations/clawbio/skills/gentle-cloning/*`
 - Updated docs for agent/tutorial/interface clarity:
-  - `docs/agent_interfaces_tutorial.md`
+  - `docs/tutorial/01-01_agent_interfaces.md`
   - `docs/architecture.md`
   - `docs/protocol.md`
   - `docs/cli.md`
@@ -154,7 +154,7 @@ but also what GENtle is being prepared for next.
 - Added TP73 promoter luciferase planning skeleton and GUI-focused walkthrough.
 - Added two dedicated GUI tutorials:
   - `docs/tutorial/archive/tp73_promoter_luciferase_gui.md`
-  - `docs/tutorial/two_sequence_dotplot_gui.md`
+  - `docs/tutorial/02-03_tp73_cdna_genomic_dotplot_gui.md`
 - Added screenshot assets for these tutorial tracks (for release/docs embedding):
   - TP73/luciferase and genomic retrieval screenshots under `docs/screenshots/`
   - cDNA vs genomic dotplot screenshots under `docs/screenshots/tutorial_cdna_genomic_*.png`

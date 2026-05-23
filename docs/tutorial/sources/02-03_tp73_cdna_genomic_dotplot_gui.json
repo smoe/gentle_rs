@@ -1,0 +1,20 @@
+{
+  "schema": "gentle.tutorial_source.v4",
+  "id": "tp73_cdna_genomic_dotplot_gui",
+  "title": "Retrieve a cDNA and Compare It Against the Genomic Sequence (Dotplot Tutorial)",
+  "catalog": {
+    "order": 3,
+    "path": "docs/tutorial/02-03_tp73_cdna_genomic_dotplot_gui.md",
+    "type": "gui_walkthrough",
+    "status": "manual",
+    "source": "hand_written_markdown",
+    "audiences": [
+      "gui_first",
+      "sequence_analysis",
+      "visual_learning"
+    ],
+    "notes": "Screenshot-backed manual tutorial for cDNA-vs-genomic comparison.",
+    "group": "02",
+    "group_position": 3
+  }
+}

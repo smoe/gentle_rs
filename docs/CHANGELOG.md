@@ -29,6 +29,10 @@ Maintenance rule:
   generated reference hub, Help tutorial picker, and `File -> Open Tutorial
   Project...` menu now present tutorials by content group and decimal id rather
   than flat lists or tier-only buckets.
+- Began Phase 3 tutorial filename convergence: numbered tutorial sources,
+  generated chapters, and hand-written walkthroughs now use decimal
+  `<GG>-<PP>_<unit_id>` filenames, while unnumbered reference units keep
+  explicit `ref_*.json` source names.
 - Archived superseded TP73 promoter/luciferase tutorial pointers and moved the
   planned VKORC1 / Factor X companion tutorial note into the roadmap parking
   lot instead of active tutorial numbering.

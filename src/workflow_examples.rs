@@ -1796,7 +1796,7 @@ fn chapter_link_label(chapter: &TutorialChapter) -> String {
 }
 
 fn chapter_link_target(chapter: &TutorialChapter, from_readme: bool) -> String {
-    let filename = chapter_markdown_filename(chapter.order, &chapter.id);
+    let filename = markdown_path_for_chapter(chapter);
     if from_readme {
         format!("./chapters/{filename}")
     } else {
@@ -2516,12 +2516,23 @@ fn tutorial_chapter_lookup(chapters: &[TutorialChapter]) -> HashMap<String, Tuto
         .collect()
 }
 
-fn chapter_markdown_filename(order: usize, id: &str) -> String {
+fn chapter_markdown_filename_from_parts(
+    order: usize,
+    id: &str,
+    decimal_id: Option<&str>,
+) -> String {
+    if let Some(decimal_id) = decimal_id.map(str::trim).filter(|value| !value.is_empty()) {
+        return format!(
+            "{}_{}.md",
+            decimal_id.replace('.', "-"),
+            markdown_file_stem(id)
+        );
+    }
     format!("{:02}_{}.md", order, markdown_file_stem(id))
 }
 
 fn markdown_path_for_chapter(chapter: &TutorialChapter) -> String {
-    chapter_markdown_filename(chapter.order, &chapter.id)
+    chapter_markdown_filename_from_parts(chapter.order, &chapter.id, chapter.decimal_id.as_deref())
 }
 
 fn yaml_double_quote(value: &str) -> String {
@@ -3411,7 +3422,11 @@ fn render_tutorial_index(
             out.push_str("\n\n");
             last_group = Some(group.to_string());
         }
-        let chapter_file = chapter_markdown_filename(chapter.order, &chapter.id);
+        let chapter_file = chapter_markdown_filename_from_parts(
+            chapter.order,
+            &chapter.id,
+            chapter.decimal_id.as_deref(),
+        );
         out.push_str("- ");
         if let Some(decimal_id) = chapter.decimal_id.as_deref() {
             out.push_str("`");
@@ -5054,7 +5069,7 @@ mod tests {
         assert!(readme_markdown.contains("### Sequence Basics & Lineage"));
         assert!(readme_markdown.contains("`02.01` [Load FASTA, branch, and reverse-complement]"));
 
-        let chapter = generated.join("chapters/01_load_branch_reverse_complement_pgex_fasta.md");
+        let chapter = generated.join("chapters/02-01_load_branch_reverse_complement_pgex_fasta.md");
         let markdown = std::fs::read_to_string(&chapter).expect("read generated chapter markdown");
         assert!(markdown.starts_with("---\nchapter_id: "));
         assert!(markdown.contains("## What You Learn"));
@@ -5070,7 +5085,7 @@ mod tests {
         assert!(markdown.contains("review_status: "));
         assert!(markdown.contains("## Feedback"));
 
-        let online_chapter = generated.join("chapters/09_prepare_reference_genome_online.md");
+        let online_chapter = generated.join("chapters/05-02_prepare_reference_genome_online.md");
         let online_markdown =
             std::fs::read_to_string(&online_chapter).expect("read online chapter markdown");
         assert!(online_markdown.contains("> **How to Run This Locally**"));
@@ -5079,14 +5094,14 @@ mod tests {
         assert!(online_markdown.contains("> Expected:"));
         assert!(!online_markdown.contains("## Command Equivalent (After GUI)"));
 
-        let simple_pcr_chapter = generated.join("chapters/18_simple_pcr_selection_gui.md");
+        let simple_pcr_chapter = generated.join("chapters/04-01_simple_pcr_selection_gui.md");
         let simple_pcr_markdown =
             std::fs::read_to_string(&simple_pcr_chapter).expect("read simple PCR chapter markdown");
         assert!(simple_pcr_markdown.contains("See also: guided walkthrough"));
-        assert!(simple_pcr_markdown.contains("../../simple_pcr_selection_gui.md"));
+        assert!(simple_pcr_markdown.contains("../../04-01_simple_pcr_selection_gui.md"));
 
         let promoter_chapter =
-            generated.join("chapters/24_promoter_design_artifact_slice_offline.md");
+            generated.join("chapters/08-03_promoter_design_artifact_slice_offline.md");
         let promoter_markdown =
             std::fs::read_to_string(&promoter_chapter).expect("read promoter chapter markdown");
         assert!(promoter_markdown.contains("**Prerequisites:** Read [Chapter 1:"));
@@ -5108,7 +5123,7 @@ mod tests {
 
     #[test]
     fn tutorial_cdna_genomic_demo_markdown_image_links_exist() {
-        let tutorial_path = PathBuf::from("docs/tutorial/two_sequence_dotplot_gui.md");
+        let tutorial_path = PathBuf::from("docs/tutorial/02-03_tp73_cdna_genomic_dotplot_gui.md");
         let tutorial_text =
             fs::read_to_string(&tutorial_path).expect("read TP73 cDNA/genomic tutorial");
         let targets = markdown_image_targets(&tutorial_text);

@@ -6848,6 +6848,18 @@ Error: `{err}`"
     }
 
     fn tutorial_project_generated_chapter_path(entry: &TutorialProjectEntry) -> String {
+        if let Some(decimal_id) = entry
+            .decimal_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            return format!(
+                "docs/tutorial/generated/chapters/{}_{}.md",
+                decimal_id.replace('.', "-"),
+                entry.chapter_id
+            );
+        }
         format!(
             "docs/tutorial/generated/chapters/{:02}_{}.md",
             entry.chapter_order, entry.chapter_id
@@ -28476,7 +28488,7 @@ mod tests {
     fn tutorial_audience_group_uses_catalog_audiences() {
         let entry = HelpTutorialDocEntry {
             title: "qPCR".to_string(),
-            path: "docs/tutorial/qpcr_exon_junctions_gui.md".to_string(),
+            path: "docs/tutorial/04-03_qpcr_exon_junctions_gui.md".to_string(),
             summary: String::new(),
             audiences: vec!["primer_design".to_string()],
             group_label: None,
@@ -32243,7 +32255,9 @@ mod tests {
         assert!(
             entries.iter().any(|entry| {
                 entry.title == "GENtle Agent Assistant and Agent Interfaces Tutorial"
-                    && entry.path.ends_with("docs/agent_interfaces_tutorial.md")
+                    && entry
+                        .path
+                        .ends_with("docs/tutorial/01-01_agent_interfaces.md")
             }),
             "Expected Open Tutorial Project guided walkthroughs to surface the agent interfaces tutorial"
         );
@@ -32275,7 +32289,11 @@ mod tests {
 
         let matches = entries
             .iter()
-            .filter(|entry| entry.path.ends_with("docs/agent_interfaces_tutorial.md"))
+            .filter(|entry| {
+                entry
+                    .path
+                    .ends_with("docs/tutorial/01-01_agent_interfaces.md")
+            })
             .collect::<Vec<_>>();
         assert_eq!(matches.len(), 1);
         assert_eq!(
