@@ -1774,6 +1774,15 @@
         "`promoter_artifact_manifest.json` reports all required promoter component artifacts as present.",
         "`tfbs_score_tracks.svg` is written and opens as a compact promoter score-track figure.",
         "`tfbs_similarity.json` ranks four candidates against SP1 using `smoothed_spearman`."
+      ],
+      "graphics": [
+        {
+          "kind": "generated",
+          "path": "docs/tutorial/generated/artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg",
+          "caption": "TFBS score tracks across the synthetic TP73 promoter slice.",
+          "illustrates_step": 8,
+          "regen_command": "cargo run --bin gentle_examples_docs -- tutorial-generate"
+        }
       ]
     }
   ]

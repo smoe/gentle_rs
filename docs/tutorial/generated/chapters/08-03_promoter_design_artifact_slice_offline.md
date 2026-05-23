@@ -12,9 +12,9 @@ review_stale: true
 codex_reviewed_at: null
 human_reviewed_at: "2026-05-18"
 human_reviewer: "smoe"
-review_stale_reason: "source JSON 'docs/tutorial/sources/08-03_promoter_design_artifact_slice_offline.json' changed after human review date 2026-05-18"
-review_issue_template: "Tutorial confusion"
-review_issue_template_path: ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+review_stale_reason: "declared graphic for tutorial 'promoter_design_artifact_slice_offline' 'docs/tutorial/generated/artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg' changed after human review date 2026-05-18"
+review_issue_template: "Tutorial artifact/figure problem"
+review_issue_template_path: ".github/ISSUE_TEMPLATE/tutorial-artifact-figure.md"
 generated_artifact_dir: "docs/tutorial/generated/artifacts/promoter_design_artifact_slice_offline"
 ---
 
@@ -180,6 +180,12 @@ cargo run --bin gentle_cli -- shell 'features tfbs-score-tracks-svg tp73_promote
 
 > Expected: `tfbs_score_tracks.svg` is written and embedded below as the visual output of the chapter.
 
+![TFBS score tracks across the synthetic TP73 promoter slice.](../artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg)
+
+*Figure: TFBS score tracks across the synthetic TP73 promoter slice. Regenerate with `cargo run --bin gentle_examples_docs -- tutorial-generate`.*
+
+> SVG text labels: `Continuous TF motif score tracks | target=tp73_promoter_artifact_demo | span=60..158 | motifs=4 | score=llr_background_tail_log10 | forward strand = teal | reverse strand = ambe...`. If the embedded preview omits text in the GUI, open the linked SVG or use these labels as the figure legend.
+
 ### Step 9: Set TFBS similarity anchor to SP1, compare against TP53,TP63,TP73,CTCF, run S...
 
 GUI: Set TFBS similarity anchor to `SP1`, compare against `TP53,TP63,TP73,CTCF`, run `Show TFBS similarity ranking`, then export the JSON ranking.
@@ -230,9 +236,9 @@ cargo run --bin gentle_cli -- shell 'features tfbs-track-similarity tp73_promote
 
 - [`artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg`](../artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg)
 
-> SVG text labels: `Continuous TF motif score tracks | target=tp73_promoter_artifact_demo | span=60..158 | motifs=4 | score=llr_background_tail_log10 | forward strand = teal | reverse strand = ambe...`. If this embedded preview omits text in the GUI, open the linked SVG or use these labels as the figure legend.
+  - Embedded above near Step 8; kept here as an audit link.
 
-![tp73_promoter_artifact_demo.tfbs_score_tracks.svg](../artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg)
+> SVG text labels: `Continuous TF motif score tracks | target=tp73_promoter_artifact_demo | span=60..158 | motifs=4 | score=llr_background_tail_log10 | forward strand = teal | reverse strand = ambe...`. If this embedded preview omits text in the GUI, open the linked SVG or use these labels as the figure legend.
 
 - [`artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.alternative_promoters.json`](../artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.alternative_promoters.json) - schema: `gentle.alternative_promoter_comparison.v1`
 - [`artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.evidence_matrix.json`](../artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.evidence_matrix.json) - schema: `gentle.promoter_evidence_matrix.v1`

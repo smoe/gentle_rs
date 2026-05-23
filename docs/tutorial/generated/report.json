@@ -39,7 +39,7 @@
     "report.json"
   ],
   "file_checksums": {
-    "README.md": "5d41eb19f3a2be3af1e406e6c7bbe7dbeafb79df",
+    "README.md": "67fc55909e9c8e05c46c85ec3a3f26e27ef03451",
     "artifacts/gibson_arrangements_baseline/artifacts/gibson_lab_assistant_handoff.md": "ea49d90a537300148ada050060e1b12a48b8b57c",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.csv": "2fd8b22187bb90dcdc0388ed65df4f6c33240893",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt": "ddfcc1b983151b4a7fa444b171065c4d90a6ecfb",
@@ -69,11 +69,11 @@
     "chapters/06-04_tp53_uniprot_projection_online.md": "90a59ea04f54b4d1938e3bfca7cd48ceeed352e9",
     "chapters/06-05_tp73_uniprot_projection_audit_cli.md": "0487f1a7940dc711f32930e87de868ab99d6a363",
     "chapters/07-02_tp53_multi_gene_sparse_mapping_online.md": "6014e363084dca60f5732f0e2ff8b7629976a7d2",
-    "chapters/08-03_promoter_design_artifact_slice_offline.md": "6d9bb7d8514d607588346e81c1800028129c63be"
+    "chapters/08-03_promoter_design_artifact_slice_offline.md": "c1414cb6b0cbe6e200bd08798e21954cb7c7e1d9"
   },
   "warnings": [
     "Tutorial 'load_branch_reverse_complement_pgex_fasta' review is stale because source JSON 'docs/tutorial/sources/02-01_load_branch_reverse_complement_pgex_fasta.json' changed after human review date 2026-05-18",
-    "Tutorial 'promoter_design_artifact_slice_offline' review is stale because source JSON 'docs/tutorial/sources/08-03_promoter_design_artifact_slice_offline.json' changed after human review date 2026-05-18"
+    "Tutorial 'promoter_design_artifact_slice_offline' review is stale because declared graphic for tutorial 'promoter_design_artifact_slice_offline' 'docs/tutorial/generated/artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg' changed after human review date 2026-05-18"
   ],
   "chapters": [
     {
@@ -554,9 +554,18 @@
       "human_reviewed_at": "2026-05-18",
       "human_reviewer": "smoe",
       "review_stale": true,
-      "review_stale_reason": "source JSON 'docs/tutorial/sources/08-03_promoter_design_artifact_slice_offline.json' changed after human review date 2026-05-18",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "review_stale_reason": "declared graphic for tutorial 'promoter_design_artifact_slice_offline' 'docs/tutorial/generated/artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg' changed after human review date 2026-05-18",
+      "review_issue_template": "Tutorial artifact/figure problem",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-artifact-figure.md",
+      "graphics": [
+        {
+          "kind": "generated",
+          "path": "docs/tutorial/generated/artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg",
+          "caption": "TFBS score tracks across the synthetic TP73 promoter slice.",
+          "illustrates_step": 8,
+          "regen_command": "cargo run --bin gentle_examples_docs -- tutorial-generate"
+        }
+      ],
       "retained_artifacts": [
         "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.alternative_promoters.json",
         "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.evidence_matrix.json",

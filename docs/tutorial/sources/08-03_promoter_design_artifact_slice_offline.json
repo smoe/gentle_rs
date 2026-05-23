@@ -2,6 +2,15 @@
   "schema": "gentle.tutorial_source.v4",
   "id": "promoter_design_artifact_slice_offline",
   "title": "Promoter Design Artifact Slice (Offline Synthetic TP73 Locus)",
+  "graphics": [
+    {
+      "kind": "generated",
+      "path": "docs/tutorial/generated/artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg",
+      "caption": "TFBS score tracks across the synthetic TP73 promoter slice.",
+      "illustrates_step": 8,
+      "regen_command": "cargo run --bin gentle_examples_docs -- tutorial-generate"
+    }
+  ],
   "catalog": {
     "order": 41,
     "path": "docs/tutorial/generated/chapters/08-03_promoter_design_artifact_slice_offline.md",

@@ -88,6 +88,8 @@ pub struct TutorialCatalogEntry {
     pub review_issue_template: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub review_issue_template_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub graphics: Vec<TutorialGraphic>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -204,6 +206,8 @@ pub struct TutorialSourceGeneratedChapterSection {
     pub retain_outputs: Vec<String>,
     #[serde(default)]
     pub checkpoints: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub graphics: Vec<TutorialGraphic>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -243,6 +247,7 @@ impl TutorialSourceCatalogSection {
         title: String,
         placement: TutorialPlacement,
         review: TutorialReviewProjection,
+        graphics: Vec<TutorialGraphic>,
     ) -> TutorialCatalogEntry {
         TutorialCatalogEntry {
             id,
@@ -266,6 +271,7 @@ impl TutorialSourceCatalogSection {
             review_stale_reason: review.stale_reason,
             review_issue_template: review.issue_template,
             review_issue_template_path: review.issue_template_path,
+            graphics,
         }
     }
 }
@@ -276,6 +282,7 @@ impl TutorialSourceGeneratedChapterSection {
         id: String,
         title: String,
         placement: TutorialPlacement,
+        graphics: Vec<TutorialGraphic>,
     ) -> TutorialChapter {
         TutorialChapter {
             id,
@@ -303,6 +310,7 @@ impl TutorialSourceGeneratedChapterSection {
             follow_up_commands: self.follow_up_commands,
             retain_outputs: self.retain_outputs,
             checkpoints: self.checkpoints,
+            graphics,
         }
     }
 }
@@ -348,7 +356,9 @@ impl TutorialSourceUnit {
                     &id,
                     source_path_by_id.get(&id),
                     catalog.path.as_str(),
-                    generated_chapter.as_ref().map(|chapter| chapter.example_id.as_str()),
+                    generated_chapter
+                        .as_ref()
+                        .map(|chapter| chapter.example_id.as_str()),
                     &graphics,
                     repo_root,
                 ),
@@ -356,7 +366,7 @@ impl TutorialSourceUnit {
         );
         Ok(Some({
             let order = catalog.order;
-            let entry = catalog.into_catalog_entry(id, title, placement, review);
+            let entry = catalog.into_catalog_entry(id, title, placement, review, graphics);
             (order, entry)
         }))
     }
@@ -370,6 +380,7 @@ impl TutorialSourceUnit {
             title,
             group,
             group_position,
+            graphics,
             catalog,
             generated_chapter,
             ..
@@ -388,10 +399,8 @@ impl TutorialSourceUnit {
             effective_group_position,
             group_lookup,
         )?;
-        Ok(
-            generated_chapter
-                .map(|generated| generated.into_manifest_chapter(id, title, placement)),
-        )
+        Ok(generated_chapter
+            .map(|generated| generated.into_manifest_chapter(id, title, placement, graphics)))
     }
 }
 
@@ -488,6 +497,8 @@ pub struct TutorialChapter {
     pub retain_outputs: Vec<String>,
     #[serde(default)]
     pub checkpoints: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub graphics: Vec<TutorialGraphic>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -562,6 +573,8 @@ pub struct TutorialGenerationChapter {
     pub review_issue_template: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub review_issue_template_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub graphics: Vec<TutorialGraphic>,
     pub retained_artifacts: Vec<String>,
 }
 
@@ -1205,6 +1218,44 @@ pub fn load_tutorial_source_units(source_dir: &Path) -> Result<Vec<TutorialSourc
                 display_path(&path)
             ));
         }
+        for graphic in &unit.graphics {
+            let kind = graphic.kind.trim();
+            if !matches!(kind, "generated" | "screenshot") {
+                return Err(format!(
+                    "Tutorial source '{}' graphic '{}' has unsupported kind '{}'",
+                    display_path(&path),
+                    graphic.path,
+                    graphic.kind
+                ));
+            }
+            if graphic.path.trim().is_empty() || graphic.caption.trim().is_empty() {
+                return Err(format!(
+                    "Tutorial source '{}' contains a graphic with blank path or caption",
+                    display_path(&path)
+                ));
+            }
+            if graphic.illustrates_step == 0 {
+                return Err(format!(
+                    "Tutorial source '{}' graphic '{}' must reference a 1-based step",
+                    display_path(&path),
+                    graphic.path
+                ));
+            }
+            if kind == "screenshot"
+                && graphic
+                    .capture_date
+                    .as_deref()
+                    .map(str::trim)
+                    .unwrap_or_default()
+                    .is_empty()
+            {
+                return Err(format!(
+                    "Tutorial source '{}' screenshot graphic '{}' needs capture_date",
+                    display_path(&path),
+                    graphic.path
+                ));
+            }
+        }
         if !seen_ids.insert(unit.id.clone()) {
             return Err(format!(
                 "Tutorial source directory '{}' has duplicate tutorial id '{}'",
@@ -1560,6 +1611,49 @@ pub fn load_tutorial_manifest(manifest_path: &Path) -> Result<TutorialManifest, 
                 return Err(format!(
                     "Tutorial chapter '{}' contains blank retain_outputs entry",
                     chapter.id
+                ));
+            }
+        }
+        for graphic in &chapter.graphics {
+            let kind = graphic.kind.trim();
+            if !matches!(kind, "generated" | "screenshot") {
+                return Err(format!(
+                    "Tutorial chapter '{}' graphic '{}' has unsupported kind '{}'",
+                    chapter.id, graphic.path, graphic.kind
+                ));
+            }
+            if graphic.path.trim().is_empty() {
+                return Err(format!(
+                    "Tutorial chapter '{}' contains graphic with blank path",
+                    chapter.id
+                ));
+            }
+            if graphic.caption.trim().is_empty() {
+                return Err(format!(
+                    "Tutorial chapter '{}' graphic '{}' needs a caption",
+                    chapter.id, graphic.path
+                ));
+            }
+            if graphic.illustrates_step == 0 || graphic.illustrates_step > chapter.gui_steps.len() {
+                return Err(format!(
+                    "Tutorial chapter '{}' graphic '{}' references step {}, but the chapter has {} GUI steps",
+                    chapter.id,
+                    graphic.path,
+                    graphic.illustrates_step,
+                    chapter.gui_steps.len()
+                ));
+            }
+            if kind == "screenshot"
+                && graphic
+                    .capture_date
+                    .as_deref()
+                    .map(str::trim)
+                    .unwrap_or_default()
+                    .is_empty()
+            {
+                return Err(format!(
+                    "Tutorial chapter '{}' screenshot graphic '{}' needs capture_date",
+                    chapter.id, graphic.path
                 ));
             }
         }
@@ -3010,10 +3104,8 @@ fn tutorial_review_projection(
         });
     let stale_reason = dependency_stale_reason.or(age_stale_reason);
     let stale = stale_reason.is_some();
-    let issue_template_path = tutorial_review_issue_template_for_projection(
-        &status,
-        stale_reason.as_deref(),
-    );
+    let issue_template_path =
+        tutorial_review_issue_template_for_projection(&status, stale_reason.as_deref());
     TutorialReviewProjection {
         status,
         codex_reviewed_at: entry.and_then(|entry| entry.codex_reviewed_at.clone()),
@@ -3021,7 +3113,9 @@ fn tutorial_review_projection(
         human_reviewer: entry.and_then(|entry| entry.human_reviewer.clone()),
         stale,
         stale_reason,
-        issue_template: issue_template_path.map(tutorial_issue_template_name).map(str::to_string),
+        issue_template: issue_template_path
+            .map(tutorial_issue_template_name)
+            .map(str::to_string),
         issue_template_path: issue_template_path.map(str::to_string),
     }
 }
@@ -3444,7 +3538,98 @@ fn tutorial_chapter_has_complete_cli_steps(chapter: &TutorialChapter) -> bool {
             .all(|(idx, _)| tutorial_step_at(&chapter.cli_steps, idx).is_some())
 }
 
-fn render_tutorial_gui_steps(chapter: &TutorialChapter) -> String {
+fn tutorial_graphic_link_target(graphic: &TutorialGraphic) -> String {
+    let path = graphic.path.trim();
+    if let Some(relative) = path.strip_prefix("docs/tutorial/generated/") {
+        return format!("../{relative}");
+    }
+    if let Some(relative) = path.strip_prefix("docs/tutorial/") {
+        return format!("../../{relative}");
+    }
+    if let Some(relative) = path.strip_prefix("docs/") {
+        return format!("../../../{relative}");
+    }
+    path.to_string()
+}
+
+fn tutorial_graphic_output_path(graphic: &TutorialGraphic, output_dir: &Path) -> PathBuf {
+    let path = graphic.path.trim();
+    if let Some(relative) = path.strip_prefix("docs/tutorial/generated/") {
+        return output_dir.join(relative);
+    }
+    PathBuf::from(path)
+}
+
+fn tutorial_generated_graphic_artifact_relative(graphic: &TutorialGraphic) -> Option<String> {
+    graphic
+        .path
+        .trim()
+        .strip_prefix("docs/tutorial/generated/")
+        .map(ToOwned::to_owned)
+}
+
+fn render_tutorial_inline_graphic(graphic: &TutorialGraphic, output_dir: &Path) -> String {
+    let mut out = String::new();
+    let caption = graphic.caption.trim();
+    let target = tutorial_graphic_link_target(graphic);
+    let graphic_path = tutorial_graphic_output_path(graphic, output_dir);
+    out.push_str("![");
+    out.push_str(caption);
+    out.push_str("](");
+    out.push_str(&target);
+    out.push_str(")\n\n");
+    out.push_str("*Figure: ");
+    out.push_str(caption);
+    if let Some(command) = graphic
+        .regen_command
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+    {
+        out.push_str(" Regenerate with `");
+        out.push_str(command);
+        out.push_str("`.");
+    }
+    if let Some(capture_date) = graphic
+        .capture_date
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+    {
+        out.push_str(" Screenshot captured ");
+        out.push_str(capture_date);
+        out.push('.');
+    }
+    out.push_str("*\n\n");
+    if retained_artifact_extension(&graphic.path) == "svg" {
+        if let Some(preview) = retained_svg_text_preview(&graphic_path) {
+            out.push_str("> SVG text labels: ");
+            out.push_str(&preview);
+            out.push_str(". If the embedded preview omits text in the GUI, open the linked SVG or use these labels as the figure legend.\n\n");
+        }
+    }
+    out
+}
+
+fn render_tutorial_step_graphics(
+    chapter: &TutorialChapter,
+    step_number: usize,
+    output_dir: &Path,
+) -> String {
+    let mut graphics = chapter
+        .graphics
+        .iter()
+        .filter(|graphic| graphic.illustrates_step == step_number)
+        .collect::<Vec<_>>();
+    graphics.sort_by(|left, right| left.path.cmp(&right.path));
+    let mut out = String::new();
+    for graphic in graphics {
+        out.push_str(&render_tutorial_inline_graphic(graphic, output_dir));
+    }
+    out
+}
+
+fn render_tutorial_gui_steps(chapter: &TutorialChapter, output_dir: &Path) -> String {
     let mut out = String::new();
     out.push_str("\n## GUI First\n\n");
     if chapter.gui_steps.is_empty() {
@@ -3462,6 +3647,7 @@ fn render_tutorial_gui_steps(chapter: &TutorialChapter) -> String {
             out.push_str(&format!("{}. ", idx + 1));
             out.push_str(step);
             out.push('\n');
+            out.push_str(&render_tutorial_step_graphics(chapter, idx + 1, output_dir));
             continue;
         }
         out.push_str(&format!(
@@ -3483,17 +3669,33 @@ fn render_tutorial_gui_steps(chapter: &TutorialChapter) -> String {
             out.push_str(expectation);
             out.push_str("\n\n");
         }
+        out.push_str(&render_tutorial_step_graphics(chapter, idx + 1, output_dir));
     }
     out
 }
 
-fn render_tutorial_produced_artifacts(retained_artifacts: &[String], output_dir: &Path) -> String {
+fn tutorial_inline_artifact_steps(graphics: &[TutorialGraphic]) -> HashMap<String, usize> {
+    let mut inline_steps = HashMap::new();
+    for graphic in graphics {
+        if let Some(relative) = tutorial_generated_graphic_artifact_relative(graphic) {
+            inline_steps.insert(relative, graphic.illustrates_step);
+        }
+    }
+    inline_steps
+}
+
+fn render_tutorial_produced_artifacts(
+    retained_artifacts: &[String],
+    output_dir: &Path,
+    graphics: &[TutorialGraphic],
+) -> String {
     if retained_artifacts.is_empty() {
         return String::new();
     }
     let mut out = String::new();
     out.push_str("\n## What This Chapter Produces\n\n");
     let mut ordered = retained_artifacts.to_vec();
+    let inline_steps = tutorial_inline_artifact_steps(graphics);
     ordered.sort_by(|a, b| {
         retained_artifact_render_rank(a)
             .cmp(&retained_artifact_render_rank(b))
@@ -3504,18 +3706,27 @@ fn render_tutorial_produced_artifacts(retained_artifacts: &[String], output_dir:
         let link_target = format!("../{}", retained);
         let file_name = retained_artifact_file_name(retained);
         let extension = retained_artifact_extension(retained);
+        let inline_step = inline_steps.get(retained);
         if matches!(extension.as_str(), "svg" | "png") && artifact_path.is_file() {
             out.push_str("- [`");
             out.push_str(retained);
             out.push_str("`](");
             out.push_str(&link_target);
             out.push_str(")\n\n");
+            if let Some(step) = inline_step {
+                out.push_str("  - Embedded above near Step ");
+                out.push_str(&step.to_string());
+                out.push_str("; kept here as an audit link.\n\n");
+            }
             if extension == "svg" {
                 if let Some(preview) = retained_svg_text_preview(&artifact_path) {
                     out.push_str("> SVG text labels: ");
                     out.push_str(&preview);
                     out.push_str(". If this embedded preview omits text in the GUI, open the linked SVG or use these labels as the figure legend.\n\n");
                 }
+            }
+            if inline_step.is_some() {
+                continue;
             }
             out.push_str("![");
             out.push_str(&file_name);
@@ -3682,7 +3893,7 @@ fn render_tutorial_chapter_markdown(
     }
     out.push_str(&render_tutorial_concepts_compact(chapter, concept_by_id)?);
     out.push_str(&render_tutorial_at_a_glance(chapter));
-    out.push_str(&render_tutorial_gui_steps(chapter));
+    out.push_str(&render_tutorial_gui_steps(chapter, output_dir));
     if !tutorial_chapter_has_complete_cli_steps(chapter) {
         out.push_str("\n## Command Equivalent (After GUI)\n\n");
         out.push_str("Run the same routine non-interactively once the GUI flow is clear:\n\n");
@@ -3715,6 +3926,7 @@ fn render_tutorial_chapter_markdown(
     out.push_str(&render_tutorial_produced_artifacts(
         retained_artifacts,
         output_dir,
+        &chapter.graphics,
     ));
     out.push_str(&render_tutorial_provenance_section(
         chapter,
@@ -4145,6 +4357,23 @@ fn tutorial_review_dependency_stale_reason(
         return None;
     }
     let reviewed_date = parse_review_date(reviewed_at).ok()?;
+    let mut missing_graphics = dependencies
+        .iter()
+        .filter(|dependency| dependency.label.starts_with("declared graphic"))
+        .filter(|dependency| !dependency.path.exists())
+        .map(|dependency| {
+            format!(
+                "{} '{}' is missing after human review date {}",
+                dependency.label,
+                display_path(&dependency.path),
+                reviewed_at
+            )
+        })
+        .collect::<Vec<_>>();
+    missing_graphics.sort();
+    if let Some(reason) = missing_graphics.into_iter().next() {
+        return Some(reason);
+    }
     let mut stale_dependencies = dependencies
         .iter()
         .filter_map(|dependency| {
@@ -4162,12 +4391,8 @@ fn tutorial_review_dependency_stale_reason(
             })
         })
         .collect::<Vec<_>>();
-    stale_dependencies.sort_by(|left, right| {
-        right
-            .0
-            .cmp(&left.0)
-            .then_with(|| left.1.cmp(&right.1))
-    });
+    stale_dependencies
+        .sort_by(|left, right| right.0.cmp(&left.0).then_with(|| left.1.cmp(&right.1)));
     stale_dependencies
         .into_iter()
         .next()
@@ -4214,7 +4439,8 @@ fn tutorial_review_dependency_stale_reasons(
             label: "workflow JSON".to_string(),
             path: resolve_tutorial_dependency_path(
                 &repo_root,
-                Path::new(DEFAULT_WORKFLOW_EXAMPLE_DIR).join(format!("{}.json", chapter.example_id)),
+                Path::new(DEFAULT_WORKFLOW_EXAMPLE_DIR)
+                    .join(format!("{}.json", chapter.example_id)),
             ),
         };
         if let Some(reason) = tutorial_review_dependency_stale_reason(
@@ -4493,6 +4719,7 @@ pub fn generate_tutorial_docs(
             review_stale_reason: review_projection.stale_reason,
             review_issue_template: review_projection.issue_template,
             review_issue_template_path: review_projection.issue_template_path,
+            graphics: chapter.graphics.clone(),
             retained_artifacts,
         });
     }
@@ -4885,6 +5112,7 @@ mod tests {
             follow_up_commands: vec![],
             retain_outputs: vec![],
             checkpoints: vec![],
+            graphics: vec![],
         }
     }
 
@@ -5462,8 +5690,11 @@ mod tests {
 "#,
         )
         .expect("write source");
-        fs::write(tutorial_dir.join("stale_dependency.md"), "# Stale Dependency\n")
-            .expect("write markdown");
+        fs::write(
+            tutorial_dir.join("stale_dependency.md"),
+            "# Stale Dependency\n",
+        )
+        .expect("write markdown");
         fs::write(
             &review_path,
             r#"{
@@ -5612,6 +5843,120 @@ mod tests {
         assert_eq!(
             entry.review_issue_template_path.as_deref(),
             Some(TUTORIAL_CONFUSION_ISSUE_TEMPLATE_PATH)
+        );
+    }
+
+    #[test]
+    fn tutorial_catalog_projects_graphic_metadata_and_missing_graphic_staleness() {
+        let dir = TempDir::new().expect("temp tutorial dir");
+        let repo_root = dir.path();
+        let tutorial_dir = repo_root.join("docs/tutorial");
+        let source_dir = tutorial_dir.join("sources");
+        let meta_path = source_dir.join("catalog_meta.json");
+        let review_path = tutorial_dir.join("review_manifest.json");
+        fs::create_dir_all(&source_dir).expect("create source dir");
+        fs::write(
+            &meta_path,
+            r#"{
+  "schema": "gentle.tutorial_catalog_meta.v2",
+  "description": "Synthetic tutorial catalog metadata.",
+  "entry_page": "docs/tutorial/README.md",
+  "generated_runtime": {
+    "manifest_path": "docs/tutorial/manifest.json",
+    "manifest_schema": "gentle.tutorial_manifest.v2",
+    "generated_readme": "docs/tutorial/generated/README.md",
+    "generation_report": "docs/tutorial/generated/report.json"
+  },
+  "groups": [
+    { "code": "01", "label": "Getting Started", "order": 1 }
+  ],
+  "concepts": []
+}
+"#,
+        )
+        .expect("write catalog meta");
+        fs::write(
+            source_dir.join("01_missing_graphic.json"),
+            r#"{
+  "schema": "gentle.tutorial_source.v4",
+  "id": "missing_graphic",
+  "title": "Missing Graphic",
+  "group": "01",
+  "group_position": 1,
+  "graphics": [
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/missing.png",
+      "caption": "Missing tutorial screenshot.",
+      "illustrates_step": 1,
+      "capture_date": "2026-03-20"
+    }
+  ],
+  "catalog": {
+    "order": 1,
+    "path": "docs/tutorial/missing_graphic.md",
+    "group": "01",
+    "group_position": 1,
+    "type": "guided_walkthrough",
+    "status": "manual",
+    "source": "synthetic",
+    "audiences": ["test"],
+    "notes": "Synthetic source for graphic metadata tests."
+  }
+}
+"#,
+        )
+        .expect("write source");
+        fs::write(
+            tutorial_dir.join("missing_graphic.md"),
+            "# Missing Graphic\n",
+        )
+        .expect("write markdown");
+        fs::write(
+            &review_path,
+            r#"{
+  "schema": "gentle.tutorial_review_manifest.v1",
+  "warn_after_months": 240,
+  "entries": [
+    {
+      "tutorial_id": "missing_graphic",
+      "tutorial_kind": "guided_walkthrough",
+      "tutorial_status": "active",
+      "replaced_by": null,
+      "codex_reviewed_at": null,
+      "human_reviewed_at": "2026-03-21",
+      "human_reviewer": "smoe"
+    }
+  ]
+}
+"#,
+        )
+        .expect("write review manifest");
+
+        let catalog = generate_tutorial_catalog_from_sources(&meta_path, &source_dir)
+            .expect("generate tutorial catalog");
+        let entry = catalog
+            .entries
+            .iter()
+            .find(|entry| entry.id == "missing_graphic")
+            .expect("catalog entry");
+
+        assert_eq!(entry.graphics.len(), 1);
+        assert!(
+            entry.review_stale,
+            "missing graphic should stale the review"
+        );
+        assert!(
+            entry
+                .review_stale_reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("declared graphic")),
+            "expected declared-graphic stale reason, got {:?}",
+            entry.review_stale_reason
+        );
+        assert_eq!(
+            entry.review_issue_template_path.as_deref(),
+            Some(TUTORIAL_ARTIFACT_ISSUE_TEMPLATE_PATH)
         );
     }
 
@@ -5878,17 +6223,25 @@ mod tests {
         assert!(promoter_markdown.contains("**Prerequisites:** Read [Chapter 1:"));
         assert!(promoter_markdown.contains("### Step 8:"));
         assert!(promoter_markdown.contains("CLI:\n\n```bash\ncargo run --bin gentle_cli"));
-        assert!(
-            promoter_markdown
-                .contains("CLI snippets use GENtle's default `.gentle_state.json` state")
-        );
+        assert!(promoter_markdown
+            .contains("CLI snippets use GENtle's default `.gentle_state.json` state"));
         assert!(promoter_markdown.contains("> Expected: `tfbs_score_tracks.svg`"));
         assert!(!promoter_markdown.contains("## Command Equivalent (After GUI)"));
         assert!(promoter_markdown.contains("## What This Chapter Produces"));
         assert!(promoter_markdown.contains("> SVG text labels:"));
         assert!(promoter_markdown.contains(
-            "![tp73_promoter_artifact_demo.tfbs_score_tracks.svg](../artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg)"
+            "![TFBS score tracks across the synthetic TP73 promoter slice.](../artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg)"
         ));
+        assert!(promoter_markdown.contains("Embedded above near Step 8"));
+        let step_8 = promoter_markdown.find("### Step 8:").unwrap();
+        let figure = promoter_markdown
+            .find("![TFBS score tracks across")
+            .unwrap();
+        let step_9 = promoter_markdown.find("### Step 9:").unwrap();
+        assert!(
+            step_8 < figure && figure < step_9,
+            "declared graphic should render inline at the step it illustrates"
+        );
         assert!(promoter_markdown.contains("schema: `gentle.promoter_artifact_manifest.v1`"));
     }
 
@@ -6111,11 +6464,8 @@ mod tests {
         let message = tutorial_generated_file_count_mismatch_message(&expected, &actual);
 
         assert!(message.contains("expected 1, got 2"));
-        assert!(
-            message.contains(
-                "generated-only files: artifacts/new_demo/artifacts/new_retained_output.md"
-            )
-        );
+        assert!(message
+            .contains("generated-only files: artifacts/new_demo/artifacts/new_retained_output.md"));
         assert!(message.contains("committed-only files: none"));
     }
 
@@ -6244,11 +6594,9 @@ mod tests {
 
         assert!(state.sequences.contains_key("gibson_destination_pgex"));
         assert!(state.sequences.contains_key("gibson_insert_demo"));
-        assert!(
-            state
-                .sequences
-                .contains_key("gibson_destination_pgex_with_gibson_insert_demo")
-        );
+        assert!(state
+            .sequences
+            .contains_key("gibson_destination_pgex_with_gibson_insert_demo"));
 
         let arrangement = state
             .container_state

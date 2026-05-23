@@ -2,6 +2,15 @@
   "schema": "gentle.tutorial_source.v4",
   "id": "tp73_cdna_genomic_dotplot_gui",
   "title": "Retrieve a cDNA and Compare It Against the Genomic Sequence (Dotplot Tutorial)",
+  "graphics": [
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/tutorial_cdna_genomic_07_dotplot_window.png",
+      "caption": "Dotplot workspace after loading TP73 cDNA and genomic sequence.",
+      "illustrates_step": 4,
+      "capture_date": "2026-03-20"
+    }
+  ],
   "catalog": {
     "order": 3,
     "path": "docs/tutorial/02-03_tp73_cdna_genomic_dotplot_gui.md",
