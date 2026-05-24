@@ -12,9 +12,9 @@ review_stale: true
 codex_reviewed_at: null
 human_reviewed_at: "2026-05-18"
 human_reviewer: "smoe"
-review_stale_reason: "declared graphic for tutorial 'promoter_design_artifact_slice_offline' 'docs/tutorial/generated/artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg' changed after human review date 2026-05-18"
-review_issue_template: "Tutorial artifact/figure problem"
-review_issue_template_path: ".github/ISSUE_TEMPLATE/tutorial-artifact-figure.md"
+review_stale_reason: "source JSON 'docs/tutorial/sources/08-03_promoter_design_artifact_slice_offline.json' changed after human review date 2026-05-18"
+review_issue_template: "Tutorial confusion"
+review_issue_template_path: ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
 generated_artifact_dir: "docs/tutorial/generated/artifacts/promoter_design_artifact_slice_offline"
 ---
 

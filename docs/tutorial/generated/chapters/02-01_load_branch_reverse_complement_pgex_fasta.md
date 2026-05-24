@@ -12,7 +12,7 @@ review_stale: true
 codex_reviewed_at: null
 human_reviewed_at: "2026-05-18"
 human_reviewer: "smoe"
-review_stale_reason: "tutorial Markdown 'docs/tutorial/generated/chapters/02-01_load_branch_reverse_complement_pgex_fasta.md' changed after human review date 2026-05-18"
+review_stale_reason: "source JSON 'docs/tutorial/sources/02-01_load_branch_reverse_complement_pgex_fasta.json' changed after human review date 2026-05-18"
 review_issue_template: "Tutorial confusion"
 review_issue_template_path: ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
 generated_artifact_dir: "docs/tutorial/generated/artifacts/load_branch_reverse_complement_pgex_fasta"
