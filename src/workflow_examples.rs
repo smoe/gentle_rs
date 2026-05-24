@@ -8,6 +8,7 @@ use std::{
     env, fs,
     io::Read,
     path::{Path, PathBuf},
+    process::Command,
     time::{SystemTime, UNIX_EPOCH},
 };
 use tempfile::TempDir;
@@ -1984,6 +1985,51 @@ fn path_modified_review_date(path: &Path) -> Option<(i32, u32, u32)> {
         .ok()
         .and_then(|metadata| metadata.modified().ok())
         .and_then(system_time_review_date)
+}
+
+fn git_repo_root_for_path(path: &Path) -> Option<PathBuf> {
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        env::current_dir().ok()?.join(path)
+    };
+    let mut current = absolute.parent()?;
+    loop {
+        if current.join(".git").exists() {
+            return Some(current.to_path_buf());
+        }
+        current = current.parent()?;
+    }
+}
+
+fn git_path_review_date(path: &Path) -> Option<(i32, u32, u32)> {
+    let repo_root = git_repo_root_for_path(path)?;
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        env::current_dir().ok()?.join(path)
+    };
+    let relative = absolute.strip_prefix(&repo_root).ok()?;
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(&repo_root)
+        .arg("log")
+        .arg("-1")
+        .arg("--format=%ct")
+        .arg("--")
+        .arg(relative)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8(output.stdout).ok()?;
+    let seconds = stdout.trim().parse::<i64>().ok()?;
+    Some(civil_from_unix_days(seconds / 86_400))
+}
+
+fn path_review_change_date(path: &Path) -> Option<(i32, u32, u32)> {
+    git_path_review_date(path).or_else(|| path_modified_review_date(path))
 }
 
 fn tutorial_repo_root_for_source_dir(source_dir: &Path) -> PathBuf {
@@ -4306,6 +4352,12 @@ fn resolve_tutorial_dependency_path(repo_root: &Path, path: impl AsRef<Path>) ->
     }
 }
 
+fn is_generated_tutorial_catalog_path(path: &str) -> bool {
+    path.trim()
+        .replace('\\', "/")
+        .starts_with("docs/tutorial/generated/")
+}
+
 fn tutorial_source_dependencies(
     tutorial_id: &str,
     source_path: Option<&PathBuf>,
@@ -4321,7 +4373,7 @@ fn tutorial_source_dependencies(
             path: path.clone(),
         });
     }
-    if !catalog_path.trim().is_empty() {
+    if !catalog_path.trim().is_empty() && !is_generated_tutorial_catalog_path(catalog_path) {
         dependencies.push(TutorialReviewDependency {
             label: "tutorial Markdown".to_string(),
             path: resolve_tutorial_dependency_path(repo_root, catalog_path.trim()),
@@ -4377,10 +4429,11 @@ fn tutorial_review_dependency_stale_reason(
     let mut stale_dependencies = dependencies
         .iter()
         .filter_map(|dependency| {
-            let modified = path_modified_review_date(&dependency.path)?;
+            let modified = path_review_change_date(&dependency.path)?;
             review_date_after(modified, reviewed_date).then(|| {
                 (
                     modified,
+                    tutorial_review_dependency_priority(&dependency.label),
                     format!(
                         "{} '{}' changed after human review date {}",
                         dependency.label,
@@ -4391,12 +4444,31 @@ fn tutorial_review_dependency_stale_reason(
             })
         })
         .collect::<Vec<_>>();
-    stale_dependencies
-        .sort_by(|left, right| right.0.cmp(&left.0).then_with(|| left.1.cmp(&right.1)));
+    stale_dependencies.sort_by(|left, right| {
+        right
+            .0
+            .cmp(&left.0)
+            .then_with(|| left.1.cmp(&right.1))
+            .then_with(|| left.2.cmp(&right.2))
+    });
     stale_dependencies
         .into_iter()
         .next()
-        .map(|(_, reason)| reason)
+        .map(|(_, _, reason)| reason)
+}
+
+fn tutorial_review_dependency_priority(label: &str) -> usize {
+    if label == "source JSON" {
+        0
+    } else if label == "workflow JSON" {
+        1
+    } else if label == "tutorial Markdown" {
+        2
+    } else if label.starts_with("declared graphic") {
+        3
+    } else {
+        4
+    }
 }
 
 fn tutorial_review_dependency_stale_reasons(
@@ -5745,6 +5817,41 @@ mod tests {
                 .any(|warning| warning.contains("review is stale because source JSON")),
             "expected dependency stale warning, got {:?}",
             context.warnings
+        );
+    }
+
+    #[test]
+    fn generated_tutorial_markdown_is_not_a_review_freshness_dependency() {
+        let repo_root = Path::new(".");
+        let source_path = PathBuf::from(
+            "docs/tutorial/sources/02-01_load_branch_reverse_complement_pgex_fasta.json",
+        );
+        let dependencies = tutorial_source_dependencies(
+            "load_branch_reverse_complement_pgex_fasta",
+            Some(&source_path),
+            "docs/tutorial/generated/chapters/02-01_load_branch_reverse_complement_pgex_fasta.md",
+            Some("load_branch_reverse_complement_pgex_fasta"),
+            &[],
+            repo_root,
+        );
+
+        assert!(
+            dependencies
+                .iter()
+                .any(|dependency| dependency.label == "source JSON"),
+            "source JSON should remain a freshness dependency"
+        );
+        assert!(
+            dependencies
+                .iter()
+                .any(|dependency| dependency.label == "workflow JSON"),
+            "workflow JSON should remain a freshness dependency"
+        );
+        assert!(
+            dependencies
+                .iter()
+                .all(|dependency| dependency.label != "tutorial Markdown"),
+            "generated Markdown output should not stale its own review"
         );
     }
 
