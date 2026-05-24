@@ -112,6 +112,7 @@ gb-io = { version = "0.9.0", features = ["serde"] }
 svg = { workspace = true }
 rayon = { workspace = true }
 anyhow = { workspace = true }
+arboard = "=3.6.1"
 eframe = { version = "0.34.2", features = [
 	"accesskit",
 	"default_fonts",

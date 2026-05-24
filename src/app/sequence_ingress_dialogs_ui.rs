@@ -45,6 +45,195 @@ impl GENtleApp {
         }
     }
 
+    pub(super) fn read_text_clipboard() -> Result<String, String> {
+        let mut clipboard =
+            arboard::Clipboard::new().map_err(|err| format!("Clipboard unavailable: {err}"))?;
+        let text = clipboard
+            .get_text()
+            .map_err(|err| format!("Clipboard does not contain text: {err}"))?;
+        if text.trim().is_empty() {
+            return Err("Clipboard text is empty".to_string());
+        }
+        Ok(text)
+    }
+
+    pub(super) fn create_sequence_from_text_input(
+        &mut self,
+        raw_text: &str,
+        output_id: Option<String>,
+        name: Option<String>,
+        circular: bool,
+    ) -> Result<Vec<String>, String> {
+        let normalized = normalize_pasted_iupac_sequence(raw_text)?;
+        let result = {
+            self.engine
+                .write()
+                .map_err(|_| "Engine lock poisoned".to_string())?
+                .apply(Operation::CreateSequenceFromText {
+                    sequence_text: normalized,
+                    output_id,
+                    name,
+                    circular,
+                })
+        };
+        match result {
+            Ok(result) => {
+                for seq_id in &result.created_seq_ids {
+                    self.open_sequence_window(seq_id);
+                }
+                if result.created_seq_ids.is_empty() {
+                    return Err(Self::format_op_result_status(
+                        "New sequence produced no sequence",
+                        &result.created_seq_ids,
+                        &result.warnings,
+                        &result.messages,
+                    ));
+                }
+                Ok(result.created_seq_ids)
+            }
+            Err(err) => Err(format!("New sequence failed: {}", err.message)),
+        }
+    }
+
+    pub(super) fn create_sequence_from_dialog(&mut self) -> bool {
+        let raw_text = self.new_sequence_text.clone();
+        let output_id = Self::uniprot_optional_trimmed(&self.new_sequence_output_id);
+        let name = Self::uniprot_optional_trimmed(&self.new_sequence_name);
+        let circular = self.new_sequence_circular;
+        match self.create_sequence_from_text_input(&raw_text, output_id, name, circular) {
+            Ok(created_seq_ids) => {
+                let status = if created_seq_ids.len() == 1 {
+                    format!("New sequence: created '{}'", created_seq_ids[0])
+                } else {
+                    format!("New sequence: created {}", created_seq_ids.join(", "))
+                };
+                self.new_sequence_status = status.clone();
+                self.app_status = status;
+                true
+            }
+            Err(err) => {
+                self.new_sequence_status = err;
+                false
+            }
+        }
+    }
+
+    pub(super) fn render_new_sequence_dialog(&mut self, ctx: &egui::Context) {
+        if !self.show_new_sequence_dialog {
+            return;
+        }
+        const WINDOW_TITLE: &str = "New Sequence";
+        let viewport_id = Self::new_sequence_viewport_id();
+        let mut open = self.show_new_sequence_dialog;
+        let mut close_requested = false;
+        let spec = self.hosted_window_spec_for_viewport(
+            WINDOW_TITLE,
+            egui::Id::new(("hosted_new_sequence_window", viewport_id)),
+            viewport_id,
+            Vec2::new(760.0, 520.0),
+            Vec2::new(520.0, 360.0),
+        );
+        crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+            let close_hover = Self::specialist_window_close_hover_text(WINDOW_TITLE);
+            if self
+                .render_specialist_window_nav_with_close(ui, Some(("Close", close_hover.as_str())))
+            {
+                close_requested = true;
+            }
+            ui.label(
+                "Create a project sequence from typed or pasted IUPAC DNA. Whitespace and digits are ignored; U is converted to T.",
+            );
+            ui.separator();
+            ui.horizontal(|ui| {
+                ui.label("id");
+                ui.text_edit_singleline(&mut self.new_sequence_output_id)
+                    .on_hover_text("Optional project sequence id; leave empty to auto-generate");
+                ui.label("name");
+                ui.text_edit_singleline(&mut self.new_sequence_name)
+                    .on_hover_text("Optional display name stored with the new sequence");
+            });
+            ui.horizontal(|ui| {
+                ui.radio_value(&mut self.new_sequence_circular, false, "Linear")
+                    .on_hover_text("Create a linear sequence");
+                ui.radio_value(&mut self.new_sequence_circular, true, "Circular")
+                    .on_hover_text("Create a circular sequence");
+                if ui
+                    .button("Paste from Clipboard")
+                    .on_hover_text("Read system clipboard text into this dialog for review")
+                    .clicked()
+                {
+                    match Self::read_text_clipboard() {
+                        Ok(text) => {
+                            self.new_sequence_text = text;
+                            let pasted_chars = self.new_sequence_text.chars().count();
+                            self.new_sequence_status = format!(
+                                "Loaded {pasted_chars} clipboard character(s); review before create."
+                            );
+                        }
+                        Err(err) => {
+                            self.new_sequence_status = err;
+                        }
+                    }
+                }
+                if ui
+                    .button("Clear")
+                    .on_hover_text("Clear the sequence input and status message")
+                    .clicked()
+                {
+                    self.new_sequence_text.clear();
+                    self.new_sequence_status.clear();
+                }
+            });
+            ui.add(
+                egui::TextEdit::multiline(&mut self.new_sequence_text)
+                    .desired_rows(12)
+                    .desired_width(f32::INFINITY)
+                    .hint_text("ACGT..."),
+            )
+            .on_hover_text("Paste or type IUPAC DNA sequence letters here");
+
+            let normalized_preview = if self.new_sequence_text.trim().is_empty() {
+                None
+            } else {
+                Some(normalize_pasted_iupac_sequence(&self.new_sequence_text))
+            };
+            let can_create = matches!(normalized_preview, Some(Ok(_)));
+            if let Some(preview) = normalized_preview.as_ref() {
+                match preview {
+                    Ok(sequence) => {
+                        ui.small(format!("Ready: {} bp after normalization.", sequence.len()));
+                    }
+                    Err(err) => {
+                        ui.colored_label(egui::Color32::from_rgb(190, 64, 48), err);
+                    }
+                }
+            } else {
+                ui.small("Paste or type sequence letters to preview the normalized length.");
+            }
+            ui.horizontal(|ui| {
+                if ui
+                    .add_enabled(can_create, egui::Button::new("Create Sequence"))
+                    .on_hover_text("Create the sequence through the shared engine operation")
+                    .clicked()
+                    && self.create_sequence_from_dialog()
+                {
+                    close_requested = true;
+                }
+                if !self.new_sequence_status.trim().is_empty() {
+                    ui.monospace(self.new_sequence_status.clone());
+                }
+            });
+        });
+        self.clear_viewport_foreground_request_after_render(viewport_id);
+        if close_requested {
+            open = false;
+        }
+        if Self::viewport_close_requested_or_shortcut(ctx) {
+            open = false;
+        }
+        self.show_new_sequence_dialog = open;
+    }
+
     pub(super) fn fetch_genbank_accession_from_dialog(&mut self) {
         let accession = self.genbank_accession.trim().to_string();
         if accession.is_empty() {

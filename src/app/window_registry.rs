@@ -478,6 +478,16 @@ impl GENtleApp {
                 detail: "Motif registry, sequence-logo, and scoring diagnostics".to_string(),
             });
         }
+        if self.show_new_sequence_dialog {
+            entries.push(OpenWindowEntry {
+                native_menu_key: Self::native_menu_key_for_viewport(
+                    Self::new_sequence_viewport_id(),
+                ),
+                viewport_id: Self::new_sequence_viewport_id(),
+                title: "New Sequence".to_string(),
+                detail: "Typed/clipboard sequence creation".to_string(),
+            });
+        }
         if self.show_uniprot_dialog {
             entries.push(OpenWindowEntry {
                 native_menu_key: Self::native_menu_key_for_viewport(Self::uniprot_viewport_id()),
@@ -785,6 +795,8 @@ impl GENtleApp {
             self.show_agent_assistant_dialog = true;
         } else if viewport_id == Self::uniprot_viewport_id() {
             self.show_uniprot_dialog = true;
+        } else if viewport_id == Self::new_sequence_viewport_id() {
+            self.show_new_sequence_dialog = true;
         } else if viewport_id == Self::genbank_viewport_id() {
             self.show_genbank_dialog = true;
         }

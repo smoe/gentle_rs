@@ -2301,6 +2301,56 @@ fn open_sequence_window_enqueues_lazy_window_for_existing_sequence() {
 }
 
 #[test]
+fn create_sequence_from_text_input_adds_project_sequence_and_window() {
+    let mut app = GENtleApp::default();
+
+    let created = app
+        .create_sequence_from_text_input(
+            "1 acg u\n",
+            Some("typed_seq".to_string()),
+            Some("Typed sequence".to_string()),
+            true,
+        )
+        .expect("create typed sequence");
+
+    assert_eq!(created, vec!["typed_seq".to_string()]);
+    let engine = app.engine.read().unwrap();
+    let dna = engine
+        .state()
+        .sequences
+        .get("typed_seq")
+        .expect("typed sequence");
+    assert_eq!(dna.get_forward_string(), "ACGT");
+    assert_eq!(dna.name().as_deref(), Some("Typed sequence"));
+    assert!(dna.is_circular());
+    assert_eq!(engine.operation_log().len(), 1);
+    drop(engine);
+    assert_eq!(app.new_windows.len(), 1);
+    assert_eq!(
+        app.new_windows[0].sequence_id().as_deref(),
+        Some("typed_seq")
+    );
+}
+
+#[test]
+fn create_sequence_from_text_input_rejects_invalid_iupac() {
+    let mut app = GENtleApp::default();
+
+    let err = app
+        .create_sequence_from_text_input("ACGZ", Some("bad_seq".to_string()), None, false)
+        .expect_err("invalid base should fail before mutation");
+
+    assert!(
+        err.contains("Invalid IUPAC"),
+        "unexpected error message: {err}"
+    );
+    let engine = app.engine.read().unwrap();
+    assert!(engine.state().sequences.is_empty());
+    assert!(engine.operation_log().is_empty());
+    assert!(app.new_windows.is_empty());
+}
+
+#[test]
 fn register_window_records_one_time_initial_position() {
     let mut app = GENtleApp::default();
     let engine = app.engine.clone();
@@ -4843,6 +4893,24 @@ fn command_palette_includes_external_services_entry() {
 }
 
 #[test]
+fn command_palette_includes_new_sequence_entries() {
+    let app = GENtleApp::default();
+    let entries = app.collect_command_palette_entries();
+
+    assert!(entries.iter().any(|entry| {
+        entry.title == "New Sequence"
+            && matches!(entry.action, CommandPaletteAction::NewSequence)
+    }));
+    assert!(entries.iter().any(|entry| {
+        entry.title == "New Sequence from Clipboard"
+            && matches!(
+                entry.action,
+                CommandPaletteAction::NewSequenceFromClipboard
+            )
+    }));
+}
+
+#[test]
 fn command_palette_includes_pcr_designer_entry() {
     let app = GENtleApp::default();
     let entries = app.collect_command_palette_entries();
@@ -4918,6 +4986,22 @@ fn execute_command_palette_action_opens_routine_assistant_dialog() {
     );
 
     assert!(app.show_routine_assistant_dialog);
+}
+
+#[test]
+fn execute_command_palette_action_opens_new_sequence_dialog() {
+    let mut app = GENtleApp::default();
+
+    app.execute_command_palette_action(
+        &egui::Context::default(),
+        CommandPaletteAction::NewSequence,
+    );
+
+    assert!(app.show_new_sequence_dialog);
+    assert!(
+        app.pending_focus_viewports
+            .contains(&GENtleApp::new_sequence_viewport_id())
+    );
 }
 
 #[test]
