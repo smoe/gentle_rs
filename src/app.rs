@@ -58,6 +58,9 @@ mod history_ui;
 #[path = "app/root_ui.rs"]
 mod root_ui;
 
+#[path = "app/splash_ui.rs"]
+mod splash_ui;
+
 #[path = "app/configuration_ui.rs"]
 mod configuration_ui;
 
@@ -621,6 +624,8 @@ pub struct GENtleApp {
     pending_window_initial_positions: HashMap<ViewportId, Pos2>,
     viewport_id_counter: usize,
     update_has_run_before: bool,
+    splash_started_at: Instant,
+    splash_dismissed: bool,
     show_about_dialog: bool,
     show_help_dialog: bool,
     help_doc: HelpDoc,
@@ -2266,6 +2271,8 @@ impl Default for GENtleApp {
             pending_window_initial_positions: HashMap::new(),
             viewport_id_counter: 0,
             update_has_run_before: false,
+            splash_started_at: Instant::now(),
+            splash_dismissed: false,
             show_about_dialog: false,
             show_help_dialog: false,
             help_doc: HelpDoc::Gui,
@@ -23767,45 +23774,50 @@ impl GENtleApp {
                 },
             );
 
-            // Show main/root workspace host
-            self.render_root_workspace(ctx, project_dirty);
-            self.render_reference_genome_prepare_dialog(ctx);
-            self.render_reference_genome_retrieve_dialog(ctx);
-            self.render_uniprot_dialog(ctx);
-            self.render_genbank_dialog(ctx);
-            self.render_reference_genome_blast_dialog(ctx);
-            self.render_reference_genome_inspector_dialog(ctx);
-            self.render_cache_cleanup_dialog(ctx);
-            self.render_prepared_genome_reinstall_confirm_dialog(
-                ctx,
-                PreparedGenomeReinstallDialogHost::Root,
-            );
-            self.render_pending_ensembl_catalog_update_dialog(ctx);
-            self.render_pending_ensembl_installable_genomes_dialog(ctx);
-            self.render_pending_ensembl_quick_install_dialog(ctx);
-            self.render_pending_prepared_genome_removal_dialog(ctx);
-            self.render_pending_catalog_entry_removal_dialog(ctx);
-            self.render_genome_bed_track_dialog(ctx);
-            self.render_gibson_dialog(ctx);
-            self.render_arrangement_gel_preview_dialog(ctx);
-            self.render_rack_labels_preview_dialog(ctx);
-            self.render_place_arrangement_on_rack_dialog(ctx);
-            self.render_rack_dialog(ctx);
-            self.render_pcr_design_dialog(ctx);
-            self.render_sequencing_confirmation_dialog(ctx);
-            self.render_jaspar_expert_dialog(ctx);
-            self.render_planning_dialog(ctx);
-            self.render_routine_assistant_dialog(ctx);
-            self.render_agent_assistant_dialog(ctx);
-            self.render_external_services_dialog(ctx);
-            self.render_clawbio_dialog(ctx);
-            self.render_configuration_dialog(ctx);
-            self.render_help_dialog(ctx);
-            self.render_about_dialog(ctx);
-            self.render_command_palette_dialog(ctx);
-            self.render_jobs_panel(ctx);
-            self.render_history_panel(ctx);
-            self.render_unsaved_changes_dialog(ctx);
+            // Show main/root workspace host, or the transient startup splash.
+            if self.splash_should_render_at(Instant::now()) {
+                self.render_splash_screen(ctx);
+            } else {
+                self.dismiss_splash_screen();
+                self.render_root_workspace(ctx, project_dirty);
+                self.render_reference_genome_prepare_dialog(ctx);
+                self.render_reference_genome_retrieve_dialog(ctx);
+                self.render_uniprot_dialog(ctx);
+                self.render_genbank_dialog(ctx);
+                self.render_reference_genome_blast_dialog(ctx);
+                self.render_reference_genome_inspector_dialog(ctx);
+                self.render_cache_cleanup_dialog(ctx);
+                self.render_prepared_genome_reinstall_confirm_dialog(
+                    ctx,
+                    PreparedGenomeReinstallDialogHost::Root,
+                );
+                self.render_pending_ensembl_catalog_update_dialog(ctx);
+                self.render_pending_ensembl_installable_genomes_dialog(ctx);
+                self.render_pending_ensembl_quick_install_dialog(ctx);
+                self.render_pending_prepared_genome_removal_dialog(ctx);
+                self.render_pending_catalog_entry_removal_dialog(ctx);
+                self.render_genome_bed_track_dialog(ctx);
+                self.render_gibson_dialog(ctx);
+                self.render_arrangement_gel_preview_dialog(ctx);
+                self.render_rack_labels_preview_dialog(ctx);
+                self.render_place_arrangement_on_rack_dialog(ctx);
+                self.render_rack_dialog(ctx);
+                self.render_pcr_design_dialog(ctx);
+                self.render_sequencing_confirmation_dialog(ctx);
+                self.render_jaspar_expert_dialog(ctx);
+                self.render_planning_dialog(ctx);
+                self.render_routine_assistant_dialog(ctx);
+                self.render_agent_assistant_dialog(ctx);
+                self.render_external_services_dialog(ctx);
+                self.render_clawbio_dialog(ctx);
+                self.render_configuration_dialog(ctx);
+                self.render_help_dialog(ctx);
+                self.render_about_dialog(ctx);
+                self.render_command_palette_dialog(ctx);
+                self.render_jobs_panel(ctx);
+                self.render_history_panel(ctx);
+                self.render_unsaved_changes_dialog(ctx);
+            }
             self.render_status_bar(ctx);
 
             if self.pending_app_quit {
