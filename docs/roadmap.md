@@ -102,7 +102,10 @@ backed by current engine records.
 For ClawBio/OpenClaw specifically, keep new integration work centered on
 descriptor/runtime parity (`INTENTS.json`, `mode=intents`, examples, and
 trigger-keyword drift checks) plus explicit scope/presentation contracts rather
-than adding more biology-specific wrapper modes.
+than adding more biology-specific wrapper modes. The next small GENtle-side
+bridge step is to wire the phase-1 context/transport/result adapter into one
+ClawBio panel entry point that renders ClawBio-emitted workflow state and
+suggested actions without adding routing or planner semantics to GENtle.
 
 Near-term consult rule: keep `planning consult cloning` narrow and
 deterministic until richer construct reasoning lands. The preferred v1 surface

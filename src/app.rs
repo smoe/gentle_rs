@@ -64,6 +64,9 @@ mod configuration_ui;
 #[path = "app/external_services_ui.rs"]
 mod external_services_ui;
 
+#[path = "app/clawbio_bridge.rs"]
+mod clawbio_bridge;
+
 #[path = "app/agent_assistant_config.rs"]
 mod agent_assistant_config;
 
