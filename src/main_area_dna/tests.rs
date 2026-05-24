@@ -7497,7 +7497,9 @@ fn rna_read_mapping_embedded_window_clears_legacy_title_bar_area() {
         ui.label("legacy mapping title shell");
     });
     assert!(ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer_id)));
+    let _ = ctx.end_pass();
 
+    ctx.begin_pass(egui::RawInput::default());
     area.show_rna_read_mapping_window = true;
     area.render_rna_read_mapping_embedded_window_shell(
         &ctx,
@@ -7509,8 +7511,8 @@ fn rna_read_mapping_embedded_window_clears_legacy_title_bar_area() {
         false,
     );
     assert!(ctx.memory(|mem| mem.areas().is_visible(&hosted_layer_id)));
-    assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer_id)));
     let _ = ctx.end_pass();
+    assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer_id)));
 }
 
 #[test]

@@ -260,7 +260,7 @@ impl GENtleApp {
         }
         if self.windows.contains_key(&viewport_id) {
             return Some(Self::embedded_window_layer_from_window_id(egui::Id::new((
-                "hosted_sequence_window",
+                "hosted_sequence_window_v2",
                 viewport_id,
             ))));
         }
