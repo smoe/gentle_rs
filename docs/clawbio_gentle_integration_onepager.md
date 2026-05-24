@@ -18,15 +18,17 @@ without changing the request/result model. Both are out of scope for v1.
 
 ## GENtle GUI-Surface Adapter
 
-The first GENtle-side slice is intentionally small:
+The GENtle-side adapter is intentionally small:
 
 - export only a compact GUI context payload;
 - dispatch through a `ClawBioTransport` trait with a synchronous
   `dispatch(spec, cancel_token)` method;
 - ship one implementation, `SubprocessTransport`;
 - parse `result.json` into a renderable view model while keeping the raw result;
-- carry nested `suggested_actions[].request` payloads opaquely when a future
-  panel dispatches follow-up actions.
+- present one `Services -> ClawBio...` panel that renders ClawBio-emitted
+  lifecycle state, summary lines, artifacts, and suggested actions;
+- carry nested `suggested_actions[].request` payloads opaquely when the panel
+  dispatches follow-up actions.
 
 The `CancelToken` is `Arc<AtomicBool>`-backed and exposes
 `is_cancelled() -> bool`. The subprocess transport owns the `Child`, polls it
@@ -36,14 +38,15 @@ action payloads, or report-prose parsing is part of v1.
 
 GENtle does not choose skills automatically in v1. A future ClawBio planner owns
 skill selection, but this subprocess topology must still pass a skill argument;
-GENtle therefore uses a configured or user-selectable skill alias, defaulting to
-`gentle-cloning`. This is a v1 limitation, not a routing layer.
+GENtle therefore uses a configured/user-selectable skill alias in the panel,
+defaulting to `gentle-cloning`. This is a v1 limitation, not a routing layer.
 
 Scratch output lives on the GENtle side under a persistent run root such as
 `~/.gentle/clawbio_runs/<skill>_<timestamp>/`, compatible with ClawBio's
-output-bundle convention. If a ClawBio request or nested action contains a
-`provenance` field, GENtle carries it verbatim and does not construct, inspect,
-or enforce it.
+output-bundle convention. Subprocess stdout and stderr are written to
+`stdout.log` and `stderr.log` inside the same bundle. If a ClawBio request or
+nested action contains a `provenance` field, GENtle carries it verbatim and does
+not construct, inspect, or enforce it.
 
 Minimal data flow:
 
@@ -53,8 +56,8 @@ flowchart LR
     B --> T["ClawBioTransport (v1: subprocess)"]
     T --> C["clawbio.py run <skill> --input request.json --output output_dir"]
     C --> D["result.json"]
-    D --> E["GENtle result view model"]
-    E --> F["future panel action"]
+    D --> E["GENtle ClawBio panel"]
+    E --> F["user-selected suggested action"]
     F --> G["stored nested request, verbatim"]
     G --> T
 ```

@@ -67,6 +67,9 @@ mod external_services_ui;
 #[path = "app/clawbio_bridge.rs"]
 mod clawbio_bridge;
 
+#[path = "app/clawbio_ui.rs"]
+mod clawbio_ui;
+
 #[path = "app/agent_assistant_config.rs"]
 mod agent_assistant_config;
 
@@ -942,6 +945,7 @@ pub struct GENtleApp {
     command_palette_selected: usize,
     command_palette_focus_query: bool,
     external_services_ui: ExternalServicesUiState,
+    clawbio_panel: clawbio_ui::ClawBioPanelState,
     show_jobs_panel: bool,
     history_ui: HistoryUiState,
     hover_status_name: String,
@@ -2592,6 +2596,7 @@ impl Default for GENtleApp {
             command_palette_selected: 0,
             command_palette_focus_query: false,
             external_services_ui: ExternalServicesUiState::default(),
+            clawbio_panel: clawbio_ui::ClawBioPanelState::default(),
             show_jobs_panel: false,
             history_ui: HistoryUiState::default(),
             hover_status_name: String::new(),
@@ -2811,6 +2816,14 @@ impl GENtleApp {
 
     fn external_services_viewport_id() -> ViewportId {
         ViewportId::from_hash_of("GENtle External Services Viewport")
+    }
+
+    fn clawbio_viewport_id() -> ViewportId {
+        ViewportId::from_hash_of("GENtle ClawBio Viewport")
+    }
+
+    fn hosted_clawbio_window_id() -> egui::Id {
+        egui::Id::new(("hosted_clawbio_window", Self::clawbio_viewport_id()))
     }
 
     fn history_viewport_id() -> ViewportId {
@@ -15927,6 +15940,14 @@ Error: `{err}`"
                     self.open_external_services_dialog();
                     ui.close();
                 }
+                if ui
+                    .button("ClawBio...")
+                    .on_hover_text("Send the current sequence/selection context to ClawBio")
+                    .clicked()
+                {
+                    self.open_clawbio_dialog();
+                    ui.close();
+                }
                 ui.small("Shared shell routes: services providers/preflight/quote");
             });
             ui.menu_button(self.tr("menu.windows"), |ui| {
@@ -23724,6 +23745,7 @@ impl GENtleApp {
             self.poll_dbsnp_fetch_task(ctx);
             self.poll_agent_assistant_task(ctx);
             self.poll_agent_model_discovery_task(ctx);
+            self.poll_clawbio_task(ctx);
             self.sync_tracked_bed_tracks_for_new_anchors();
             self.sync_open_windows_if_display_changed(ctx);
             self.reset_root_auxiliary_areas_if_legacy_title_layers_visible(ctx);
@@ -23776,6 +23798,7 @@ impl GENtleApp {
             self.render_routine_assistant_dialog(ctx);
             self.render_agent_assistant_dialog(ctx);
             self.render_external_services_dialog(ctx);
+            self.render_clawbio_dialog(ctx);
             self.render_configuration_dialog(ctx);
             self.render_help_dialog(ctx);
             self.render_about_dialog(ctx);

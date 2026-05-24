@@ -17,6 +17,9 @@ Maintenance rule:
 - Added a phase-1 GENtle-side ClawBio bridge: compact GUI context export,
   `CancelToken`-based subprocess transport, `result.json` parsing, and an
   updated federation/boundary contract in `docs/clawbio_gentle_integration_onepager.md`.
+- Added the phase-2 ClawBio GUI panel under `Services -> ClawBio...`, with
+  worker-thread dispatch, cancellation, stdout/stderr output-bundle logs,
+  artifact/report links, and verbatim suggested-action request dispatch.
 
 ## 2026-05-23
 

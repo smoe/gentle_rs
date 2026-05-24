@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! Phase-1 GENtle-side ClawBio adapter model.
 
 use super::*;
@@ -15,6 +14,7 @@ use std::{
     time::Duration,
 };
 
+pub(crate) const CLAWBIO_POLL_INTERVAL: Duration = Duration::from_millis(100);
 pub(crate) const DEFAULT_CLAWBIO_SKILL_ALIAS: &str = "gentle-cloning";
 
 #[derive(Clone, Default)]
@@ -77,6 +77,12 @@ impl ClawBioTransport for SubprocessTransport {
                 + "\n",
         )
         .map_err(|e| format!("Could not write ClawBio request: {e}"))?;
+        let stdout_path = output_dir.join("stdout.log");
+        let stderr_path = output_dir.join("stderr.log");
+        let stdout_log = fs::File::create(&stdout_path)
+            .map_err(|e| format!("Could not create ClawBio stdout log: {e}"))?;
+        let stderr_log = fs::File::create(&stderr_path)
+            .map_err(|e| format!("Could not create ClawBio stderr log: {e}"))?;
 
         let mut child = Command::new(spec.clawbio_bin.trim())
             .arg("run")
@@ -85,8 +91,8 @@ impl ClawBioTransport for SubprocessTransport {
             .arg(&request_path)
             .arg("--output")
             .arg(&output_dir)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stdout(Stdio::from(stdout_log))
+            .stderr(Stdio::from(stderr_log))
             .spawn()
             .map_err(|e| format!("Could not start ClawBio: {e}"))?;
 
@@ -101,11 +107,16 @@ impl ClawBioTransport for SubprocessTransport {
                 .map_err(|e| format!("Could not poll ClawBio process: {e}"))?
             {
                 Some(status) => break status,
-                None => thread::sleep(Duration::from_millis(100)),
+                None => thread::sleep(CLAWBIO_POLL_INTERVAL),
             }
         };
         if !status.success() {
-            return Err(format!("ClawBio exited with status {status}."));
+            return Err(format!(
+                "ClawBio exited with status {status}. Output: {}; stdout: {}; stderr: {}",
+                output_dir.display(),
+                stdout_path.display(),
+                stderr_path.display()
+            ));
         }
         ClawBioResultView::read_from_output_dir(&output_dir)
     }
@@ -164,6 +175,7 @@ impl GENtleApp {
                     serde_json::json!({
                         "start_0based": start,
                         "end_0based": end,
+                        // GENtle selections do not currently carry a strand.
                         "strand": Value::Null
                     })
                 });
