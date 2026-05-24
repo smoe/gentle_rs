@@ -199,6 +199,8 @@ contracts, not a separate ordering implementation.
 - The request editor holds one editable
   `gentle.external_service_request.v1` JSON payload. `Use Selected Template`
   creates a provider-neutral starter request for the selected provider/service.
+- Changing the selected provider or service kind refreshes that editable
+  starter request and clears stale preflight/quote previews.
 - `Preflight` runs `services project-preflight`; `Prepare Quote Handoff` runs
   `services project-quote`.
 - `Export Handoff Bundle` runs `services project-quote --output-dir DIR` and
