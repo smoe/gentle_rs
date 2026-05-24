@@ -51,7 +51,7 @@
     "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg": "b35113f6bae05715c0759d55acd5b78503f5a9c0",
     "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_similarity.json": "552e99f01f41c48e015e9739e17ae4ec9aa6f4fc",
     "chapters/01-02_contribute_to_gentle_development.md": "0db4226e18469fbf4ff2b492c6de38ce68801097",
-    "chapters/02-01_load_branch_reverse_complement_pgex_fasta.md": "189f6af229942642565f8fbf72aedc3055c3b7a1",
+    "chapters/02-01_load_branch_reverse_complement_pgex_fasta.md": "6003fe3fa5c8b40689913cf62aaa07b3cfba839f",
     "chapters/02-04_tp73_cdna_genomic_dotplot_online.md": "c996b0d17b56d112ee40e31ecf7c04903ca565de",
     "chapters/03-01_load_and_digest_pgex.md": "d5e64f717c9ae40b57244fc037c489f5d1a24a1a",
     "chapters/03-02_digest_ligation_extract_region_minimal.md": "0eef632b136a8f35d1dfa9d4f1df03764f2764da",
@@ -72,7 +72,7 @@
     "chapters/08-03_promoter_design_artifact_slice_offline.md": "c1414cb6b0cbe6e200bd08798e21954cb7c7e1d9"
   },
   "warnings": [
-    "Tutorial 'load_branch_reverse_complement_pgex_fasta' review is stale because source JSON 'docs/tutorial/sources/02-01_load_branch_reverse_complement_pgex_fasta.json' changed after human review date 2026-05-18",
+    "Tutorial 'load_branch_reverse_complement_pgex_fasta' review is stale because tutorial Markdown 'docs/tutorial/generated/chapters/02-01_load_branch_reverse_complement_pgex_fasta.md' changed after human review date 2026-05-18",
     "Tutorial 'promoter_design_artifact_slice_offline' review is stale because declared graphic for tutorial 'promoter_design_artifact_slice_offline' 'docs/tutorial/generated/artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg' changed after human review date 2026-05-18"
   ],
   "chapters": [
@@ -98,7 +98,7 @@
       "human_reviewed_at": "2026-05-18",
       "human_reviewer": "smoe",
       "review_stale": true,
-      "review_stale_reason": "source JSON 'docs/tutorial/sources/02-01_load_branch_reverse_complement_pgex_fasta.json' changed after human review date 2026-05-18",
+      "review_stale_reason": "tutorial Markdown 'docs/tutorial/generated/chapters/02-01_load_branch_reverse_complement_pgex_fasta.md' changed after human review date 2026-05-18",
       "review_issue_template": "Tutorial confusion",
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
       "retained_artifacts": []

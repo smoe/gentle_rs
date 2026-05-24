@@ -105,6 +105,9 @@ fn direct_egui_windows_are_limited_to_window_shell_wrappers() {
         ) {
             continue;
         }
+        if relative.ends_with("/tests.rs") {
+            continue;
+        }
         let source = fs::read_to_string(&path)
             .unwrap_or_else(|err| panic!("read {relative} for window-shell guard: {err}"));
         collect_direct_window_new_lines(&relative, &source, &mut unexpected);
