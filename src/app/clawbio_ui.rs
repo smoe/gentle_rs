@@ -168,6 +168,9 @@ impl GENtleApp {
     fn render_clawbio_result(&mut self, ui: &mut Ui, result: &ClawBioResultView) {
         ui.separator();
         ui.label(clawbio_lifecycle_label(result));
+        if let Some(message) = clawbio_workflow_state_message(result) {
+            ui.small(message);
+        }
         for line in &result.chat_summary_lines {
             ui.label(line);
         }
@@ -294,7 +297,18 @@ pub(super) fn clawbio_lifecycle_label(result: &ClawBioResultView) -> String {
         .and_then(Value::as_str)
         .or_else(|| result.raw_result.get("status").and_then(Value::as_str))
         .unwrap_or("unknown");
-    format!("{label}: {lifecycle}")
+    format!("State: {lifecycle} — {label}")
+}
+
+pub(super) fn clawbio_workflow_state_message(result: &ClawBioResultView) -> Option<String> {
+    result
+        .workflow_state
+        .as_ref()
+        .and_then(|v| v.get("message"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|message| !message.is_empty())
+        .map(str::to_string)
 }
 
 pub(super) fn clawbio_artifact_label(artifact: &Value) -> String {
@@ -368,7 +382,8 @@ mod tests {
             report_md_path: None,
             workflow_state: Some(serde_json::json!({
                 "state_label": "Ready",
-                "lifecycle": "ready"
+                "lifecycle": "ready",
+                "message": "Use the suggested next step."
             })),
             chat_summary_lines: vec![],
             preferred_artifacts: vec![],
@@ -387,7 +402,11 @@ mod tests {
     #[test]
     fn clawbio_render_helpers_format_result_artifacts_and_actions() {
         let view = sample_view();
-        assert_eq!(clawbio_lifecycle_label(&view), "Ready: ready");
+        assert_eq!(clawbio_lifecycle_label(&view), "State: ready — Ready");
+        assert_eq!(
+            clawbio_workflow_state_message(&view).unwrap(),
+            "Use the suggested next step."
+        );
         let artifact = serde_json::json!({"artifact_id": "fig", "path": "fig.svg"});
         assert_eq!(clawbio_artifact_label(&artifact), "fig");
         assert_eq!(
