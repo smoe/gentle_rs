@@ -155,7 +155,7 @@ use crate::{
     },
     engine_shell::{
         ShellCommand, ShellExecutionOptions, UiIntentAction, UiIntentTarget,
-        execute_shell_command_with_options, parse_shell_line,
+        execute_shell_command_with_options, normalize_pasted_iupac_sequence, parse_shell_line,
     },
     ensembl_protein::{EnsemblProteinEntry, EnsemblProteinEntrySummary},
     enzymes,
@@ -733,6 +733,7 @@ pub struct GENtleApp {
     show_reference_genome_blast_dialog: bool,
     show_reference_genome_inspector_dialog: bool,
     show_cache_cleanup_dialog: bool,
+    show_new_sequence_dialog: bool,
     show_uniprot_dialog: bool,
     show_genbank_dialog: bool,
     genome_dialog_scope: GenomeDialogScope,
@@ -786,6 +787,11 @@ pub struct GENtleApp {
     genome_include_genomic_annotation: bool,
     genome_retrieve_status: String,
     genome_retrieve_contig_suggestions: Vec<String>,
+    new_sequence_text: String,
+    new_sequence_output_id: String,
+    new_sequence_name: String,
+    new_sequence_circular: bool,
+    new_sequence_status: String,
     uniprot_query: String,
     uniprot_entry_id: String,
     uniprot_swiss_path: String,
@@ -2178,6 +2184,8 @@ enum CommandPaletteAction {
     NewProject,
     OpenProject,
     SaveProject,
+    NewSequence,
+    NewSequenceFromClipboard,
     OpenSequence,
     OpenUniprot,
     OpenGenbank,
@@ -2382,6 +2390,7 @@ impl Default for GENtleApp {
             show_reference_genome_blast_dialog: false,
             show_reference_genome_inspector_dialog: false,
             show_cache_cleanup_dialog: false,
+            show_new_sequence_dialog: false,
             show_uniprot_dialog: false,
             show_genbank_dialog: false,
             genome_dialog_scope: GenomeDialogScope::Reference,
@@ -2435,6 +2444,11 @@ impl Default for GENtleApp {
             genome_include_genomic_annotation: true,
             genome_retrieve_status: String::new(),
             genome_retrieve_contig_suggestions: vec![],
+            new_sequence_text: String::new(),
+            new_sequence_output_id: String::new(),
+            new_sequence_name: String::new(),
+            new_sequence_circular: false,
+            new_sequence_status: String::new(),
             uniprot_query: String::new(),
             uniprot_entry_id: String::new(),
             uniprot_swiss_path: String::new(),
@@ -2839,6 +2853,10 @@ impl GENtleApp {
 
     fn uniprot_viewport_id() -> ViewportId {
         ViewportId::from_hash_of("GENtle UniProt Viewport")
+    }
+
+    fn new_sequence_viewport_id() -> ViewportId {
+        ViewportId::from_hash_of("GENtle New Sequence Viewport")
     }
 
     fn genbank_viewport_id() -> ViewportId {
@@ -4902,6 +4920,18 @@ Error: `{err}`"
                 action: CommandPaletteAction::SaveProject,
             },
             CommandPaletteEntry {
+                title: "New Sequence".to_string(),
+                detail: "Type or paste IUPAC DNA into a new project sequence".to_string(),
+                keywords: "sequence new paste clipboard type create".to_string(),
+                action: CommandPaletteAction::NewSequence,
+            },
+            CommandPaletteEntry {
+                title: "New Sequence from Clipboard".to_string(),
+                detail: "Read clipboard text into the new-sequence dialog".to_string(),
+                keywords: "sequence new paste clipboard create".to_string(),
+                action: CommandPaletteAction::NewSequenceFromClipboard,
+            },
+            CommandPaletteEntry {
                 title: "Open Sequence".to_string(),
                 detail: "Import one or more sequence files into project".to_string(),
                 keywords: "sequence import load".to_string(),
@@ -5049,6 +5079,10 @@ Error: `{err}`"
             CommandPaletteAction::OpenProject => self.request_project_action(ProjectAction::Open),
             CommandPaletteAction::SaveProject => {
                 let _ = self.save_current_project();
+            }
+            CommandPaletteAction::NewSequence => self.open_new_sequence_dialog(),
+            CommandPaletteAction::NewSequenceFromClipboard => {
+                self.open_new_sequence_from_clipboard()
             }
             CommandPaletteAction::OpenSequence => self.prompt_open_sequence(),
             CommandPaletteAction::OpenUniprot => self.open_uniprot_dialog(),
@@ -5561,6 +5595,8 @@ Error: `{err}`"
             "Agent Assistant focus acquisition"
         } else if viewport_id == Self::jaspar_expert_viewport_id() {
             "JASPAR Expert focus acquisition"
+        } else if viewport_id == Self::new_sequence_viewport_id() {
+            "New Sequence focus acquisition"
         } else if viewport_id == Self::uniprot_viewport_id() {
             "UniProt focus acquisition"
         } else if viewport_id == Self::genbank_viewport_id() {
@@ -8236,6 +8272,27 @@ Error: `{err}`"
         }
         self.show_uniprot_dialog = true;
         self.mark_window_open_or_focus(Self::uniprot_viewport_id(), was_open);
+    }
+
+    fn open_new_sequence_dialog(&mut self) {
+        let was_open = self.show_new_sequence_dialog;
+        self.show_new_sequence_dialog = true;
+        self.mark_window_open_or_focus(Self::new_sequence_viewport_id(), was_open);
+    }
+
+    fn open_new_sequence_from_clipboard(&mut self) {
+        match Self::read_text_clipboard() {
+            Ok(text) => {
+                self.new_sequence_text = text;
+                let pasted_chars = self.new_sequence_text.chars().count();
+                self.new_sequence_status =
+                    format!("Loaded {pasted_chars} clipboard character(s); review before create.");
+            }
+            Err(err) => {
+                self.new_sequence_status = err;
+            }
+        }
+        self.open_new_sequence_dialog();
     }
 
     fn open_genbank_dialog(&mut self) {
@@ -15471,6 +15528,25 @@ Error: `{err}`"
                     .clicked()
                 {
                     self.request_project_action(ProjectAction::Close);
+                    ui.close();
+                }
+                ui.separator();
+                if ui
+                    .button("New Sequence...")
+                    .on_hover_text("Create a project sequence from typed or pasted IUPAC DNA")
+                    .clicked()
+                {
+                    self.open_new_sequence_dialog();
+                    ui.close();
+                }
+                if ui
+                    .button("New Sequence from Clipboard...")
+                    .on_hover_text(
+                        "Read system clipboard text into the new-sequence dialog for review",
+                    )
+                    .clicked()
+                {
+                    self.open_new_sequence_from_clipboard();
                     ui.close();
                 }
                 ui.separator();
@@ -23782,6 +23858,7 @@ impl GENtleApp {
                 self.render_root_workspace(ctx, project_dirty);
                 self.render_reference_genome_prepare_dialog(ctx);
                 self.render_reference_genome_retrieve_dialog(ctx);
+                self.render_new_sequence_dialog(ctx);
                 self.render_uniprot_dialog(ctx);
                 self.render_genbank_dialog(ctx);
                 self.render_reference_genome_blast_dialog(ctx);

@@ -18730,7 +18730,7 @@ fn parse_slash_file_alias(tokens: &[String], context: &str) -> Result<ShellComma
     Ok(ShellCommand::LoadFile { path, as_id })
 }
 
-fn normalize_pasted_iupac_sequence(raw: &str) -> Result<String, String> {
+pub(crate) fn normalize_pasted_iupac_sequence(raw: &str) -> Result<String, String> {
     let mut normalized = String::new();
     for (idx, ch) in raw.chars().enumerate() {
         if ch.is_whitespace() || ch.is_ascii_digit() {

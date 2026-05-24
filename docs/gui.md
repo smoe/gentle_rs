@@ -4444,10 +4444,23 @@ Metadata key format:
 
 - `gui.engine_ops.<seq_id>`
 
-## Loading sequence files
+## Loading and creating sequences
 
 Use the top application menu:
 
+- `File -> New Sequence...`
+  - opens a small editor for typed or pasted IUPAC DNA
+  - whitespace and digits are ignored; `U` is normalized to `T`
+  - optional `id`, `name`, and linear/circular topology fields are applied by
+    the shared `CreateSequenceFromText` engine operation
+  - creating the sequence imports it into the current project and opens a
+    normal DNA sequence window
+- `File -> New Sequence from Clipboard...`
+  - reads the system text clipboard into the same `New Sequence` dialog
+  - the clipboard text is shown for review first; the project is not mutated
+    until `Create Sequence` is clicked
+  - empty, non-text, or invalid clipboard contents leave the dialog open with a
+    status message
 - `File -> Open Sequence...`
   - the file picker supports selecting multiple sequence files at once
   - selected files are imported sequentially through the normal per-file import path

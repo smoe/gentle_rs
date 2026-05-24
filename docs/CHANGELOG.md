@@ -14,6 +14,9 @@ Maintenance rule:
 
 ## 2026-05-24
 
+- Added `File -> New Sequence...` and `File -> New Sequence from Clipboard...`
+  so typed or clipboard IUPAC DNA can become an ordinary project sequence
+  through `CreateSequenceFromText`.
 - Added a phase-1 GENtle-side ClawBio bridge: compact GUI context export,
   `CancelToken`-based subprocess transport, `result.json` parsing, and an
   updated federation/boundary contract in `docs/clawbio_gentle_integration_onepager.md`.
