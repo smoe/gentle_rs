@@ -87,6 +87,24 @@ use std::{
 use tempfile::tempdir;
 
 #[test]
+fn splash_screen_is_visible_for_fresh_app() {
+    let app = GENtleApp::default();
+    assert!(app.splash_should_render_at(app.splash_started_at));
+}
+
+#[test]
+fn splash_screen_hides_after_timeout_or_dismissal() {
+    let mut app = GENtleApp::default();
+    let now = Instant::now();
+    app.splash_started_at = now - Duration::from_secs(10);
+    assert!(!app.splash_should_render_at(now));
+
+    app.splash_started_at = now;
+    app.dismiss_splash_screen();
+    assert!(!app.splash_should_render_at(now));
+}
+
+#[test]
 fn direct_egui_windows_are_limited_to_window_shell_wrappers() {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     let mut source_files = Vec::new();
