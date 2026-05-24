@@ -12,6 +12,12 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-05-24
+
+- Added a phase-1 GENtle-side ClawBio bridge: compact GUI context export,
+  `CancelToken`-based subprocess transport, `result.json` parsing, and an
+  updated federation/boundary contract in `docs/clawbio_gentle_integration_onepager.md`.
+
 ## 2026-05-23
 
 - Started Phase 4 of the tutorial presentation overhaul by surfacing
