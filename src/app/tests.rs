@@ -4965,6 +4965,49 @@ fn external_services_request_template_uses_selected_provider_capability() {
 }
 
 #[test]
+fn external_services_provider_switch_refreshes_editable_request_template() {
+    let mut app = GENtleApp::default();
+    app.open_external_services_dialog();
+    app.external_services_ui.selected_provider = "metabion".to_string();
+    app.external_services_ui.selected_service_kind = "dna_oligo_single_tube".to_string();
+    app.reset_external_services_request_from_selection();
+    assert!(
+        app.external_services_ui
+            .request_json
+            .contains("\"provider\": \"metabion\"")
+    );
+
+    app.external_services_ui.preflight_output = Some(serde_json::json!({"stale": "preflight"}));
+    app.external_services_ui.quote_output = Some(serde_json::json!({"stale": "quote"}));
+    app.external_services_ui.selected_provider = "geneart".to_string();
+
+    app.reset_external_services_request_from_selection();
+
+    assert!(
+        app.external_services_ui
+            .request_json
+            .contains("\"provider\": \"geneart\"")
+    );
+    assert!(
+        !app.external_services_ui
+            .request_json
+            .contains("\"provider\": \"metabion\"")
+    );
+    assert!(
+        app.external_services_ui
+            .request_json
+            .contains("\"service_kind\": \"dna_fragment\"")
+    );
+    assert!(
+        app.external_services_ui
+            .quote_output_dir
+            .contains("geneart_dna_fragment_handoff")
+    );
+    assert!(app.external_services_ui.preflight_output.is_none());
+    assert!(app.external_services_ui.quote_output.is_none());
+}
+
+#[test]
 fn external_services_preflight_uses_shared_shell_contract() {
     let mut app = GENtleApp::default();
     app.open_external_services_dialog();

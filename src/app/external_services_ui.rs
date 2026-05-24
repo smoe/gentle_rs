@@ -422,7 +422,7 @@ impl GENtleApp {
             }
         });
         if provider_changed {
-            self.ensure_external_services_selection_from_catalog();
+            self.reset_external_services_request_from_selection();
         }
 
         let capabilities = providers
@@ -434,6 +434,7 @@ impl GENtleApp {
             ui.small("Selected provider has no configured capabilities.");
             return;
         }
+        let mut service_kind_changed = false;
         ui.horizontal_wrapped(|ui| {
             ui.label("Service kind");
             egui::ComboBox::from_id_salt("external_services_service_kind_picker")
@@ -450,14 +451,22 @@ impl GENtleApp {
                     for capability in &capabilities {
                         let label =
                             format!("{} ({})", capability.display_name, capability.service_kind);
-                        ui.selectable_value(
-                            &mut self.external_services_ui.selected_service_kind,
-                            capability.service_kind.clone(),
-                            label,
-                        );
+                        if ui
+                            .selectable_value(
+                                &mut self.external_services_ui.selected_service_kind,
+                                capability.service_kind.clone(),
+                                label,
+                            )
+                            .changed()
+                        {
+                            service_kind_changed = true;
+                        }
                     }
                 });
         });
+        if service_kind_changed {
+            self.reset_external_services_request_from_selection();
+        }
     }
 
     fn render_json_preview(ui: &mut Ui, title: &str, value: &Option<serde_json::Value>) {

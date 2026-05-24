@@ -20,6 +20,9 @@ Maintenance rule:
 - Added the phase-2 ClawBio GUI panel under `Services -> ClawBio...`, with
   worker-thread dispatch, cancellation, stdout/stderr output-bundle logs,
   artifact/report links, and verbatim suggested-action request dispatch.
+- Fixed the External Services provider/service picker so changing from
+  metabion to GeneArt refreshes the editable request JSON and clears stale
+  preflight/quote previews.
 
 ## 2026-05-23
 
