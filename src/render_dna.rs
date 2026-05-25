@@ -329,6 +329,17 @@ impl RenderDna {
         }
     }
 
+    fn interaction_id(&self, ui: &Ui) -> egui::Id {
+        ui.make_persistent_id(("render_dna_map", self.interaction_id_salt()))
+    }
+
+    fn interaction_id_salt(&self) -> usize {
+        match self {
+            RenderDna::Circular(renderer) => Arc::as_ptr(renderer) as usize,
+            RenderDna::Linear(renderer) => Arc::as_ptr(renderer) as usize,
+        }
+    }
+
     pub fn is_feature_pointy(feature: &Feature) -> bool {
         matches!(
             feature.kind.to_string().to_ascii_uppercase().as_str(),
@@ -1684,33 +1695,18 @@ impl RenderDna {
 impl Widget for RenderDna {
     fn ui(self, ui: &mut Ui) -> Response {
         let available = ui.available_size_before_wrap();
-        let clip = ui.clip_rect();
-        let fallback_width = clip.width().max(1.0);
-        let fallback_height = clip.height().max(1.0);
-        let mut width = if available.x.is_finite() {
-            available.x
+        let safe_size = if available.x.is_finite()
+            && available.y.is_finite()
+            && available.x > 0.0
+            && available.y > 0.0
+        {
+            Vec2::new(available.x, available.y)
         } else {
-            fallback_width
+            Vec2::splat(1.0)
         };
-        let mut height = if available.y.is_finite() {
-            available.y
-        } else {
-            fallback_height
-        };
-        if width <= 0.0 {
-            width = fallback_width;
-        }
-        if height <= 0.0 {
-            height = fallback_height;
-        }
-        if !width.is_finite() {
-            width = fallback_width;
-        }
-        if !height.is_finite() {
-            height = fallback_height;
-        }
-        let safe_size = Vec2::new(width.max(1.0), height.max(1.0));
-        let (rect, response) = ui.allocate_exact_size(safe_size, Sense::click_and_drag());
+        let interaction_id = self.interaction_id(ui);
+        let (rect, _) = ui.allocate_exact_size(safe_size, Sense::hover());
+        let response = ui.interact(rect, interaction_id, Sense::click_and_drag());
         self.render(ui, rect);
         response
     }
@@ -1719,8 +1715,10 @@ impl Widget for RenderDna {
 #[cfg(test)]
 mod tests {
     use super::RenderDna;
-    use eframe::egui::Color32;
+    use crate::{dna_display::DnaDisplay, dna_sequence::DNAsequence};
+    use eframe::egui::{self, Color32, Sense, Widget};
     use gb_io::seq::{Feature, Location};
+    use std::sync::{Arc, RwLock};
 
     fn make_feature(kind: &str, qualifiers: &[(&str, &str)]) -> Feature {
         Feature {
@@ -1731,6 +1729,91 @@ mod tests {
                 .map(|(k, v)| ((*k).to_string().into(), Some((*v).to_string())))
                 .collect(),
         }
+    }
+
+    fn make_render_dna() -> RenderDna {
+        let mut dna = DNAsequence::from_sequence("ACGTACGTACGT").expect("test sequence");
+        dna.set_circular(false);
+        RenderDna::new(
+            Arc::new(RwLock::new(dna)),
+            Arc::new(RwLock::new(DnaDisplay::default())),
+        )
+    }
+
+    #[allow(deprecated)]
+    fn render_map_after_spacer(
+        ctx: &egui::Context,
+        render_dna: RenderDna,
+        spacer_height: f32,
+    ) -> egui::Response {
+        let mut response = None;
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.allocate_exact_size(egui::vec2(10.0, spacer_height), Sense::hover());
+            response = Some(render_dna.ui(ui));
+        });
+        response.expect("map response")
+    }
+
+    #[test]
+    fn render_dna_stable_id_does_not_steal_drag_after_layout_shift() {
+        let ctx = egui::Context::default();
+        let screen_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(300.0, 200.0));
+        let render_dna = make_render_dna();
+        let press_pos = egui::pos2(10.0, 15.0);
+
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(screen_rect),
+            events: vec![
+                egui::Event::PointerMoved(press_pos),
+                egui::Event::PointerButton {
+                    pos: press_pos,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::default(),
+                },
+            ],
+            ..Default::default()
+        });
+        let first_response = render_map_after_spacer(&ctx, render_dna.clone(), 20.0);
+        assert!(!first_response.rect.contains(press_pos));
+        let _ = ctx.end_pass();
+
+        let move_pos = egui::pos2(10.0, 70.0);
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(screen_rect),
+            events: vec![egui::Event::PointerMoved(move_pos)],
+            ..Default::default()
+        });
+        let shifted_response = render_map_after_spacer(&ctx, render_dna, 40.0);
+
+        assert!(shifted_response.rect.contains(move_pos));
+        assert!(!shifted_response.drag_started());
+        assert_ne!(ctx.dragged_id(), Some(shifted_response.id));
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn render_dna_bounds_transient_zero_available_size_to_minimal_rect() {
+        let ctx = egui::Context::default();
+        let screen_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(300.0, 200.0));
+
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(screen_rect),
+            ..Default::default()
+        });
+        egui::CentralPanel::default().show(&ctx, |ui| {
+            let rect = egui::Rect::from_min_size(ui.min_rect().min, egui::Vec2::ZERO);
+            let mut child = ui.new_child(
+                egui::UiBuilder::new()
+                    .max_rect(rect)
+                    .layout(*ui.layout()),
+            );
+            let response = make_render_dna().ui(&mut child);
+
+            assert!(response.rect.width() <= 1.0);
+            assert!(response.rect.height() <= 1.0);
+        });
+        let _ = ctx.end_pass();
     }
 
     #[test]
