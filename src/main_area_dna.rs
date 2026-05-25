@@ -8284,6 +8284,16 @@ impl MainAreaDna {
         Some(bp.min(start_bp.saturating_add(span_bp).saturating_sub(1)))
     }
 
+    fn primary_press_origin_inside_rect(ctx: &egui::Context, rect: egui::Rect) -> bool {
+        ctx.input(|input| {
+            input.pointer.primary_down()
+                && input
+                    .pointer
+                    .press_origin()
+                    .is_some_and(|origin| rect.contains(origin))
+        })
+    }
+
     fn selection_formula_text_for_range(start: usize, end_exclusive: usize) -> String {
         format!("={start} .. {end_exclusive}")
     }
@@ -8727,6 +8737,16 @@ impl MainAreaDna {
         response: &egui::Response,
         ctx: &egui::Context,
     ) {
+        if ctx.input(|input| input.pointer.primary_down())
+            && !Self::primary_press_origin_inside_rect(ctx, response.rect)
+        {
+            self.linear_drag_selection_anchor_bp = None;
+            self.linear_selection_resize_drag = None;
+            self.linear_pan_drag_origin_bp = None;
+            self.pcr_paint_drag_interval = None;
+            return;
+        }
+
         let option_pan_modifier =
             ctx.input(|i| scroll_input_policy::option_pan_modifier_active(i.modifiers));
         if response.drag_started() {
