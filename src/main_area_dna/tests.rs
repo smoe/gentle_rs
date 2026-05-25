@@ -70,6 +70,77 @@ fn make_feature(kind: &str, qualifiers: Vec<(&str, &str)>) -> Feature {
     }
 }
 
+fn primary_press_input(pos: egui::Pos2, pressed: bool) -> egui::RawInput {
+    egui::RawInput {
+        events: vec![
+            egui::Event::PointerMoved(pos),
+            egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers: egui::Modifiers::default(),
+            },
+        ],
+        ..Default::default()
+    }
+}
+
+fn with_linear_map_response(
+    ctx: &egui::Context,
+    raw_input: egui::RawInput,
+    rect: egui::Rect,
+    inspect: impl FnOnce(&egui::Response),
+) {
+    ctx.begin_pass(raw_input);
+    crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
+        let response = ui.interact(
+            rect,
+            ui.make_persistent_id("linear_map_drag_origin_guard_test"),
+            egui::Sense::click_and_drag(),
+        );
+        inspect(&response);
+    });
+    let _ = ctx.end_pass();
+}
+
+#[test]
+fn linear_map_drag_handler_rejects_press_origin_outside_map() {
+    let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(64)).expect("sequence");
+    dna.set_circular(false);
+    let mut area = MainAreaDna::new(dna, None, None);
+    let ctx = egui::Context::default();
+    let map_rect = egui::Rect::from_min_size(egui::pos2(40.0, 40.0), egui::vec2(240.0, 96.0));
+    let outside_press = egui::pos2(12.0, 70.0);
+    let inside_drag = egui::pos2(80.0, 70.0);
+
+    with_linear_map_response(
+        &ctx,
+        primary_press_input(outside_press, true),
+        map_rect,
+        |_| {},
+    );
+    area.linear_drag_selection_anchor_bp = Some(3);
+    area.linear_pan_drag_origin_bp = Some((5, 7.0));
+    area.pcr_paint_drag_interval = Some((PcrPaintRole::Roi, 3, 4));
+
+    with_linear_map_response(
+        &ctx,
+        egui::RawInput {
+            events: vec![egui::Event::PointerMoved(inside_drag)],
+            ..Default::default()
+        },
+        map_rect,
+        |response| {
+            assert!(response.rect.contains(inside_drag));
+            area.handle_linear_map_drag_for_pcr_paint(response, &ctx);
+        },
+    );
+
+    assert_eq!(area.linear_drag_selection_anchor_bp, None);
+    assert_eq!(area.linear_pan_drag_origin_bp, None);
+    assert_eq!(area.pcr_paint_drag_interval, None);
+}
+
 #[test]
 fn sequence_description_panel_text_unwraps_prose_but_keeps_metadata_rows() {
     let lines = vec![

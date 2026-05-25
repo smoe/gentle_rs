@@ -12,6 +12,12 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-05-26
+
+- Fixed linear DNA-map drag selection so drags that originate on splitters or
+  hosted-window decorations cannot become sequence selections after entering
+  the map canvas.
+
 ## 2026-05-24
 
 - Added `File -> New Sequence...` and `File -> New Sequence from Clipboard...`
