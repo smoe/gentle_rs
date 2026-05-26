@@ -19,6 +19,10 @@ Maintenance rule:
 - Fixed linear DNA-map drag selection so drags that originate on splitters or
   hosted-window decorations cannot become sequence selections after entering
   the map canvas.
+- Added `integrations/clawbio/local_agent_handoff.md` as a shared routing note
+  for Codex, Claude, OpenClaw, and other local agents: use GENtle through the
+  known ClawBio `gentle-cloning` runner, inspect `result.json`/`report.md` and
+  artifacts, and avoid inventing a second GENtle command surface.
 
 ## 2026-05-24
 
