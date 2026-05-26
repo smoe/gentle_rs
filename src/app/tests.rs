@@ -4898,15 +4898,11 @@ fn command_palette_includes_new_sequence_entries() {
     let entries = app.collect_command_palette_entries();
 
     assert!(entries.iter().any(|entry| {
-        entry.title == "New Sequence"
-            && matches!(entry.action, CommandPaletteAction::NewSequence)
+        entry.title == "New Sequence" && matches!(entry.action, CommandPaletteAction::NewSequence)
     }));
     assert!(entries.iter().any(|entry| {
         entry.title == "New Sequence from Clipboard"
-            && matches!(
-                entry.action,
-                CommandPaletteAction::NewSequenceFromClipboard
-            )
+            && matches!(entry.action, CommandPaletteAction::NewSequenceFromClipboard)
     }));
 }
 

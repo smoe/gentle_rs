@@ -6330,8 +6330,10 @@ mod tests {
         assert!(promoter_markdown.contains("**Prerequisites:** Read [Chapter 1:"));
         assert!(promoter_markdown.contains("### Step 8:"));
         assert!(promoter_markdown.contains("CLI:\n\n```bash\ncargo run --bin gentle_cli"));
-        assert!(promoter_markdown
-            .contains("CLI snippets use GENtle's default `.gentle_state.json` state"));
+        assert!(
+            promoter_markdown
+                .contains("CLI snippets use GENtle's default `.gentle_state.json` state")
+        );
         assert!(promoter_markdown.contains("> Expected: `tfbs_score_tracks.svg`"));
         assert!(!promoter_markdown.contains("## Command Equivalent (After GUI)"));
         assert!(promoter_markdown.contains("## What This Chapter Produces"));
@@ -6571,8 +6573,11 @@ mod tests {
         let message = tutorial_generated_file_count_mismatch_message(&expected, &actual);
 
         assert!(message.contains("expected 1, got 2"));
-        assert!(message
-            .contains("generated-only files: artifacts/new_demo/artifacts/new_retained_output.md"));
+        assert!(
+            message.contains(
+                "generated-only files: artifacts/new_demo/artifacts/new_retained_output.md"
+            )
+        );
         assert!(message.contains("committed-only files: none"));
     }
 
@@ -6701,9 +6706,11 @@ mod tests {
 
         assert!(state.sequences.contains_key("gibson_destination_pgex"));
         assert!(state.sequences.contains_key("gibson_insert_demo"));
-        assert!(state
-            .sequences
-            .contains_key("gibson_destination_pgex_with_gibson_insert_demo"));
+        assert!(
+            state
+                .sequences
+                .contains_key("gibson_destination_pgex_with_gibson_insert_demo")
+        );
 
         let arrangement = state
             .container_state

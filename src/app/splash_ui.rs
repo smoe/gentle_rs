@@ -78,7 +78,11 @@ impl GENtleApp {
                 ui.vertical_centered(|ui| {
                     let top_space = (ui.available_height() - 330.0).max(28.0) * 0.45;
                     ui.add_space(top_space);
-                    ui.add(SPLASH_SCREEN.clone().fit_to_exact_size(Vec2::new(112.0, 112.0)));
+                    ui.add(
+                        SPLASH_SCREEN
+                            .clone()
+                            .fit_to_exact_size(Vec2::new(112.0, 112.0)),
+                    );
                     ui.add_space(14.0);
                     ui.heading("GENtle");
                     ui.add_space(4.0);

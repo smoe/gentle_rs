@@ -16,15 +16,15 @@ use crate::{
     engine::GentleEngine,
     main_area_dna::MainAreaDna,
     window_backdrop::{
-        current_window_backdrop_settings, paint_window_backdrop, with_window_content_inset,
-        WindowBackdropKind,
+        WindowBackdropKind, current_window_backdrop_settings, paint_window_backdrop,
+        with_window_content_inset,
     },
 };
 use eframe::egui;
-use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::{
-    mpsc::{self, Receiver, TryRecvError},
     Arc, Mutex, RwLock,
+    mpsc::{self, Receiver, TryRecvError},
 };
 use std::thread;
 

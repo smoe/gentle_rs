@@ -1,14 +1,14 @@
 //! Documentation helper binary that renders workflow examples into generated snippets.
 
 use gentle::cli_support::svg_png_summary_json;
-use gentle::svg_png::{render_svg_file_to_png, SvgPngRenderOptions};
+use gentle::svg_png::{SvgPngRenderOptions, render_svg_file_to_png};
 use gentle::workflow_examples::{
-    check_tutorial_catalog_generated, check_tutorial_generated, check_tutorial_manifest_generated,
-    generate_tutorial_docs, generate_workflow_example_docs, load_workflow_examples,
-    validate_example_required_files, write_tutorial_catalog_from_sources,
-    write_tutorial_manifest_from_sources, DEFAULT_TUTORIAL_CATALOG_META_PATH,
-    DEFAULT_TUTORIAL_CATALOG_PATH, DEFAULT_TUTORIAL_MANIFEST_PATH, DEFAULT_TUTORIAL_OUTPUT_DIR,
-    DEFAULT_TUTORIAL_SOURCE_DIR, DEFAULT_WORKFLOW_EXAMPLE_DIR, DEFAULT_WORKFLOW_SNIPPET_DIR,
+    DEFAULT_TUTORIAL_CATALOG_META_PATH, DEFAULT_TUTORIAL_CATALOG_PATH,
+    DEFAULT_TUTORIAL_MANIFEST_PATH, DEFAULT_TUTORIAL_OUTPUT_DIR, DEFAULT_TUTORIAL_SOURCE_DIR,
+    DEFAULT_WORKFLOW_EXAMPLE_DIR, DEFAULT_WORKFLOW_SNIPPET_DIR, check_tutorial_catalog_generated,
+    check_tutorial_generated, check_tutorial_manifest_generated, generate_tutorial_docs,
+    generate_workflow_example_docs, load_workflow_examples, validate_example_required_files,
+    write_tutorial_catalog_from_sources, write_tutorial_manifest_from_sources,
 };
 use serde_json::json;
 use std::{
@@ -525,7 +525,7 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_args, Mode};
+    use super::{Mode, parse_args};
 
     #[test]
     fn parse_svg_png_mode_with_cleanup_flag() {
