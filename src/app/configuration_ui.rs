@@ -221,7 +221,7 @@ impl GENtleApp {
                             .pending_viewport_focus_timestamps
                             .contains_key(&viewport_id),
                 );
-                crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                crate::egui_compat::show_hosted_window(&mut *ctx, &spec, &mut open, |ui| {
                     self.render_configuration_contents(ui)
                 });
                 self.note_slow_open_phase(
@@ -238,7 +238,7 @@ impl GENtleApp {
 
             let render_started = Instant::now();
             crate::egui_compat::show_central_panel(
-                ctx,
+                &mut *ctx,
                 egui::CentralPanel::default().frame(egui::Frame::NONE),
                 |ui| {
                     self.render_configuration_contents(ui);

@@ -3089,7 +3089,7 @@ impl GENtleApp {
             self.note_viewport_focus_if_active(ctx, viewport_id);
             if class == egui::ViewportClass::EmbeddedWindow {
                 let mut close_requested = false;
-                crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                crate::egui_compat::show_hosted_window(&mut *ctx, &spec, &mut open, |ui| {
                     egui::ScrollArea::both()
                         .auto_shrink([false, false])
                         .show(ui, |ui| {
@@ -3101,9 +3101,13 @@ impl GENtleApp {
                 }
             } else {
                 let mut close_requested = false;
-                crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
-                    close_requested = self.render_rack_contents(ui);
-                });
+                crate::egui_compat::show_central_panel(
+                    &mut *ctx,
+                    egui::CentralPanel::default(),
+                    |ui| {
+                        close_requested = self.render_rack_contents(ui);
+                    },
+                );
                 if close_requested || Self::viewport_close_requested_or_shortcut(ctx) {
                     open = false;
                 }

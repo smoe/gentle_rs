@@ -6,6 +6,100 @@
 //! the rest of the codebase stays on the newer surface and builds warning-free.
 
 use eframe::egui;
+use std::cell::Cell;
+use std::ptr::NonNull;
+
+thread_local! {
+    static CURRENT_ROOT_UI: Cell<Option<NonNull<egui::Ui>>> = const { Cell::new(None) };
+}
+
+pub(crate) struct RootUiGuard {
+    previous: Option<NonNull<egui::Ui>>,
+}
+
+impl Drop for RootUiGuard {
+    fn drop(&mut self) {
+        CURRENT_ROOT_UI.with(|current| {
+            current.set(self.previous);
+        });
+    }
+}
+
+pub(crate) fn with_current_root_ui<R>(
+    ui: &mut egui::Ui,
+    add_contents: impl FnOnce(&egui::Context) -> R,
+) -> R {
+    let ctx = ui.ctx().clone();
+    let _guard = install_current_root_ui(ui);
+    add_contents(&ctx)
+}
+
+pub(crate) fn install_current_root_ui(ui: &mut egui::Ui) -> RootUiGuard {
+    let previous = CURRENT_ROOT_UI.with(|current| current.replace(Some(NonNull::from(ui))));
+    RootUiGuard { previous }
+}
+
+pub(crate) trait ContextHost {
+    fn ctx(&self) -> &egui::Context;
+}
+
+impl ContextHost for &egui::Context {
+    fn ctx(&self) -> &egui::Context {
+        self
+    }
+}
+
+impl ContextHost for &egui::Ui {
+    fn ctx(&self) -> &egui::Context {
+        egui::Ui::ctx(self)
+    }
+}
+
+impl ContextHost for &mut egui::Ui {
+    fn ctx(&self) -> &egui::Context {
+        egui::Ui::ctx(self)
+    }
+}
+
+pub(crate) trait PanelHost: ContextHost {
+    fn with_panel_ui<R>(
+        self,
+        add_contents: impl FnOnce(&mut egui::Ui) -> egui::InnerResponse<R>,
+    ) -> egui::InnerResponse<R>;
+}
+
+impl PanelHost for &mut egui::Ui {
+    fn with_panel_ui<R>(
+        self,
+        add_contents: impl FnOnce(&mut egui::Ui) -> egui::InnerResponse<R>,
+    ) -> egui::InnerResponse<R> {
+        add_contents(self)
+    }
+}
+
+impl PanelHost for &egui::Context {
+    fn with_panel_ui<R>(
+        self,
+        add_contents: impl FnOnce(&mut egui::Ui) -> egui::InnerResponse<R>,
+    ) -> egui::InnerResponse<R> {
+        if let Some(mut current_ui) = CURRENT_ROOT_UI.with(Cell::get) {
+            // `with_current_root_ui` installs a pointer only for the dynamic
+            // extent of egui's own UI callback. This keeps the egui-main trial
+            // compatible with the existing Context-based GENtle call surface
+            // without cloning the whole window-rendering stack to pass `&mut Ui`.
+            return add_contents(unsafe { current_ui.as_mut() });
+        }
+
+        let mut root_ui = egui::Ui::new(
+            self.clone(),
+            egui::Id::new((self.viewport_id(), "__gentle_root_panel_compat")),
+            egui::UiBuilder::new()
+                .layer_id(egui::LayerId::background())
+                .max_rect(self.viewport_rect()),
+        );
+        add_contents(&mut root_ui)
+    }
+}
 
 const HOSTED_WINDOW_SAFE_INSET_X_PX: f32 = 28.0;
 const HOSTED_WINDOW_SAFE_INSET_TOP_PX: f32 = 36.0;
@@ -204,11 +298,12 @@ impl ModalWindowSpec {
 }
 
 pub(crate) fn show_modal_window<R>(
-    ctx: &egui::Context,
+    host: impl ContextHost,
     spec: &ModalWindowSpec,
     open: &mut bool,
     add_contents: impl FnOnce(&mut egui::Ui) -> R,
 ) -> Option<egui::InnerResponse<Option<R>>> {
+    let ctx = host.ctx();
     let constrain_rect = hosted_window_safe_rect(ctx);
     let min_size = spec.min_size.unwrap_or_else(|| egui::vec2(180.0, 96.0));
     let default_size = spec
@@ -234,11 +329,12 @@ pub(crate) fn show_modal_window<R>(
 }
 
 pub(crate) fn show_hosted_window<R>(
-    ctx: &egui::Context,
+    host: impl ContextHost,
     spec: &HostedWindowSpec,
     open: &mut bool,
     add_contents: impl FnOnce(&mut egui::Ui) -> R,
 ) -> Option<egui::InnerResponse<Option<R>>> {
+    let ctx = host.ctx();
     let constrain_rect = hosted_window_safe_rect(ctx);
     let max_size = hosted_window_max_inner_size(constrain_rect, spec.min_size, spec.drag_margin);
     let stale_extra_visible = spec
@@ -273,14 +369,11 @@ pub(crate) fn show_hosted_window<R>(
 }
 
 pub(crate) fn show_central_panel<R>(
-    ctx: &egui::Context,
+    host: impl PanelHost,
     panel: egui::CentralPanel,
     add_contents: impl FnOnce(&mut egui::Ui) -> R,
 ) -> egui::InnerResponse<R> {
-    #[allow(deprecated)]
-    {
-        panel.show(ctx, add_contents)
-    }
+    host.with_panel_ui(|ui| panel.show(ui, add_contents))
 }
 
 pub(crate) fn show_central_panel_inside<R>(
@@ -288,19 +381,16 @@ pub(crate) fn show_central_panel_inside<R>(
     panel: egui::CentralPanel,
     add_contents: impl FnOnce(&mut egui::Ui) -> R,
 ) -> egui::InnerResponse<R> {
-    panel.show_inside(ui, add_contents)
+    panel.show(ui, add_contents)
 }
 
 pub(crate) fn show_top_panel<R>(
-    ctx: &egui::Context,
+    host: impl PanelHost,
     _root_id: egui::Id,
     panel: egui::Panel,
     add_contents: impl FnOnce(&mut egui::Ui) -> R,
 ) -> egui::InnerResponse<R> {
-    #[allow(deprecated)]
-    {
-        panel.show(ctx, add_contents)
-    }
+    host.with_panel_ui(|ui| panel.show(ui, add_contents))
 }
 
 pub(crate) fn show_top_panel_inside<R>(
@@ -308,19 +398,16 @@ pub(crate) fn show_top_panel_inside<R>(
     panel: egui::Panel,
     add_contents: impl FnOnce(&mut egui::Ui) -> R,
 ) -> egui::InnerResponse<R> {
-    panel.show_inside(ui, add_contents)
+    panel.show(ui, add_contents)
 }
 
 pub(crate) fn show_bottom_panel<R>(
-    ctx: &egui::Context,
+    host: impl PanelHost,
     _root_id: egui::Id,
     panel: egui::Panel,
     add_contents: impl FnOnce(&mut egui::Ui) -> R,
 ) -> egui::InnerResponse<R> {
-    #[allow(deprecated)]
-    {
-        panel.show(ctx, add_contents)
-    }
+    host.with_panel_ui(|ui| panel.show(ui, add_contents))
 }
 
 pub(crate) fn show_bottom_panel_inside<R>(
@@ -328,7 +415,7 @@ pub(crate) fn show_bottom_panel_inside<R>(
     panel: egui::Panel,
     add_contents: impl FnOnce(&mut egui::Ui) -> R,
 ) -> egui::InnerResponse<R> {
-    panel.show_inside(ui, add_contents)
+    panel.show(ui, add_contents)
 }
 
 #[cfg(test)]
