@@ -244,51 +244,51 @@ impl GENtleApp {
         match result {
             Ok(result) => {
                 self.jaspar_expert_view = result.jaspar_entry_expert_view;
-                if let Some(view) = self.jaspar_expert_view.as_ref() {
-                    if let Some(remote_metadata) = view.remote_metadata.clone() {
-                        let mut row = self
-                            .jaspar_catalog_report
-                            .as_ref()
-                            .and_then(|report| {
-                                report
-                                    .rows
-                                    .iter()
-                                    .find(|row| row.motif_id == view.motif_id)
-                                    .cloned()
-                            })
-                            .unwrap_or(JasparCatalogRow {
-                                motif_id: view.motif_id.clone(),
-                                motif_name: view.motif_name.clone(),
-                                consensus_iupac: view.consensus_iupac.clone(),
-                                motif_length_bp: view.motif_length_bp,
-                                remote_summary: None,
-                            });
-                        row.remote_summary = Some(GentleEngine::jaspar_remote_metadata_summary(
-                            &remote_metadata,
-                        ));
-                        let base =
-                            self.jaspar_catalog_report
-                                .as_ref()
+                if let Some(view) = self.jaspar_expert_view.as_ref()
+                    && let Some(remote_metadata) = view.remote_metadata.clone()
+                {
+                    let mut row = self
+                        .jaspar_catalog_report
+                        .as_ref()
+                        .and_then(|report| {
+                            report
+                                .rows
+                                .iter()
+                                .find(|row| row.motif_id == view.motif_id)
                                 .cloned()
-                                .unwrap_or_else(|| JasparCatalogReport {
-                                    schema: "gentle.jaspar_catalog.v1".to_string(),
-                                    generated_at_unix_ms: 0,
-                                    op_id: None,
-                                    run_id: None,
-                                    filter: None,
-                                    limit: None,
-                                    include_remote_metadata: true,
-                                    registry_entry_count: tf_motifs::list_motif_summaries().len(),
-                                    returned_entry_count: 0,
-                                    rows: self.jaspar_catalog_rows_local_fallback(),
-                                    warnings: vec![],
-                                });
-                        self.merge_jaspar_catalog_report(JasparCatalogReport {
-                            rows: vec![row],
-                            returned_entry_count: 1,
-                            ..base
+                        })
+                        .unwrap_or(JasparCatalogRow {
+                            motif_id: view.motif_id.clone(),
+                            motif_name: view.motif_name.clone(),
+                            consensus_iupac: view.consensus_iupac.clone(),
+                            motif_length_bp: view.motif_length_bp,
+                            remote_summary: None,
                         });
-                    }
+                    row.remote_summary = Some(GentleEngine::jaspar_remote_metadata_summary(
+                        &remote_metadata,
+                    ));
+                    let base = self
+                        .jaspar_catalog_report
+                        .as_ref()
+                        .cloned()
+                        .unwrap_or_else(|| JasparCatalogReport {
+                            schema: "gentle.jaspar_catalog.v1".to_string(),
+                            generated_at_unix_ms: 0,
+                            op_id: None,
+                            run_id: None,
+                            filter: None,
+                            limit: None,
+                            include_remote_metadata: true,
+                            registry_entry_count: tf_motifs::list_motif_summaries().len(),
+                            returned_entry_count: 0,
+                            rows: self.jaspar_catalog_rows_local_fallback(),
+                            warnings: vec![],
+                        });
+                    self.merge_jaspar_catalog_report(JasparCatalogReport {
+                        rows: vec![row],
+                        returned_entry_count: 1,
+                        ..base
+                    });
                 }
                 let mut status_parts = vec![];
                 if !result.messages.is_empty() {
@@ -673,15 +673,14 @@ impl GENtleApp {
                                             ui.end_row();
                                         }
                                     });
-                                if let Some(report) = self.jaspar_catalog_report.as_ref() {
-                                    if !report.warnings.is_empty() {
+                                if let Some(report) = self.jaspar_catalog_report.as_ref()
+                                    && !report.warnings.is_empty() {
                                         ui.separator();
                                         ui.small(format!(
                                             "Catalog warnings: {}",
                                             report.warnings.join(" | ")
                                         ));
                                     }
-                                }
                             });
                     });
                     columns[1].vertical(|ui| {

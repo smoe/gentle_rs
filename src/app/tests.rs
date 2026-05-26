@@ -5774,12 +5774,11 @@ fn routine_assistant_preflight_blocks_gibson_with_circular_input() {
         .routine_assistant_preflight_output
         .as_ref()
         .expect("blocking preflight output");
-    assert_eq!(
-        output
+    assert!(
+        !output
             .get("can_execute")
             .and_then(|value| value.as_bool())
-            .unwrap_or(true),
-        false
+            .unwrap_or(true)
     );
     let first_error = output
         .get("preflight")
@@ -5823,12 +5822,11 @@ fn routine_assistant_execute_blocks_gibson_with_circular_input() {
         .routine_assistant_preflight_output
         .as_ref()
         .expect("blocking preflight output");
-    assert_eq!(
-        output
+    assert!(
+        !output
             .get("can_execute")
             .and_then(|value| value.as_bool())
-            .unwrap_or(true),
-        false
+            .unwrap_or(true)
     );
 }
 
@@ -7952,10 +7950,9 @@ fn closing_sequence_window_with_open_rna_mapping_detaches_auxiliary_host() {
     );
     let mapping_viewport_id =
         egui::ViewportId::from_hash_of(("rna_read_mapping_viewport", "seq1", 17usize));
-    assert_eq!(
+    assert!(
         app.embedded_window_layer_id_for_viewport(mapping_viewport_id)
             .is_some(),
-        true,
         "detached auxiliary hosts should still resolve embedded layer ids for focus routing"
     );
 }

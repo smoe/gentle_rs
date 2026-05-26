@@ -640,10 +640,10 @@ impl GENtleApp {
             return;
         };
         if !force {
-            if let Some(task) = &self.agent_model_discovery_task {
-                if task.source_key == source_key {
-                    return;
-                }
+            if let Some(task) = &self.agent_model_discovery_task
+                && task.source_key == source_key
+            {
+                return;
             }
             if self.agent_model_discovery_source_key == source_key
                 && !self.agent_discovered_models.is_empty()
@@ -1477,66 +1477,65 @@ impl GENtleApp {
                     .routine_assistant_explain_output
                     .as_ref()
                     .and_then(|value| value.get("planning"))
+                    && let Some(estimate) = planning.get("estimate")
                 {
-                    if let Some(estimate) = planning.get("estimate") {
-                        let composite = estimate
-                            .get("composite_meta_score")
-                            .and_then(|value| value.as_f64());
-                        let local_fit = estimate
-                            .get("local_fit_score")
-                            .and_then(|value| value.as_f64());
-                        let time_hours = estimate
-                            .get("estimated_time_hours")
-                            .and_then(|value| value.as_f64());
-                        let cost = estimate
-                            .get("estimated_cost")
-                            .and_then(|value| value.as_f64());
-                        if composite.is_some()
-                            || local_fit.is_some()
-                            || time_hours.is_some()
-                            || cost.is_some()
-                        {
-                            ui.small(format!(
-                                "sequence-aware planning: score {} | fit {} | time {} h | cost {}",
-                                composite
-                                    .map(|value| format!("{value:.3}"))
-                                    .unwrap_or_else(|| "-".to_string()),
-                                local_fit
-                                    .map(|value| format!("{value:.3}"))
-                                    .unwrap_or_else(|| "-".to_string()),
-                                time_hours
-                                    .map(|value| format!("{value:.2}"))
-                                    .unwrap_or_else(|| "-".to_string()),
-                                cost.map(|value| format!("{value:.2}"))
-                                    .unwrap_or_else(|| "-".to_string())
-                            ));
-                        }
-                        let bonus = estimate
+                    let composite = estimate
+                        .get("composite_meta_score")
+                        .and_then(|value| value.as_f64());
+                    let local_fit = estimate
+                        .get("local_fit_score")
+                        .and_then(|value| value.as_f64());
+                    let time_hours = estimate
+                        .get("estimated_time_hours")
+                        .and_then(|value| value.as_f64());
+                    let cost = estimate
+                        .get("estimated_cost")
+                        .and_then(|value| value.as_f64());
+                    if composite.is_some()
+                        || local_fit.is_some()
+                        || time_hours.is_some()
+                        || cost.is_some()
+                    {
+                        ui.small(format!(
+                            "sequence-aware planning: score {} | fit {} | time {} h | cost {}",
+                            composite
+                                .map(|value| format!("{value:.3}"))
+                                .unwrap_or_else(|| "-".to_string()),
+                            local_fit
+                                .map(|value| format!("{value:.3}"))
+                                .unwrap_or_else(|| "-".to_string()),
+                            time_hours
+                                .map(|value| format!("{value:.2}"))
+                                .unwrap_or_else(|| "-".to_string()),
+                            cost.map(|value| format!("{value:.2}"))
+                                .unwrap_or_else(|| "-".to_string())
+                        ));
+                    }
+                    let bonus = estimate
+                        .get("explanation")
+                        .and_then(|value| value.get("routine_family_alignment_bonus"))
+                        .and_then(|value| value.as_f64())
+                        .unwrap_or(0.0);
+                    if bonus > 0.0 {
+                        let sources = estimate
                             .get("explanation")
-                            .and_then(|value| value.get("routine_family_alignment_bonus"))
-                            .and_then(|value| value.as_f64())
-                            .unwrap_or(0.0);
-                        if bonus > 0.0 {
-                            let sources = estimate
-                                .get("explanation")
-                                .and_then(|value| value.get("routine_family_alignment_sources"))
-                                .and_then(|value| value.as_array())
-                                .map(|rows| {
-                                    rows.iter()
-                                        .filter_map(|row| row.as_str())
-                                        .collect::<Vec<_>>()
-                                        .join(", ")
-                                })
-                                .unwrap_or_default();
-                            ui.small(format!(
-                                "alignment bonus: +{bonus:.2}{}",
-                                if sources.is_empty() {
-                                    String::new()
-                                } else {
-                                    format!(" ({sources})")
-                                }
-                            ));
-                        }
+                            .and_then(|value| value.get("routine_family_alignment_sources"))
+                            .and_then(|value| value.as_array())
+                            .map(|rows| {
+                                rows.iter()
+                                    .filter_map(|row| row.as_str())
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            })
+                            .unwrap_or_default();
+                        ui.small(format!(
+                            "alignment bonus: +{bonus:.2}{}",
+                            if sources.is_empty() {
+                                String::new()
+                            } else {
+                                format!(" ({sources})")
+                            }
+                        ));
                     }
                 }
                 self.render_routine_assistant_macro_suggestions(ui);
@@ -1854,28 +1853,26 @@ impl GENtleApp {
                     if let Some(preflight) = output.get("preflight") {
                         if let Some(errors) =
                             preflight.get("errors").and_then(|value| value.as_array())
+                            && !errors.is_empty()
                         {
-                            if !errors.is_empty() {
-                                ui.label("errors");
-                                for err in errors {
-                                    if let Some(text) = err.as_str() {
-                                        ui.colored_label(
-                                            egui::Color32::from_rgb(190, 70, 70),
-                                            format!("- {text}"),
-                                        );
-                                    }
+                            ui.label("errors");
+                            for err in errors {
+                                if let Some(text) = err.as_str() {
+                                    ui.colored_label(
+                                        egui::Color32::from_rgb(190, 70, 70),
+                                        format!("- {text}"),
+                                    );
                                 }
                             }
                         }
                         if let Some(warnings) =
                             preflight.get("warnings").and_then(|value| value.as_array())
+                            && !warnings.is_empty()
                         {
-                            if !warnings.is_empty() {
-                                ui.label("warnings");
-                                for warning in warnings {
-                                    if let Some(text) = warning.as_str() {
-                                        ui.small(format!("- {text}"));
-                                    }
+                            ui.label("warnings");
+                            for warning in warnings {
+                                if let Some(text) = warning.as_str() {
+                                    ui.small(format!("- {text}"));
                                 }
                             }
                         }
@@ -2036,15 +2033,13 @@ impl GENtleApp {
                 .button(self.tr("button.browse"))
                 .on_hover_text("Browse filesystem and fill this path")
                 .clicked()
-            {
-                if let Some(path) = rfd::FileDialog::new()
+                && let Some(path) = rfd::FileDialog::new()
                     .add_filter("JSON", &["json"])
                     .pick_file()
-                {
-                    self.agent_catalog_path = path.display().to_string();
-                    self.agent_catalog_loaded_path.clear();
-                    self.refresh_agent_system_catalog();
-                }
+            {
+                self.agent_catalog_path = path.display().to_string();
+                self.agent_catalog_loaded_path.clear();
+                self.refresh_agent_system_catalog();
             }
         });
         if !self.agent_catalog_error.is_empty() {
@@ -2095,8 +2090,7 @@ impl GENtleApp {
                 ui.horizontal_wrapped(|ui| {
                     if let Some(openai_system_id) =
                         preferred_openai_agent_system_id(&self.agent_systems)
-                    {
-                        if ui
+                        && ui
                             .button(self.tr("agent.quick_start.openai"))
                             .on_hover_text(
                                 "Select the native OpenAI agent profile and use OPENAI_API_KEY for requests",
@@ -2109,11 +2103,9 @@ impl GENtleApp {
                             self.agent_discovered_model_pick.clear();
                             self.agent_status = self.tr("agent.status.selected_openai");
                         }
-                    }
                     if let Some(anthropic_system_id) =
                         preferred_anthropic_agent_system_id(&self.agent_systems)
-                    {
-                        if ui
+                        && ui
                             .button(self.tr("agent.quick_start.claude"))
                             .on_hover_text(
                                 "Select the native Anthropic Claude profile and use ANTHROPIC_API_KEY for requests",
@@ -2126,11 +2118,9 @@ impl GENtleApp {
                             self.agent_discovered_model_pick.clear();
                             self.agent_status = self.tr("agent.status.selected_claude");
                         }
-                    }
                     if let Some(mistral_system_id) =
                         preferred_mistral_agent_system_id(&self.agent_systems)
-                    {
-                        if ui
+                        && ui
                             .button(self.tr("agent.quick_start.mistral"))
                             .on_hover_text(
                                 "Select the native Mistral profile and use MISTRAL_API_KEY for requests",
@@ -2143,11 +2133,9 @@ impl GENtleApp {
                             self.agent_discovered_model_pick.clear();
                             self.agent_status = self.tr("agent.status.selected_mistral");
                         }
-                    }
                     if let Some(local_system_id) =
                         preferred_local_agent_system_id(&self.agent_systems)
-                    {
-                        if ui
+                        && ui
                             .button(self.tr("agent.quick_start.local"))
                             .on_hover_text(
                                 "Select a local OpenAI-compatible endpoint such as Ollama, Jan, or Msty",
@@ -2160,7 +2148,6 @@ impl GENtleApp {
                             self.agent_discovered_model_pick.clear();
                             self.agent_status = self.tr("agent.status.selected_local");
                         }
-                    }
                     if self.agent_systems.iter().any(|system| system.id == "builtin_echo")
                         && ui
                             .button(self.tr("agent.quick_start.demo"))
@@ -2507,11 +2494,10 @@ impl GENtleApp {
                         preflight.transport,
                     ),
                 );
-                if let Some(reason) = preflight.availability_reason.as_deref() {
-                    if !reason.trim().is_empty() {
+                if let Some(reason) = preflight.availability_reason.as_deref()
+                    && !reason.trim().is_empty() {
                         ui.small(format!("detail: {}", reason.trim()));
                     }
-                }
                 if let Some(base_url) = preflight.base_url.as_deref() {
                     ui.small(format!("base URL: {base_url}"));
                 }
@@ -3715,10 +3701,10 @@ impl GENtleApp {
         if let Some(snapshot) = trace.preflight_snapshot.as_mut() {
             Self::normalize_routine_assistant_preflight_snapshot(snapshot);
         }
-        if trace.preflight_history.is_empty() {
-            if let Some(snapshot) = trace.preflight_snapshot.clone() {
-                trace.preflight_history.push(snapshot);
-            }
+        if trace.preflight_history.is_empty()
+            && let Some(snapshot) = trace.preflight_snapshot.clone()
+        {
+            trace.preflight_history.push(snapshot);
         }
         trace.preflight_snapshot = trace.preflight_history.last().cloned();
 
@@ -4550,16 +4536,15 @@ impl GENtleApp {
         match self.execute_shared_shell_command_json(&command) {
             Ok((output, _)) => {
                 self.routine_assistant_explain_output = Some(output.clone());
-                if self.routine_assistant_compare_routine_id.trim().is_empty() {
-                    if let Some(alt_id) = output
+                if self.routine_assistant_compare_routine_id.trim().is_empty()
+                    && let Some(alt_id) = output
                         .get("alternatives")
                         .and_then(|value| value.as_array())
                         .and_then(|rows| rows.first())
                         .and_then(|row| row.get("routine_id"))
                         .and_then(|value| value.as_str())
-                    {
-                        self.routine_assistant_compare_routine_id = alt_id.trim().to_string();
-                    }
+                {
+                    self.routine_assistant_compare_routine_id = alt_id.trim().to_string();
                 }
                 self.routine_assistant_status =
                     format!("Routine Assistant: loaded explanation for '{selected_id}'");

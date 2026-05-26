@@ -429,44 +429,6 @@ fn decode_svg_text(text: &str) -> String {
 }
 
 #[cfg(test)]
-mod visual_svg_lint_tests {
-    use super::*;
-
-    #[test]
-    fn visual_svg_lint_accepts_separated_labels() {
-        let svg = r#"<svg viewBox="0 0 200 80" width="200" height="80">
-<text data-gentle-role="feature-label" x="20" y="30" text-anchor="start" font-family="monospace" font-size="10">Alpha</text>
-<text data-gentle-role="restriction-label" data-gentle-feature-kind="restriction_site" x="120" y="30" text-anchor="start" font-family="monospace" font-size="10">EcoRI</text>
-</svg>"#;
-        assert_visual_svg_lint(svg, &[("feature-label", 1), ("restriction-label", 1)]);
-    }
-
-    #[test]
-    fn visual_svg_lint_rejects_overlapping_labels() {
-        let svg = r#"<svg viewBox="0 0 200 80" width="200" height="80">
-<text data-gentle-role="feature-label" x="20" y="30" text-anchor="start" font-family="monospace" font-size="10">Alpha</text>
-<text data-gentle-role="restriction-label" data-gentle-feature-kind="restriction_site" x="25" y="30" text-anchor="start" font-family="monospace" font-size="10">EcoRI</text>
-</svg>"#;
-        let result =
-            std::panic::catch_unwind(|| assert_visual_svg_lint(svg, &[("feature-label", 1)]));
-        assert!(
-            result.is_err(),
-            "overlapping marked labels should fail lint"
-        );
-    }
-
-    #[test]
-    fn visual_svg_lint_rejects_clipped_labels() {
-        let svg = r#"<svg viewBox="0 0 200 80" width="200" height="80">
-<text data-gentle-role="feature-label" x="198" y="30" text-anchor="start" font-family="monospace" font-size="10">Clipped</text>
-</svg>"#;
-        let result =
-            std::panic::catch_unwind(|| assert_visual_svg_lint(svg, &[("feature-label", 1)]));
-        assert!(result.is_err(), "clipped marked labels should fail lint");
-    }
-}
-
-#[cfg(test)]
 fn visual_svg_tags(svg: &str) -> Vec<&str> {
     let mut tags = Vec::new();
     let mut cursor = svg;
@@ -918,4 +880,42 @@ pub fn write_demo_pool_json(dir: &Path) -> PathBuf {
     )
     .expect("write pool json");
     path
+}
+
+#[cfg(test)]
+mod visual_svg_lint_tests {
+    use super::*;
+
+    #[test]
+    fn visual_svg_lint_accepts_separated_labels() {
+        let svg = r#"<svg viewBox="0 0 200 80" width="200" height="80">
+<text data-gentle-role="feature-label" x="20" y="30" text-anchor="start" font-family="monospace" font-size="10">Alpha</text>
+<text data-gentle-role="restriction-label" data-gentle-feature-kind="restriction_site" x="120" y="30" text-anchor="start" font-family="monospace" font-size="10">EcoRI</text>
+</svg>"#;
+        assert_visual_svg_lint(svg, &[("feature-label", 1), ("restriction-label", 1)]);
+    }
+
+    #[test]
+    fn visual_svg_lint_rejects_overlapping_labels() {
+        let svg = r#"<svg viewBox="0 0 200 80" width="200" height="80">
+<text data-gentle-role="feature-label" x="20" y="30" text-anchor="start" font-family="monospace" font-size="10">Alpha</text>
+<text data-gentle-role="restriction-label" data-gentle-feature-kind="restriction_site" x="25" y="30" text-anchor="start" font-family="monospace" font-size="10">EcoRI</text>
+</svg>"#;
+        let result =
+            std::panic::catch_unwind(|| assert_visual_svg_lint(svg, &[("feature-label", 1)]));
+        assert!(
+            result.is_err(),
+            "overlapping marked labels should fail lint"
+        );
+    }
+
+    #[test]
+    fn visual_svg_lint_rejects_clipped_labels() {
+        let svg = r#"<svg viewBox="0 0 200 80" width="200" height="80">
+<text data-gentle-role="feature-label" x="198" y="30" text-anchor="start" font-family="monospace" font-size="10">Clipped</text>
+</svg>"#;
+        let result =
+            std::panic::catch_unwind(|| assert_visual_svg_lint(svg, &[("feature-label", 1)]));
+        assert!(result.is_err(), "clipped marked labels should fail lint");
+    }
 }

@@ -384,12 +384,12 @@ fn resolve_runtime_asset_uri_uncached(path: &str) -> Option<String> {
         return Some(format!("file://{}", direct.to_string_lossy()));
     }
 
-    if let Ok(exe_path) = env::current_exe() {
-        if let Some(exe_dir) = exe_path.parent() {
-            let bundled = exe_dir.join("../Resources").join(trimmed);
-            if bundled.exists() {
-                return Some(format!("file://{}", bundled.to_string_lossy()));
-            }
+    if let Ok(exe_path) = env::current_exe()
+        && let Some(exe_dir) = exe_path.parent()
+    {
+        let bundled = exe_dir.join("../Resources").join(trimmed);
+        if bundled.exists() {
+            return Some(format!("file://{}", bundled.to_string_lossy()));
         }
     }
     None
@@ -409,10 +409,10 @@ fn resolve_runtime_asset_uri(path: &str) -> Option<String> {
         return Some(trimmed.to_string());
     }
 
-    if let Ok(cache) = resolved_uri_cache().read() {
-        if let Some(cached) = cache.get(trimmed) {
-            return cached.clone();
-        }
+    if let Ok(cache) = resolved_uri_cache().read()
+        && let Some(cached) = cache.get(trimmed)
+    {
+        return cached.clone();
     }
 
     let resolved = resolve_runtime_asset_uri_uncached(trimmed);

@@ -340,10 +340,10 @@ impl GentleEngine {
                 raw_hits.push((start, false, llr, true_log_odds));
             }
             scanned_steps = scanned_steps.saturating_add(1);
-            if scanned_steps % progress_stride == 0 || scanned_steps == total_steps {
-                if !on_progress(scanned_steps, total_steps) {
-                    return Err(Self::tfbs_cancelled_error("forward-strand scan"));
-                }
+            if (scanned_steps.is_multiple_of(progress_stride) || scanned_steps == total_steps)
+                && !on_progress(scanned_steps, total_steps)
+            {
+                return Err(Self::tfbs_cancelled_error("forward-strand scan"));
             }
             let rc_window = Self::reverse_complement_bytes(window);
             if let (Some(llr), Some(true_log_odds)) = (
@@ -355,10 +355,10 @@ impl GentleEngine {
                 raw_hits.push((start, true, llr, true_log_odds));
             }
             scanned_steps = scanned_steps.saturating_add(1);
-            if scanned_steps % progress_stride == 0 || scanned_steps == total_steps {
-                if !on_progress(scanned_steps, total_steps) {
-                    return Err(Self::tfbs_cancelled_error("reverse-strand scan"));
-                }
+            if (scanned_steps.is_multiple_of(progress_stride) || scanned_steps == total_steps)
+                && !on_progress(scanned_steps, total_steps)
+            {
+                return Err(Self::tfbs_cancelled_error("reverse-strand scan"));
             }
         }
         if scanned_steps != total_steps && !on_progress(total_steps, total_steps) {

@@ -287,14 +287,14 @@ fn parse_rebase_withrefm(text: &str, commercial_only: bool) -> Vec<RebaseEnzymeR
             last_tag = None;
             continue;
         }
-        if let Some(rest) = line.strip_prefix('<') {
-            if let Some(pos) = rest.find('>') {
-                let tag = rest[..pos].trim().to_string();
-                let value = rest[pos + 1..].trim().to_string();
-                fields.insert(tag.clone(), value);
-                last_tag = Some(tag);
-                continue;
-            }
+        if let Some(rest) = line.strip_prefix('<')
+            && let Some(pos) = rest.find('>')
+        {
+            let tag = rest[..pos].trim().to_string();
+            let value = rest[pos + 1..].trim().to_string();
+            fields.insert(tag.clone(), value);
+            last_tag = Some(tag);
+            continue;
         }
         if let Some(tag) = &last_tag {
             let extra = line.trim();
@@ -813,7 +813,7 @@ impl ProgressPrinter {
     }
 
     fn on_genome_track_import_progress(&mut self, p: GenomeTrackImportProgress) {
-        if p.done || p.parsed_records % 1_000 == 0 {
+        if p.done || p.parsed_records.is_multiple_of(1_000) {
             self.print_line(&format!(
                 "progress track-import seq={} source={} parsed={} imported={} skipped={} done={} path={}",
                 p.seq_id,
@@ -829,7 +829,7 @@ impl ProgressPrinter {
 
     fn on_rna_read_interpret_progress(&mut self, p: RnaReadInterpretProgress) {
         let stride = p.update_every_reads.max(1);
-        if p.done || p.reads_processed % stride == 0 {
+        if p.done || p.reads_processed.is_multiple_of(stride) {
             let percent = if p.reads_total == 0 {
                 100.0
             } else {

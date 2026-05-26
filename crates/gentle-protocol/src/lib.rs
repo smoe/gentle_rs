@@ -580,6 +580,7 @@ impl GenomeTrackSource {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 /// Persisted genome-track import subscription shared by GUI and shell routes.
+#[derive(Default)]
 pub struct GenomeTrackSubscription {
     pub source: GenomeTrackSource,
     pub path: String,
@@ -587,19 +588,6 @@ pub struct GenomeTrackSubscription {
     pub min_score: Option<f64>,
     pub max_score: Option<f64>,
     pub clear_existing: bool,
-}
-
-impl Default for GenomeTrackSubscription {
-    fn default() -> Self {
-        Self {
-            source: GenomeTrackSource::default(),
-            path: String::new(),
-            track_name: None,
-            min_score: None,
-            max_score: None,
-            clear_existing: false,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -685,15 +673,11 @@ impl Default for PrimerSpecificityPolicy {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 /// Transcript-aware qPCR design intent for splicing-driven assays.
+#[derive(Default)]
 pub enum QpcrTranscriptTargetingMode {
+    #[default]
     SharedGene,
     DistinguishTranscript,
-}
-
-impl Default for QpcrTranscriptTargetingMode {
-    fn default() -> Self {
-        Self::SharedGene
-    }
 }
 
 impl QpcrTranscriptTargetingMode {
@@ -1897,18 +1881,10 @@ impl SplicingScopePreset {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
+#[derive(Default)]
 pub struct ProteinFeatureFilter {
     pub include_feature_keys: Vec<String>,
     pub exclude_feature_keys: Vec<String>,
-}
-
-impl Default for ProteinFeatureFilter {
-    fn default() -> Self {
-        Self {
-            include_feature_keys: vec![],
-            exclude_feature_keys: vec![],
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -2215,7 +2191,9 @@ pub struct ExonSkipSelectionPlan {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum ExonSkipReturnKind {
+    #[default]
     Genbank,
     CdnaFasta,
     AminoAcidSequence,
@@ -2230,12 +2208,6 @@ impl ExonSkipReturnKind {
             Self::AminoAcidSequence => "amino_acid_sequence",
             Self::AminoAcidFasta => "amino_acid_fasta",
         }
-    }
-}
-
-impl Default for ExonSkipReturnKind {
-    fn default() -> Self {
-        Self::Genbank
     }
 }
 
@@ -2428,7 +2400,7 @@ mod exon_skip_return_contract_tests {
         let round_tripped: CdnaAssayProductMaterialization =
             serde_json::from_str(&json).expect("round-trip product materialization contract");
         assert!(round_tripped.idempotent_reuse);
-        assert_eq!(round_tripped.product_rows[0].created, false);
+        assert!(!round_tripped.product_rows[0].created);
         assert_eq!(round_tripped.gel_band_rows[0].apparent_bp, 42);
     }
 }
@@ -6164,23 +6136,22 @@ fn surfacing_justifications_for_engine_operation(
 ) -> BTreeMap<String, String> {
     capability_parity_adapters()
         .iter()
-        .filter_map(|adapter| {
-            (surfacing.for_adapter(*adapter) == AdapterSurfacing::NotApplicable).then(|| {
-                (
-                    adapter.as_str().to_string(),
-                    not_applicable_override_reason(
-                        CapabilitySource::EngineOperation,
-                        op_name,
-                        *adapter,
-                    )
-                    .unwrap_or_else(|| {
-                        panic!(
-                            "missing curated n/a override for engine operation `{op_name}` on {:?}",
-                            adapter
-                        )
-                    }),
+        .filter(|&adapter| surfacing.for_adapter(*adapter) == AdapterSurfacing::NotApplicable)
+        .map(|adapter| {
+            (
+                adapter.as_str().to_string(),
+                not_applicable_override_reason(
+                    CapabilitySource::EngineOperation,
+                    op_name,
+                    *adapter,
                 )
-            })
+                .unwrap_or_else(|| {
+                    panic!(
+                        "missing curated n/a override for engine operation `{op_name}` on {:?}",
+                        adapter
+                    )
+                }),
+            )
         })
         .collect()
 }
@@ -6191,19 +6162,18 @@ fn surfacing_justifications_for_mcp_tool(
 ) -> BTreeMap<String, String> {
     capability_parity_adapters()
         .iter()
-        .filter_map(|adapter| {
-            (surfacing.for_adapter(*adapter) == AdapterSurfacing::NotApplicable).then(|| {
-                (
-                    adapter.as_str().to_string(),
-                    not_applicable_override_reason(CapabilitySource::McpTool, tool_name, *adapter)
-                        .unwrap_or_else(|| {
-                            panic!(
-                                "missing curated n/a override for MCP tool `{tool_name}` on {:?}",
-                                adapter
-                            )
-                        }),
-                )
-            })
+        .filter(|&adapter| surfacing.for_adapter(*adapter) == AdapterSurfacing::NotApplicable)
+        .map(|adapter| {
+            (
+                adapter.as_str().to_string(),
+                not_applicable_override_reason(CapabilitySource::McpTool, tool_name, *adapter)
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "missing curated n/a override for MCP tool `{tool_name}` on {:?}",
+                            adapter
+                        )
+                    }),
+            )
         })
         .collect()
 }

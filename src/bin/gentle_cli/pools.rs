@@ -178,7 +178,7 @@ fn handle_render_pool_gel_svg(
         }
     }
     if ids.is_empty()
-        && container_ids.as_ref().map_or(true, |v| v.is_empty())
+        && container_ids.as_ref().is_none_or(|v| v.is_empty())
         && arrangement_id.is_none()
     {
         return Err(format!(
@@ -409,10 +409,10 @@ fn handle_import_pool(args: &[String], cmd_idx: usize, state_path: &str) -> Resu
         if let Some(name) = &member.name {
             let mut value = serde_json::to_value(&dna)
                 .map_err(|e| format!("Could not serialize sequence: {e}"))?;
-            if let Some(obj) = value.as_object_mut() {
-                if let Some(seq_obj) = obj.get_mut("seq").and_then(|v| v.as_object_mut()) {
-                    seq_obj.insert("name".to_string(), json!(name));
-                }
+            if let Some(obj) = value.as_object_mut()
+                && let Some(seq_obj) = obj.get_mut("seq").and_then(|v| v.as_object_mut())
+            {
+                seq_obj.insert("name".to_string(), json!(name));
             }
             dna = serde_json::from_value(value)
                 .map_err(|e| format!("Could not set sequence name: {e}"))?;
@@ -467,14 +467,14 @@ fn apply_pool_member_topology_hint(
     if !matches!(form, GelTopologyForm::Linear | GelTopologyForm::Circular) {
         let mut value = serde_json::to_value(&*dna)
             .map_err(|e| format!("Could not serialize sequence for topology hint: {e}"))?;
-        if let Some(obj) = value.as_object_mut() {
-            if let Some(seq_obj) = obj.get_mut("seq").and_then(|v| v.as_object_mut()) {
-                let comments = seq_obj
-                    .entry("comments".to_string())
-                    .or_insert_with(|| json!([]));
-                if let Some(arr) = comments.as_array_mut() {
-                    arr.push(json!(format!("gel_topology={}", form.as_str())));
-                }
+        if let Some(obj) = value.as_object_mut()
+            && let Some(seq_obj) = obj.get_mut("seq").and_then(|v| v.as_object_mut())
+        {
+            let comments = seq_obj
+                .entry("comments".to_string())
+                .or_insert_with(|| json!([]));
+            if let Some(arr) = comments.as_array_mut() {
+                arr.push(json!(format!("gel_topology={}", form.as_str())));
             }
         }
         *dna = serde_json::from_value(value)

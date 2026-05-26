@@ -617,22 +617,22 @@ impl GENtleApp {
                         .color(egui::Color32::from_gray(120)),
                 );
             });
-            if step.status == PrepareGenomeUiStepStatus::Running {
-                if let Some(bytes_total) = step.bytes_total.filter(|total| *total > 0) {
-                    let bytes_done = step.bytes_done.unwrap_or(0).min(bytes_total);
-                    ui.horizontal(|ui| {
-                        ui.add_space(18.0);
-                        ui.label(
-                            egui::RichText::new(Self::format_prepare_byte_progress(
-                                bytes_done,
-                                bytes_total,
-                                step.eta_remaining,
-                            ))
-                            .small()
-                            .color(egui::Color32::from_gray(120)),
-                        );
-                    });
-                }
+            if step.status == PrepareGenomeUiStepStatus::Running
+                && let Some(bytes_total) = step.bytes_total.filter(|total| *total > 0)
+            {
+                let bytes_done = step.bytes_done.unwrap_or(0).min(bytes_total);
+                ui.horizontal(|ui| {
+                    ui.add_space(18.0);
+                    ui.label(
+                        egui::RichText::new(Self::format_prepare_byte_progress(
+                            bytes_done,
+                            bytes_total,
+                            step.eta_remaining,
+                        ))
+                        .small()
+                        .color(egui::Color32::from_gray(120)),
+                    );
+                });
             }
         }
     }
@@ -660,14 +660,12 @@ impl GENtleApp {
                 .button("Browse...")
                 .on_hover_text("Browse filesystem and fill this path")
                 .clicked()
-            {
-                if let Some(path) = rfd::FileDialog::new()
+                && let Some(path) = rfd::FileDialog::new()
                     .add_filter("JSON", &["json"])
                     .pick_file()
-                {
-                    self.genome_catalog_path = path.display().to_string();
-                    prepare_context_changed = true;
-                }
+            {
+                self.genome_catalog_path = path.display().to_string();
+                prepare_context_changed = true;
             }
         });
         ui.horizontal(|ui| {
@@ -680,11 +678,10 @@ impl GENtleApp {
                 .button("Browse...")
                 .on_hover_text("Browse filesystem and fill this path")
                 .clicked()
+                && let Some(path) = rfd::FileDialog::new().pick_folder()
             {
-                if let Some(path) = rfd::FileDialog::new().pick_folder() {
-                    self.genome_cache_dir = path.display().to_string();
-                    prepare_context_changed = true;
-                }
+                self.genome_cache_dir = path.display().to_string();
+                prepare_context_changed = true;
             }
         });
         ui.horizontal(|ui| {
@@ -858,15 +855,14 @@ impl GENtleApp {
                     PrepareGenomeDialogPrimaryAction::None => {}
                 }
             }
-            if self.genome_prepare_task.is_some() {
-                if ui
+            if self.genome_prepare_task.is_some()
+                && ui
                     .button("Cancel Prepare")
                     .on_hover_text("Request cancellation of the running prepare task.")
                     .clicked()
                 {
                     self.request_prepare_task_cancel("prepare dialog");
                 }
-            }
         });
         ui.horizontal(|ui| {
             let can_update_ensembl = !running && self.selected_genome_catalog_has_ensembl_templates();
@@ -1189,13 +1185,11 @@ impl GENtleApp {
                     .button("Browse...")
                     .on_hover_text("Pick a destination for an updated catalog copy")
                     .clicked()
-                {
-                    if let Some(path) = rfd::FileDialog::new()
+                    && let Some(path) = rfd::FileDialog::new()
                         .add_filter("JSON", &["json"])
                         .save_file()
-                    {
-                        dialog.output_catalog_path = path.display().to_string();
-                    }
+                {
+                    dialog.output_catalog_path = path.display().to_string();
                 }
             });
             if !dialog.preview.collection_latest_releases.is_empty() {
@@ -1498,10 +1492,9 @@ impl GENtleApp {
                     .button("Browse...")
                     .on_hover_text("Choose a catalog file or overlay directory for the new entry")
                     .clicked()
+                    && let Some(path) = rfd::FileDialog::new().save_file()
                 {
-                    if let Some(path) = rfd::FileDialog::new().save_file() {
-                        dialog.output_catalog_path = path.display().to_string();
-                    }
+                    dialog.output_catalog_path = path.display().to_string();
                 }
             });
             ui.small(format!(
@@ -1679,14 +1672,12 @@ impl GENtleApp {
                     .button("Browse...")
                     .on_hover_text("Browse filesystem and fill this path")
                     .clicked()
-                {
-                    if let Some(path) = rfd::FileDialog::new()
+                    && let Some(path) = rfd::FileDialog::new()
                         .add_filter("JSON", &["json"])
                         .pick_file()
                     {
                         self.genome_catalog_path = path.display().to_string();
                     }
-                }
             });
             ui.horizontal(|ui| {
                 ui.label("cache_dir");
@@ -1695,11 +1686,9 @@ impl GENtleApp {
                     .button("Browse...")
                     .on_hover_text("Browse filesystem and fill this path")
                     .clicked()
-                {
-                    if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                    && let Some(path) = rfd::FileDialog::new().pick_folder() {
                         self.genome_cache_dir = path.display().to_string();
                     }
-                }
             });
             if !self.genome_catalog_error.is_empty() {
                 ui.colored_label(
@@ -1834,11 +1823,9 @@ impl GENtleApp {
                             );
                             for biotype in biotypes {
                                 if let Some(enabled) = self.genome_biotype_filter.get_mut(&biotype)
-                                {
-                                    if ui.checkbox(enabled, &biotype).changed() {
+                                    && ui.checkbox(enabled, &biotype).changed() {
                                         self.genome_gene_filter_page = 0;
                                     }
-                                }
                             }
                         });
                 }
@@ -1848,7 +1835,7 @@ impl GENtleApp {
                 }
                 const GENE_PAGE_SIZE: usize = 100;
                 let page_count =
-                    ((filtered_indices.len() + GENE_PAGE_SIZE - 1) / GENE_PAGE_SIZE).max(1);
+                    filtered_indices.len().div_ceil(GENE_PAGE_SIZE).max(1);
                 if self.genome_gene_filter_page >= page_count {
                     self.genome_gene_filter_page = page_count.saturating_sub(1);
                 }
@@ -2209,15 +2196,15 @@ impl GENtleApp {
         if !invocation.trim().is_empty() {
             ui.monospace(format!("invocation: {invocation}"));
         }
-        if let Some(request) = report.options_override_json.as_ref() {
-            if let Ok(compact) = serde_json::to_string(request) {
-                ui.monospace(format!("request_options: {compact}"));
-            }
+        if let Some(request) = report.options_override_json.as_ref()
+            && let Ok(compact) = serde_json::to_string(request)
+        {
+            ui.monospace(format!("request_options: {compact}"));
         }
-        if let Some(effective) = report.effective_options_json.as_ref() {
-            if let Ok(compact) = serde_json::to_string(effective) {
-                ui.monospace(format!("effective_options: {compact}"));
-            }
+        if let Some(effective) = report.effective_options_json.as_ref()
+            && let Ok(compact) = serde_json::to_string(effective)
+        {
+            ui.monospace(format!("effective_options: {compact}"));
         }
         if !report.warnings.is_empty() {
             ui.separator();
@@ -2314,13 +2301,11 @@ impl GENtleApp {
                 .button("Browse...")
                 .on_hover_text("Browse filesystem and fill this path")
                 .clicked()
-            {
-                if let Some(path) = rfd::FileDialog::new()
+                && let Some(path) = rfd::FileDialog::new()
                     .add_filter("JSON", &["json"])
                     .pick_file()
-                {
-                    self.genome_catalog_path = path.display().to_string();
-                }
+            {
+                self.genome_catalog_path = path.display().to_string();
             }
         });
         ui.horizontal(|ui| {
@@ -2330,10 +2315,9 @@ impl GENtleApp {
                 .button("Browse...")
                 .on_hover_text("Browse filesystem and fill this path")
                 .clicked()
+                && let Some(path) = rfd::FileDialog::new().pick_folder()
             {
-                if let Some(path) = rfd::FileDialog::new().pick_folder() {
-                    self.genome_cache_dir = path.display().to_string();
-                }
+                self.genome_cache_dir = path.display().to_string();
             }
         });
         if !self.genome_catalog_error.is_empty() {
@@ -2533,22 +2517,20 @@ impl GENtleApp {
                 .button("Load JSON...")
                 .on_hover_text("Load advanced BLAST options JSON from file")
                 .clicked()
-            {
-                if let Some(path) = rfd::FileDialog::new()
+                && let Some(path) = rfd::FileDialog::new()
                     .add_filter("JSON", &["json"])
                     .pick_file()
-                {
-                    match fs::read_to_string(&path) {
-                        Ok(text) => {
-                            self.genome_blast_options_json = text;
-                        }
-                        Err(e) => {
-                            self.genome_blast_status = format!(
-                                "Could not read BLAST options file '{}': {}",
-                                path.display(),
-                                e
-                            );
-                        }
+            {
+                match fs::read_to_string(&path) {
+                    Ok(text) => {
+                        self.genome_blast_options_json = text;
+                    }
+                    Err(e) => {
+                        self.genome_blast_status = format!(
+                            "Could not read BLAST options file '{}': {}",
+                            path.display(),
+                            e
+                        );
                     }
                 }
             }
@@ -2909,13 +2891,11 @@ impl GENtleApp {
                     .button("Browse...")
                     .on_hover_text("Browse filesystem and fill this path")
                     .clicked()
-                {
-                    if let Some(path) = rfd::FileDialog::new()
+                    && let Some(path) = rfd::FileDialog::new()
                         .add_filter("JSON", &["json"])
                         .pick_file()
-                    {
-                        self.genome_catalog_path = path.display().to_string();
-                    }
+                {
+                    self.genome_catalog_path = path.display().to_string();
                 }
             });
             ui.horizontal(|ui| {
@@ -2925,10 +2905,9 @@ impl GENtleApp {
                     .button("Browse...")
                     .on_hover_text("Browse filesystem and fill this path")
                     .clicked()
+                    && let Some(path) = rfd::FileDialog::new().pick_folder()
                 {
-                    if let Some(path) = rfd::FileDialog::new().pick_folder() {
-                        self.genome_cache_dir = path.display().to_string();
-                    }
+                    self.genome_cache_dir = path.display().to_string();
                 }
             });
             if !self.genome_catalog_error.is_empty() {
@@ -3309,15 +3288,14 @@ impl GENtleApp {
                     .on_hover_text("Browse filesystem and fill this path"),
                 "Genome Tracks > Browse Track Path",
             );
-            if browse_track_resp.clicked() {
-                if let Some(path) = rfd::FileDialog::new()
+            if browse_track_resp.clicked()
+                && let Some(path) = rfd::FileDialog::new()
                     .add_filter("Signal tracks", &["bed", "gz", "bw", "bigwig", "vcf"])
                     .pick_file()
-                {
-                    self.genome_track_path = path.display().to_string();
-                    if self.genome_track_name.trim().is_empty() {
-                        self.genome_track_name = Self::track_name_default_from_path(&path);
-                    }
+            {
+                self.genome_track_path = path.display().to_string();
+                if self.genome_track_name.trim().is_empty() {
+                    self.genome_track_name = Self::track_name_default_from_path(&path);
                 }
             }
         });
@@ -3775,10 +3753,9 @@ impl GENtleApp {
                     .button("Browse...")
                     .on_hover_text("Browse filesystem and fill this path")
                     .clicked()
+                    && let Some(path) = rfd::FileDialog::new().pick_folder()
                 {
-                    if let Some(path) = rfd::FileDialog::new().pick_folder() {
-                        self.cache_cleanup_reference_cache_dir = path.display().to_string();
-                    }
+                    self.cache_cleanup_reference_cache_dir = path.display().to_string();
                 }
                 if edited {
                     self.cache_cleanup_confirm_pending = false;
@@ -3794,10 +3771,9 @@ impl GENtleApp {
                     .button("Browse...")
                     .on_hover_text("Browse filesystem and fill this path")
                     .clicked()
+                    && let Some(path) = rfd::FileDialog::new().pick_folder()
                 {
-                    if let Some(path) = rfd::FileDialog::new().pick_folder() {
-                        self.cache_cleanup_helper_cache_dir = path.display().to_string();
-                    }
+                    self.cache_cleanup_helper_cache_dir = path.display().to_string();
                 }
                 if edited {
                     self.cache_cleanup_confirm_pending = false;

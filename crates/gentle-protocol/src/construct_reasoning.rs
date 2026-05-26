@@ -532,6 +532,7 @@ impl Default for DesignEvidence {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 /// Curated host/strain record used by construct reasoning.
+#[derive(Default)]
 pub struct HostProfileRecord {
     pub profile_id: String,
     pub species: String,
@@ -541,21 +542,6 @@ pub struct HostProfileRecord {
     pub phenotype_tags: Vec<String>,
     pub notes: Vec<String>,
     pub source_notes: Vec<String>,
-}
-
-impl Default for HostProfileRecord {
-    fn default() -> Self {
-        Self {
-            profile_id: String::new(),
-            species: String::new(),
-            strain: String::new(),
-            aliases: vec![],
-            genotype_tags: vec![],
-            phenotype_tags: vec![],
-            notes: vec![],
-            source_notes: vec![],
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -579,6 +565,7 @@ impl Default for HostProfileCatalog {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 /// Curated helper/vector profile used by construct reasoning.
+#[derive(Default)]
 pub struct HelperConstructProfile {
     pub profile_id: String,
     pub helper_seq_id: Option<String>,
@@ -588,21 +575,6 @@ pub struct HelperConstructProfile {
     pub host_compatibility_tags: Vec<String>,
     pub notes: Vec<String>,
     pub source_notes: Vec<String>,
-}
-
-impl Default for HelperConstructProfile {
-    fn default() -> Self {
-        Self {
-            profile_id: String::new(),
-            helper_seq_id: None,
-            helper_genome_id: None,
-            vector_family: None,
-            backbone_roles: vec![],
-            host_compatibility_tags: vec![],
-            notes: vec![],
-            source_notes: vec![],
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

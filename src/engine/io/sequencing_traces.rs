@@ -166,18 +166,18 @@ impl GentleEngine {
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(|value| value.to_string());
-        if let Some(seq_id) = normalized_seq_id.as_deref() {
-            if !self.state.sequences.contains_key(seq_id) {
-                return Err(EngineError {
-                    code: ErrorCode::NotFound,
-                    message: format!(
-                        "Associated sequence '{}' for sequencing trace import was not found",
-                        seq_id
-                    ),
+        if let Some(seq_id) = normalized_seq_id.as_deref()
+            && !self.state.sequences.contains_key(seq_id)
+        {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "Associated sequence '{}' for sequencing trace import was not found",
+                    seq_id
+                ),
 
-                    cause_chain: vec![],
-                });
-            }
+                cause_chain: vec![],
+            });
         }
         let parsed = parse_sequencing_trace_file(path)?;
         let base_trace_id = trace_id

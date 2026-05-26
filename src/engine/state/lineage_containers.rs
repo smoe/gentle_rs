@@ -810,15 +810,14 @@ impl GentleEngine {
                 created_at_unix_ms: Self::now_unix_ms(),
             },
         );
-        if set_as_default {
-            if let Some(arrangement) = self
+        if set_as_default
+            && let Some(arrangement) = self
                 .state
                 .container_state
                 .arrangements
                 .get_mut(arrangement_id)
-            {
-                arrangement.default_rack_id = Some(rack_id.clone());
-            }
+        {
+            arrangement.default_rack_id = Some(rack_id.clone());
         }
         Ok(rack_id)
     }
@@ -967,11 +966,7 @@ impl GentleEngine {
                     .iter()
                     .map(|(_, entry)| entry.clone()),
             );
-            let ordered = reflowed
-                .into_iter()
-                .enumerate()
-                .map(|(index, entry)| (index, entry))
-                .collect::<Vec<_>>();
+            let ordered = reflowed.into_iter().enumerate().collect::<Vec<_>>();
             return self.reflow_ordered_rack_entries(rack_id, &rack.profile, ordered);
         } else {
             let arrangement_id = ordered[from_pos].1.arrangement_id.clone();
@@ -1383,11 +1378,7 @@ impl GentleEngine {
                 .iter()
                 .map(|(_, entry)| entry.clone()),
         );
-        let ordered = reflowed
-            .into_iter()
-            .enumerate()
-            .map(|(index, entry)| (index, entry))
-            .collect::<Vec<_>>();
+        let ordered = reflowed.into_iter().enumerate().collect::<Vec<_>>();
         self.reflow_ordered_rack_entries(rack_id, &rack.profile, ordered)
     }
 

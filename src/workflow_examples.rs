@@ -596,16 +596,12 @@ pub struct TutorialGenerationReport {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum ExampleTestMode {
+    #[default]
     Always,
     Skip,
     Online,
-}
-
-impl Default for ExampleTestMode {
-    fn default() -> Self {
-        Self::Always
-    }
 }
 
 impl ExampleTestMode {
@@ -882,7 +878,7 @@ pub fn run_example_workflow_for_project_state_with_progress<F>(
     example: &WorkflowExample,
     repo_root: &Path,
     run_dir: &Path,
-    mut on_progress: F,
+    on_progress: F,
 ) -> Result<ProjectState, String>
 where
     F: FnMut(OperationProgress) -> bool,
@@ -890,7 +886,7 @@ where
     let rewritten = rewrite_example_paths_for_execution(example, repo_root, run_dir)?;
     let mut engine = GentleEngine::from_state(ProjectState::default());
     engine
-        .apply_workflow_with_progress(rewritten.workflow, |progress| on_progress(progress))
+        .apply_workflow_with_progress(rewritten.workflow, on_progress)
         .map_err(|e| format!("Workflow example '{}' failed: {e}", example.id))?;
     Ok(engine.state().clone())
 }
@@ -1585,13 +1581,13 @@ pub fn load_tutorial_manifest(manifest_path: &Path) -> Result<TutorialManifest, 
                 chapter.id
             ));
         }
-        if let Some(guide_path) = &chapter.guide_path {
-            if guide_path.trim().is_empty() {
-                return Err(format!(
-                    "Tutorial chapter '{}' contains blank guide_path",
-                    chapter.id
-                ));
-            }
+        if let Some(guide_path) = &chapter.guide_path
+            && guide_path.trim().is_empty()
+        {
+            return Err(format!(
+                "Tutorial chapter '{}' contains blank guide_path",
+                chapter.id
+            ));
         }
         if !seen_ids.insert(chapter.id.clone()) {
             return Err(format!(
@@ -1718,13 +1714,13 @@ pub fn load_tutorial_manifest(manifest_path: &Path) -> Result<TutorialManifest, 
                 ));
             }
         }
-        if let Some(local_execution_note) = &chapter.local_execution_note {
-            if local_execution_note.trim().is_empty() {
-                return Err(format!(
-                    "Tutorial chapter '{}' contains blank local_execution_note",
-                    chapter.id
-                ));
-            }
+        if let Some(local_execution_note) = &chapter.local_execution_note
+            && local_execution_note.trim().is_empty()
+        {
+            return Err(format!(
+                "Tutorial chapter '{}' contains blank local_execution_note",
+                chapter.id
+            ));
         }
         for prerequisite in &chapter.prerequisites {
             if prerequisite.trim().is_empty() {
@@ -2248,13 +2244,13 @@ fn tutorial_review_context_for_date(
     }
     if let Some(today) = today {
         for entry in &review_manifest.entries {
-            if let Some(reviewed_at) = entry.human_reviewed_at.as_deref() {
-                if review_date_is_stale(reviewed_at, today, review_manifest.warn_after_months) {
-                    warnings.push(format!(
-                        "Tutorial '{}' human review date {} is older than {} months",
-                        entry.tutorial_id, reviewed_at, review_manifest.warn_after_months
-                    ));
-                }
+            if let Some(reviewed_at) = entry.human_reviewed_at.as_deref()
+                && review_date_is_stale(reviewed_at, today, review_manifest.warn_after_months)
+            {
+                warnings.push(format!(
+                    "Tutorial '{}' human review date {} is older than {} months",
+                    entry.tutorial_id, reviewed_at, review_manifest.warn_after_months
+                ));
             }
         }
     }
@@ -2763,10 +2759,10 @@ fn normalize_retained_tutorial_artifact_line(line: &str) -> String {
             return normalized;
         }
     }
-    if let Some(prefix) = line.strip_prefix("- Generated (Unix ms): `") {
-        if let Some((_, suffix)) = prefix.split_once('`') {
-            return format!("- Generated (Unix ms): `0`{suffix}");
-        }
+    if let Some(prefix) = line.strip_prefix("- Generated (Unix ms): `")
+        && let Some((_, suffix)) = prefix.split_once('`')
+    {
+        return format!("- Generated (Unix ms): `0`{suffix}");
     }
     line.to_string()
 }
@@ -2917,12 +2913,11 @@ fn retained_artifact_preview(path: &Path) -> Option<String> {
         .and_then(|ext| ext.to_str())
         .unwrap_or_default()
         .to_ascii_lowercase();
-    if extension == "json" {
-        if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
-            if let Some(schema) = value.get("schema").and_then(|schema| schema.as_str()) {
-                return Some(format!("schema: {}", markdown_inline_code(schema)));
-            }
-        }
+    if extension == "json"
+        && let Ok(value) = serde_json::from_str::<serde_json::Value>(&text)
+        && let Some(schema) = value.get("schema").and_then(|schema| schema.as_str())
+    {
+        return Some(format!("schema: {}", markdown_inline_code(schema)));
     }
     let first_line = text.lines().find(|line| !line.trim().is_empty())?.trim();
     if first_line.is_empty() {
@@ -3440,7 +3435,7 @@ fn render_tutorial_parameters_that_matter(chapter: &TutorialChapter) -> String {
     for note in &chapter.parameter_notes {
         out.push_str("- `");
         out.push_str(note.parameter.trim());
-        out.push_str("`");
+        out.push('`');
         if !note.where_used.trim().is_empty() {
             out.push_str(" (where used: ");
             out.push_str(note.where_used.trim());
@@ -3508,7 +3503,7 @@ fn render_tutorial_prerequisites(
         out.push(')');
     }
     out.push_str(" first.");
-    out.push_str("\n");
+    out.push('\n');
     Ok(out)
 }
 
@@ -3647,12 +3642,12 @@ fn render_tutorial_inline_graphic(graphic: &TutorialGraphic, output_dir: &Path) 
         out.push('.');
     }
     out.push_str("*\n\n");
-    if retained_artifact_extension(&graphic.path) == "svg" {
-        if let Some(preview) = retained_svg_text_preview(&graphic_path) {
-            out.push_str("> SVG text labels: ");
-            out.push_str(&preview);
-            out.push_str(". If the embedded preview omits text in the GUI, open the linked SVG or use these labels as the figure legend.\n\n");
-        }
+    if retained_artifact_extension(&graphic.path) == "svg"
+        && let Some(preview) = retained_svg_text_preview(&graphic_path)
+    {
+        out.push_str("> SVG text labels: ");
+        out.push_str(&preview);
+        out.push_str(". If the embedded preview omits text in the GUI, open the linked SVG or use these labels as the figure legend.\n\n");
     }
     out
 }
@@ -3764,12 +3759,12 @@ fn render_tutorial_produced_artifacts(
                 out.push_str(&step.to_string());
                 out.push_str("; kept here as an audit link.\n\n");
             }
-            if extension == "svg" {
-                if let Some(preview) = retained_svg_text_preview(&artifact_path) {
-                    out.push_str("> SVG text labels: ");
-                    out.push_str(&preview);
-                    out.push_str(". If this embedded preview omits text in the GUI, open the linked SVG or use these labels as the figure legend.\n\n");
-                }
+            if extension == "svg"
+                && let Some(preview) = retained_svg_text_preview(&artifact_path)
+            {
+                out.push_str("> SVG text labels: ");
+                out.push_str(&preview);
+                out.push_str(". If this embedded preview omits text in the GUI, open the linked SVG or use these labels as the figure legend.\n\n");
             }
             if inline_step.is_some() {
                 continue;
@@ -3914,12 +3909,12 @@ fn render_tutorial_chapter_markdown(
     out.push_str("\n\n");
     if !chapter.summary.trim().is_empty() {
         out.push_str(chapter.summary.trim());
-        out.push_str("\n");
+        out.push('\n');
     }
     if !chapter.narrative.trim().is_empty() {
         out.push('\n');
         out.push_str(chapter.narrative.trim());
-        out.push_str("\n");
+        out.push('\n');
     }
     out.push_str(&render_tutorial_guided_walkthrough_see_also(chapter));
     out.push_str(&render_tutorial_prerequisites(chapter, chapter_by_id)?);
@@ -3946,7 +3941,7 @@ fn render_tutorial_chapter_markdown(
         out.push_str("```bash\n");
         out.push_str("cargo run --bin gentle_cli -- workflow @");
         out.push_str(&workflow_path);
-        out.push_str("\n");
+        out.push('\n');
         out.push_str("cargo run --bin gentle_cli -- shell 'workflow @");
         out.push_str(&workflow_path);
         out.push_str("'\n");
@@ -4068,14 +4063,14 @@ fn render_tutorial_index(
         );
         out.push_str("- ");
         if let Some(decimal_id) = chapter.decimal_id.as_deref() {
-            out.push_str("`");
+            out.push('`');
             out.push_str(decimal_id);
             out.push_str("` ");
         } else {
             out.push_str(&chapter.order.to_string());
             out.push_str(". ");
         }
-        out.push_str("[");
+        out.push('[');
         out.push_str(&chapter.title);
         out.push_str("](./chapters/");
         out.push_str(&chapter_file);

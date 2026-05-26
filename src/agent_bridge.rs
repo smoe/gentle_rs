@@ -222,9 +222,9 @@ fn is_executable_file(path: &Path) -> bool {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        return fs::metadata(path)
+        fs::metadata(path)
             .map(|meta| meta.permissions().mode() & 0o111 != 0)
-            .unwrap_or(false);
+            .unwrap_or(false)
     }
     #[cfg(not(unix))]
     {
@@ -485,11 +485,7 @@ fn resolve_base_url_with_source(system: &AgentSystemSpec, default: &str) -> Reso
             source: BaseUrlSource::EnvOverride,
         };
     }
-    if let Some(url) = system
-        .base_url
-        .as_deref()
-        .and_then(|value| normalize_base_url(value))
-    {
+    if let Some(url) = system.base_url.as_deref().and_then(normalize_base_url) {
         return ResolvedBaseUrl {
             url,
             source: BaseUrlSource::Catalog,
@@ -1389,13 +1385,13 @@ fn validate_agent_request_value(value: &Value) -> Result<(), String> {
             "agent request 'sent_at_unix_ms' must be an unsigned integer",
         ));
     }
-    if let Some(state_summary) = object.get("state_summary") {
-        if !(state_summary.is_null() || state_summary.is_object()) {
-            return Err(agent_err(
-                AgentBridgeErrorCode::SchemaValidation,
-                "agent request 'state_summary' must be object or null",
-            ));
-        }
+    if let Some(state_summary) = object.get("state_summary")
+        && !(state_summary.is_null() || state_summary.is_object())
+    {
+        return Err(agent_err(
+            AgentBridgeErrorCode::SchemaValidation,
+            "agent request 'state_summary' must be object or null",
+        ));
     }
     Ok(())
 }

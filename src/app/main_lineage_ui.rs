@@ -579,15 +579,15 @@ impl GENtleApp {
             for container_id in &arrangement.lane_container_ids {
                 if let Some(members) = container_members_by_id.get(container_id) {
                     for seq_id in members {
-                        if let Some(source_node_id) = seq_node_by_seq_id.get(seq_id).cloned() {
-                            if seen_sources.insert(source_node_id.clone()) {
-                                source_node_ids.push(source_node_id.clone());
-                                graph_edges.push((
-                                    source_node_id,
-                                    arrangement_node_id.clone(),
-                                    arrangement_edge_op_id.clone(),
-                                ));
-                            }
+                        if let Some(source_node_id) = seq_node_by_seq_id.get(seq_id).cloned()
+                            && seen_sources.insert(source_node_id.clone())
+                        {
+                            source_node_ids.push(source_node_id.clone());
+                            graph_edges.push((
+                                source_node_id,
+                                arrangement_node_id.clone(),
+                                arrangement_edge_op_id.clone(),
+                            ));
                         }
                     }
                 }
@@ -752,8 +752,8 @@ impl GENtleApp {
                                     });
                                     ui.end_row();
                                 }
-                                if let Some(group_id) = edit_group_id {
-                                    if let Some(group) = self
+                                if let Some(group_id) = edit_group_id
+                                    && let Some(group) = self
                                         .lineage_node_groups
                                         .iter()
                                         .find(|group| group.group_id == group_id)
@@ -768,7 +768,6 @@ impl GENtleApp {
                                         self.lineage_group_status =
                                             format!("Editing group '{}'", group.label);
                                     }
-                                }
                                 if let Some(group_id) = delete_group_id {
                                     let before = self.lineage_node_groups.len();
                                     self.lineage_node_groups
@@ -806,11 +805,9 @@ impl GENtleApp {
                             .small_button("Use selected")
                             .on_hover_text("Use currently selected graph node as representative")
                             .clicked()
-                        {
-                            if let Some(selected_node_id) = &self.lineage_graph_selected_node_id {
+                            && let Some(selected_node_id) = &self.lineage_graph_selected_node_id {
                                 self.lineage_group_form_representative = selected_node_id.clone();
                             }
-                        }
                     });
                     ui.horizontal(|ui| {
                         ui.label("Members");
@@ -877,15 +874,14 @@ impl GENtleApp {
                     .iter()
                     .map(|row| row.node_id.clone())
                     .collect();
-                if let Some(selected_node_id) = self.lineage_graph_selected_node_id.clone() {
-                    if !visible_node_ids.contains(&selected_node_id) {
+                if let Some(selected_node_id) = self.lineage_graph_selected_node_id.clone()
+                    && !visible_node_ids.contains(&selected_node_id) {
                         let remapped = node_to_group_id
                             .get(&selected_node_id)
                             .and_then(|group_id| group_by_id.get(group_id))
                             .map(|group| group.representative_node_id.clone());
                         self.lineage_graph_selected_node_id = remapped;
                     }
-                }
                 // Keep graph + containers filling the lineage viewport proportionally.
                 let visible_height = ui.clip_rect().height();
                 let panel_budget_height = if visible_height.is_finite() && visible_height > 0.0 {
@@ -2137,11 +2133,9 @@ impl GENtleApp {
                                                 &[],
                                                 None,
                                             )
-                                        {
-                                            if !layout.selected_ladders.is_empty() {
+                                            && !layout.selected_ladders.is_empty() {
                                                 hover_ladder_hint = Some(layout.selected_ladders.join(" + "));
                                             }
-                                        }
                                     }
                                 }
                                 let tooltip_member_preview = if row.kind == LineageNodeKind::Sequence
@@ -2582,8 +2576,8 @@ impl GENtleApp {
                                     persist_workspace_after_frame = true;
                                 }
                             }
-                            if self.lineage_graph_pan_origin.is_none() {
-                                if let Some((node_id, start_offset)) =
+                            if self.lineage_graph_pan_origin.is_none()
+                                && let Some((node_id, start_offset)) =
                                     self.lineage_graph_drag_origin.clone()
                                 {
                                     if resp.dragged() {
@@ -2595,7 +2589,6 @@ impl GENtleApp {
                                         persist_workspace_after_frame = true;
                                     }
                                 }
-                            }
                             if let Some(cursor) = scroll_input_policy::canvas_hover_cursor(
                                 modifiers,
                                 true,
@@ -2611,22 +2604,20 @@ impl GENtleApp {
                                 && self.lineage_graph_drag_origin.is_none()
                             {
                                 let mut retrieval_click_consumed = false;
-                                if resp.clicked() {
-                                    if let Some(row) = hovered_retrieval_row {
-                                        if let Some(descriptor) = row.retrieval_descriptor.clone() {
+                                if resp.clicked()
+                                    && let Some(row) = hovered_retrieval_row
+                                        && let Some(descriptor) = row.retrieval_descriptor.clone() {
                                             self.lineage_graph_selected_node_id =
                                                 Some(row.node_id.clone());
                                             open_lineage_retrieval = Some(descriptor);
                                             retrieval_click_consumed = true;
                                         }
-                                    }
-                                }
                                 if !retrieval_click_consumed {
                                     if resp.clicked() {
                                         self.lineage_graph_selected_node_id =
                                             hover_row.map(|row| row.node_id.clone());
-                                        if let Some(row) = hover_row {
-                                            if Self::is_lineage_operation_hub(row)
+                                        if let Some(row) = hover_row
+                                            && Self::is_lineage_operation_hub(row)
                                                 && self
                                                     .lineage_reopenable_gibson_op_ids
                                                     .contains(&row.created_by_op)
@@ -2634,10 +2625,9 @@ impl GENtleApp {
                                                 reopen_gibson_from_operation =
                                                     Some(row.created_by_op.clone());
                                             }
-                                        }
                                     }
-                                    if let Some(row) = hover_row {
-                                        if resp.double_clicked() {
+                                    if let Some(row) = hover_row
+                                        && resp.double_clicked() {
                                             match row.kind {
                                                 LineageNodeKind::Arrangement => {}
                                                 LineageNodeKind::Macro => {}
@@ -2667,7 +2657,6 @@ impl GENtleApp {
                                                 }
                                             }
                                         }
-                                    }
                                 }
                             }
                             if self.lineage_graph_drag_origin.is_some()
@@ -3177,8 +3166,8 @@ impl GENtleApp {
                 });
                 },
             );
-            if let Some(group_id) = toggle_group_collapse_id {
-                if let Some(group) = self
+            if let Some(group_id) = toggle_group_collapse_id
+                && let Some(group) = self
                     .lineage_node_groups
                     .iter_mut()
                     .find(|group| group.group_id == group_id)
@@ -3186,10 +3175,9 @@ impl GENtleApp {
                     group.collapsed = !group.collapsed;
                     persist_workspace_after_frame = true;
                 }
-            }
         }
-        if let Some(selected_node_id) = self.lineage_graph_selected_node_id.as_ref() {
-            if let Some(selected_row) = graph_rows
+        if let Some(selected_node_id) = self.lineage_graph_selected_node_id.as_ref()
+            && let Some(selected_row) = graph_rows
                 .iter()
                 .find(|row| row.node_id == *selected_node_id)
                 .cloned()
@@ -3513,8 +3501,8 @@ impl GENtleApp {
                                 .map(str::trim)
                                 .filter(|value| !value.is_empty())
                                 .map(|value| value.to_string());
-                            if let Some(dotplot_id) = dotplot_id {
-                                if ui
+                            if let Some(dotplot_id) = dotplot_id
+                                && ui
                                     .button("Dotplot SVG")
                                     .on_hover_text(
                                         "Export this dotplot analysis as an SVG artifact",
@@ -3527,12 +3515,10 @@ impl GENtleApp {
                                         selected_row.analysis_reference_seq_id.clone(),
                                     ));
                                 }
-                            }
                         }
                     });
                 }
             }
-        }
         ui.separator();
         let splitter_width = ui.available_width().max(1.0);
         let splitter_response = ui
@@ -3578,8 +3564,8 @@ impl GENtleApp {
             splitter_response.dragged() || (pointer_down && self.lineage_main_split_drag_origin.is_some());
         let splitter_drag_finished = splitter_response.drag_stopped();
         let splitter_drag_active = splitter_dragging || splitter_drag_finished;
-        if splitter_drag_active {
-            if let (Some(drag_origin_split), Some(start_y), Some(current_y)) = (
+        if splitter_drag_active
+            && let (Some(drag_origin_split), Some(start_y), Some(current_y)) = (
                 self.lineage_main_split_drag_origin,
                 self.lineage_main_split_drag_start_y,
                 pointer_y,
@@ -3601,7 +3587,6 @@ impl GENtleApp {
                     self.lineage_main_split_fraction = main_split_fraction;
                 }
             }
-        }
         if splitter_drag_finished || (!pointer_down && self.lineage_main_split_drag_origin.is_some()) {
             self.lineage_main_split_drag_origin = None;
             self.lineage_main_split_drag_start_y = None;
@@ -3767,8 +3752,8 @@ impl GENtleApp {
             || (sub_pointer_down && self.lineage_container_arrangement_split_drag_origin.is_some());
         let sub_split_finished = sub_split_response.drag_stopped();
         let sub_split_active_drag = sub_split_dragging || sub_split_finished;
-        if sub_split_active_drag {
-            if let (Some(drag_origin_split), Some(start_y), Some(current_y)) = (
+        if sub_split_active_drag
+            && let (Some(drag_origin_split), Some(start_y), Some(current_y)) = (
                 self.lineage_container_arrangement_split_drag_origin,
                 self.lineage_container_arrangement_split_drag_start_y,
                 sub_pointer_y,
@@ -3787,7 +3772,6 @@ impl GENtleApp {
                         (containers_panel_height / total_height).clamp(0.2, 0.8);
                 }
             }
-        }
         if sub_split_finished
             || (!sub_pointer_down
                 && self.lineage_container_arrangement_split_drag_origin.is_some())
@@ -4124,10 +4108,10 @@ impl GENtleApp {
                     criterion,
                     output_id: None,
                 });
-            if let Ok(op_result) = result {
-                if let Some(seq_id) = op_result.created_seq_ids.first() {
-                    open_seq = Some(seq_id.clone());
-                }
+            if let Ok(op_result) = result
+                && let Some(seq_id) = op_result.created_seq_ids.first()
+            {
+                open_seq = Some(seq_id.clone());
             }
         }
 

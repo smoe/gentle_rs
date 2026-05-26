@@ -334,7 +334,7 @@ impl GentleEngine {
             if parsed.is_empty() {
                 continue;
             }
-            if !parsed.iter().any(|index| *index == alt_allele_index_1based) {
+            if !parsed.contains(&alt_allele_index_1based) {
                 continue;
             }
             summary.carriers += 1;
@@ -751,18 +751,18 @@ impl GentleEngine {
                 continue;
             }
             report.parsed_records += 1;
-            if report.parsed_records % progress_stride == 0 {
-                if let Some(cb) = progress_cb.as_mut() {
-                    let should_continue = (**cb)(
-                        report.parsed_records,
-                        report.imported_features,
-                        report.skipped_records,
-                        false,
-                    );
-                    if !should_continue {
-                        report.cancelled = true;
-                        break;
-                    }
+            if report.parsed_records.is_multiple_of(progress_stride)
+                && let Some(cb) = progress_cb.as_mut()
+            {
+                let should_continue = (**cb)(
+                    report.parsed_records,
+                    report.imported_features,
+                    report.skipped_records,
+                    false,
+                );
+                if !should_continue {
+                    report.cancelled = true;
+                    break;
                 }
             }
 
@@ -984,18 +984,18 @@ impl GentleEngine {
                 continue;
             }
             report.parsed_records += 1;
-            if report.parsed_records % progress_stride == 0 {
-                if let Some(cb) = progress_cb.as_mut() {
-                    let should_continue = (**cb)(
-                        report.parsed_records,
-                        report.imported_features,
-                        report.skipped_records,
-                        false,
-                    );
-                    if !should_continue {
-                        report.cancelled = true;
-                        break;
-                    }
+            if report.parsed_records.is_multiple_of(progress_stride)
+                && let Some(cb) = progress_cb.as_mut()
+            {
+                let should_continue = (**cb)(
+                    report.parsed_records,
+                    report.imported_features,
+                    report.skipped_records,
+                    false,
+                );
+                if !should_continue {
+                    report.cancelled = true;
+                    break;
                 }
             }
 
@@ -1168,18 +1168,18 @@ impl GentleEngine {
                 continue;
             }
             report.parsed_records += 1;
-            if report.parsed_records % progress_stride == 0 {
-                if let Some(cb) = progress_cb.as_mut() {
-                    let should_continue = (**cb)(
-                        report.parsed_records,
-                        report.imported_features,
-                        report.skipped_records,
-                        false,
-                    );
-                    if !should_continue {
-                        report.cancelled = true;
-                        break;
-                    }
+            if report.parsed_records.is_multiple_of(progress_stride)
+                && let Some(cb) = progress_cb.as_mut()
+            {
+                let should_continue = (**cb)(
+                    report.parsed_records,
+                    report.imported_features,
+                    report.skipped_records,
+                    false,
+                );
+                if !should_continue {
+                    report.cancelled = true;
+                    break;
                 }
             }
 

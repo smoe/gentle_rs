@@ -192,22 +192,22 @@ fn sample_value_for_usage_token(flag: &str, token: &str) -> String {
     if flag == "--strand" && token.contains("+|-") {
         return "+".to_string();
     }
-    if let Some(choice) = token.split('|').next().filter(|choice| !choice.is_empty()) {
-        if choice != token {
-            let choice = choice.trim_matches('\'');
-            return if choice == "START..END" {
-                "1..10".to_string()
-            } else if choice.chars().all(|ch| ch.is_ascii_digit()) {
-                choice.to_string()
-            } else if choice
-                .chars()
-                .any(|ch| ch.is_ascii_lowercase() || matches!(ch, '_' | '-' | '.'))
-            {
-                choice.to_string()
-            } else {
-                sample_value_for_usage_token(flag, choice)
-            };
-        }
+    if let Some(choice) = token.split('|').next().filter(|choice| !choice.is_empty())
+        && choice != token
+    {
+        let choice = choice.trim_matches('\'');
+        return if choice == "START..END" {
+            "1..10".to_string()
+        } else if choice.chars().all(|ch| ch.is_ascii_digit()) {
+            choice.to_string()
+        } else if choice
+            .chars()
+            .any(|ch| ch.is_ascii_lowercase() || matches!(ch, '_' | '-' | '.'))
+        {
+            choice.to_string()
+        } else {
+            sample_value_for_usage_token(flag, choice)
+        };
     }
     if token
         .chars()
@@ -15276,15 +15276,14 @@ fn execute_containers_set_exclusive_updates_state() {
     )
     .expect("execute containers set-exclusive");
     assert!(out.state_changed);
-    assert_eq!(
-        engine
+    assert!(
+        !engine
             .state()
             .container_state
             .containers
             .get("container-1")
             .expect("container")
-            .declared_contents_exclusive,
-        false
+            .declared_contents_exclusive
     );
 }
 

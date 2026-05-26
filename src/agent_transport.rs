@@ -203,12 +203,7 @@ fn resolve_base_url(system: &AgentSystemSpec, default: &str) -> String {
         .env
         .get(AGENT_BASE_URL_ENV)
         .and_then(|value| normalize_base_url(value))
-        .or_else(|| {
-            system
-                .base_url
-                .as_deref()
-                .and_then(|value| normalize_base_url(value))
-        })
+        .or_else(|| system.base_url.as_deref().and_then(normalize_base_url))
         .or_else(|| normalize_base_url(default))
         .unwrap_or_else(|| default.trim_end_matches('/').to_string())
 }

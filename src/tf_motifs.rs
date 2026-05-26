@@ -374,15 +374,16 @@ impl TfMotifDb {
             if !id_key.is_empty() {
                 by_key.insert(id_key.clone(), idx);
             }
-            if let Some(supplement_id_key) = supplement_id_key {
-                if supplement_id_key != id_key && !supplement_id_key.is_empty() {
-                    by_key.entry(supplement_id_key).or_insert(idx);
-                }
+            if let Some(supplement_id_key) = supplement_id_key
+                && supplement_id_key != id_key
+                && !supplement_id_key.is_empty()
+            {
+                by_key.entry(supplement_id_key).or_insert(idx);
             }
-            if let Some(name_key) = name_key {
-                if !name_key.is_empty() {
-                    by_key.entry(name_key).or_insert(idx);
-                }
+            if let Some(name_key) = name_key
+                && !name_key.is_empty()
+            {
+                by_key.entry(name_key).or_insert(idx);
             }
             for (alias, target) in &alias_targets {
                 if *target == normalize_lookup_key(&m.id)
@@ -586,15 +587,15 @@ pub fn resolve_tf_query(query: &str) -> TfQueryResolution {
         let mut matches = vec![];
         let mut seen = BTreeSet::new();
         for member in &group.record.members {
-            if let Some(motif) = resolve_motif_definition(&member.symbol) {
-                if seen.insert(motif.id.clone()) {
-                    matches.push(TfQueryResolvedMotif {
-                        motif_id: motif.id,
-                        motif_name: motif.name,
-                        consensus_iupac: motif.consensus_iupac,
-                        motif_length_bp: motif.matrix_counts.len(),
-                    });
-                }
+            if let Some(motif) = resolve_motif_definition(&member.symbol)
+                && seen.insert(motif.id.clone())
+            {
+                matches.push(TfQueryResolvedMotif {
+                    motif_id: motif.id,
+                    motif_name: motif.name,
+                    consensus_iupac: motif.consensus_iupac,
+                    motif_length_bp: motif.matrix_counts.len(),
+                });
             }
         }
         return TfQueryResolution {

@@ -2564,14 +2564,14 @@ fn apply_pool_member_topology_hint(
     ) {
         let mut value = serde_json::to_value(&*dna)
             .map_err(|e| format!("Could not serialize sequence for topology hint: {e}"))?;
-        if let Some(obj) = value.as_object_mut() {
-            if let Some(seq_obj) = obj.get_mut("seq").and_then(|v| v.as_object_mut()) {
-                let comments = seq_obj
-                    .entry("comments".to_string())
-                    .or_insert_with(|| json!([]));
-                if let Some(arr) = comments.as_array_mut() {
-                    arr.push(json!(format!("gel_topology={}", form.as_str())));
-                }
+        if let Some(obj) = value.as_object_mut()
+            && let Some(seq_obj) = obj.get_mut("seq").and_then(|v| v.as_object_mut())
+        {
+            let comments = seq_obj
+                .entry("comments".to_string())
+                .or_insert_with(|| json!([]));
+            if let Some(arr) = comments.as_array_mut() {
+                arr.push(json!(format!("gel_topology={}", form.as_str())));
             }
         }
         *dna = serde_json::from_value(value)
@@ -3230,24 +3230,23 @@ fn routine_matches_filter(
     tag: Option<&str>,
     query: Option<&str>,
 ) -> bool {
-    if let Some(family_filter) = family.map(str::trim).filter(|v| !v.is_empty()) {
-        if !routine.family.eq_ignore_ascii_case(family_filter) {
-            return false;
-        }
+    if let Some(family_filter) = family.map(str::trim).filter(|v| !v.is_empty())
+        && !routine.family.eq_ignore_ascii_case(family_filter)
+    {
+        return false;
     }
-    if let Some(status_filter) = status.map(str::trim).filter(|v| !v.is_empty()) {
-        if !routine.status.eq_ignore_ascii_case(status_filter) {
-            return false;
-        }
+    if let Some(status_filter) = status.map(str::trim).filter(|v| !v.is_empty())
+        && !routine.status.eq_ignore_ascii_case(status_filter)
+    {
+        return false;
     }
-    if let Some(tag_filter) = tag.map(str::trim).filter(|v| !v.is_empty()) {
-        if !routine
+    if let Some(tag_filter) = tag.map(str::trim).filter(|v| !v.is_empty())
+        && !routine
             .vocabulary_tags
             .iter()
             .any(|entry| entry.eq_ignore_ascii_case(tag_filter))
-        {
-            return false;
-        }
+    {
+        return false;
     }
     if let Some(query_filter) = query
         .map(str::trim)
@@ -3600,19 +3599,19 @@ fn estimate_routine_planning(
 
     let mut guardrail_failures = vec![];
     if objective.enforce_guardrails {
-        if let Some(max_cost) = objective.max_cost {
-            if estimated_cost > max_cost {
-                guardrail_failures.push(format!(
-                    "max_cost_exceeded ({estimated_cost:.2} > {max_cost:.2})"
-                ));
-            }
+        if let Some(max_cost) = objective.max_cost
+            && estimated_cost > max_cost
+        {
+            guardrail_failures.push(format!(
+                "max_cost_exceeded ({estimated_cost:.2} > {max_cost:.2})"
+            ));
         }
-        if let Some(max_time_hours) = objective.max_time_hours {
-            if estimated_time_hours > max_time_hours {
-                guardrail_failures.push(format!(
-                    "max_time_hours_exceeded ({estimated_time_hours:.1} > {max_time_hours:.1})"
-                ));
-            }
+        if let Some(max_time_hours) = objective.max_time_hours
+            && estimated_time_hours > max_time_hours
+        {
+            guardrail_failures.push(format!(
+                "max_time_hours_exceeded ({estimated_time_hours:.1} > {max_time_hours:.1})"
+            ));
         }
         for capability in &objective.required_capabilities {
             if !capability_set.contains(capability) {
@@ -3907,10 +3906,10 @@ fn sequence_anchor_matches_filter(
     if feature.kind.to_string().eq_ignore_ascii_case("SOURCE") {
         return false;
     }
-    if let Some(expected_kind) = anchor_kind {
-        if !feature.kind.to_string().eq_ignore_ascii_case(expected_kind) {
-            return false;
-        }
+    if let Some(expected_kind) = anchor_kind
+        && !feature.kind.to_string().eq_ignore_ascii_case(expected_kind)
+    {
+        return false;
     }
     if let Some(expected_label) = anchor_label {
         let expected = expected_label.to_ascii_uppercase();
@@ -4241,10 +4240,10 @@ fn collect_restriction_enzyme_bindings(bindings: &HashMap<String, String>) -> Ve
         if preferred_keys.contains(&key.as_str()) {
             continue;
         }
-        if key.to_ascii_lowercase().contains("enzyme") {
-            if let Some(raw) = bindings.get(&key) {
-                ordered_values.push(raw.clone());
-            }
+        if key.to_ascii_lowercase().contains("enzyme")
+            && let Some(raw) = bindings.get(&key)
+        {
+            ordered_values.push(raw.clone());
         }
     }
 
@@ -4631,13 +4630,13 @@ fn apply_restriction_family_preflight_semantics(
                 .to_string(),
         );
     }
-    if let (Some(left), Some(right)) = (left_fragment, right_fragment) {
-        if left == right {
-            report.warnings.push(format!(
-                "Restriction preflight: left_fragment and right_fragment are both {}",
-                left
-            ));
-        }
+    if let (Some(left), Some(right)) = (left_fragment, right_fragment)
+        && left == right
+    {
+        report.warnings.push(format!(
+            "Restriction preflight: left_fragment and right_fragment are both {}",
+            left
+        ));
     }
     if let (Some(from), Some(to)) = (extract_from, extract_to) {
         if from == to {
@@ -4941,13 +4940,11 @@ fn apply_gateway_family_preflight_semantics(
                     .push("Gateway LR preflight rejects mixed-phase tokens attB/attP".to_string());
             }
         }
-        "bp_lr" => {
-            if !(has_attb && has_attp && has_attl && has_attr) {
-                report.errors.push(
-                    "Gateway BP+LR preflight requires att_tokens to include attB,attP,attL,attR"
-                        .to_string(),
-                );
-            }
+        "bp_lr" if !(has_attb && has_attp && has_attl && has_attr) => {
+            report.errors.push(
+                "Gateway BP+LR preflight requires att_tokens to include attB,attP,attL,attR"
+                    .to_string(),
+            );
         }
         _ => {}
     }
@@ -10646,10 +10643,10 @@ impl ShellCommand {
     }
 
     pub fn is_state_mutating(&self) -> bool {
-        if let Self::MacrosTemplateRun { validate_only, .. } = self {
-            if *validate_only {
-                return false;
-            }
+        if let Self::MacrosTemplateRun { validate_only, .. } = self
+            && *validate_only
+        {
+            return false;
         }
         matches!(
             self,
@@ -10852,10 +10849,7 @@ fn maybe_materialize_repeats_for_first_created_sequence(
     Ok(Some(repeat_result))
 }
 
-fn resolved_catalog_path<'a>(
-    catalog_path: &'a Option<String>,
-    _helper_mode: bool,
-) -> Option<&'a str> {
+fn resolved_catalog_path(catalog_path: &Option<String>, _helper_mode: bool) -> Option<&str> {
     catalog_path
         .as_deref()
         .map(str::trim)
@@ -11407,10 +11401,10 @@ fn collect_blast_async_job_snapshots(
     refresh_and_dispatch_blast_async_jobs_locked(jobs);
     let mut statuses: Vec<BlastAsyncJobStatus> = vec![];
     for record in jobs.values_mut() {
-        if let Some(helper_mode) = helper_mode_filter {
-            if record.status.helper_mode != helper_mode {
-                continue;
-            }
+        if let Some(helper_mode) = helper_mode_filter
+            && record.status.helper_mode != helper_mode
+        {
+            continue;
         }
         statuses.push(record.status.clone());
     }
@@ -11843,10 +11837,10 @@ fn parse_feature_expert_target_tokens(
                     }
                 }
             }
-            if let (Some(start), Some(end)) = (recognition_start_1based, recognition_end_1based) {
-                if start > end {
-                    return Err("--start must be <= --end".to_string());
-                }
+            if let (Some(start), Some(end)) = (recognition_start_1based, recognition_end_1based)
+                && start > end
+            {
+                return Err("--start must be <= --end".to_string());
             }
             Ok(FeatureExpertTarget::RestrictionSite {
                 cut_pos_1based,
@@ -13058,12 +13052,12 @@ fn load_batch_manifest(
         .map(|value| value.to_string())
         .or_else(|| headers.iter().find(|name| *name == "sample_id").cloned())
         .or_else(|| headers.iter().find(|name| *name == "id").cloned());
-    if let Some(id_column) = id_column.as_deref() {
-        if !headers.iter().any(|header| header == id_column) {
-            return Err(format!(
-                "Batch id column '{id_column}' is not present in manifest header"
-            ));
-        }
+    if let Some(id_column) = id_column.as_deref()
+        && !headers.iter().any(|header| header == id_column)
+    {
+        return Err(format!(
+            "Batch id column '{id_column}' is not present in manifest header"
+        ));
     }
 
     let mut rows = Vec::new();
@@ -13071,10 +13065,10 @@ fn load_batch_manifest(
         if line_index < offset {
             continue;
         }
-        if let Some(limit) = limit {
-            if rows.len() >= limit {
-                break;
-            }
+        if let Some(limit) = limit
+            && rows.len() >= limit
+        {
+            break;
         }
         let values = split_manifest_record(line, delimiter_char)?;
         if values.len() != headers.len() {
@@ -19600,7 +19594,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 }
             }
             if inputs.is_empty()
-                && container_ids.as_ref().map_or(true, |v| v.is_empty())
+                && container_ids.as_ref().is_none_or(|v| v.is_empty())
                 && arrangement_id.is_none()
             {
                 return Err(format!(
@@ -25291,10 +25285,10 @@ fn execute_export_import_and_resource_command(
                 if let Some(name) = &member.name {
                     let mut value = serde_json::to_value(&dna)
                         .map_err(|e| format!("Could not serialize sequence: {e}"))?;
-                    if let Some(obj) = value.as_object_mut() {
-                        if let Some(seq_obj) = obj.get_mut("seq").and_then(|v| v.as_object_mut()) {
-                            seq_obj.insert("name".to_string(), json!(name));
-                        }
+                    if let Some(obj) = value.as_object_mut()
+                        && let Some(seq_obj) = obj.get_mut("seq").and_then(|v| v.as_object_mut())
+                    {
+                        seq_obj.insert("name".to_string(), json!(name));
                     }
                     dna = serde_json::from_value(value)
                         .map_err(|e| format!("Could not set sequence name: {e}"))?;
@@ -28356,13 +28350,13 @@ fn execute_planning_command(
             confidence,
             snapshot_id,
         } => {
-            if let Some(value) = confidence {
-                if !value.is_finite() || !(0.0..=1.0).contains(value) {
-                    return Err(format!(
-                        "Invalid planning sync pull confidence '{}'; expected 0.0..=1.0",
-                        value
-                    ));
-                }
+            if let Some(value) = confidence
+                && (!value.is_finite() || !(0.0..=1.0).contains(value))
+            {
+                return Err(format!(
+                    "Invalid planning sync pull confidence '{}'; expected 0.0..=1.0",
+                    value
+                ));
             }
             let payload = parse_required_json_payload::<PlanningSyncSuggestionPayload>(
                 payload_json,
@@ -28403,13 +28397,13 @@ fn execute_planning_command(
             confidence,
             snapshot_id,
         } => {
-            if let Some(value) = confidence {
-                if !value.is_finite() || !(0.0..=1.0).contains(value) {
-                    return Err(format!(
-                        "Invalid planning sync push confidence '{}'; expected 0.0..=1.0",
-                        value
-                    ));
-                }
+            if let Some(value) = confidence
+                && (!value.is_finite() || !(0.0..=1.0).contains(value))
+            {
+                return Err(format!(
+                    "Invalid planning sync push confidence '{}'; expected 0.0..=1.0",
+                    value
+                ));
             }
             let payload = parse_required_json_payload::<PlanningSyncSuggestionPayload>(
                 payload_json,
@@ -33642,15 +33636,15 @@ fn execute_ui_prepared_genomes_command(
             continue;
         }
         let id_lc = genome_id.to_ascii_lowercase();
-        if let Some(filter_lc) = filter_lc.as_ref() {
-            if !id_lc.contains(filter_lc) {
-                continue;
-            }
+        if let Some(filter_lc) = filter_lc.as_ref()
+            && !id_lc.contains(filter_lc)
+        {
+            continue;
         }
-        if let Some(species_lc) = species_lc.as_ref() {
-            if !id_lc.contains(species_lc) {
-                continue;
-            }
+        if let Some(species_lc) = species_lc.as_ref()
+            && !id_lc.contains(species_lc)
+        {
+            continue;
         }
         let installed_at_unix_ms = catalog
             .inspect_prepared_genome(&genome_id, cache_dir.as_deref())

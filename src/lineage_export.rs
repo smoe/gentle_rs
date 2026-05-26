@@ -480,7 +480,8 @@ fn compute_lineage_dag_layout(
 
     let mut ready: Vec<String> = indegree_by_node
         .iter()
-        .filter_map(|(node_id, indegree)| (*indegree == 0).then(|| node_id.clone()))
+        .filter(|&(_node_id, indegree)| *indegree == 0)
+        .map(|(node_id, _indegree)| node_id.clone())
         .collect();
     ready.sort_by_key(|node_id| row_index.get(node_id).copied().unwrap_or(usize::MAX));
 
@@ -1140,7 +1141,7 @@ pub fn build_lineage_svg_graph(
         });
         let mut seen_sources: HashSet<String> = HashSet::new();
         for source_seq_id in std::iter::once(expected_seq_id)
-            .chain(baseline_seq_id.into_iter())
+            .chain(baseline_seq_id)
             .collect::<Vec<_>>()
         {
             let Some(source_node_id) = state.lineage.seq_to_node.get(&source_seq_id) else {

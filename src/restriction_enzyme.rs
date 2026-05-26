@@ -195,10 +195,10 @@ impl RestrictionEnzyme {
                 }
             }
         }
-        if let Some(max) = max_sites {
-            if max < ret.len() {
-                return vec![];
-            }
+        if let Some(max) = max_sites
+            && max < ret.len()
+        {
+            return vec![];
         }
         ret
     }

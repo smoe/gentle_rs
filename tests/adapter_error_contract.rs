@@ -119,9 +119,7 @@ fn mcp_tool_error_boundary_embeds_engine_error_payload() {
         .map(|value| value.as_str().expect("cause string"))
         .collect::<Vec<_>>();
     assert!(
-        cause_chain
-            .iter()
-            .any(|cause| *cause == "MCP adapter boundary"),
+        cause_chain.contains(&"MCP adapter boundary"),
         "MCP cause chain must include adapter boundary: {cause_chain:#?}"
     );
     assert!(

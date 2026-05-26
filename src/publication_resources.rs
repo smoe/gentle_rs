@@ -767,13 +767,13 @@ fn download_publication_file(
     row.local_size_bytes = Some(bytes);
     row.size_matches = row.expected_size_bytes.map(|expected| expected == bytes);
     row.checksum_sha1 = Some(format!("{:x}", hasher.finalize()));
-    if let Some(expected) = row.expected_size_bytes {
-        if expected != bytes {
-            return Err(format!(
-                "Downloaded '{}' size was {bytes} bytes, expected {expected} bytes",
-                row.file_name
-            ));
-        }
+    if let Some(expected) = row.expected_size_bytes
+        && expected != bytes
+    {
+        return Err(format!(
+            "Downloaded '{}' size was {bytes} bytes, expected {expected} bytes",
+            row.file_name
+        ));
     }
     row.downloaded = true;
     Ok(())

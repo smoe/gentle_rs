@@ -226,10 +226,10 @@ pub fn external_service_provider_config_doctor_report(
 fn value_string_for_key<'a>(value: &'a Value, keys: &[&str]) -> Option<&'a str> {
     let object = value.as_object()?;
     for key in keys {
-        if let Some(text) = object.get(*key).and_then(Value::as_str) {
-            if !text.trim().is_empty() {
-                return Some(text);
-            }
+        if let Some(text) = object.get(*key).and_then(Value::as_str)
+            && !text.trim().is_empty()
+        {
+            return Some(text);
         }
     }
     None
@@ -369,26 +369,25 @@ fn external_service_links_for(
             });
         }
     }
-    if let Some(template) = provider_config.product_template_for(&normalized) {
-        if let Some(url) = template
+    if let Some(template) = provider_config.product_template_for(&normalized)
+        && let Some(url) = template
             .template_url
             .as_deref()
             .filter(|url| !url.trim().is_empty())
-        {
-            links.push(ExternalServiceLink {
-                label: format!(
-                    "{} template/catalog",
-                    if template.product_name.is_empty() {
-                        normalized.as_str()
-                    } else {
-                        template.product_name.as_str()
-                    }
-                ),
-                url: url.to_string(),
-                purpose: "Vendor template or order-form catalog for the selected service kind."
-                    .to_string(),
-            });
-        }
+    {
+        links.push(ExternalServiceLink {
+            label: format!(
+                "{} template/catalog",
+                if template.product_name.is_empty() {
+                    normalized.as_str()
+                } else {
+                    template.product_name.as_str()
+                }
+            ),
+            url: url.to_string(),
+            purpose: "Vendor template or order-form catalog for the selected service kind."
+                .to_string(),
+        });
     }
     if let Some(url) = provider_config
         .record
@@ -683,10 +682,10 @@ fn service_quote_markdown(
 fn string_from_value_keys<'a>(value: &'a Value, keys: &[&str]) -> Option<&'a str> {
     let object = value.as_object()?;
     for key in keys {
-        if let Some(text) = object.get(*key).and_then(Value::as_str) {
-            if !text.trim().is_empty() {
-                return Some(text.trim());
-            }
+        if let Some(text) = object.get(*key).and_then(Value::as_str)
+            && !text.trim().is_empty()
+        {
+            return Some(text.trim());
         }
     }
     None
@@ -969,22 +968,22 @@ pub fn external_service_project_quote(
         warnings.push("Quote handoff is blocked until preflight issues are resolved.".to_string());
     }
     let provider_config = provider_config_for_report(&preflight.provider);
-    if let Some(config) = provider_config.as_ref() {
-        if let Some(template) = config.product_template_for(&preflight.service_kind) {
-            if template.local_template_path.is_none() {
-                warnings.push(format!(
+    if let Some(config) = provider_config.as_ref()
+        && let Some(template) = config.product_template_for(&preflight.service_kind)
+    {
+        if template.local_template_path.is_none() {
+            warnings.push(format!(
                     "{} template is referenced at '{}' but is not available as a local template fixture; generated JSON/CSV/email/WOP artifacts remain usable.",
                     template.product_name,
                     template.template_url.clone().unwrap_or_else(|| "no URL configured".to_string())
                 ));
-            } else if let Some(path) = template.local_template_path.as_deref() {
-                if !std::path::Path::new(path).is_file() {
-                    warnings.push(format!(
+        } else if let Some(path) = template.local_template_path.as_deref()
+            && !std::path::Path::new(path).is_file()
+        {
+            warnings.push(format!(
                         "Configured local template '{}' is missing; generated JSON/CSV/email/WOP artifacts remain usable.",
                         path
                     ));
-                }
-            }
         }
     }
     let line_items = provider_config
@@ -1283,7 +1282,7 @@ fn inspect_helper_status(genome_id: &str) -> Result<ServiceDependencyStatus, Str
             .map_err(|e| e.to_string())?;
     let interpretation = GentleEngine::interpret_helper_genome(genome_id, None)
         .map_err(|e| e.to_string())?
-        .map(|record| serde_json::to_value(record))
+        .map(serde_json::to_value)
         .transpose()
         .map_err(|e| format!("Could not serialize helper interpretation: {e}"))?;
     let lifecycle_status =

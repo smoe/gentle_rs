@@ -510,10 +510,8 @@ impl GentleEngine {
         let direction_penalty = if in_read_direction { 0 } else { 1000 };
         let distance_penalty = if three_prime_distance_bp < MIN_PREFERRED_DISTANCE_BP {
             MIN_PREFERRED_DISTANCE_BP - three_prime_distance_bp
-        } else if three_prime_distance_bp > MAX_PREFERRED_DISTANCE_BP {
-            three_prime_distance_bp - MAX_PREFERRED_DISTANCE_BP
         } else {
-            0
+            three_prime_distance_bp.saturating_sub(MAX_PREFERRED_DISTANCE_BP)
         };
         direction_penalty + distance_penalty
     }
@@ -1993,9 +1991,9 @@ impl GentleEngine {
         }
     }
 
-    fn choose_best_variant_observation<'a>(
-        observations: &'a [(SequencingConfirmationReadResult, VariantObservation)],
-    ) -> Option<&'a (SequencingConfirmationReadResult, VariantObservation)> {
+    fn choose_best_variant_observation(
+        observations: &[(SequencingConfirmationReadResult, VariantObservation)],
+    ) -> Option<&(SequencingConfirmationReadResult, VariantObservation)> {
         fn rank(observation: &VariantObservation) -> (i32, usize, i32) {
             let priority = match observation.classification {
                 SequencingConfirmationVariantClassification::ReferenceReversion

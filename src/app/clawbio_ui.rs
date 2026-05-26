@@ -180,10 +180,10 @@ impl GENtleApp {
             }
             ui.monospace(result.output_dir.as_str());
         });
-        if let Some(report) = &result.report_md_path {
-            if ui.button("Open report.md").clicked() {
-                reveal_path(report);
-            }
+        if let Some(report) = &result.report_md_path
+            && ui.button("Open report.md").clicked()
+        {
+            reveal_path(report);
         }
         if ui.button("Open result.json").clicked() {
             reveal_path(&result.result_json_path);
@@ -211,10 +211,9 @@ impl GENtleApp {
                         egui::Button::new(clawbio_action_label(action, idx + 1)),
                     )
                     .clicked()
+                    && let Some(request) = request.clone()
                 {
-                    if let Some(request) = request.clone() {
-                        self.start_clawbio_request(request);
-                    }
+                    self.start_clawbio_request(request);
                 }
                 if !clawbio_action_has_request(action) {
                     ui.small("No nested request supplied by ClawBio.");

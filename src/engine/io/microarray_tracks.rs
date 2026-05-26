@@ -571,13 +571,12 @@ impl GentleEngine {
     ) -> Option<&'a str> {
         for alias in aliases {
             let key = Self::normalized_microarray_header_key(alias);
-            if let Some(index) = header.get(&key) {
-                if let Some(value) = fields.get(*index) {
-                    let trimmed = value.trim();
-                    if !trimmed.is_empty() && trimmed != "." && !trimmed.eq_ignore_ascii_case("NA")
-                    {
-                        return Some(trimmed);
-                    }
+            if let Some(index) = header.get(&key)
+                && let Some(value) = fields.get(*index)
+            {
+                let trimmed = value.trim();
+                if !trimmed.is_empty() && trimmed != "." && !trimmed.eq_ignore_ascii_case("NA") {
+                    return Some(trimmed);
                 }
             }
         }
@@ -1022,25 +1021,25 @@ impl GentleEngine {
                 cause_chain: vec![],
             });
         }
-        if let Some(min_abs_logfc) = min_abs_logfc {
-            if !min_abs_logfc.is_finite() || min_abs_logfc < 0.0 {
-                return Err(EngineError {
-                    code: ErrorCode::InvalidInput,
-                    message: "ProjectMicroarrayTrack min_abs_logfc must be >= 0".to_string(),
+        if let Some(min_abs_logfc) = min_abs_logfc
+            && (!min_abs_logfc.is_finite() || min_abs_logfc < 0.0)
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "ProjectMicroarrayTrack min_abs_logfc must be >= 0".to_string(),
 
-                    cause_chain: vec![],
-                });
-            }
+                cause_chain: vec![],
+            });
         }
-        if let Some(max_adj_p) = max_adj_p {
-            if !max_adj_p.is_finite() || !(0.0..=1.0).contains(&max_adj_p) {
-                return Err(EngineError {
-                    code: ErrorCode::InvalidInput,
-                    message: "ProjectMicroarrayTrack max_adj_p must be within 0..=1".to_string(),
+        if let Some(max_adj_p) = max_adj_p
+            && (!max_adj_p.is_finite() || !(0.0..=1.0).contains(&max_adj_p))
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "ProjectMicroarrayTrack max_adj_p must be within 0..=1".to_string(),
 
-                    cause_chain: vec![],
-                });
-            }
+                cause_chain: vec![],
+            });
         }
 
         let mut report = MicroarrayProjectionReport {

@@ -48,19 +48,19 @@ fn resolve_runtime_asset_path_from(
             return repo_relative;
         }
     }
-    if let Some(exe_path) = current_exe {
-        if let Some(exe_dir) = exe_path.parent() {
-            let mut candidates: Vec<PathBuf> = Vec::new();
-            if let Some(parent) = exe_dir.parent() {
-                candidates.push(parent.join("Resources").join(path));
-                if let Some(grandparent) = parent.parent() {
-                    candidates.push(grandparent.join(path));
-                }
+    if let Some(exe_path) = current_exe
+        && let Some(exe_dir) = exe_path.parent()
+    {
+        let mut candidates: Vec<PathBuf> = Vec::new();
+        if let Some(parent) = exe_dir.parent() {
+            candidates.push(parent.join("Resources").join(path));
+            if let Some(grandparent) = parent.parent() {
+                candidates.push(grandparent.join(path));
             }
-            for candidate in candidates {
-                if candidate.exists() {
-                    return candidate;
-                }
+        }
+        for candidate in candidates {
+            if candidate.exists() {
+                return candidate;
             }
         }
     }

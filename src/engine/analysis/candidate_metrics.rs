@@ -426,10 +426,8 @@ impl GentleEngine {
         kind_filter_upper: &[String],
         label_regex: Option<&Regex>,
     ) -> bool {
-        let kind_ok = kind_filter_upper.is_empty()
-            || kind_filter_upper
-                .iter()
-                .any(|kind| feature.kind_upper == *kind);
+        let kind_ok =
+            kind_filter_upper.is_empty() || kind_filter_upper.contains(&feature.kind_upper);
         if !kind_ok {
             return false;
         }

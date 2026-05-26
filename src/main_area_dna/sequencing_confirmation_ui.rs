@@ -141,7 +141,7 @@ impl MainAreaDna {
         }
         let mut out = vec![];
         let mut seen = BTreeSet::new();
-        for token in trimmed.split(|c| matches!(c, ',' | ';' | '\n' | '\r')) {
+        for token in trimmed.split([',', ';', '\n', '\r']) {
             let token = token.trim();
             if token.is_empty() {
                 continue;
@@ -971,7 +971,7 @@ impl MainAreaDna {
                 "No persisted sequencing-confirmation reports for this sequence".to_string();
             return;
         }
-        if self
+        if (self
             .sequencing_confirmation_ui
             .selected_report_id
             .trim()
@@ -979,12 +979,11 @@ impl MainAreaDna {
             || !summaries.iter().any(|row| {
                 row.report_id
                     .eq_ignore_ascii_case(self.sequencing_confirmation_ui.selected_report_id.trim())
-            })
+            }))
+            && let Some(row) = summaries.last()
         {
-            if let Some(row) = summaries.last() {
-                self.sequencing_confirmation_ui.selected_report_id = row.report_id.clone();
-                self.save_engine_ops_state();
-            }
+            self.sequencing_confirmation_ui.selected_report_id = row.report_id.clone();
+            self.save_engine_ops_state();
         }
         let preview_ids = summaries
             .iter()
@@ -1277,10 +1276,10 @@ impl MainAreaDna {
         }
     }
 
-    pub(super) fn sequencing_confirmation_target_review_rows<'a>(
-        report: &'a SequencingConfirmationReport,
+    pub(super) fn sequencing_confirmation_target_review_rows(
+        report: &SequencingConfirmationReport,
         review_unresolved_first: bool,
-    ) -> Vec<&'a SequencingConfirmationTargetResult> {
+    ) -> Vec<&SequencingConfirmationTargetResult> {
         let mut rows = report.targets.iter().collect::<Vec<_>>();
         if review_unresolved_first {
             rows.sort_by(|a, b| {
@@ -1294,10 +1293,10 @@ impl MainAreaDna {
         rows
     }
 
-    pub(super) fn sequencing_confirmation_variant_review_rows<'a>(
-        report: &'a SequencingConfirmationReport,
+    pub(super) fn sequencing_confirmation_variant_review_rows(
+        report: &SequencingConfirmationReport,
         review_unresolved_first: bool,
-    ) -> Vec<&'a SequencingConfirmationVariantRow> {
+    ) -> Vec<&SequencingConfirmationVariantRow> {
         let mut rows = report.variants.iter().collect::<Vec<_>>();
         if review_unresolved_first {
             rows.sort_by(|a, b| {
@@ -1491,13 +1490,13 @@ impl MainAreaDna {
         gap_start_0based + gap_end_0based_exclusive.saturating_sub(gap_start_0based) / 2
     }
 
-    pub(super) fn sequencing_confirmation_gap_flanking_reads<'a>(
-        report: &'a SequencingConfirmationReport,
+    pub(super) fn sequencing_confirmation_gap_flanking_reads(
+        report: &SequencingConfirmationReport,
         gap_start_0based: usize,
         gap_end_0based_exclusive: usize,
     ) -> (
-        Option<&'a SequencingConfirmationReadResult>,
-        Option<&'a SequencingConfirmationReadResult>,
+        Option<&SequencingConfirmationReadResult>,
+        Option<&SequencingConfirmationReadResult>,
     ) {
         let left = report
             .reads
@@ -1538,11 +1537,11 @@ impl MainAreaDna {
         (left, right)
     }
 
-    pub(super) fn sequencing_confirmation_gap_primer_suggestions<'a>(
-        overlay_report: &'a SequencingPrimerOverlayReport,
+    pub(super) fn sequencing_confirmation_gap_primer_suggestions(
+        overlay_report: &SequencingPrimerOverlayReport,
         gap_start_0based: usize,
         gap_end_0based_exclusive: usize,
-    ) -> Vec<&'a SequencingPrimerOverlaySuggestion> {
+    ) -> Vec<&SequencingPrimerOverlaySuggestion> {
         let gap_center = Self::sequencing_confirmation_gap_center_0based(
             gap_start_0based,
             gap_end_0based_exclusive,
@@ -1574,11 +1573,11 @@ impl MainAreaDna {
         rows
     }
 
-    pub(super) fn sequencing_confirmation_gap_primer_proposals<'a>(
-        overlay_report: &'a SequencingPrimerOverlayReport,
+    pub(super) fn sequencing_confirmation_gap_primer_proposals(
+        overlay_report: &SequencingPrimerOverlayReport,
         gap_start_0based: usize,
         gap_end_0based_exclusive: usize,
-    ) -> Vec<&'a SequencingPrimerProposalRow> {
+    ) -> Vec<&SequencingPrimerProposalRow> {
         let gap_center = Self::sequencing_confirmation_gap_center_0based(
             gap_start_0based,
             gap_end_0based_exclusive,
@@ -1977,7 +1976,7 @@ impl MainAreaDna {
             "Click a target span, evidence span, coverage gap, or variant marker to sync the detailed review panes below.",
         );
         ui.horizontal_wrapped(|ui| {
-            ui.small(format!("1"));
+            ui.small("1".to_string());
             ui.separator();
             ui.small(format!("{} bp", sequence_length));
             if sequence_length > 1 {
@@ -3950,13 +3949,12 @@ impl MainAreaDna {
                         &self.sequencing_confirmation_ui.selected_evidence_id,
                         &self.sequencing_confirmation_ui.selected_variant_id,
                         selected_gap,
-                    ) {
-                        if self
+                    )
+                        && self
                             .sequencing_confirmation_apply_overview_selection(report, selection)
                         {
                             self.save_engine_ops_state();
                         }
-                    }
                     let unresolved_queue = Self::sequencing_confirmation_unresolved_review_queue(
                         report,
                         report_sequence_length,
@@ -4723,8 +4721,8 @@ impl MainAreaDna {
                             alignment.aligned_target_start_0based,
                             alignment.aligned_target_end_0based_exclusive
                         ));
-                        if let Some(trace_id) = best_read.trace_id.as_deref() {
-                            if ui
+                        if let Some(trace_id) = best_read.trace_id.as_deref()
+                            && ui
                                 .small_button("Inspect this trace")
                                 .on_hover_text(
                                     "Load the imported trace record behind the selected evidence row into the trace review pane.",
@@ -4735,7 +4733,6 @@ impl MainAreaDna {
                                     trace_id.to_string();
                                 self.save_engine_ops_state();
                             }
-                        }
                         if !best_read.discrepancies.is_empty() {
                             ui.separator();
                             ui.label(egui::RichText::new("Discrepancies").strong());

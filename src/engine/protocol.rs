@@ -4307,7 +4307,9 @@ pub enum PrimerIntronSeparationPolicy {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 /// Primer role in a specificity-confirmation run.
+#[derive(Default)]
 pub enum PrimerSpecificityPrimerRole {
+    #[default]
     Forward,
     Reverse,
 }
@@ -4321,16 +4323,12 @@ impl PrimerSpecificityPrimerRole {
     }
 }
 
-impl Default for PrimerSpecificityPrimerRole {
-    fn default() -> Self {
-        Self::Forward
-    }
-}
-
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 /// Pairing class inspected for Primer-BLAST-style warnings.
+#[derive(Default)]
 pub enum PrimerSpecificityAmpliconKind {
+    #[default]
     ForwardReverse,
     ForwardForward,
     ReverseReverse,
@@ -4343,12 +4341,6 @@ impl PrimerSpecificityAmpliconKind {
             Self::ForwardForward => "forward_forward",
             Self::ReverseReverse => "reverse_reverse",
         }
-    }
-}
-
-impl Default for PrimerSpecificityAmpliconKind {
-    fn default() -> Self {
-        Self::ForwardReverse
     }
 }
 
@@ -6899,6 +6891,7 @@ pub struct RoutineDecisionTraceStore {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
+#[derive(Default)]
 pub struct ProcessRunBundleConstructReasoningSummary {
     pub seq_id: String,
     pub graph_id: String,
@@ -6917,30 +6910,6 @@ pub struct ProcessRunBundleConstructReasoningSummary {
     pub suggested_variant_assay_ids: Vec<String>,
     pub summary_lines: Vec<String>,
     pub warning_lines: Vec<String>,
-}
-
-impl Default for ProcessRunBundleConstructReasoningSummary {
-    fn default() -> Self {
-        Self {
-            seq_id: String::new(),
-            graph_id: String::new(),
-            objective_id: String::new(),
-            objective_title: String::new(),
-            objective_goal: String::new(),
-            fact_types: vec![],
-            decision_types: vec![],
-            fact_statuses: BTreeMap::new(),
-            host_profile_ids: vec![],
-            helper_profile_id: None,
-            medium_conditions: vec![],
-            growth_condition_signals: vec![],
-            supported_selection_rule_ids: vec![],
-            variant_effect_tags: vec![],
-            suggested_variant_assay_ids: vec![],
-            summary_lines: vec![],
-            warning_lines: vec![],
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

@@ -94,8 +94,7 @@ impl MainAreaDna {
                         "Open a file chooser for FASTA/FASTA.gz input. In Auto mode, Report ID is refreshed from the current locus + input + scope/origin settings.",
                     )
                     .clicked()
-                {
-                    if let Some(path) = rfd::FileDialog::new()
+                    && let Some(path) = rfd::FileDialog::new()
                         .add_filter("FASTA", &["fa", "fasta", "gz"])
                         .pick_file()
                     {
@@ -103,7 +102,6 @@ impl MainAreaDna {
                         persist_ui_state = true;
                         refresh_auto_report_id = true;
                     }
-                }
             });
             ui.horizontal(|ui| {
                 ui.label("Report ID").on_hover_text(
@@ -1261,14 +1259,15 @@ impl MainAreaDna {
         if let Some(next_selection) = highlight_selection_update {
             self.rna_seed_highlight_record_index = next_selection;
         }
-        if self.rna_read_task.is_none() {
-            if let Some(report) = workspace_saved_report.as_deref() {
-                let report_seed_pass_pct = if report.read_count_total == 0 {
-                    0.0
-                } else {
-                    (report.read_count_seed_passed as f64 / report.read_count_total as f64) * 100.0
-                };
-                ui.small(format!(
+        if self.rna_read_task.is_none()
+            && let Some(report) = workspace_saved_report.as_deref()
+        {
+            let report_seed_pass_pct = if report.read_count_total == 0 {
+                0.0
+            } else {
+                (report.read_count_seed_passed as f64 / report.read_count_total as f64) * 100.0
+            };
+            ui.small(format!(
                             "Report '{}': mode={} targets={} roi_capture={} | retained_hits={} / total_reads={} | seed-passed={} ({:.2}%) | aligned={} | msa-eligible(retained)={}",
                             report.report_id,
                             report.origin_mode.as_str(),
@@ -1281,22 +1280,22 @@ impl MainAreaDna {
                             report.read_count_aligned,
                             report.retained_count_msa_eligible
                         ));
-                if !report.target_gene_ids.is_empty() {
-                    let preview = report
-                        .target_gene_ids
-                        .iter()
-                        .take(8)
-                        .cloned()
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    let suffix = if report.target_gene_ids.len() > 8 {
-                        format!(" (+{} more)", report.target_gene_ids.len() - 8)
-                    } else {
-                        String::new()
-                    };
-                    ui.small(format!("Target genes (report): {}{}", preview, suffix));
-                }
-                egui::CollapsingHeader::new("Saved report details")
+            if !report.target_gene_ids.is_empty() {
+                let preview = report
+                    .target_gene_ids
+                    .iter()
+                    .take(8)
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let suffix = if report.target_gene_ids.len() > 8 {
+                    format!(" (+{} more)", report.target_gene_ids.len() - 8)
+                } else {
+                    String::new()
+                };
+                ui.small(format!("Target genes (report): {}{}", preview, suffix));
+            }
+            egui::CollapsingHeader::new("Saved report details")
                             .default_open(false)
                             .show(ui, |ui| {
                                 if !report.warnings.is_empty() {
@@ -1352,7 +1351,6 @@ impl MainAreaDna {
                                         });
                                 });
                             });
-            }
         }
         let report_action_hover = workspace_report_view_mismatch.as_deref().unwrap_or(
             "Start asynchronous phase-1 interpretation with the current settings. Reads are optionally cDNA-normalized, scored against the admitted transcript/junction seed index, and written into the current Report ID for later inspection, alignment, and export.",
@@ -3335,11 +3333,11 @@ impl MainAreaDna {
         ranges.sort_by_key(|row| (row.0, row.1));
         let mut merged = Vec::<(usize, usize)>::new();
         for (start, end) in ranges {
-            if let Some(last) = merged.last_mut() {
-                if start <= last.1.saturating_add(1) {
-                    last.1 = last.1.max(end);
-                    continue;
-                }
+            if let Some(last) = merged.last_mut()
+                && start <= last.1.saturating_add(1)
+            {
+                last.1 = last.1.max(end);
+                continue;
             }
             merged.push((start, end));
         }
@@ -4209,12 +4207,11 @@ impl MainAreaDna {
             self.op_status = "RNA-read alignment phase is already running".to_string();
             return;
         }
-        if let Some(indices) = record_indices.as_ref() {
-            if indices.is_empty() {
-                self.op_status =
-                    "No top-hit rows selected; select at least one row first".to_string();
-                return;
-            }
+        if let Some(indices) = record_indices.as_ref()
+            && indices.is_empty()
+        {
+            self.op_status = "No top-hit rows selected; select at least one row first".to_string();
+            return;
         }
         let op = match self.build_splicing_rna_read_align_operation(view, record_indices) {
             Ok(op) => op,
@@ -5677,11 +5674,11 @@ impl MainAreaDna {
                 }
                 painter.circle_filled(egui::pos2(x, y), 1.6, dot_color);
                 let mut highlight_selected = false;
-                if let Some(remaining_budget) = selected_seed_budget.get_mut(&entry.seed_bits) {
-                    if *remaining_budget > 0 {
-                        *remaining_budget = remaining_budget.saturating_sub(1);
-                        highlight_selected = true;
-                    }
+                if let Some(remaining_budget) = selected_seed_budget.get_mut(&entry.seed_bits)
+                    && *remaining_budget > 0
+                {
+                    *remaining_budget = remaining_budget.saturating_sub(1);
+                    highlight_selected = true;
                 }
                 if highlight_selected {
                     selected_supported_positions = selected_supported_positions.saturating_add(1);
@@ -6080,50 +6077,47 @@ impl MainAreaDna {
             egui::Color32::from_rgb(220, 38, 38),
         );
         let mut pointed_bin: Option<usize> = None;
-        if let Some(pointer) = response.hover_pos() {
-            if pointer.x >= rect.left()
-                && pointer.x <= rect.right()
-                && pointer.y >= plot_top
-                && pointer.y <= axis_bottom
-            {
-                let mut idx =
-                    ((pointer.x - rect.left()) / rect.width() * bin_count as f32).floor() as usize;
-                if idx >= bin_count {
-                    idx = bin_count.saturating_sub(1);
-                }
-                pointed_bin = Some(idx);
-                if let Some(count) = score_density_bins.get(idx) {
-                    let left = idx as f64 / bin_count as f64;
-                    let right = (idx + 1) as f64 / bin_count as f64;
-                    let retained_count = saved_report
-                        .as_ref()
-                        .map(|report| {
-                            Self::select_rna_read_report_score_bin_record_indices(
-                                report,
-                                idx,
-                                bin_count,
-                                score_density_variant,
-                                score_density_seed_filter_override.as_ref(),
-                            )
-                            .len()
-                        })
-                        .unwrap_or(0);
-                    response.clone().on_hover_ui_at_pointer(|ui| {
-                        ui.monospace(format!("bin {idx}: [{left:.3}, {right:.3})"));
+        if let Some(pointer) = response.hover_pos()
+            && pointer.x >= rect.left()
+            && pointer.x <= rect.right()
+            && pointer.y >= plot_top
+            && pointer.y <= axis_bottom
+        {
+            let mut idx =
+                ((pointer.x - rect.left()) / rect.width() * bin_count as f32).floor() as usize;
+            if idx >= bin_count {
+                idx = bin_count.saturating_sub(1);
+            }
+            pointed_bin = Some(idx);
+            if let Some(count) = score_density_bins.get(idx) {
+                let left = idx as f64 / bin_count as f64;
+                let right = (idx + 1) as f64 / bin_count as f64;
+                let retained_count = saved_report
+                    .as_ref()
+                    .map(|report| {
+                        Self::select_rna_read_report_score_bin_record_indices(
+                            report,
+                            idx,
+                            bin_count,
+                            score_density_variant,
+                            score_density_seed_filter_override.as_ref(),
+                        )
+                        .len()
+                    })
+                    .unwrap_or(0);
+                response.clone().on_hover_ui_at_pointer(|ui| {
+                    ui.monospace(format!("bin {idx}: [{left:.3}, {right:.3})"));
+                    ui.monospace(format!(
+                        "{} in histogram: {count}",
+                        Self::rna_read_score_density_variant_label(score_density_variant)
+                    ));
+                    if saved_report.is_some() {
                         ui.monospace(format!(
-                            "{} in histogram: {count}",
-                            Self::rna_read_score_density_variant_label(score_density_variant)
+                            "retained saved-report rows in this bin: {retained_count}"
                         ));
-                        if saved_report.is_some() {
-                            ui.monospace(format!(
-                                "retained saved-report rows in this bin: {retained_count}"
-                            ));
-                        }
-                        ui.small(
-                            "Click to focus the retained saved-report rows from this score bin.",
-                        );
-                    });
-                }
+                    }
+                    ui.small("Click to focus the retained saved-report rows from this score bin.");
+                });
             }
         }
         if response.clicked()
@@ -6331,7 +6325,7 @@ impl MainAreaDna {
         } else {
             report.target_gene_ids.clone()
         };
-        gene_ids.sort_by(|left, right| left.to_ascii_lowercase().cmp(&right.to_ascii_lowercase()));
+        gene_ids.sort_by_key(|left| left.to_ascii_lowercase());
         gene_ids.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
         gene_ids
     }
@@ -8944,7 +8938,7 @@ impl MainAreaDna {
                             {
                                 self.rna_seed_selected_record_indices =
                                     Self::select_rna_read_report_rightmost_score_bin_record_indices(
-                                        &report,
+                                        report,
                                         self.rna_read_evidence_ui.score_density_variant,
                                         score_density_seed_filter_override.as_ref(),
                                     )
@@ -9467,7 +9461,7 @@ impl MainAreaDna {
                                 "Ctrl/Cmd+C selected report reads",
                             );
                         } else if let Some(highlighted) =
-                            self.selected_highlighted_rna_report_hit(&report)
+                            self.selected_highlighted_rna_report_hit(report)
                         {
                             self.copy_rna_report_hits_as_fasta(
                                 ui,

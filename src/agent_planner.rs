@@ -342,10 +342,10 @@ fn builtin_echo_plan_result(
             continue;
         }
         filtered.push(candidate);
-        if let Some(limit) = max_candidates {
-            if filtered.len() >= limit {
-                break;
-            }
+        if let Some(limit) = max_candidates
+            && filtered.len() >= limit
+        {
+            break;
         }
     }
 
@@ -463,10 +463,10 @@ pub fn invoke_agent_plan_with_env_overrides(
                 continue;
             }
             candidates.push(candidate);
-            if let Some(limit) = max_candidates {
-                if candidates.len() >= limit {
-                    break;
-                }
+            if let Some(limit) = max_candidates
+                && candidates.len() >= limit
+            {
+                break;
             }
         }
         AgentPlanResult {

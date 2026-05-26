@@ -210,7 +210,11 @@ fn svg_attr_token(value: &str) -> String {
 }
 
 fn feature_prefers_functional_host_anchor(feature: &Feature) -> bool {
-    if feature.kind.to_string().to_ascii_uppercase() != "MISC_FEATURE" {
+    if !feature
+        .kind
+        .to_string()
+        .eq_ignore_ascii_case("MISC_FEATURE")
+    {
         return false;
     }
     let Some(note) = feature_qualifier_text(feature, "note") else {
@@ -226,23 +230,23 @@ fn feature_name(feature: &Feature) -> (String, bool) {
     if let Some(repeat) = repeat_feature_display(feature) {
         return (repeat.display_label(), false);
     }
-    if is_regulatory_feature(feature) {
-        if let Some(reg_class) = feature_qualifier_text(feature, "regulatory_class") {
-            let reg_class = reg_class.to_ascii_lowercase();
-            if let Some(named_context) = first_nonempty_qualifier_text(
-                feature,
-                &["standard_name", "gene", "gene_name", "name", "label"],
-            ) {
-                if named_context.to_ascii_lowercase().contains(&reg_class) {
-                    return (named_context, false);
-                }
-                return (format!("{named_context} {reg_class}"), false);
+    if is_regulatory_feature(feature)
+        && let Some(reg_class) = feature_qualifier_text(feature, "regulatory_class")
+    {
+        let reg_class = reg_class.to_ascii_lowercase();
+        if let Some(named_context) = first_nonempty_qualifier_text(
+            feature,
+            &["standard_name", "gene", "gene_name", "name", "label"],
+        ) {
+            if named_context.to_ascii_lowercase().contains(&reg_class) {
+                return (named_context, false);
             }
-            if let Some(note) = feature_qualifier_text(feature, "note") {
-                return (format!("{reg_class}: {note}"), false);
-            }
-            return (reg_class, false);
+            return (format!("{named_context} {reg_class}"), false);
         }
+        if let Some(note) = feature_qualifier_text(feature, "note") {
+            return (format!("{reg_class}: {note}"), false);
+        }
+        return (reg_class, false);
     }
     if is_tfbs_feature(feature) {
         for key in ["bound_moiety", "standard_name", "name", "tf_id", "label"] {
@@ -257,18 +261,17 @@ fn feature_name(feature: &Feature) -> (String, bool) {
                 return (value, false);
             }
         }
-        if kind == "CDS" {
-            if let Some(product) = feature_qualifier_text(feature, "product") {
-                return (compact_product_label(&product), false);
-            }
+        if kind == "CDS"
+            && let Some(product) = feature_qualifier_text(feature, "product")
+        {
+            return (compact_product_label(&product), false);
         }
     }
-    if kind == "MISC_FEATURE" {
-        if let Some(note) = feature_qualifier_text(feature, "note") {
-            if let Some(compact) = compact_misc_feature_label_from_note(&note) {
-                return (compact, false);
-            }
-        }
+    if kind == "MISC_FEATURE"
+        && let Some(note) = feature_qualifier_text(feature, "note")
+        && let Some(compact) = compact_misc_feature_label_from_note(&note)
+    {
+        return (compact, false);
     }
     for k in [
         "label",
@@ -353,43 +356,41 @@ fn feature_legend_line(feature: &Feature, visible_label: &str) -> Option<String>
             return Some(format!("{visible_label}: {}", clean_note_summary(&note)));
         }
     }
-    if matches!(kind.as_str(), "GENE" | "MRNA" | "CDS") {
-        if let Some(product) = feature_qualifier_text(feature, "product") {
-            let lower = product.to_ascii_lowercase();
-            if lower.contains("glutathione s-transferase") {
-                return Some(
-                    "Glutathione S-transferase (GST): fusion partner for tagged expression"
-                        .to_string(),
-                );
-            }
-            if lower.contains("beta-lactamase") {
-                return Some("Beta-lactamase (bla): ampicillin resistance cassette".to_string());
-            }
-            if lower.contains("lac repressor") {
-                return Some(
-                    "Lac repressor (lacIq): tighter repression of inducible expression".to_string(),
-                );
-            }
-            return Some(format!("{product} ({visible_label})"));
+    if matches!(kind.as_str(), "GENE" | "MRNA" | "CDS")
+        && let Some(product) = feature_qualifier_text(feature, "product")
+    {
+        let lower = product.to_ascii_lowercase();
+        if lower.contains("glutathione s-transferase") {
+            return Some(
+                "Glutathione S-transferase (GST): fusion partner for tagged expression".to_string(),
+            );
         }
+        if lower.contains("beta-lactamase") {
+            return Some("Beta-lactamase (bla): ampicillin resistance cassette".to_string());
+        }
+        if lower.contains("lac repressor") {
+            return Some(
+                "Lac repressor (lacIq): tighter repression of inducible expression".to_string(),
+            );
+        }
+        return Some(format!("{product} ({visible_label})"));
     }
-    if kind == "MISC_FEATURE" {
-        if let Some(note) = feature_qualifier_text(feature, "note") {
-            let lower = note.to_ascii_lowercase();
-            if lower.contains("multiple cloning site") || lower.contains("(mcs)") {
-                return Some(
-                    "Multiple cloning site (MCS): unique cloning sites for insert design"
-                        .to_string(),
-                );
-            }
-            if lower.contains("factor xa") {
-                return Some(
-                    "Factor Xa recognition site: protease cleavage site between tag and insert"
-                        .to_string(),
-                );
-            }
-            return Some(format!("{visible_label}: {}", clean_note_summary(&note)));
+    if kind == "MISC_FEATURE"
+        && let Some(note) = feature_qualifier_text(feature, "note")
+    {
+        let lower = note.to_ascii_lowercase();
+        if lower.contains("multiple cloning site") || lower.contains("(mcs)") {
+            return Some(
+                "Multiple cloning site (MCS): unique cloning sites for insert design".to_string(),
+            );
         }
+        if lower.contains("factor xa") {
+            return Some(
+                "Factor Xa recognition site: protease cleavage site between tag and insert"
+                    .to_string(),
+            );
+        }
+        return Some(format!("{visible_label}: {}", clean_note_summary(&note)));
     }
     None
 }
@@ -571,11 +572,11 @@ fn is_tfbs_feature(feature: &Feature) -> bool {
 }
 
 fn is_variation_feature(feature: &Feature) -> bool {
-    feature.kind.to_string().to_ascii_uppercase() == "VARIATION"
+    feature.kind.to_string().eq_ignore_ascii_case("VARIATION")
 }
 
 fn is_promoter_feature(feature: &Feature) -> bool {
-    feature.kind.to_string().to_ascii_uppercase() == "PROMOTER"
+    feature.kind.to_string().eq_ignore_ascii_case("PROMOTER")
 }
 
 fn is_track_feature(feature: &Feature) -> bool {
@@ -881,12 +882,12 @@ fn feature_bounds_in_viewport(
 ) -> Option<(usize, usize)> {
     let mut ranges = Vec::new();
     collect_location_ranges_usize(&feature.location, &mut ranges);
-    if ranges.is_empty() {
-        if let Ok((raw_from, raw_to)) = feature.location.find_bounds() {
-            if raw_from >= 0 && raw_to >= 0 {
-                ranges.push((raw_from as usize, raw_to as usize));
-            }
-        }
+    if ranges.is_empty()
+        && let Ok((raw_from, raw_to)) = feature.location.find_bounds()
+        && raw_from >= 0
+        && raw_to >= 0
+    {
+        ranges.push((raw_from as usize, raw_to as usize));
     }
     let mut clipped_start: Option<usize> = None;
     let mut clipped_end: usize = 0;
@@ -920,7 +921,7 @@ fn collect_features(
     let mut ret = Vec::new();
     let sequence_length = dna.len();
     for feature in dna.features() {
-        if feature.kind.to_string().to_ascii_uppercase() == "SOURCE" {
+        if feature.kind.to_string().eq_ignore_ascii_case("SOURCE") {
             continue;
         }
         let max_view_span =
@@ -1590,205 +1591,205 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
         }
     }
 
-    if display.show_features {
-        if let Some(layout) = &feature_layout {
-            let regulatory_tracks_near_baseline = display.regulatory_tracks_near_baseline;
-            let features = &layout.features;
-            let lane_top_by_idx = &layout.lane_top_by_idx;
-            let lane_bottom_by_idx = &layout.lane_bottom_by_idx;
-            let lane_regulatory_top_by_idx = &layout.lane_regulatory_top_by_idx;
-            let top_regular_extent = layout.top_regular_extent;
-            let regulatory_group_gap = layout.regulatory_group_gap;
-            let mut placed_regulatory_labels: Vec<(String, f32)> = Vec::new();
-            let mut placed_top_feature_labels: Vec<(String, f32)> = Vec::new();
-            let mut placed_bottom_feature_labels: Vec<(String, f32)> = Vec::new();
+    if display.show_features
+        && let Some(layout) = &feature_layout
+    {
+        let regulatory_tracks_near_baseline = display.regulatory_tracks_near_baseline;
+        let features = &layout.features;
+        let lane_top_by_idx = &layout.lane_top_by_idx;
+        let lane_bottom_by_idx = &layout.lane_bottom_by_idx;
+        let lane_regulatory_top_by_idx = &layout.lane_regulatory_top_by_idx;
+        let top_regular_extent = layout.top_regular_extent;
+        let regulatory_group_gap = layout.regulatory_group_gap;
+        let mut placed_regulatory_labels: Vec<(String, f32)> = Vec::new();
+        let mut placed_top_feature_labels: Vec<(String, f32)> = Vec::new();
+        let mut placed_bottom_feature_labels: Vec<(String, f32)> = Vec::new();
 
-            for (idx, f) in features.iter().enumerate() {
-                let x1 = absolute_bp_to_view_x(f.from, viewport, left, right);
-                let x2 = absolute_bp_to_view_x(f.to, viewport, left, right).max(x1 + 1.0);
-                if f.is_variation {
-                    let x = (x1 + x2) * 0.5;
-                    doc = doc.add(
-                        Line::new()
-                            .set("x1", x)
-                            .set("y1", baseline - VARIATION_MARKER_OVERSHOOT_PX)
-                            .set("x2", x)
-                            .set("y2", baseline + VARIATION_MARKER_OVERSHOOT_PX)
-                            .set("stroke", f.color)
-                            .set("stroke-width", VARIATION_MARKER_STROKE_WIDTH)
-                            .set("data-gentle-role", "variation-marker-line")
-                            .set("data-gentle-feature-kind", f.kind_attr.as_str()),
-                    );
-                    doc = doc.add(
-                        Circle::new()
-                            .set("cx", x)
-                            .set("cy", baseline)
-                            .set("r", VARIATION_MARKER_RADIUS)
-                            .set("fill", "#ffffff")
-                            .set("stroke", f.color)
-                            .set("stroke-width", 1.5)
-                            .set("data-gentle-role", "variation-marker-dot")
-                            .set("data-gentle-feature-kind", f.kind_attr.as_str()),
-                    );
-                    if feature_has_visible_export_label(f) {
-                        labels.push(
-                            Text::new(f.label.clone())
-                                .set("x", x)
-                                .set("y", baseline - 10.0)
-                                .set("text-anchor", "middle")
-                                .set("font-family", "monospace")
-                                .set("font-size", 9)
-                                .set("fill", "#111111")
-                                .set("data-gentle-role", "feature-label")
-                                .set("data-gentle-feature-kind", f.kind_attr.as_str()),
-                        );
-                    }
-                    continue;
-                }
-                let (y, block_height) = if f.is_regulatory {
-                    let y = if regulatory_tracks_near_baseline {
-                        baseline - REGULATORY_SIDE_MARGIN
-                    } else {
-                        let lane = lane_regulatory_top_by_idx[idx];
-                        baseline
-                            - top_regular_extent
-                            - regulatory_group_gap
-                            - REGULATORY_SIDE_MARGIN
-                            - lane as f32 * REGULATORY_LANE_GAP
-                    };
-                    (y, REGULATORY_BLOCK_HEIGHT)
-                } else if f.is_reverse {
-                    let lane = lane_bottom_by_idx[idx];
-                    let y = baseline + FEATURE_SIDE_MARGIN + lane as f32 * FEATURE_LANE_GAP;
-                    (y, FEATURE_BLOCK_HEIGHT)
-                } else {
-                    let lane = lane_top_by_idx[idx];
-                    let required_margin = if regulatory_tracks_near_baseline {
-                        REGULATORY_SIDE_MARGIN
-                            + REGULATORY_BLOCK_HEIGHT * 0.5
-                            + FEATURE_BLOCK_HEIGHT * 0.5
-                            + 1.0
-                    } else {
-                        FEATURE_SIDE_MARGIN
-                    };
-                    let y = baseline
-                        - required_margin.max(FEATURE_SIDE_MARGIN)
-                        - lane as f32 * FEATURE_LANE_GAP;
-                    (y, FEATURE_BLOCK_HEIGHT)
-                };
-                let half_height = block_height * 0.5;
+        for (idx, f) in features.iter().enumerate() {
+            let x1 = absolute_bp_to_view_x(f.from, viewport, left, right);
+            let x2 = absolute_bp_to_view_x(f.to, viewport, left, right).max(x1 + 1.0);
+            if f.is_variation {
+                let x = (x1 + x2) * 0.5;
                 doc = doc.add(
-                    Rectangle::new()
-                        .set("x", x1)
-                        .set("y", y - half_height)
-                        .set("width", x2 - x1)
-                        .set("height", block_height)
-                        .set("fill", f.color)
-                        .set("data-gentle-role", "feature-block")
+                    Line::new()
+                        .set("x1", x)
+                        .set("y1", baseline - VARIATION_MARKER_OVERSHOOT_PX)
+                        .set("x2", x)
+                        .set("y2", baseline + VARIATION_MARKER_OVERSHOOT_PX)
+                        .set("stroke", f.color)
+                        .set("stroke-width", VARIATION_MARKER_STROKE_WIDTH)
+                        .set("data-gentle-role", "variation-marker-line")
                         .set("data-gentle-feature-kind", f.kind_attr.as_str()),
                 );
-
-                if f.is_pointy {
-                    let arrow_dx = 6.0;
-                    let data = if f.is_reverse {
-                        Data::new()
-                            .move_to((x1, y - half_height))
-                            .line_to((x1 - arrow_dx, y))
-                            .line_to((x1, y + half_height))
-                            .close()
-                    } else {
-                        Data::new()
-                            .move_to((x2, y - half_height))
-                            .line_to((x2 + arrow_dx, y))
-                            .line_to((x2, y + half_height))
-                            .close()
-                    };
-                    doc = doc.add(
-                        Path::new()
-                            .set("d", data)
-                            .set("fill", f.color)
-                            .set("data-gentle-role", "feature-direction-head")
-                            .set("data-gentle-feature-kind", f.kind_attr.as_str()),
-                    );
-                }
-
-                if f.has_transcription_direction {
-                    let (tick, arrow) =
-                        linear_transcription_direction_glyph(f, viewport, left, right, y);
-                    doc = doc.add(tick);
-                    doc = doc.add(arrow);
-                }
-
-                if !feature_has_visible_export_label(f) {
-                    continue;
-                }
-                if f.is_gene {
-                    let inline_chars = (((x2 - x1) - 4.0).max(0.0) / 6.5).floor() as usize;
-                    let inline_label = truncate_label_to_chars(f.label.trim(), inline_chars.max(1));
+                doc = doc.add(
+                    Circle::new()
+                        .set("cx", x)
+                        .set("cy", baseline)
+                        .set("r", VARIATION_MARKER_RADIUS)
+                        .set("fill", "#ffffff")
+                        .set("stroke", f.color)
+                        .set("stroke-width", 1.5)
+                        .set("data-gentle-role", "variation-marker-dot")
+                        .set("data-gentle-feature-kind", f.kind_attr.as_str()),
+                );
+                if feature_has_visible_export_label(f) {
                     labels.push(
-                        Text::new(inline_label)
-                            .set("x", (x1 + x2) * 0.5)
-                            .set("y", y + 3.0)
+                        Text::new(f.label.clone())
+                            .set("x", x)
+                            .set("y", baseline - 10.0)
                             .set("text-anchor", "middle")
                             .set("font-family", "monospace")
-                            .set("font-size", 10)
-                            .set("fill", "#f8f8f8")
+                            .set("font-size", 9)
+                            .set("fill", "#111111")
                             .set("data-gentle-role", "feature-label")
                             .set("data-gentle-feature-kind", f.kind_attr.as_str()),
                     );
-                    continue;
                 }
-                let (text_y, anchor) = if f.is_regulatory {
-                    (y - half_height - 2.0, "start")
-                } else if f.is_reverse {
-                    (y + 16.0, "start")
+                continue;
+            }
+            let (y, block_height) = if f.is_regulatory {
+                let y = if regulatory_tracks_near_baseline {
+                    baseline - REGULATORY_SIDE_MARGIN
                 } else {
-                    (y - 10.0, "start")
+                    let lane = lane_regulatory_top_by_idx[idx];
+                    baseline
+                        - top_regular_extent
+                        - regulatory_group_gap
+                        - REGULATORY_SIDE_MARGIN
+                        - lane as f32 * REGULATORY_LANE_GAP
                 };
-                if f.is_regulatory
-                    && should_skip_nearby_repeated_label(
-                        &placed_regulatory_labels,
-                        &f.label,
-                        x1,
-                        REGULATORY_LABEL_DEDUP_DISTANCE_PX,
-                    )
-                {
-                    continue;
-                }
-                if !f.is_regulatory
-                    && !f.is_gene
-                    && should_skip_nearby_repeated_label(
-                        if f.is_reverse {
-                            &placed_bottom_feature_labels
-                        } else {
-                            &placed_top_feature_labels
-                        },
-                        &f.label,
-                        x1,
-                        FEATURE_LABEL_DEDUP_DISTANCE_PX,
-                    )
-                {
-                    continue;
-                }
+                (y, REGULATORY_BLOCK_HEIGHT)
+            } else if f.is_reverse {
+                let lane = lane_bottom_by_idx[idx];
+                let y = baseline + FEATURE_SIDE_MARGIN + lane as f32 * FEATURE_LANE_GAP;
+                (y, FEATURE_BLOCK_HEIGHT)
+            } else {
+                let lane = lane_top_by_idx[idx];
+                let required_margin = if regulatory_tracks_near_baseline {
+                    REGULATORY_SIDE_MARGIN
+                        + REGULATORY_BLOCK_HEIGHT * 0.5
+                        + FEATURE_BLOCK_HEIGHT * 0.5
+                        + 1.0
+                } else {
+                    FEATURE_SIDE_MARGIN
+                };
+                let y = baseline
+                    - required_margin.max(FEATURE_SIDE_MARGIN)
+                    - lane as f32 * FEATURE_LANE_GAP;
+                (y, FEATURE_BLOCK_HEIGHT)
+            };
+            let half_height = block_height * 0.5;
+            doc = doc.add(
+                Rectangle::new()
+                    .set("x", x1)
+                    .set("y", y - half_height)
+                    .set("width", x2 - x1)
+                    .set("height", block_height)
+                    .set("fill", f.color)
+                    .set("data-gentle-role", "feature-block")
+                    .set("data-gentle-feature-kind", f.kind_attr.as_str()),
+            );
+
+            if f.is_pointy {
+                let arrow_dx = 6.0;
+                let data = if f.is_reverse {
+                    Data::new()
+                        .move_to((x1, y - half_height))
+                        .line_to((x1 - arrow_dx, y))
+                        .line_to((x1, y + half_height))
+                        .close()
+                } else {
+                    Data::new()
+                        .move_to((x2, y - half_height))
+                        .line_to((x2 + arrow_dx, y))
+                        .line_to((x2, y + half_height))
+                        .close()
+                };
+                doc = doc.add(
+                    Path::new()
+                        .set("d", data)
+                        .set("fill", f.color)
+                        .set("data-gentle-role", "feature-direction-head")
+                        .set("data-gentle-feature-kind", f.kind_attr.as_str()),
+                );
+            }
+
+            if f.has_transcription_direction {
+                let (tick, arrow) =
+                    linear_transcription_direction_glyph(f, viewport, left, right, y);
+                doc = doc.add(tick);
+                doc = doc.add(arrow);
+            }
+
+            if !feature_has_visible_export_label(f) {
+                continue;
+            }
+            if f.is_gene {
+                let inline_chars = (((x2 - x1) - 4.0).max(0.0) / 6.5).floor() as usize;
+                let inline_label = truncate_label_to_chars(f.label.trim(), inline_chars.max(1));
                 labels.push(
-                    Text::new(f.label.clone())
-                        .set("x", x1)
-                        .set("y", text_y)
-                        .set("text-anchor", anchor)
+                    Text::new(inline_label)
+                        .set("x", (x1 + x2) * 0.5)
+                        .set("y", y + 3.0)
+                        .set("text-anchor", "middle")
                         .set("font-family", "monospace")
                         .set("font-size", 10)
-                        .set("fill", "#111111")
+                        .set("fill", "#f8f8f8")
                         .set("data-gentle-role", "feature-label")
                         .set("data-gentle-feature-kind", f.kind_attr.as_str()),
                 );
-                if f.is_regulatory {
-                    placed_regulatory_labels.push((f.label.clone(), x1));
-                } else if !f.is_gene {
+                continue;
+            }
+            let (text_y, anchor) = if f.is_regulatory {
+                (y - half_height - 2.0, "start")
+            } else if f.is_reverse {
+                (y + 16.0, "start")
+            } else {
+                (y - 10.0, "start")
+            };
+            if f.is_regulatory
+                && should_skip_nearby_repeated_label(
+                    &placed_regulatory_labels,
+                    &f.label,
+                    x1,
+                    REGULATORY_LABEL_DEDUP_DISTANCE_PX,
+                )
+            {
+                continue;
+            }
+            if !f.is_regulatory
+                && !f.is_gene
+                && should_skip_nearby_repeated_label(
                     if f.is_reverse {
-                        placed_bottom_feature_labels.push((f.label.clone(), x1));
+                        &placed_bottom_feature_labels
                     } else {
-                        placed_top_feature_labels.push((f.label.clone(), x1));
-                    }
+                        &placed_top_feature_labels
+                    },
+                    &f.label,
+                    x1,
+                    FEATURE_LABEL_DEDUP_DISTANCE_PX,
+                )
+            {
+                continue;
+            }
+            labels.push(
+                Text::new(f.label.clone())
+                    .set("x", x1)
+                    .set("y", text_y)
+                    .set("text-anchor", anchor)
+                    .set("font-family", "monospace")
+                    .set("font-size", 10)
+                    .set("fill", "#111111")
+                    .set("data-gentle-role", "feature-label")
+                    .set("data-gentle-feature-kind", f.kind_attr.as_str()),
+            );
+            if f.is_regulatory {
+                placed_regulatory_labels.push((f.label.clone(), x1));
+            } else if !f.is_gene {
+                if f.is_reverse {
+                    placed_bottom_feature_labels.push((f.label.clone(), x1));
+                } else {
+                    placed_top_feature_labels.push((f.label.clone(), x1));
                 }
             }
         }
@@ -2378,7 +2379,7 @@ fn wrap_svg_text_words(text: &str, max_chars: usize) -> Vec<String> {
     lines
 }
 
-fn circular_legend_features<'a>(features: &'a [FeatureVm]) -> Vec<&'a FeatureVm> {
+fn circular_legend_features(features: &[FeatureVm]) -> Vec<&FeatureVm> {
     let mut seen = HashSet::new();
     let mut items = Vec::new();
     for feature in features {
@@ -2581,7 +2582,7 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
                         .set("data-gentle-role", "variation-marker-dot")
                         .set("data-gentle-feature-kind", f.kind_attr.as_str()),
                 );
-                if feature_has_visible_export_label(&f) {
+                if feature_has_visible_export_label(f) {
                     doc = doc.add(
                         Text::new(f.label.clone())
                             .set("x", label_x)
@@ -2657,7 +2658,7 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
                 );
             }
             let label_radius = circular_feature_label_radius(band_radius, anchor_is_reverse);
-            if feature_has_visible_export_label(&f) {
+            if feature_has_visible_export_label(f) {
                 if functional_host.is_some() {
                     let (leader_start_x, leader_start_y) = pos2xy(mid, len, cx, cy, band_radius);
                     let leader_end_radius = if anchor_is_reverse {

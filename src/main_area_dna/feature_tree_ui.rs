@@ -357,13 +357,13 @@ impl MainAreaDna {
         {
             return None;
         }
-        if feature.kind.to_string().eq_ignore_ascii_case("MRNA") {
-            if let Some(gene_label) = Self::feature_tree_first_nonempty_qualifier(
+        if feature.kind.to_string().eq_ignore_ascii_case("MRNA")
+            && let Some(gene_label) = Self::feature_tree_first_nonempty_qualifier(
                 feature,
                 &["gene", "gene_name", "locus_tag", "gene_id"],
-            ) {
-                return Some(gene_label);
-            }
+            )
+        {
+            return Some(gene_label);
         }
         let normalized_label = feature_label.trim();
         if normalized_label.is_empty() {
@@ -389,7 +389,7 @@ impl MainAreaDna {
         keys: &[&str],
     ) -> Option<String> {
         for key in keys {
-            for value in feature.qualifier_values(*key) {
+            for value in feature.qualifier_values(key) {
                 let normalized = value.split_whitespace().collect::<Vec<_>>().join(" ");
                 let normalized = normalized.trim().to_string();
                 if !normalized.is_empty() {
@@ -1367,7 +1367,7 @@ impl MainAreaDna {
                     let base_label = {
                         let name = RenderDna::feature_name(feature);
                         if name.trim().is_empty() {
-                            format!("{} #{}", feature.kind.to_string(), id + 1)
+                            format!("{} #{}", feature.kind, id + 1)
                         } else {
                             name
                         }

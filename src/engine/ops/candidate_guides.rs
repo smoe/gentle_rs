@@ -650,47 +650,41 @@ impl GentleEngine {
                 });
             }
 
-            if config.gc_min.is_some() || config.gc_max.is_some() {
-                if let Some(gc) = Self::sequence_gc_fraction(&spacer) {
-                    row.metrics.insert("gc_fraction".to_string(), gc);
-                    if let Some(min) = config.gc_min {
-                        if gc < min {
-                            row.reasons.push(GuideFilterReason {
-                                code: "gc_too_low".to_string(),
-                                message: format!(
-                                    "GC fraction {:.3} is below minimum {:.3}",
-                                    gc, min
-                                ),
-                            });
-                        }
-                    }
-                    if let Some(max) = config.gc_max {
-                        if gc > max {
-                            row.reasons.push(GuideFilterReason {
-                                code: "gc_too_high".to_string(),
-                                message: format!(
-                                    "GC fraction {:.3} is above maximum {:.3}",
-                                    gc, max
-                                ),
-                            });
-                        }
-                    }
+            if (config.gc_min.is_some() || config.gc_max.is_some())
+                && let Some(gc) = Self::sequence_gc_fraction(&spacer)
+            {
+                row.metrics.insert("gc_fraction".to_string(), gc);
+                if let Some(min) = config.gc_min
+                    && gc < min
+                {
+                    row.reasons.push(GuideFilterReason {
+                        code: "gc_too_low".to_string(),
+                        message: format!("GC fraction {:.3} is below minimum {:.3}", gc, min),
+                    });
+                }
+                if let Some(max) = config.gc_max
+                    && gc > max
+                {
+                    row.reasons.push(GuideFilterReason {
+                        code: "gc_too_high".to_string(),
+                        message: format!("GC fraction {:.3} is above maximum {:.3}", gc, max),
+                    });
                 }
             }
 
             let max_run = Self::max_homopolymer_run(&spacer);
             row.metrics
                 .insert("max_homopolymer_run".to_string(), max_run as f64);
-            if let Some(limit) = config.max_homopolymer_run {
-                if max_run > limit {
-                    row.reasons.push(GuideFilterReason {
-                        code: "homopolymer_run_exceeded".to_string(),
-                        message: format!(
-                            "Max homopolymer run {} exceeds configured limit {}",
-                            max_run, limit
-                        ),
-                    });
-                }
+            if let Some(limit) = config.max_homopolymer_run
+                && max_run > limit
+            {
+                row.reasons.push(GuideFilterReason {
+                    code: "homopolymer_run_exceeded".to_string(),
+                    message: format!(
+                        "Max homopolymer run {} exceeds configured limit {}",
+                        max_run, limit
+                    ),
+                });
             }
             for (base, limit) in &config.max_homopolymer_run_per_base {
                 let probe = base.as_bytes()[0];
@@ -729,16 +723,16 @@ impl GentleEngine {
                 "max_dinucleotide_repeat_units".to_string(),
                 max_repeat as f64,
             );
-            if let Some(limit) = config.max_dinucleotide_repeat_units {
-                if max_repeat > limit {
-                    row.reasons.push(GuideFilterReason {
-                        code: "dinucleotide_repeat_exceeded".to_string(),
-                        message: format!(
-                            "Max dinucleotide repeat units {} exceeds configured limit {}",
-                            max_repeat, limit
-                        ),
-                    });
-                }
+            if let Some(limit) = config.max_dinucleotide_repeat_units
+                && max_repeat > limit
+            {
+                row.reasons.push(GuideFilterReason {
+                    code: "dinucleotide_repeat_exceeded".to_string(),
+                    message: format!(
+                        "Max dinucleotide repeat units {} exceeds configured limit {}",
+                        max_repeat, limit
+                    ),
+                });
             }
 
             for motif in &config.forbidden_motifs {
@@ -750,24 +744,22 @@ impl GentleEngine {
                 }
             }
 
-            if let Some(required_base) = config.required_5prime_base.as_ref() {
-                if let Some(actual) = spacer.first().map(|b| (*b as char).to_string()) {
-                    if actual != *required_base {
-                        if config.allow_5prime_g_extension && required_base == "G" {
-                            row.warnings.push(
-                                "Missing required 5' G but can be rescued by 5' G extension"
-                                    .to_string(),
-                            );
-                        } else {
-                            row.reasons.push(GuideFilterReason {
-                                code: "required_5prime_base_missing".to_string(),
-                                message: format!(
-                                    "Protospacer 5' base '{}' does not match required '{}'",
-                                    actual, required_base
-                                ),
-                            });
-                        }
-                    }
+            if let Some(required_base) = config.required_5prime_base.as_ref()
+                && let Some(actual) = spacer.first().map(|b| (*b as char).to_string())
+                && actual != *required_base
+            {
+                if config.allow_5prime_g_extension && required_base == "G" {
+                    row.warnings.push(
+                        "Missing required 5' G but can be rescued by 5' G extension".to_string(),
+                    );
+                } else {
+                    row.reasons.push(GuideFilterReason {
+                        code: "required_5prime_base_missing".to_string(),
+                        message: format!(
+                            "Protospacer 5' base '{}' does not match required '{}'",
+                            actual, required_base
+                        ),
+                    });
                 }
             }
 
@@ -915,10 +907,10 @@ impl GentleEngine {
         });
         let mut records = vec![];
         for guide in &guides {
-            if let Some(lookup) = &passed_lookup {
-                if !lookup.contains(&guide.guide_id) {
-                    continue;
-                }
+            if let Some(lookup) = &passed_lookup
+                && !lookup.contains(&guide.guide_id)
+            {
+                continue;
             }
             let mut notes = vec![];
             let mut spacer = guide
@@ -1035,7 +1027,7 @@ impl GentleEngine {
         else {
             return Ok(());
         };
-        std::fs::create_dir_all(&parent).map_err(|e| EngineError {
+        std::fs::create_dir_all(parent).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!(
                 "Could not create output directory '{}' for export '{}': {e}",
@@ -1525,15 +1517,15 @@ impl GentleEngine {
             ("min_quantile", min_quantile),
             ("max_quantile", max_quantile),
         ] {
-            if let Some(q) = value {
-                if !(0.0..=1.0).contains(&q) {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!("FilterCandidateSet {} must be between 0 and 1", name),
+            if let Some(q) = value
+                && !(0.0..=1.0).contains(&q)
+            {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!("FilterCandidateSet {} must be between 0 and 1", name),
 
-                        cause_chain: vec![],
-                    });
-                }
+                    cause_chain: vec![],
+                });
             }
         }
         if min.is_none() && max.is_none() && min_quantile.is_none() && max_quantile.is_none() {
@@ -1618,15 +1610,15 @@ impl GentleEngine {
                 let Some(value) = candidate.metrics.get(&metric_name).copied() else {
                     return false;
                 };
-                if let Some(lo) = lower_bound {
-                    if value < lo {
-                        return false;
-                    }
+                if let Some(lo) = lower_bound
+                    && value < lo
+                {
+                    return false;
                 }
-                if let Some(hi) = upper_bound {
-                    if value > hi {
-                        return false;
-                    }
+                if let Some(hi) = upper_bound
+                    && value > hi
+                {
+                    return false;
                 }
                 true
             })
@@ -2225,24 +2217,24 @@ impl GentleEngine {
         let mut frontier = input
             .candidates
             .into_iter()
-            .zip(dominated.into_iter())
+            .zip(dominated)
             .filter_map(
                 |(candidate, is_dominated)| if is_dominated { None } else { Some(candidate) },
             )
             .collect::<Vec<_>>();
         let raw_frontier_count = frontier.len();
-        if let Some(limit) = max_candidates {
-            if frontier.len() > limit {
-                frontier.sort_by(|a, b| Self::compare_candidates_by_tie_break(a, b, tie_break));
-                frontier.truncate(limit);
-                result.warnings.push(format!(
+        if let Some(limit) = max_candidates
+            && frontier.len() > limit
+        {
+            frontier.sort_by(|a, b| Self::compare_candidates_by_tie_break(a, b, tie_break));
+            frontier.truncate(limit);
+            result.warnings.push(format!(
                     "Pareto frontier for '{}' had {} candidates and was truncated to {} by tie-break policy '{}'",
                     input_set,
                     raw_frontier_count,
                     limit,
                     tie_break.as_str()
                 ));
-            }
         }
 
         let output_count = frontier.len();
@@ -2345,18 +2337,18 @@ impl GentleEngine {
                 cause_chain: vec![],
             })?;
         for captures in placeholder_regex.captures_iter(script) {
-            if let Some(param_name) = captures.get(1).map(|m| m.as_str()) {
-                if !declared.contains(param_name) {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "Workflow macro template '{}' references undeclared parameter '{}' in script",
-                            name, param_name
-                        ),
+            if let Some(param_name) = captures.get(1).map(|m| m.as_str())
+                && !declared.contains(param_name)
+            {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Workflow macro template '{}' references undeclared parameter '{}' in script",
+                        name, param_name
+                    ),
 
-                        cause_chain: vec![],
-                    });
-                }
+                    cause_chain: vec![],
+                });
             }
         }
 
@@ -2565,18 +2557,18 @@ impl GentleEngine {
                 cause_chain: vec![],
             })?;
         for captures in placeholder_regex.captures_iter(script) {
-            if let Some(param_name) = captures.get(1).map(|m| m.as_str()) {
-                if !declared.contains(param_name) {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "Candidate macro template '{}' references undeclared parameter '{}' in script",
-                            name, param_name
-                        ),
+            if let Some(param_name) = captures.get(1).map(|m| m.as_str())
+                && !declared.contains(param_name)
+            {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Candidate macro template '{}' references undeclared parameter '{}' in script",
+                        name, param_name
+                    ),
 
-                        cause_chain: vec![],
-                    });
-                }
+                    cause_chain: vec![],
+                });
             }
         }
 

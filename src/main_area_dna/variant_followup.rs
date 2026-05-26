@@ -233,7 +233,7 @@ impl MainAreaDna {
         if !gene_label.trim().is_empty() {
             return Self::sanitize_export_name_component(gene_label, "promoter");
         }
-        Self::sanitize_export_name_component(&feature.kind.to_string(), "promoter")
+        Self::sanitize_export_name_component(feature.kind.as_ref(), "promoter")
     }
 
     fn seed_variant_followup_defaults_for_feature(
@@ -506,15 +506,15 @@ impl MainAreaDna {
     }
 
     fn variant_followup_apply_report_defaults(&mut self, report: &VariantPromoterContextReport) {
-        if self.variant_followup_ui.gene_label.trim().is_empty() {
-            if let Some(gene_label) = report.chosen_gene_label.as_deref() {
-                self.variant_followup_ui.gene_label = gene_label.to_string();
-            }
+        if self.variant_followup_ui.gene_label.trim().is_empty()
+            && let Some(gene_label) = report.chosen_gene_label.as_deref()
+        {
+            self.variant_followup_ui.gene_label = gene_label.to_string();
         }
-        if self.variant_followup_ui.transcript_id.trim().is_empty() {
-            if let Some(transcript_id) = report.chosen_transcript_id.as_deref() {
-                self.variant_followup_ui.transcript_id = transcript_id.to_string();
-            }
+        if self.variant_followup_ui.transcript_id.trim().is_empty()
+            && let Some(transcript_id) = report.chosen_transcript_id.as_deref()
+        {
+            self.variant_followup_ui.transcript_id = transcript_id.to_string();
         }
     }
 
@@ -522,15 +522,15 @@ impl MainAreaDna {
         &mut self,
         candidates: &PromoterReporterCandidateSet,
     ) {
-        if self.variant_followup_ui.gene_label.trim().is_empty() {
-            if let Some(gene_label) = candidates.chosen_gene_label.as_deref() {
-                self.variant_followup_ui.gene_label = gene_label.to_string();
-            }
+        if self.variant_followup_ui.gene_label.trim().is_empty()
+            && let Some(gene_label) = candidates.chosen_gene_label.as_deref()
+        {
+            self.variant_followup_ui.gene_label = gene_label.to_string();
         }
-        if self.variant_followup_ui.transcript_id.trim().is_empty() {
-            if let Some(transcript_id) = candidates.chosen_transcript_id.as_deref() {
-                self.variant_followup_ui.transcript_id = transcript_id.to_string();
-            }
+        if self.variant_followup_ui.transcript_id.trim().is_empty()
+            && let Some(transcript_id) = candidates.chosen_transcript_id.as_deref()
+        {
+            self.variant_followup_ui.transcript_id = transcript_id.to_string();
         }
     }
 
@@ -1633,9 +1633,7 @@ impl MainAreaDna {
                     .to_string(),
             );
         }
-        if let Err(err) = self.ensure_variant_followup_reporter_backbone_loaded() {
-            return Err(err);
-        }
+        self.ensure_variant_followup_reporter_backbone_loaded()?;
         let backbone_seq_id = self
             .variant_followup_ui
             .reporter_backbone_seq_id
@@ -3076,7 +3074,7 @@ impl MainAreaDna {
                         });
                     });
                     ui.vertical(|ui| {
-                        Self::paint_promoter_design_track_plot(ui, report, track, &markers);
+                        Self::paint_promoter_design_track_plot(ui, report, track, markers);
                     });
                 });
             }

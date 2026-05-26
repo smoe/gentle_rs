@@ -518,13 +518,11 @@ impl GENtleApp {
             return;
         }
         if let Some(viewport_id) = self.find_open_sequence_viewport_id(seq_id) {
-            if let Some(window) = self.windows.get(&viewport_id) {
-                if let Ok(mut window) = window.write() {
-                    window.focus_uniprot_projection_expert(
-                        projection_id,
-                        protein_feature_filter.clone(),
-                    );
-                }
+            if let Some(window) = self.windows.get(&viewport_id)
+                && let Ok(mut window) = window.write()
+            {
+                window
+                    .focus_uniprot_projection_expert(projection_id, protein_feature_filter.clone());
             }
             self.queue_focus_viewport(viewport_id);
             return;
@@ -553,10 +551,10 @@ impl GENtleApp {
         transcript_id_filter: Option<&str>,
     ) {
         if let Some(viewport_id) = self.find_open_sequence_viewport_id(seq_id) {
-            if let Some(window) = self.windows.get(&viewport_id) {
-                if let Ok(mut window) = window.write() {
-                    window.focus_transcript_protein_expert(transcript_id_filter);
-                }
+            if let Some(window) = self.windows.get(&viewport_id)
+                && let Ok(mut window) = window.write()
+            {
+                window.focus_transcript_protein_expert(transcript_id_filter);
             }
             self.queue_focus_viewport(viewport_id);
             return;
@@ -587,14 +585,14 @@ impl GENtleApp {
         protein_feature_filter: gentle_protocol::ProteinFeatureFilter,
     ) {
         if let Some(viewport_id) = self.find_open_sequence_viewport_id(seq_id) {
-            if let Some(window) = self.windows.get(&viewport_id) {
-                if let Ok(mut window) = window.write() {
-                    window.focus_ensembl_entry_protein_expert(
-                        transcript_id_filter,
-                        entry_id,
-                        protein_feature_filter.clone(),
-                    );
-                }
+            if let Some(window) = self.windows.get(&viewport_id)
+                && let Ok(mut window) = window.write()
+            {
+                window.focus_ensembl_entry_protein_expert(
+                    transcript_id_filter,
+                    entry_id,
+                    protein_feature_filter.clone(),
+                );
             }
             self.queue_focus_viewport(viewport_id);
             return;
@@ -2533,14 +2531,12 @@ impl GENtleApp {
                 .button("Browse...")
                 .on_hover_text("Pick a local SWISS-PROT text file")
                 .clicked()
-            {
-                if let Some(path) = rfd::FileDialog::new()
+                && let Some(path) = rfd::FileDialog::new()
                     .add_filter("SWISS-PROT text", &["txt", "dat"])
                     .add_filter("Text", &["txt"])
                     .pick_file()
-                {
-                    self.uniprot_swiss_path = path.display().to_string();
-                }
+            {
+                self.uniprot_swiss_path = path.display().to_string();
             }
             if ui
                 .button("Import")

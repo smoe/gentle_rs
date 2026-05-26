@@ -178,7 +178,7 @@ fn push_markdown_list(out: &mut String, heading: &str, lines: &[String]) {
 }
 
 fn markdown_escape(value: &str) -> String {
-    value.replace('\n', " ").replace('\r', " ")
+    value.replace(['\n', '\r'], " ")
 }
 
 fn xml_escape(value: &str) -> String {

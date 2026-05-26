@@ -292,7 +292,7 @@ fn classify_repeat_class(raw: &str) -> RepeatDisplayClass {
     if tokens.iter().any(|token| matches!(*token, "line" | "l1")) {
         return RepeatDisplayClass::Line;
     }
-    if tokens.iter().any(|token| *token == "ltr") || normalized.contains("erv") {
+    if tokens.contains(&"ltr") || normalized.contains("erv") {
         return RepeatDisplayClass::Ltr;
     }
     if tokens.iter().any(|token| {
@@ -312,7 +312,7 @@ fn classify_repeat_class(raw: &str) -> RepeatDisplayClass {
     if normalized.contains("low complexity") {
         return RepeatDisplayClass::LowComplexity;
     }
-    if normalized.contains("satellite") || tokens.iter().any(|token| *token == "sat") {
+    if normalized.contains("satellite") || tokens.contains(&"sat") {
         return RepeatDisplayClass::Satellite;
     }
     if tokens.iter().any(|token| {
@@ -328,11 +328,11 @@ fn classify_repeat_class(raw: &str) -> RepeatDisplayClass {
     }
     if normalized.contains("rolling circle")
         || normalized.contains("helitron")
-        || tokens.iter().any(|token| *token == "rc")
+        || tokens.contains(&"rc")
     {
         return RepeatDisplayClass::RollingCircle;
     }
-    if normalized.contains("unknown") || tokens.iter().any(|token| *token == "unk") {
+    if normalized.contains("unknown") || tokens.contains(&"unk") {
         return RepeatDisplayClass::Unknown;
     }
     RepeatDisplayClass::Other

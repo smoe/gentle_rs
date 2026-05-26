@@ -4288,9 +4288,9 @@ fn test_cdna_pcr_operation_can_materialize_nonspecific_products_as_pool_gel() {
             .get(seq_id)
             .expect("materialized product metadata");
         assert!(dna.features().iter().any(|feature| {
-            feature.kind.to_string() == "cDNA_assay_product"
+            feature.kind == "cDNA_assay_product"
                 && feature.qualifiers.iter().any(|(key, value)| {
-                    key.to_string() == "cdna_assay_signature"
+                    key == "cdna_assay_signature"
                         && value.as_deref().is_some_and(|raw| !raw.is_empty())
                 })
         }));
@@ -22019,13 +22019,9 @@ fn test_import_genome_vcf_track_can_cancel_via_progress_callback() {
                 clear_existing: Some(true),
             },
             |progress| match progress {
-                OperationProgress::GenomeTrackImport(p) => {
-                    if !p.done && p.parsed_records >= 250 {
-                        cancelled = true;
-                        false
-                    } else {
-                        true
-                    }
+                OperationProgress::GenomeTrackImport(p) if !p.done && p.parsed_records >= 250 => {
+                    cancelled = true;
+                    false
                 }
                 _ => true,
             },
@@ -22139,7 +22135,7 @@ fn test_prepare_helper_genome_via_genbank_accession_and_extract() {
             .any(|id| id == "helper_bla")
     );
     let seq = engine.state().sequences.get("helper_bla").unwrap();
-    assert!(seq.len() > 0);
+    assert!(!seq.is_empty());
 
     let extract_region = engine
         .apply(Operation::ExtractGenomeRegion {
@@ -27901,10 +27897,10 @@ fn test_transition_support_counts_only_seed_passed_reads() {
             &RnaReadAlignConfig::default(),
             Some("rna_reads_transition_gate"),
             &mut |progress| {
-                if let OperationProgress::RnaReadInterpret(p) = progress {
-                    if p.done {
-                        final_progress = Some(p.clone());
-                    }
+                if let OperationProgress::RnaReadInterpret(p) = progress
+                    && p.done
+                {
+                    final_progress = Some(p.clone());
                 }
                 true
             },
@@ -31852,7 +31848,7 @@ fn test_rna_read_transcript_catalog_index_roundtrip_supports_concatemer_inspecti
     .expect("write gene4 transcript fasta");
     let index_file = tempfile::NamedTempFile::new().expect("temp transcript index file");
     let index = GentleEngine::export_rna_read_transcript_catalog_index(
-        &vec![
+        &[
             transcript_file_gene3.path().display().to_string(),
             transcript_file_gene4.path().display().to_string(),
         ],
@@ -32369,7 +32365,7 @@ fn test_export_rna_read_sample_sheet_includes_target_gene_support_metrics() {
     let expected_mean_assigned_length = report
         .hits
         .iter()
-        .filter(|hit| matches!(hit.record_index, 0 | 1 | 2))
+        .filter(|hit| matches!(hit.record_index, 0..=2))
         .map(|hit| hit.read_length_bp as f64)
         .sum::<f64>()
         / 3.0;
@@ -33519,7 +33515,7 @@ fn inspect_sequence_context_view_uses_display_viewport_and_visible_classes() {
         report
             .rows
             .iter()
-            .all(|row| row.kind.to_ascii_uppercase() != "MRNA"),
+            .all(|row| !row.kind.eq_ignore_ascii_case("MRNA")),
         "rows were: {:?}",
         report
             .rows

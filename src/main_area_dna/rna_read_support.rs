@@ -810,7 +810,7 @@ impl MainAreaDna {
                     "Engine lock poisoned while inspecting RNA-read alignments".to_string()
                 })?
                 .inspect_rna_read_alignments_with_subset(
-                    &report_id,
+                    report_id,
                     RnaReadHitSelection::All,
                     limit.max(1),
                     subset_spec,

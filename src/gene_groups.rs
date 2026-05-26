@@ -1171,13 +1171,13 @@ fn validate_doctor_group(
         }
     }
     for key in group_lookup_keys(group) {
-        if let Some(previous) = seen_aliases.insert(key.clone(), group.id.clone()) {
-            if previous != group.id {
-                source.errors.push(format!(
-                    "Alias/key '{}' collides between groups '{}' and '{}'",
-                    key, previous, group.id
-                ));
-            }
+        if let Some(previous) = seen_aliases.insert(key.clone(), group.id.clone())
+            && previous != group.id
+        {
+            source.errors.push(format!(
+                "Alias/key '{}' collides between groups '{}' and '{}'",
+                key, previous, group.id
+            ));
         }
     }
     if group.curation_status.trim().is_empty() {

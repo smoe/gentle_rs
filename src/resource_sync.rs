@@ -248,14 +248,14 @@ fn parse_rebase_withrefm(text: &str, commercial_only: bool) -> Vec<RebaseEnzymeR
             last_tag = None;
             continue;
         }
-        if let Some(rest) = line.strip_prefix('<') {
-            if let Some(pos) = rest.find('>') {
-                let tag = rest[..pos].trim().to_string();
-                let value = rest[pos + 1..].trim().to_string();
-                fields.insert(tag.clone(), value);
-                last_tag = Some(tag);
-                continue;
-            }
+        if let Some(rest) = line.strip_prefix('<')
+            && let Some(pos) = rest.find('>')
+        {
+            let tag = rest[..pos].trim().to_string();
+            let value = rest[pos + 1..].trim().to_string();
+            fields.insert(tag.clone(), value);
+            last_tag = Some(tag);
+            continue;
         }
         if let Some(tag) = &last_tag {
             let extra = line.trim();
@@ -895,7 +895,7 @@ fn parse_attract_db_text(
         };
         let len = column_value(&record, map.len)
             .and_then(|value| value.parse::<usize>().ok())
-            .unwrap_or_else(|| motif_iupac.len());
+            .unwrap_or(motif_iupac.len());
         let gene_id = column_value(&record, map.gene_id);
         let experiment = column_value(&record, map.experiment);
         let family = column_value(&record, map.family);
@@ -957,9 +957,10 @@ fn parse_attract_db_text(
                 motif_length
             ));
         }
-        if let Some(candidate_pfm) = candidate_pfm {
-            if candidate_pfm.a.len() != motif_length {
-                warnings.push(format!(
+        if let Some(candidate_pfm) = candidate_pfm
+            && candidate_pfm.a.len() != motif_length
+        {
+            warnings.push(format!(
                     "ATtRACT row {} ('{}' / '{}') keeps consensus-only matching because motif length {} does not match PWM length {}.",
                     row_idx + 2,
                     gene_name,
@@ -967,7 +968,6 @@ fn parse_attract_db_text(
                     motif_length,
                     candidate_pfm.a.len()
                 ));
-            }
         }
     }
 

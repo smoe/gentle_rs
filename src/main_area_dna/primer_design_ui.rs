@@ -76,6 +76,7 @@ impl PrimerSideConstraintUiState {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
+#[derive(Default)]
 pub(super) struct PrimerPairConstraintUiState {
     pub(super) require_roi_flanking: bool,
     pub(super) required_amplicon_motifs: String,
@@ -84,36 +85,14 @@ pub(super) struct PrimerPairConstraintUiState {
     pub(super) fixed_amplicon_end_0based_exclusive: String,
 }
 
-impl Default for PrimerPairConstraintUiState {
-    fn default() -> Self {
-        Self {
-            require_roi_flanking: false,
-            required_amplicon_motifs: String::new(),
-            forbidden_amplicon_motifs: String::new(),
-            fixed_amplicon_start_0based: String::new(),
-            fixed_amplicon_end_0based_exclusive: String::new(),
-        }
-    }
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
+#[derive(Default)]
 pub(super) struct PcrQueuedRegionUiState {
     pub(super) template: String,
     pub(super) source_label: String,
     pub(super) start_0based: usize,
     pub(super) end_0based_exclusive: usize,
-}
-
-impl Default for PcrQueuedRegionUiState {
-    fn default() -> Self {
-        Self {
-            template: String::new(),
-            source_label: String::new(),
-            start_0based: 0,
-            end_0based_exclusive: 0,
-        }
-    }
 }
 
 impl PcrQueuedRegionUiState {
@@ -124,6 +103,7 @@ impl PcrQueuedRegionUiState {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
+#[derive(Default)]
 pub(super) struct PcrBatchResultRowUiState {
     pub(super) region_index_1based: usize,
     pub(super) template: String,
@@ -140,28 +120,6 @@ pub(super) struct PcrBatchResultRowUiState {
     pub(super) copy_requested: bool,
     pub(super) copy_seq_id: Option<String>,
     pub(super) copy_error: Option<String>,
-}
-
-impl Default for PcrBatchResultRowUiState {
-    fn default() -> Self {
-        Self {
-            region_index_1based: 0,
-            template: String::new(),
-            source_label: String::new(),
-            start_0based: 0,
-            end_0based_exclusive: 0,
-            report_id: String::new(),
-            report_pair_count: None,
-            report_backend_requested: None,
-            report_backend_used: None,
-            report_primer3_explain: None,
-            report_note: None,
-            report_error: None,
-            copy_requested: false,
-            copy_seq_id: None,
-            copy_error: None,
-        }
-    }
 }
 
 impl PcrBatchResultRowUiState {
@@ -2221,36 +2179,31 @@ impl MainAreaDna {
                 .trim()
                 .to_string()
         };
-        engine
-            .read()
-            .ok()
-            .map(|guard| {
-                guard
-                    .list_restriction_cloning_pcr_handoffs()
-                    .into_iter()
-                    .filter(|summary| {
-                        summary.template == self.seq_id.clone().unwrap_or_default()
-                            && summary.primer_report_id == self.primer_design_ui.report_id
-                            && selected_rank
-                                .is_none_or(|pair_index| summary.pair_index == pair_index)
-                            && (vector.is_empty()
-                                || summary
-                                    .destination_vector_seq_id
-                                    .eq_ignore_ascii_case(&vector))
-                            && (forward.is_empty()
-                                || summary.forward_enzyme.eq_ignore_ascii_case(&forward))
-                            && (reverse.is_empty()
-                                || summary.reverse_enzyme.eq_ignore_ascii_case(&reverse))
-                            && summary.mode == mode
-                    })
-                    .max_by(|left, right| {
-                        left.generated_at_unix_ms
-                            .cmp(&right.generated_at_unix_ms)
-                            .then(left.report_id.cmp(&right.report_id))
-                    })
-                    .map(|summary| summary.report_id)
-            })
-            .flatten()
+        engine.read().ok().and_then(|guard| {
+            guard
+                .list_restriction_cloning_pcr_handoffs()
+                .into_iter()
+                .filter(|summary| {
+                    summary.template == self.seq_id.clone().unwrap_or_default()
+                        && summary.primer_report_id == self.primer_design_ui.report_id
+                        && selected_rank.is_none_or(|pair_index| summary.pair_index == pair_index)
+                        && (vector.is_empty()
+                            || summary
+                                .destination_vector_seq_id
+                                .eq_ignore_ascii_case(&vector))
+                        && (forward.is_empty()
+                            || summary.forward_enzyme.eq_ignore_ascii_case(&forward))
+                        && (reverse.is_empty()
+                            || summary.reverse_enzyme.eq_ignore_ascii_case(&reverse))
+                        && summary.mode == mode
+                })
+                .max_by(|left, right| {
+                    left.generated_at_unix_ms
+                        .cmp(&right.generated_at_unix_ms)
+                        .then(left.report_id.cmp(&right.report_id))
+                })
+                .map(|summary| summary.report_id)
+        })
     }
 
     pub(super) fn seed_restriction_cloning_pcr_handoff_request(
@@ -2633,9 +2586,7 @@ impl MainAreaDna {
                     selected_assay.reverse.end_0based_exclusive,
                     selected_assay.score
                 ));
-                ui.small(format!(
-                    "Current best-assay rationale: highest retained score among assays that keep the probe inside the amplicon and satisfy both primer/probe ΔTm gates."
-                ));
+                ui.small("Current best-assay rationale: highest retained score among assays that keep the probe inside the amplicon and satisfy both primer/probe ΔTm gates.".to_string());
                 if let Some(summary) = Self::qpcr_persisted_context_summary(selected_assay)
                     .or_else(|| {
                         splicing_view.as_ref().and_then(|view| {
@@ -4149,11 +4100,9 @@ impl MainAreaDna {
                                 "Set forward side window to [ROI start - D .. ROI start] and reverse side window to [ROI end .. ROI end + D], while keeping ROI flanking enabled",
                             )
                             .clicked()
-                        {
-                            if let Err(message) = self.apply_simple_pcr_flank_windows_from_roi() {
+                            && let Err(message) = self.apply_simple_pcr_flank_windows_from_roi() {
                                 self.op_status = message;
                             }
-                        }
                     });
                     ui.small(
                         "Then set `max amplicon` below to the longest acceptable product. The helper keeps `min amplicon` at least the core length.",
@@ -4222,8 +4171,8 @@ impl MainAreaDna {
                                     ui.end_row();
                                 }
                             });
-                        if let Some(idx) = use_roi_idx {
-                            if let Some(row) = self.pcr_queued_regions_ui.get(idx).cloned() {
+                        if let Some(idx) = use_roi_idx
+                            && let Some(row) = self.pcr_queued_regions_ui.get(idx).cloned() {
                                 self.set_primer_design_roi_fields_0based(
                                     row.start_0based,
                                     row.end_0based_exclusive,
@@ -4237,7 +4186,6 @@ impl MainAreaDna {
                                 );
                                 self.save_engine_ops_state();
                             }
-                        }
                         if let Some(idx) = remove_idx {
                             self.remove_pcr_queued_region(idx);
                         }
@@ -4957,13 +4905,12 @@ impl MainAreaDna {
                     )
                     .on_hover_text("Copy current map/text selection into pair-PCR ROI form fields")
                     .clicked();
-                if set_clicked {
-                    if let Err(err) = self
+                if set_clicked
+                    && let Err(err) = self
                         .set_primer_design_roi_from_current_selection("current sequence selection")
                     {
                         self.op_status = err;
                     }
-                }
                 if self.pcr_designer_mode == PcrDesignerMode::PrimerPairs {
                     let queue_clicked = ui
                         .add_enabled(
@@ -4995,8 +4942,8 @@ impl MainAreaDna {
             columns[0].separator();
             self.render_pcr_paint_interval_summary(&mut columns[0]);
             columns[0].horizontal(|ui| {
-                if self.pcr_designer_mode == PcrDesignerMode::PrimerPairs {
-                    if ui
+                if self.pcr_designer_mode == PcrDesignerMode::PrimerPairs
+                    && ui
                         .button("Queue painted ROI")
                         .on_hover_text("Queue the currently painted ROI interval")
                         .clicked()
@@ -5013,7 +4960,6 @@ impl MainAreaDna {
                                     .to_string();
                         }
                     }
-                }
                 if ui
                     .button("Set form ROI from paint")
                     .on_hover_text("Copy painted ROI interval into the active PCR/qPCR ROI form fields")

@@ -262,7 +262,11 @@ impl GentleEngine {
 
     fn cdna_assay_exon_color(identity_index: usize) -> String {
         let hue = ((identity_index * 137 + 196) % 360) as f32;
-        let lightness = if identity_index % 2 == 0 { 0.62 } else { 0.56 };
+        let lightness = if identity_index.is_multiple_of(2) {
+            0.62
+        } else {
+            0.56
+        };
         Self::cdna_assay_hsl_to_hex(hue, 0.72, lightness)
     }
 
@@ -445,7 +449,7 @@ impl GentleEngine {
         let rows_per_column = if row_count == 0 {
             1usize
         } else {
-            (row_count + column_count - 1) / column_count
+            row_count.div_ceil(column_count)
         };
         let column_gap = 24.0f32;
         let column_width = match column_count {
@@ -1445,7 +1449,7 @@ impl GentleEngine {
         let rows_per_column = if row_count == 0 {
             1usize
         } else {
-            (row_count + column_count - 1) / column_count
+            row_count.div_ceil(column_count)
         };
         let column_gap = 24.0f32;
         let column_width = match column_count {
@@ -2248,37 +2252,37 @@ impl GentleEngine {
             requested_scope,
         );
         let candidate_before_fallback = projection.feature_count();
-        if let Some(cap) = effective_cap {
-            if projection.feature_count() > cap {
-                if matches!(requested_scope, GenomeAnnotationScope::Full) {
-                    let core_projection = Self::build_extract_region_annotation_projection(
-                        &genes,
-                        &transcripts,
-                        start_1based,
-                        end_1based,
-                        GenomeAnnotationScope::Core,
-                    );
-                    if core_projection.feature_count() <= cap {
-                        effective_scope = GenomeAnnotationScope::Core;
-                        projection = core_projection;
-                        fallback_reason = Some(format!(
-                            "Projected full annotation would attach {} feature(s), exceeding max_annotation_features={cap}; fell back to core projection. Re-run with annotation_scope=full --max-annotation-features 0 to force full transfer.",
-                            candidate_before_fallback
-                        ));
-                    } else {
-                        effective_scope = GenomeAnnotationScope::None;
-                        projection = ExtractRegionAnnotationProjectionBatch::default();
-                        fallback_reason = Some(format!(
-                            "Projected annotation exceeded max_annotation_features={cap} even after core fallback; annotation transfer was disabled for this extraction. Re-run with --max-annotation-features 0 for unrestricted transfer."
-                        ));
-                    }
+        if let Some(cap) = effective_cap
+            && projection.feature_count() > cap
+        {
+            if matches!(requested_scope, GenomeAnnotationScope::Full) {
+                let core_projection = Self::build_extract_region_annotation_projection(
+                    &genes,
+                    &transcripts,
+                    start_1based,
+                    end_1based,
+                    GenomeAnnotationScope::Core,
+                );
+                if core_projection.feature_count() <= cap {
+                    effective_scope = GenomeAnnotationScope::Core;
+                    projection = core_projection;
+                    fallback_reason = Some(format!(
+                        "Projected full annotation would attach {} feature(s), exceeding max_annotation_features={cap}; fell back to core projection. Re-run with annotation_scope=full --max-annotation-features 0 to force full transfer.",
+                        candidate_before_fallback
+                    ));
                 } else {
                     effective_scope = GenomeAnnotationScope::None;
                     projection = ExtractRegionAnnotationProjectionBatch::default();
                     fallback_reason = Some(format!(
-                        "Projected annotation exceeded max_annotation_features={cap}; annotation transfer was disabled for this extraction."
+                        "Projected annotation exceeded max_annotation_features={cap} even after core fallback; annotation transfer was disabled for this extraction. Re-run with --max-annotation-features 0 for unrestricted transfer."
                     ));
                 }
+            } else {
+                effective_scope = GenomeAnnotationScope::None;
+                projection = ExtractRegionAnnotationProjectionBatch::default();
+                fallback_reason = Some(format!(
+                    "Projected annotation exceeded max_annotation_features={cap}; annotation transfer was disabled for this extraction."
+                ));
             }
         }
 
@@ -2601,10 +2605,7 @@ impl GentleEngine {
                 color[0],
                 color[1],
                 color[2],
-                Self::dotplot_svg_xml_escape(&format!(
-                    "{}",
-                    Self::dotplot_reference_annotation_title(interval)
-                ))
+                Self::dotplot_svg_xml_escape(&Self::dotplot_reference_annotation_title(interval).to_string())
             ));
             let strand = interval.strand.as_deref().unwrap_or_default();
             if matches!(strand, "+" | "-") {
@@ -3814,10 +3815,10 @@ impl GentleEngine {
         feature: &gb_io::seq::Feature,
     ) -> Option<String> {
         for key in ["product", "note"] {
-            if let Some(value) = Self::qualifier_text_for_derivation(feature, key) {
-                if let Some(token) = Self::transcript_variant_token_from_text(&value) {
-                    return Some(token);
-                }
+            if let Some(value) = Self::qualifier_text_for_derivation(feature, key)
+                && let Some(token) = Self::transcript_variant_token_from_text(&value)
+            {
+                return Some(token);
             }
         }
         None
@@ -3842,15 +3843,14 @@ impl GentleEngine {
             .filter(|feature| feature.kind.to_string().eq_ignore_ascii_case("CDS"))
             .filter(|feature| feature_is_reverse(feature) == transcript_reverse)
             .filter(|feature| {
-                if let Some(transcript_gene) = transcript_gene.as_deref() {
-                    if let Some(cds_gene) = Self::first_nonempty_qualifier_for_derivation(
+                if let Some(transcript_gene) = transcript_gene.as_deref()
+                    && let Some(cds_gene) = Self::first_nonempty_qualifier_for_derivation(
                         feature,
                         &["gene_id", "gene", "locus_tag"],
-                    ) {
-                        if !cds_gene.eq_ignore_ascii_case(transcript_gene) {
-                            return false;
-                        }
-                    }
+                    )
+                    && !cds_gene.eq_ignore_ascii_case(transcript_gene)
+                {
+                    return false;
                 }
                 Self::transcript_variant_token_for_derivation_feature(feature)
                     .is_some_and(|token| token.eq_ignore_ascii_case(&transcript_variant))
@@ -4998,10 +4998,10 @@ impl GentleEngine {
         if !transcript_id.is_empty() && !name.contains(transcript_id) {
             detail_parts.push(transcript_id.to_string());
         }
-        if let Some(protein_id) = protein_id {
-            if !name.contains(&protein_id) {
-                detail_parts.push(protein_id);
-            }
+        if let Some(protein_id) = protein_id
+            && !name.contains(&protein_id)
+        {
+            detail_parts.push(protein_id);
         }
         detail_parts.push(format!("{} aa", row.derivation.protein_length_aa));
         (name, detail_parts.join(" | "))
@@ -9892,16 +9892,16 @@ impl GentleEngine {
                 .collect::<Vec<_>>();
             (matches.len() == 1).then_some(matches[0])
         };
-        if let Some(idx) = intended_index {
-            if let Some(amplicon) = amplicons.get_mut(idx) {
-                amplicon.intended = true;
-                amplicon.intended_reason = Some(
-                    expected_amplicon_length_bp
-                        .map(|_| "matches_saved_primer_pair_amplicon_length")
-                        .unwrap_or("unique_forward_reverse_product")
-                        .to_string(),
-                );
-            }
+        if let Some(idx) = intended_index
+            && let Some(amplicon) = amplicons.get_mut(idx)
+        {
+            amplicon.intended = true;
+            amplicon.intended_reason = Some(
+                expected_amplicon_length_bp
+                    .map(|_| "matches_saved_primer_pair_amplicon_length")
+                    .unwrap_or("unique_forward_reverse_product")
+                    .to_string(),
+            );
         }
         for amplicon in amplicons {
             if !amplicon.terminal_policy_pass {
@@ -10450,17 +10450,17 @@ impl GentleEngine {
         } else {
             vec![]
         };
-        if let Some(probe_reverse_binding) = request.probe_reverse_binding.as_deref() {
-            if probe_reverse_binding != request.probe.as_deref().unwrap_or_default() {
-                probe_hits.extend(Self::cdna_assay_find_primer_hits(
-                    template,
-                    probe_reverse_binding,
-                    "reverse_complement",
-                    request.max_mismatches,
-                    0,
-                    false,
-                ));
-            }
+        if let Some(probe_reverse_binding) = request.probe_reverse_binding.as_deref()
+            && probe_reverse_binding != request.probe.as_deref().unwrap_or_default()
+        {
+            probe_hits.extend(Self::cdna_assay_find_primer_hits(
+                template,
+                probe_reverse_binding,
+                "reverse_complement",
+                request.max_mismatches,
+                0,
+                false,
+            ));
         }
         probe_hits.sort_by(|left, right| {
             left.start_0based
@@ -10992,7 +10992,7 @@ impl GentleEngine {
             feature
                 .qualifiers
                 .iter()
-                .find(|(key, _)| key.to_string() == "cdna_assay_signature")
+                .find(|(key, _)| key == "cdna_assay_signature")
                 .and_then(|(_, value)| value.clone())
         })
     }
@@ -11019,10 +11019,10 @@ impl GentleEngine {
         product_sequence: &str,
         signature: &str,
     ) -> Option<SeqId> {
-        if let Some(dna) = self.state.sequences.get(preferred_seq_id) {
-            if Self::cdna_assay_product_sequence_matches(dna, product_sequence, signature) {
-                return Some(preferred_seq_id.to_string());
-            }
+        if let Some(dna) = self.state.sequences.get(preferred_seq_id)
+            && Self::cdna_assay_product_sequence_matches(dna, product_sequence, signature)
+        {
+            return Some(preferred_seq_id.to_string());
         }
         let mut matches = self
             .state
@@ -12120,10 +12120,10 @@ impl GentleEngine {
                     if end > probe_start {
                         continue;
                     }
-                    if let Some((reverse_start, _)) = reverse_local {
-                        if probe_end > reverse_start {
-                            continue;
-                        }
+                    if let Some((reverse_start, _)) = reverse_local
+                        && probe_end > reverse_start
+                    {
+                        continue;
                     }
                 }
                 let sequence = template.sequence[start..end].to_ascii_uppercase();
@@ -12495,10 +12495,10 @@ impl GentleEngine {
             && Self::cdna_assay_is_canonical_dna(request.forward_primer.as_bytes());
         for source_path in &source_paths {
             Self::visit_fasta_records_with_offsets(source_path, &mut |record, _progress| {
-                if let Some(requested) = requested_transcript_id.as_deref() {
-                    if !Self::cdna_fasta_record_matches_requested_transcript(&record, requested) {
-                        return Ok(());
-                    }
+                if let Some(requested) = requested_transcript_id.as_deref()
+                    && !Self::cdna_fasta_record_matches_requested_transcript(&record, requested)
+                {
+                    return Ok(());
                 }
                 let transcript_feature_id = next_feature_id;
                 next_feature_id = next_feature_id.saturating_add(1);
@@ -12546,19 +12546,19 @@ impl GentleEngine {
             })?;
         }
 
-        if let Some(requested) = requested_transcript_id.as_deref() {
-            if transcript_count == 0 {
-                return Err(EngineError {
-                    code: ErrorCode::NotFound,
-                    message: format!(
-                        "Transcript '{}' was not found in cDNA FASTA input(s): {}",
-                        requested,
-                        source_paths.join(", ")
-                    ),
+        if let Some(requested) = requested_transcript_id.as_deref()
+            && transcript_count == 0
+        {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "Transcript '{}' was not found in cDNA FASTA input(s): {}",
+                    requested,
+                    source_paths.join(", ")
+                ),
 
-                    cause_chain: vec![],
-                });
-            }
+                cause_chain: vec![],
+            });
         }
 
         let assay_kind = "qpcr".to_string();
@@ -12785,52 +12785,39 @@ impl GentleEngine {
             ("reverse", &reverse),
             ("probe", &probe),
         ] {
-            if let Some(location) = side.location_0based {
-                if location >= template_bytes.len() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "{label}.location_0based ({location}) is outside template length {}",
-                            template_bytes.len()
-                        ),
-
-                        cause_chain: vec![],
-                    });
-                }
-            }
-            if let Some(start) = side.start_0based {
-                if start >= template_bytes.len() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "{label}.start_0based ({start}) is outside template length {}",
-                            template_bytes.len()
-                        ),
-
-                        cause_chain: vec![],
-                    });
-                }
-            }
-            if let Some(end) = side.end_0based {
-                if end == 0 || end > template_bytes.len() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "{label}.end_0based ({end}) must be in 1..={} for this template",
-                            template_bytes.len()
-                        ),
-
-                        cause_chain: vec![],
-                    });
-                }
-            }
-        }
-        if let Some(start) = pair_constraints.fixed_amplicon_start_0based {
-            if start >= template_bytes.len() {
+            if let Some(location) = side.location_0based
+                && location >= template_bytes.len()
+            {
                 return Err(EngineError {
                     code: ErrorCode::InvalidInput,
                     message: format!(
-                        "pair_constraints.fixed_amplicon_start_0based ({start}) is outside template length {}",
+                        "{label}.location_0based ({location}) is outside template length {}",
+                        template_bytes.len()
+                    ),
+
+                    cause_chain: vec![],
+                });
+            }
+            if let Some(start) = side.start_0based
+                && start >= template_bytes.len()
+            {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "{label}.start_0based ({start}) is outside template length {}",
+                        template_bytes.len()
+                    ),
+
+                    cause_chain: vec![],
+                });
+            }
+            if let Some(end) = side.end_0based
+                && (end == 0 || end > template_bytes.len())
+            {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "{label}.end_0based ({end}) must be in 1..={} for this template",
                         template_bytes.len()
                     ),
 
@@ -12838,18 +12825,31 @@ impl GentleEngine {
                 });
             }
         }
-        if let Some(end) = pair_constraints.fixed_amplicon_end_0based_exclusive {
-            if end == 0 || end > template_bytes.len() {
-                return Err(EngineError {
-                    code: ErrorCode::InvalidInput,
-                    message: format!(
-                        "pair_constraints.fixed_amplicon_end_0based_exclusive ({end}) must be in 1..={} for this template",
-                        template_bytes.len()
-                    ),
+        if let Some(start) = pair_constraints.fixed_amplicon_start_0based
+            && start >= template_bytes.len()
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "pair_constraints.fixed_amplicon_start_0based ({start}) is outside template length {}",
+                    template_bytes.len()
+                ),
 
-                    cause_chain: vec![],
-                });
-            }
+                cause_chain: vec![],
+            });
+        }
+        if let Some(end) = pair_constraints.fixed_amplicon_end_0based_exclusive
+            && (end == 0 || end > template_bytes.len())
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "pair_constraints.fixed_amplicon_end_0based_exclusive ({end}) must be in 1..={} for this template",
+                    template_bytes.len()
+                ),
+
+                cause_chain: vec![],
+            });
         }
         if transcript_targeting.is_some()
             && (forward.location_0based.is_some()
@@ -13152,52 +13152,39 @@ impl GentleEngine {
         let pair_constraints_normalized =
             Self::normalize_primer_pair_constraints(&pair_constraints)?;
         for (label, side) in [("forward", &forward), ("reverse", &reverse)] {
-            if let Some(location) = side.location_0based {
-                if location >= template_bytes.len() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "{label}.location_0based ({location}) is outside template length {}",
-                            template_bytes.len()
-                        ),
-
-                        cause_chain: vec![],
-                    });
-                }
-            }
-            if let Some(start) = side.start_0based {
-                if start >= template_bytes.len() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "{label}.start_0based ({start}) is outside template length {}",
-                            template_bytes.len()
-                        ),
-
-                        cause_chain: vec![],
-                    });
-                }
-            }
-            if let Some(end) = side.end_0based {
-                if end == 0 || end > template_bytes.len() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "{label}.end_0based ({end}) must be in 1..={} for this template",
-                            template_bytes.len()
-                        ),
-
-                        cause_chain: vec![],
-                    });
-                }
-            }
-        }
-        if let Some(start) = pair_constraints.fixed_amplicon_start_0based {
-            if start >= template_bytes.len() {
+            if let Some(location) = side.location_0based
+                && location >= template_bytes.len()
+            {
                 return Err(EngineError {
                     code: ErrorCode::InvalidInput,
                     message: format!(
-                        "pair_constraints.fixed_amplicon_start_0based ({start}) is outside template length {}",
+                        "{label}.location_0based ({location}) is outside template length {}",
+                        template_bytes.len()
+                    ),
+
+                    cause_chain: vec![],
+                });
+            }
+            if let Some(start) = side.start_0based
+                && start >= template_bytes.len()
+            {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "{label}.start_0based ({start}) is outside template length {}",
+                        template_bytes.len()
+                    ),
+
+                    cause_chain: vec![],
+                });
+            }
+            if let Some(end) = side.end_0based
+                && (end == 0 || end > template_bytes.len())
+            {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "{label}.end_0based ({end}) must be in 1..={} for this template",
                         template_bytes.len()
                     ),
 
@@ -13205,18 +13192,31 @@ impl GentleEngine {
                 });
             }
         }
-        if let Some(end) = pair_constraints.fixed_amplicon_end_0based_exclusive {
-            if end == 0 || end > template_bytes.len() {
-                return Err(EngineError {
-                    code: ErrorCode::InvalidInput,
-                    message: format!(
-                        "pair_constraints.fixed_amplicon_end_0based_exclusive ({end}) must be in 1..={} for this template",
-                        template_bytes.len()
-                    ),
+        if let Some(start) = pair_constraints.fixed_amplicon_start_0based
+            && start >= template_bytes.len()
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "pair_constraints.fixed_amplicon_start_0based ({start}) is outside template length {}",
+                    template_bytes.len()
+                ),
 
-                    cause_chain: vec![],
-                });
-            }
+                cause_chain: vec![],
+            });
+        }
+        if let Some(end) = pair_constraints.fixed_amplicon_end_0based_exclusive
+            && (end == 0 || end > template_bytes.len())
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "pair_constraints.fixed_amplicon_end_0based_exclusive ({end}) must be in 1..={} for this template",
+                    template_bytes.len()
+                ),
+
+                cause_chain: vec![],
+            });
         }
 
         let requested_backend = self.state.parameters.primer_design_backend;
@@ -14477,41 +14477,41 @@ impl GentleEngine {
             ("inner_reverse", &inner_reverse),
         ] {
             Self::validate_primer_design_side_constraints(label, side)?;
-            if let Some(location) = side.location_0based {
-                if location >= template_len {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "{label}.location_0based ({location}) is outside template length {template_len}",
-                        ),
+            if let Some(location) = side.location_0based
+                && location >= template_len
+            {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "{label}.location_0based ({location}) is outside template length {template_len}",
+                    ),
 
-                        cause_chain: vec![],
-                    });
-                }
+                    cause_chain: vec![],
+                });
             }
-            if let Some(start) = side.start_0based {
-                if start >= template_len {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "{label}.start_0based ({start}) is outside template length {template_len}",
-                        ),
+            if let Some(start) = side.start_0based
+                && start >= template_len
+            {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "{label}.start_0based ({start}) is outside template length {template_len}",
+                    ),
 
-                        cause_chain: vec![],
-                    });
-                }
+                    cause_chain: vec![],
+                });
             }
-            if let Some(end) = side.end_0based {
-                if end == 0 || end > template_len {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "{label}.end_0based ({end}) must be in 1..={template_len} for this template",
-                        ),
+            if let Some(end) = side.end_0based
+                && (end == 0 || end > template_len)
+            {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "{label}.end_0based ({end}) must be in 1..={template_len} for this template",
+                    ),
 
-                        cause_chain: vec![],
-                    });
-                }
+                    cause_chain: vec![],
+                });
             }
         }
 
@@ -18055,13 +18055,12 @@ impl GentleEngine {
                                 .map(str::to_string)
                         })
                         .unwrap_or_else(|| seq_id.clone());
-                    if preferred_name.eq_ignore_ascii_case("<unnamed sequence>")
-                        || preferred_name.eq_ignore_ascii_case("<no name>")
+                    if (preferred_name.eq_ignore_ascii_case("<unnamed sequence>")
+                        || preferred_name.eq_ignore_ascii_case("<no name>"))
+                        && let Some(dna) = self.state.sequences.get_mut(&seq_id)
                     {
-                        if let Some(dna) = self.state.sequences.get_mut(&seq_id) {
-                            dna.set_name(seq_id.clone());
-                            Self::prepare_sequence(dna);
-                        }
+                        dna.set_name(seq_id.clone());
+                        Self::prepare_sequence(dna);
                     }
 
                     if let Some(extracted_sequence) = self
@@ -18226,38 +18225,37 @@ impl GentleEngine {
                         requested_scope,
                     );
                     let candidate_before_fallback = projection.feature_count();
-                    if let Some(cap) = max_annotation_features {
-                        if projection.feature_count() > cap {
-                            if matches!(requested_scope, GenomeAnnotationScope::Full) {
-                                let core_projection =
-                                    Self::build_extract_region_annotation_projection(
-                                        &gene_records,
-                                        &transcript_records,
-                                        extract_start_1based,
-                                        extract_end_1based,
-                                        GenomeAnnotationScope::Core,
-                                    );
-                                if core_projection.feature_count() <= cap {
-                                    effective_scope = GenomeAnnotationScope::Core;
-                                    projection = core_projection;
-                                    fallback_reason = Some(format!(
-                                        "Projected full annotation would attach {} feature(s), exceeding max_annotation_features={cap}; fell back to core projection. Re-run with annotation_scope=full --max-annotation-features 0 to force full transfer.",
-                                        candidate_before_fallback
-                                    ));
-                                } else {
-                                    effective_scope = GenomeAnnotationScope::None;
-                                    projection = ExtractRegionAnnotationProjectionBatch::default();
-                                    fallback_reason = Some(format!(
-                                        "Projected annotation exceeded max_annotation_features={cap} even after core fallback; annotation transfer was disabled for this extraction. Re-run with --max-annotation-features 0 for unrestricted transfer."
-                                    ));
-                                }
+                    if let Some(cap) = max_annotation_features
+                        && projection.feature_count() > cap
+                    {
+                        if matches!(requested_scope, GenomeAnnotationScope::Full) {
+                            let core_projection = Self::build_extract_region_annotation_projection(
+                                &gene_records,
+                                &transcript_records,
+                                extract_start_1based,
+                                extract_end_1based,
+                                GenomeAnnotationScope::Core,
+                            );
+                            if core_projection.feature_count() <= cap {
+                                effective_scope = GenomeAnnotationScope::Core;
+                                projection = core_projection;
+                                fallback_reason = Some(format!(
+                                    "Projected full annotation would attach {} feature(s), exceeding max_annotation_features={cap}; fell back to core projection. Re-run with annotation_scope=full --max-annotation-features 0 to force full transfer.",
+                                    candidate_before_fallback
+                                ));
                             } else {
                                 effective_scope = GenomeAnnotationScope::None;
                                 projection = ExtractRegionAnnotationProjectionBatch::default();
                                 fallback_reason = Some(format!(
-                                    "Projected annotation exceeded max_annotation_features={cap}; annotation transfer was disabled for this extraction."
+                                    "Projected annotation exceeded max_annotation_features={cap} even after core fallback; annotation transfer was disabled for this extraction. Re-run with --max-annotation-features 0 for unrestricted transfer."
                                 ));
                             }
+                        } else {
+                            effective_scope = GenomeAnnotationScope::None;
+                            projection = ExtractRegionAnnotationProjectionBatch::default();
+                            fallback_reason = Some(format!(
+                                "Projected annotation exceeded max_annotation_features={cap}; annotation transfer was disabled for this extraction."
+                            ));
                         }
                     }
                     let attached_feature_count = projection.feature_count();
@@ -22671,23 +22669,22 @@ impl GentleEngine {
                                 query.span_start_0based,
                                 query.span_end_0based,
                             )?;
-                        if let Some(query_anchor_0based) = query.query_anchor_0based {
-                            if query_anchor_0based < query_span_start_0based
-                                || query_anchor_0based >= query_span_end_0based
-                            {
-                                return Err(EngineError {
-                                    code: ErrorCode::InvalidInput,
-                                    message: format!(
-                                        "ComputeDotplotOverlay query '{}' anchor {} is outside selected span {}..{}",
-                                        query_seq_id,
-                                        query_anchor_0based.saturating_add(1),
-                                        query_span_start_0based.saturating_add(1),
-                                        query_span_end_0based
-                                    ),
+                        if let Some(query_anchor_0based) = query.query_anchor_0based
+                            && (query_anchor_0based < query_span_start_0based
+                                || query_anchor_0based >= query_span_end_0based)
+                        {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: format!(
+                                    "ComputeDotplotOverlay query '{}' anchor {} is outside selected span {}..{}",
+                                    query_seq_id,
+                                    query_anchor_0based.saturating_add(1),
+                                    query_span_start_0based.saturating_add(1),
+                                    query_span_end_0based
+                                ),
 
-                                    cause_chain: vec![],
-                                });
-                            }
+                                cause_chain: vec![],
+                            });
                         }
                         let query_span =
                             &query_bytes[query_span_start_0based..query_span_end_0based];
@@ -22920,12 +22917,12 @@ impl GentleEngine {
                             }
                             let mut ranges = vec![];
                             collect_location_ranges_usize(&feature.location, &mut ranges);
-                            if ranges.is_empty() {
-                                if let Ok((from, to)) = feature.location.find_bounds() {
-                                    if from >= 0 && to >= 0 {
-                                        ranges.push((from as usize, to as usize));
-                                    }
-                                }
+                            if ranges.is_empty()
+                                && let Ok((from, to)) = feature.location.find_bounds()
+                                && from >= 0
+                                && to >= 0
+                            {
+                                ranges.push((from as usize, to as usize));
                             }
                             if ranges.is_empty() {
                                 continue;
@@ -25199,10 +25196,10 @@ impl GentleEngine {
                         let fragment_text = String::from_utf8_lossy(&fragment).to_string();
                         let fragment_bytes = fragment_text.as_bytes();
 
-                        if let Some(fwd) = &forward_primer {
-                            if !Self::iupac_match_at(fragment_bytes, fwd.as_bytes(), 0) {
-                                continue;
-                            }
+                        if let Some(fwd) = &forward_primer
+                            && !Self::iupac_match_at(fragment_bytes, fwd.as_bytes(), 0)
+                        {
+                            continue;
                         }
                         if let Some(rev_rc) = &reverse_primer_rc {
                             if rev_rc.len() > fragment_bytes.len() {
@@ -25499,45 +25496,45 @@ impl GentleEngine {
                         });
                     }
 
-                    if let Some(min) = gc_min {
-                        if !(0.0..=1.0).contains(&min) {
-                            return Err(EngineError {
-                                code: ErrorCode::InvalidInput,
-                                message: format!("gc_min ({min}) must be between 0.0 and 1.0"),
+                    if let Some(min) = gc_min
+                        && !(0.0..=1.0).contains(&min)
+                    {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!("gc_min ({min}) must be between 0.0 and 1.0"),
 
-                                cause_chain: vec![],
-                            });
-                        }
+                            cause_chain: vec![],
+                        });
                     }
-                    if let Some(max) = gc_max {
-                        if !(0.0..=1.0).contains(&max) {
-                            return Err(EngineError {
-                                code: ErrorCode::InvalidInput,
-                                message: format!("gc_max ({max}) must be between 0.0 and 1.0"),
+                    if let Some(max) = gc_max
+                        && !(0.0..=1.0).contains(&max)
+                    {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!("gc_max ({max}) must be between 0.0 and 1.0"),
 
-                                cause_chain: vec![],
-                            });
-                        }
+                            cause_chain: vec![],
+                        });
                     }
-                    if let (Some(min), Some(max)) = (gc_min, gc_max) {
-                        if min > max {
-                            return Err(EngineError {
-                                code: ErrorCode::InvalidInput,
-                                message: format!("gc_min ({min}) must be <= gc_max ({max})"),
+                    if let (Some(min), Some(max)) = (gc_min, gc_max)
+                        && min > max
+                    {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!("gc_min ({min}) must be <= gc_max ({max})"),
 
-                                cause_chain: vec![],
-                            });
-                        }
+                            cause_chain: vec![],
+                        });
                     }
-                    if let Some(max_run) = max_homopolymer_run {
-                        if max_run == 0 {
-                            return Err(EngineError {
-                                code: ErrorCode::InvalidInput,
-                                message: "max_homopolymer_run must be >= 1".to_string(),
+                    if let Some(max_run) = max_homopolymer_run
+                        && max_run == 0
+                    {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "max_homopolymer_run must be >= 1".to_string(),
 
-                                cause_chain: vec![],
-                            });
-                        }
+                            cause_chain: vec![],
+                        });
                     }
 
                     let reject_ambiguous_bases = reject_ambiguous_bases.unwrap_or(true);
@@ -25578,15 +25575,15 @@ impl GentleEngine {
                         if gc_min.is_some() || gc_max.is_some() {
                             match Self::sequence_gc_fraction(&sequence) {
                                 Some(gc) => {
-                                    if let Some(min) = gc_min {
-                                        if gc < min {
-                                            reasons.push(format!("gc_too_low({gc:.3}<{min:.3})"));
-                                        }
+                                    if let Some(min) = gc_min
+                                        && gc < min
+                                    {
+                                        reasons.push(format!("gc_too_low({gc:.3}<{min:.3})"));
                                     }
-                                    if let Some(max) = gc_max {
-                                        if gc > max {
-                                            reasons.push(format!("gc_too_high({gc:.3}>{max:.3})"));
-                                        }
+                                    if let Some(max) = gc_max
+                                        && gc > max
+                                    {
+                                        reasons.push(format!("gc_too_high({gc:.3}>{max:.3})"));
                                     }
                                 }
                                 None => reasons.push("gc_not_computable".to_string()),
@@ -26387,11 +26384,11 @@ impl GentleEngine {
                             ));
                             kept += 1;
                             added += 1;
-                            if let Some(limit) = max_hits {
-                                if added >= limit {
-                                    cap_reached = true;
-                                    break;
-                                }
+                            if let Some(limit) = max_hits
+                                && added >= limit
+                            {
+                                cap_reached = true;
+                                break;
                             }
                         }
                         result.messages.push(format!(

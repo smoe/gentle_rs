@@ -92,7 +92,7 @@ impl RowDna {
         self.blocks = if span == 0 {
             0
         } else {
-            (span + self.bases_per_line - 1) / self.bases_per_line
+            span.div_ceil(self.bases_per_line)
         };
     }
 
@@ -140,27 +140,27 @@ impl RowDna {
                 } as char;
 
                 // Show selection, if any, in primary sequence only
-                if !self.show_reverse_complement {
-                    if let Some(selection) = &selection {
-                        let position = seq_offset + offset;
-                        if selection.contains(position) {
-                            painter.rect(
-                                Rect::from_min_size(
-                                    Pos2 {
-                                        x: x - self.char_width,
-                                        y,
-                                    },
-                                    Vec2 {
-                                        x: self.char_width,
-                                        y: self.line_height,
-                                    },
-                                ),
-                                0.0,
-                                Color32::LIGHT_GRAY,
-                                Stroke::NONE,
-                                StrokeKind::Inside,
-                            );
-                        }
+                if !self.show_reverse_complement
+                    && let Some(selection) = &selection
+                {
+                    let position = seq_offset + offset;
+                    if selection.contains(position) {
+                        painter.rect(
+                            Rect::from_min_size(
+                                Pos2 {
+                                    x: x - self.char_width,
+                                    y,
+                                },
+                                Vec2 {
+                                    x: self.char_width,
+                                    y: self.line_height,
+                                },
+                            ),
+                            0.0,
+                            Color32::LIGHT_GRAY,
+                            Stroke::NONE,
+                            StrokeKind::Inside,
+                        );
                     }
                 }
 

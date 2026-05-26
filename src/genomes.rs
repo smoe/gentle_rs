@@ -2643,19 +2643,15 @@ pub struct PreparedGenomeResolution {
 /// Policy controlling how prepared-genome compatibility fallback is handled.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum PreparedGenomeFallbackPolicy {
     /// Require exact prepared genome id (no compatibility fallback).
     Off,
     /// Auto-fallback only when exactly one compatible prepared entry exists.
+    #[default]
     SingleCompatible,
     /// Never auto-fallback; require explicit user/tool choice from options.
     AlwaysExplicit,
-}
-
-impl Default for PreparedGenomeFallbackPolicy {
-    fn default() -> Self {
-        Self::SingleCompatible
-    }
 }
 
 /// Inspection payload used by GUI/CLI preflight for prepared-genome selection.
@@ -3434,10 +3430,11 @@ impl GenomeCatalog {
             entry.ncbi_assembly_name.as_ref(),
             entry.ncbi_assembly_accession.as_ref(),
             entry.genbank_accession.as_ref(),
-        ] {
-            if let Some(value) = value {
-                aliases.push(value.clone());
-            }
+        ]
+        .into_iter()
+        .flatten()
+        {
+            aliases.push(value.clone());
         }
         aliases.sort_unstable();
         aliases.dedup();
@@ -3691,10 +3688,11 @@ impl GenomeCatalog {
                 procurement.order_url.as_ref(),
                 procurement.reference_url.as_ref(),
                 procurement.notes.as_ref(),
-            ] {
-                if let Some(value) = value {
-                    values.push(value.clone());
-                }
+            ]
+            .into_iter()
+            .flatten()
+            {
+                values.push(value.clone());
             }
         }
         if let Some(semantics) = entry.semantics.as_ref() {
@@ -4950,7 +4948,7 @@ impl GenomeCatalog {
                 }
             }
             if !force_refresh_from_sources {
-                Self::validate_manifest_files(&manifest)?;
+                Self::validate_manifest_files(manifest)?;
             }
         } else if reindex_from_cached_files {
             return Err(format!(
@@ -6263,10 +6261,9 @@ FASTA index='{}'.{}{}",
             if let (Some(req_tax), Some(candidate_tax)) = (
                 requested_entry.ncbi_taxonomy_id,
                 candidate_entry.ncbi_taxonomy_id,
-            ) {
-                if req_tax != candidate_tax {
-                    continue;
-                }
+            ) && req_tax != candidate_tax
+            {
+                continue;
             }
             if let Some(family) = requested_family {
                 let candidate_family =
@@ -7042,11 +7039,11 @@ fn summarize_paths(paths: &[PathBuf]) -> (u64, usize) {
     let mut bytes = 0u64;
     let mut count = 0usize;
     for path in paths {
-        if let Ok(meta) = fs::metadata(path) {
-            if meta.is_file() {
-                bytes = bytes.saturating_add(meta.len());
-                count += 1;
-            }
+        if let Ok(meta) = fs::metadata(path)
+            && meta.is_file()
+        {
+            bytes = bytes.saturating_add(meta.len());
+            count += 1;
         }
     }
     (bytes, count)
@@ -7534,10 +7531,10 @@ impl PrepareGenomeActivityTracker {
     ) -> Result<PrepareGenomeActivityStart, String> {
         let status_path = prepare_activity_status_path(install_dir);
         let lock_path = prepare_activity_lock_path(install_dir);
-        if let Some(existing) = inspect_prepare_activity_status_paths(&status_path, &lock_path)? {
-            if existing.lifecycle_status == "running" {
-                return Ok(PrepareGenomeActivityStart::Running(existing));
-            }
+        if let Some(existing) = inspect_prepare_activity_status_paths(&status_path, &lock_path)?
+            && existing.lifecycle_status == "running"
+        {
+            return Ok(PrepareGenomeActivityStart::Running(existing));
         }
         let now = now_unix_ms();
         let tracker = Self {
@@ -7566,10 +7563,9 @@ impl PrepareGenomeActivityTracker {
         if !create_prepare_activity_lock(&tracker.lock_path, &tracker.status)? {
             if let Some(existing) =
                 inspect_prepare_activity_status_paths(&tracker.status_path, &tracker.lock_path)?
+                && existing.lifecycle_status == "running"
             {
-                if existing.lifecycle_status == "running" {
-                    return Ok(PrepareGenomeActivityStart::Running(existing));
-                }
+                return Ok(PrepareGenomeActivityStart::Running(existing));
             }
             return Err(format!(
                 "Could not acquire a fresh prepare-activity lock for '{}'",
@@ -7812,10 +7808,8 @@ fn sanitize_for_path(s: &str) -> String {
     for c in s.chars() {
         if c.is_ascii_alphanumeric() {
             out.push(c.to_ascii_lowercase());
-        } else if matches!(c, ' ' | '-' | '_' | '.') {
-            if !out.ends_with('_') {
-                out.push('_');
-            }
+        } else if matches!(c, ' ' | '-' | '_' | '.') && !out.ends_with('_') {
+            out.push('_');
         }
     }
     let trimmed = out.trim_matches('_');
@@ -8262,20 +8256,19 @@ fn validate_catalog_entries(
                     .to_string(),
             );
         }
-        if let Some(length_bp) = entry.nucleotide_length_bp {
-            if length_bp == 0 {
-                entry_errors.push(
-                    "'nucleotide_length_bp' must be a positive integer when provided".to_string(),
-                );
-            }
+        if let Some(length_bp) = entry.nucleotide_length_bp
+            && length_bp == 0
+        {
+            entry_errors.push(
+                "'nucleotide_length_bp' must be a positive integer when provided".to_string(),
+            );
         }
-        if let Some(mass_da) = entry.molecular_mass_da {
-            if !mass_da.is_finite() || mass_da <= 0.0 {
-                entry_errors.push(
-                    "'molecular_mass_da' must be a finite positive number when provided"
-                        .to_string(),
-                );
-            }
+        if let Some(mass_da) = entry.molecular_mass_da
+            && (!mass_da.is_finite() || mass_da <= 0.0)
+        {
+            entry_errors.push(
+                "'molecular_mass_da' must be a finite positive number when provided".to_string(),
+            );
         }
         if let Some(template) = entry.ensembl_template.as_ref() {
             if normalize_ensembl_template(template).is_none() {
@@ -8340,7 +8333,7 @@ fn ensembl_template_metadata(entry: &GenomeCatalogEntry) -> Option<EnsemblCatalo
     entry
         .ensembl_template
         .as_ref()
-        .and_then(|template| normalize_ensembl_template(template))
+        .and_then(normalize_ensembl_template)
 }
 
 fn normalize_ensembl_template(template: &EnsemblCatalogTemplate) -> Option<EnsemblCatalogTemplate> {
@@ -8808,17 +8801,17 @@ fn resolve_ensembl_quick_install_output_path(
             )),
         );
     }
-    if let Some(source_path) = catalog.catalog_path() {
-        if catalog.catalog_file_is_writable() {
-            return Ok(source_path.to_path_buf());
-        }
+    if let Some(source_path) = catalog.catalog_path()
+        && catalog.catalog_file_is_writable()
+    {
+        return Ok(source_path.to_path_buf());
     }
-    if let Ok(origin_path) = fs::metadata(catalog.catalog_origin_label()) {
-        if origin_path.is_dir() {
-            return Ok(PathBuf::from(catalog.catalog_origin_label()).join(
-                build_ensembl_quick_install_fragment_filename(template, template.release),
-            ));
-        }
+    if let Ok(origin_path) = fs::metadata(catalog.catalog_origin_label())
+        && origin_path.is_dir()
+    {
+        return Ok(PathBuf::from(catalog.catalog_origin_label()).join(
+            build_ensembl_quick_install_fragment_filename(template, template.release),
+        ));
     }
     let Some(overlay_dir) = preferred_overlay_catalog_dir(domain) else {
         return Err(
@@ -8894,14 +8887,14 @@ fn validate_ensembl_quick_install_target(
 ) -> Result<(), String> {
     match write_mode {
         EnsemblQuickInstallWriteMode::FullCatalog => {
-            if let Some(existing) = catalog.entries.get(genome_id) {
-                if !ensembl_quick_install_entry_matches_template(existing, template) {
-                    return Err(format!(
-                        "Genome id '{}' already exists in '{}' and points to a different catalog entry. Choose another genome id for this quick install.",
-                        genome_id,
-                        catalog.catalog_origin_label()
-                    ));
-                }
+            if let Some(existing) = catalog.entries.get(genome_id)
+                && !ensembl_quick_install_entry_matches_template(existing, template)
+            {
+                return Err(format!(
+                    "Genome id '{}' already exists in '{}' and points to a different catalog entry. Choose another genome id for this quick install.",
+                    genome_id,
+                    catalog.catalog_origin_label()
+                ));
             }
         }
         EnsemblQuickInstallWriteMode::OverlayEntry => {
@@ -10079,16 +10072,16 @@ fn ensure_blast_index(sequence_path: &Path, db_prefix: &Path) -> BlastIndexOutco
     let executable = resolve_tool_executable(MAKEBLASTDB_ENV_BIN, DEFAULT_MAKEBLASTDB_BIN);
     outcome.executable = Some(executable.clone());
 
-    if let Some(parent) = db_prefix.parent() {
-        if let Err(e) = fs::create_dir_all(parent) {
-            outcome.warnings.push(format!(
-                "BLAST indexing skipped for '{}': could not create directory '{}': {}",
-                db_prefix_string,
-                parent.display(),
-                e
-            ));
-            return outcome;
-        }
+    if let Some(parent) = db_prefix.parent()
+        && let Err(e) = fs::create_dir_all(parent)
+    {
+        outcome.warnings.push(format!(
+            "BLAST indexing skipped for '{}': could not create directory '{}': {}",
+            db_prefix_string,
+            parent.display(),
+            e
+        ));
+        return outcome;
     }
 
     let args = vec![
@@ -11390,12 +11383,11 @@ fn normalize_genbank_feature_biotype(
     if kind.is_empty() {
         return None;
     }
-    if kind == "regulatory" {
-        if let Some(class) = attrs.get("regulatory_class").map(|v| v.trim()) {
-            if !class.is_empty() {
-                return Some(class.to_ascii_lowercase());
-            }
-        }
+    if kind == "regulatory"
+        && let Some(class) = attrs.get("regulatory_class").map(|v| v.trim())
+        && !class.is_empty()
+    {
+        return Some(class.to_ascii_lowercase());
     }
     if kind == "rep_origin" {
         return Some("origin_of_replication".to_string());
@@ -11746,10 +11738,10 @@ fn parse_annotation_attributes(raw: &str) -> HashMap<String, String> {
         }
         if let Some((key, value)) = part.split_once('=') {
             let key = key.trim().to_ascii_lowercase();
-            if !key.is_empty() {
-                if let Some(value) = normalize_annotation_attribute_value(value) {
-                    map.entry(key).or_insert(value);
-                }
+            if !key.is_empty()
+                && let Some(value) = normalize_annotation_attribute_value(value)
+            {
+                map.entry(key).or_insert(value);
             }
             continue;
         }
@@ -11760,10 +11752,10 @@ fn parse_annotation_attributes(raw: &str) -> HashMap<String, String> {
             .trim()
             .to_ascii_lowercase();
         let value = pieces.next().unwrap_or_default();
-        if !key.is_empty() {
-            if let Some(value) = normalize_annotation_attribute_value(value) {
-                map.entry(key).or_insert(value);
-            }
+        if !key.is_empty()
+            && let Some(value) = normalize_annotation_attribute_value(value)
+        {
+            map.entry(key).or_insert(value);
         }
     }
     map

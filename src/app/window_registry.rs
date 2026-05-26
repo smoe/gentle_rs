@@ -735,10 +735,10 @@ impl GENtleApp {
             .values()
             .find(|window| Self::window_owns_auxiliary_viewport(window, viewport_id))
             .cloned();
-        if let Some(window) = detached_owner {
-            if let Ok(mut guard) = window.write() {
-                guard.request_focus_auxiliary_window(viewport_id);
-            }
+        if let Some(window) = detached_owner
+            && let Ok(mut guard) = window.write()
+        {
+            guard.request_focus_auxiliary_window(viewport_id);
         }
         None
     }
@@ -801,12 +801,12 @@ impl GENtleApp {
             self.show_genbank_dialog = true;
         }
 
-        if ctx.embed_viewports() {
-            if let Some(layer_id) = self.embedded_window_layer_id_for_viewport(viewport_id) {
-                ctx.move_to_top(layer_id);
-                ctx.send_viewport_cmd_to(ViewportId::ROOT, egui::ViewportCommand::Visible(true));
-                ctx.send_viewport_cmd_to(ViewportId::ROOT, egui::ViewportCommand::Focus);
-            }
+        if ctx.embed_viewports()
+            && let Some(layer_id) = self.embedded_window_layer_id_for_viewport(viewport_id)
+        {
+            ctx.move_to_top(layer_id);
+            ctx.send_viewport_cmd_to(ViewportId::ROOT, egui::ViewportCommand::Visible(true));
+            ctx.send_viewport_cmd_to(ViewportId::ROOT, egui::ViewportCommand::Focus);
         }
         if !embedded_auxiliary_focus {
             ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Visible(true));

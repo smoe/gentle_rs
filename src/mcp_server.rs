@@ -1261,10 +1261,7 @@ fn tool_result_json(value: Value, is_error: bool) -> Value {
 }
 
 fn normalize_error_structured_content(mut value: Value) -> Value {
-    if value
-        .get("error")
-        .is_some_and(|error| is_engine_error_payload(error))
-    {
+    if value.get("error").is_some_and(is_engine_error_payload) {
         if let Some(error) = value.get_mut("error").and_then(Value::as_object_mut) {
             error
                 .entry("cause_chain".to_string())
@@ -2063,15 +2060,15 @@ fn restriction_site_detail_tool_result(default_state_path: &str, arguments: &Val
         Ok(value) => value,
         Err(err) => return tool_result_text(err, "text", true),
     };
-    if let (Some(start), Some(end)) = (recognition_start_1based, recognition_end_1based) {
-        if start > end {
-            return tool_result_text(
-                "MCP argument 'recognition_start_1based' must be <= 'recognition_end_1based'"
-                    .to_string(),
-                "text",
-                true,
-            );
-        }
+    if let (Some(start), Some(end)) = (recognition_start_1based, recognition_end_1based)
+        && start > end
+    {
+        return tool_result_text(
+            "MCP argument 'recognition_start_1based' must be <= 'recognition_end_1based'"
+                .to_string(),
+            "text",
+            true,
+        );
     }
 
     let mut tokens = vec![
@@ -2555,17 +2552,17 @@ fn blast_async_start_tool_result(default_state_path: &str, arguments: &Value) ->
         Ok(value) => value,
         Err(err) => return tool_result_text(err, "text", true),
     };
-    if let Some(task_value) = task.as_deref() {
-        if !matches!(task_value, "blastn-short" | "blastn") {
-            return tool_result_text(
-                format!(
-                    "MCP argument 'task' must be 'blastn-short' or 'blastn' (got '{}')",
-                    task_value
-                ),
-                "text",
-                true,
-            );
-        }
+    if let Some(task_value) = task.as_deref()
+        && !matches!(task_value, "blastn-short" | "blastn")
+    {
+        return tool_result_text(
+            format!(
+                "MCP argument 'task' must be 'blastn-short' or 'blastn' (got '{}')",
+                task_value
+            ),
+            "text",
+            true,
+        );
     }
     let options_json = match optional_json_string_arg(&args, "options_json") {
         Ok(value) => value,
