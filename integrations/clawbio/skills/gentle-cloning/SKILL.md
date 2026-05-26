@@ -452,6 +452,12 @@ trail.
 - **Why ClawBio**: this keeps AI-guided sequence design grounded in GENtle's
   deterministic engine rather than free-form LLM advice, while still fitting
   into a broader local-first bioinformatics skill system.
+- **Local agent wrappers**: if Codex, Claude, OpenClaw, or another local agent
+  needs a small host-specific routing note rather than the full skill manual,
+  see `integrations/clawbio/local_agent_handoff.md` in the GENtle checkout.
+  If only the skill directory was copied into ClawBio, copy that note alongside
+  the deployment notes or preserve its "delegate to this ClawBio runner, inspect
+  the output bundle, do not invent a second GENtle interface" contract.
 
 ## User-Facing Framing
 
