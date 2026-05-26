@@ -14,6 +14,8 @@ Maintenance rule:
 
 ## 2026-05-26
 
+- Refreshed `Cargo.lock` after a pre-release `cargo update` and verified the
+  release-facing examples/tutorial checks against the updated patch versions.
 - Fixed linear DNA-map drag selection so drags that originate on splitters or
   hosted-window decorations cannot become sequence selections after entering
   the map canvas.
