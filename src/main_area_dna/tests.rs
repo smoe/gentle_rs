@@ -92,14 +92,18 @@ fn with_linear_map_response(
     inspect: impl FnOnce(&egui::Response),
 ) {
     ctx.begin_pass(raw_input);
-    crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
-        let response = ui.interact(
-            rect,
-            ui.make_persistent_id("linear_map_drag_origin_guard_test"),
-            egui::Sense::click_and_drag(),
-        );
-        inspect(&response);
-    });
+    crate::egui_compat::show_central_panel_for_test_context(
+        ctx,
+        egui::CentralPanel::default(),
+        |ui| {
+            let response = ui.interact(
+                rect,
+                ui.make_persistent_id("linear_map_drag_origin_guard_test"),
+                egui::Sense::click_and_drag(),
+            );
+            inspect(&response);
+        },
+    );
     let _ = ctx.end_pass();
 }
 
@@ -132,6 +136,34 @@ fn linear_map_drag_handler_rejects_press_origin_outside_map() {
         map_rect,
         |response| {
             assert!(response.rect.contains(inside_drag));
+            area.handle_linear_map_drag_for_pcr_paint(response, &ctx);
+        },
+    );
+
+    assert_eq!(area.linear_drag_selection_anchor_bp, None);
+    assert_eq!(area.linear_pan_drag_origin_bp, None);
+    assert_eq!(area.pcr_paint_drag_interval, None);
+}
+
+#[test]
+fn linear_map_drag_handler_rejects_drag_owned_by_other_widget() {
+    let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(64)).expect("sequence");
+    dna.set_circular(false);
+    let mut area = MainAreaDna::new(dna, None, None);
+    let ctx = egui::Context::default();
+    let map_rect = egui::Rect::from_min_size(egui::pos2(40.0, 40.0), egui::vec2(240.0, 96.0));
+    let press_inside_map = egui::pos2(80.0, 70.0);
+
+    with_linear_map_response(
+        &ctx,
+        primary_press_input(press_inside_map, true),
+        map_rect,
+        |response| {
+            assert!(response.rect.contains(press_inside_map));
+            ctx.set_dragged_id(egui::Id::new("hosted_window_resize_drag_owner"));
+            area.linear_drag_selection_anchor_bp = Some(3);
+            area.linear_pan_drag_origin_bp = Some((5, 7.0));
+            area.pcr_paint_drag_interval = Some((PcrPaintRole::Roi, 3, 4));
             area.handle_linear_map_drag_for_pcr_paint(response, &ctx);
         },
     );
@@ -407,9 +439,13 @@ fn render_selection_formula_control_pass(
     raw_input: egui::RawInput,
 ) -> Vec<(String, egui::Rect)> {
     ctx.begin_pass(raw_input);
-    crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
-        area.render_selection_formula_inline_controls(ui, 420.0);
-    });
+    crate::egui_compat::show_central_panel_for_test_context(
+        ctx,
+        egui::CentralPanel::default(),
+        |ui| {
+            area.render_selection_formula_inline_controls(ui, 420.0);
+        },
+    );
     let full_output = ctx.end_pass();
     let mut rects = Vec::new();
     for clipped in full_output.shapes {
@@ -424,9 +460,13 @@ fn render_feature_tree_pass(
     raw_input: egui::RawInput,
 ) -> Vec<(String, egui::Rect)> {
     ctx.begin_pass(raw_input);
-    crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
-        area.render_features(ui);
-    });
+    crate::egui_compat::show_central_panel_for_test_context(
+        ctx,
+        egui::CentralPanel::default(),
+        |ui| {
+            area.render_features(ui);
+        },
+    );
     let full_output = ctx.end_pass();
     let mut rects = Vec::new();
     for clipped in full_output.shapes {
@@ -7686,9 +7726,13 @@ fn rna_read_mapping_embedded_window_renders_intro_only_once() {
     );
 
     ctx.begin_pass(egui::RawInput::default());
-    crate::egui_compat::show_central_panel(&ctx, egui::CentralPanel::default(), |ui| {
-        area.render_rna_read_mapping_window_body(&ctx, ui, &view, false);
-    });
+    crate::egui_compat::show_central_panel_for_test_context(
+        &ctx,
+        egui::CentralPanel::default(),
+        |ui| {
+            area.render_rna_read_mapping_window_body(&ctx, ui, &view, false);
+        },
+    );
     let texts = collect_pass_texts(&ctx);
     assert_eq!(
         texts

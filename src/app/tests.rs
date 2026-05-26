@@ -2474,9 +2474,13 @@ fn collect_rendered_text_from_shape(shape: &egui::epaint::Shape, out: &mut Vec<S
 fn render_routine_assistant_contents_texts(app: &mut GENtleApp) -> Vec<String> {
     let ctx = egui::Context::default();
     ctx.begin_pass(egui::RawInput::default());
-    crate::egui_compat::show_central_panel(&ctx, egui::CentralPanel::default(), |ui| {
-        app.render_routine_assistant_contents(ui);
-    });
+    crate::egui_compat::show_central_panel_for_test_context(
+        &ctx,
+        egui::CentralPanel::default(),
+        |ui| {
+            app.render_routine_assistant_contents(ui);
+        },
+    );
     let full_output = ctx.end_pass();
     let mut texts = Vec::new();
     for clipped in full_output.shapes {
@@ -7267,9 +7271,13 @@ fn render_main_workspace_host_does_not_spawn_hosted_window_area() {
     );
 
     ctx.begin_pass(egui::RawInput::default());
-    crate::egui_compat::show_central_panel(&ctx, egui::CentralPanel::default(), |ui| {
-        app.render_main_workspace_host(ui, false);
-    });
+    crate::egui_compat::show_central_panel_for_test_context(
+        &ctx,
+        egui::CentralPanel::default(),
+        |ui| {
+            app.render_main_workspace_host(ui, false);
+        },
+    );
     assert!(!ctx.memory(|mem| mem.areas().is_visible(&hosted_layer_id)));
     let _ = ctx.end_pass();
 }
@@ -8358,13 +8366,16 @@ fn agent_assistant_content_scrolls_on_small_viewport() {
         screen_rect: Some(screen_rect),
         ..Default::default()
     });
-    let panel_response =
-        crate::egui_compat::show_central_panel(&ctx, egui::CentralPanel::default(), |ui| {
+    let panel_response = crate::egui_compat::show_central_panel_for_test_context(
+        &ctx,
+        egui::CentralPanel::default(),
+        |ui| {
             app.render_agent_assistant_contents_scrollable(
                 ui,
                 "agent_assistant_scroll_regression_test",
             )
-        });
+        },
+    );
     let scroll_output = panel_response.inner;
 
     assert!(
@@ -8456,13 +8467,16 @@ fn prepare_dialog_scroll_area_keeps_long_checklist_reachable_on_small_viewport()
         screen_rect: Some(screen_rect),
         ..Default::default()
     });
-    let panel_response =
-        crate::egui_compat::show_central_panel(&ctx, egui::CentralPanel::default(), |ui| {
+    let panel_response = crate::egui_compat::show_central_panel_for_test_context(
+        &ctx,
+        egui::CentralPanel::default(),
+        |ui| {
             app.render_reference_genome_prepare_scroll_area(
                 ui,
                 "prepare_genome_scroll_regression_test",
             )
-        });
+        },
+    );
     let scroll_output = panel_response.inner;
 
     assert!(

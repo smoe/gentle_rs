@@ -8275,13 +8275,17 @@ impl MainAreaDna {
     }
 
     fn primary_press_origin_inside_rect(ctx: &egui::Context, rect: egui::Rect) -> bool {
-        ctx.input(|input| {
-            input.pointer.primary_down()
-                && input
-                    .pointer
-                    .press_origin()
-                    .is_some_and(|origin| rect.contains(origin))
-        })
+        let origin = ctx.input(|input| {
+            input
+                .pointer
+                .primary_down()
+                .then(|| input.pointer.press_origin())
+                .flatten()
+        });
+        let Some(origin) = origin else {
+            return false;
+        };
+        rect.contains(origin)
     }
 
     fn selection_formula_text_for_range(start: usize, end_exclusive: usize) -> String {
@@ -8728,7 +8732,8 @@ impl MainAreaDna {
         ctx: &egui::Context,
     ) {
         if ctx.input(|input| input.pointer.primary_down())
-            && !Self::primary_press_origin_inside_rect(ctx, response.rect)
+            && (ctx.dragging_something_else(response.id)
+                || !Self::primary_press_origin_inside_rect(ctx, response.rect))
         {
             self.linear_drag_selection_anchor_bp = None;
             self.linear_selection_resize_drag = None;
