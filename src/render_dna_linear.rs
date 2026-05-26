@@ -3859,9 +3859,13 @@ mod tests {
         let mut renderer = restriction_ready_renderer("AAAAAGAATTCTTTTTTTTTTTTT");
         let ctx = egui::Context::default();
         ctx.begin_pass(egui::RawInput::default());
-        crate::egui_compat::show_central_panel(&ctx, egui::CentralPanel::default(), |ui| {
-            renderer.render(ui, renderer.area);
-        });
+        crate::egui_compat::show_central_panel_for_test_context(
+            &ctx,
+            egui::CentralPanel::default(),
+            |ui| {
+                renderer.render(ui, renderer.area);
+            },
+        );
         let _ = ctx.end_pass();
 
         let site = renderer

@@ -23,6 +23,8 @@ Maintenance rule:
   for Codex, Claude, OpenClaw, and other local agents: use GENtle through the
   known ClawBio `gentle-cloning` runner, inspect `result.json`/`report.md` and
   artifacts, and avoid inventing a second GENtle command surface.
+- Tightened DNA-map drag ownership checks so hosted auxiliary window drags
+  cannot pass through into DNA selection.
 
 ## 2026-05-24
 

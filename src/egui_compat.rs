@@ -87,17 +87,15 @@ impl PanelHost for &egui::Context {
             // extent of egui's own UI callback. This keeps the egui-main trial
             // compatible with the existing Context-based GENtle call surface
             // without cloning the whole window-rendering stack to pass `&mut Ui`.
+            // TODO: replace this with explicit `&mut Ui` threading once the
+            // egui-main root-panel API settles.
             return add_contents(unsafe { current_ui.as_mut() });
         }
 
-        let mut root_ui = egui::Ui::new(
-            self.clone(),
-            egui::Id::new((self.viewport_id(), "__gentle_root_panel_compat")),
-            egui::UiBuilder::new()
-                .layer_id(egui::LayerId::background())
-                .max_rect(self.viewport_rect()),
-        );
-        add_contents(&mut root_ui)
+        panic!(
+            "show_central_panel(&Context) requires an active root Ui; call \
+             egui_compat::with_current_root_ui or pass &mut Ui"
+        )
     }
 }
 
@@ -374,6 +372,26 @@ pub(crate) fn show_central_panel<R>(
     add_contents: impl FnOnce(&mut egui::Ui) -> R,
 ) -> egui::InnerResponse<R> {
     host.with_panel_ui(|ui| panel.show(ui, add_contents))
+}
+
+#[cfg(test)]
+pub(crate) fn show_central_panel_for_test_context<R>(
+    ctx: &egui::Context,
+    panel: egui::CentralPanel,
+    add_contents: impl FnOnce(&mut egui::Ui) -> R,
+) -> egui::InnerResponse<R> {
+    let test_layer_id = egui::LayerId::new(
+        egui::Order::Middle,
+        egui::Id::new((ctx.viewport_id(), "__gentle_test_root_panel")),
+    );
+    let mut root_ui = egui::Ui::new(
+        ctx.clone(),
+        test_layer_id.id,
+        egui::UiBuilder::new()
+            .layer_id(test_layer_id)
+            .max_rect(ctx.viewport_rect()),
+    );
+    show_central_panel(&mut root_ui, panel, add_contents)
 }
 
 pub(crate) fn show_central_panel_inside<R>(

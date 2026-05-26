@@ -1739,17 +1739,20 @@ mod tests {
         )
     }
 
-    #[allow(deprecated)]
     fn render_map_after_spacer(
         ctx: &egui::Context,
         render_dna: RenderDna,
         spacer_height: f32,
     ) -> egui::Response {
         let mut response = None;
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.allocate_exact_size(egui::vec2(10.0, spacer_height), Sense::hover());
-            response = Some(render_dna.ui(ui));
-        });
+        crate::egui_compat::show_central_panel_for_test_context(
+            ctx,
+            egui::CentralPanel::default(),
+            |ui| {
+                ui.allocate_exact_size(egui::vec2(10.0, spacer_height), Sense::hover());
+                response = Some(render_dna.ui(ui));
+            },
+        );
         response.expect("map response")
     }
 
@@ -1791,7 +1794,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(deprecated)]
     fn render_dna_bounds_transient_zero_available_size_to_minimal_rect() {
         let ctx = egui::Context::default();
         let screen_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(300.0, 200.0));
@@ -1800,15 +1802,19 @@ mod tests {
             screen_rect: Some(screen_rect),
             ..Default::default()
         });
-        egui::CentralPanel::default().show(&ctx, |ui| {
-            let rect = egui::Rect::from_min_size(ui.min_rect().min, egui::Vec2::ZERO);
-            let mut child =
-                ui.new_child(egui::UiBuilder::new().max_rect(rect).layout(*ui.layout()));
-            let response = make_render_dna().ui(&mut child);
+        crate::egui_compat::show_central_panel_for_test_context(
+            &ctx,
+            egui::CentralPanel::default(),
+            |ui| {
+                let rect = egui::Rect::from_min_size(ui.min_rect().min, egui::Vec2::ZERO);
+                let mut child =
+                    ui.new_child(egui::UiBuilder::new().max_rect(rect).layout(*ui.layout()));
+                let response = make_render_dna().ui(&mut child);
 
-            assert!(response.rect.width() <= 1.0);
-            assert!(response.rect.height() <= 1.0);
-        });
+                assert!(response.rect.width() <= 1.0);
+                assert!(response.rect.height() <= 1.0);
+            },
+        );
         let _ = ctx.end_pass();
     }
 
