@@ -4456,6 +4456,7 @@ impl MainAreaDna {
             .with_inner_size([default_size.x, default_size.y])
             .with_min_inner_size([min_size.x, min_size.y]);
         ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
+            let viewport_ctx = ctx.ctx().clone();
             if class == egui::ViewportClass::EmbeddedWindow {
                 let mut open = self.show_variant_followup_window;
                 let spec = crate::egui_compat::HostedWindowSpec::new(
@@ -4465,7 +4466,7 @@ impl MainAreaDna {
                     min_size,
                 )
                 .foreground(focus_requested);
-                crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                crate::egui_compat::show_hosted_window(&mut *ctx, &spec, &mut open, |ui| {
                     let backdrop_settings = current_window_backdrop_settings();
                     paint_window_backdrop(ui, WindowBackdropKind::Splicing, &backdrop_settings);
                     egui::ScrollArea::both()
@@ -4485,7 +4486,7 @@ impl MainAreaDna {
                             );
                             ui.set_min_size(content_min_size);
                             self.render_variant_followup_window_body(
-                                ctx,
+                                &viewport_ctx,
                                 ui,
                                 pending_initial_render,
                             );
@@ -4495,28 +4496,36 @@ impl MainAreaDna {
                 return;
             }
 
-            crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
-                let backdrop_settings = current_window_backdrop_settings();
-                paint_window_backdrop(ui, WindowBackdropKind::Splicing, &backdrop_settings);
-                egui::ScrollArea::both()
-                    .id_salt(format!(
-                        "variant_followup_scroll_viewport_{}_{}",
-                        self.variant_followup_ui.source_seq_id,
-                        self.variant_followup_ui
-                            .source_feature_id
-                            .map(|value| value.to_string())
-                            .unwrap_or_else(|| "none".to_string())
-                    ))
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| {
-                        scroll_input_policy::apply_scrollarea_keyboard_navigation(
-                            ui,
-                            scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
-                        );
-                        ui.set_min_size(content_min_size);
-                        self.render_variant_followup_window_body(ctx, ui, pending_initial_render);
-                    });
-            });
+            crate::egui_compat::show_central_panel(
+                &mut *ctx,
+                egui::CentralPanel::default(),
+                |ui| {
+                    let backdrop_settings = current_window_backdrop_settings();
+                    paint_window_backdrop(ui, WindowBackdropKind::Splicing, &backdrop_settings);
+                    egui::ScrollArea::both()
+                        .id_salt(format!(
+                            "variant_followup_scroll_viewport_{}_{}",
+                            self.variant_followup_ui.source_seq_id,
+                            self.variant_followup_ui
+                                .source_feature_id
+                                .map(|value| value.to_string())
+                                .unwrap_or_else(|| "none".to_string())
+                        ))
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                                ui,
+                                scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                            );
+                            ui.set_min_size(content_min_size);
+                            self.render_variant_followup_window_body(
+                                &viewport_ctx,
+                                ui,
+                                pending_initial_render,
+                            );
+                        });
+                },
+            );
 
             if crate::app::GENtleApp::viewport_close_requested_or_shortcut(ctx) {
                 self.show_variant_followup_window = false;

@@ -6964,7 +6964,7 @@ impl MainAreaDna {
                     default_size,
                     min_size,
                 );
-                crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                crate::egui_compat::show_hosted_window(&mut *ctx, &spec, &mut open, |ui| {
                     let backdrop_settings = current_window_backdrop_settings();
                     paint_window_backdrop(ui, WindowBackdropKind::Sequence, &backdrop_settings);
                     egui::ScrollArea::both()
@@ -6986,24 +6986,28 @@ impl MainAreaDna {
                 return;
             }
 
-            crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
-                let backdrop_settings = current_window_backdrop_settings();
-                paint_window_backdrop(ui, WindowBackdropKind::Sequence, &backdrop_settings);
-                egui::ScrollArea::both()
-                    .id_salt(format!(
-                        "dotplot_window_scroll_viewport_{}",
-                        viewport_seq_id
-                    ))
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| {
-                        scroll_input_policy::apply_scrollarea_keyboard_navigation(
-                            ui,
-                            scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
-                        );
-                        ui.set_min_size(content_min_size);
-                        self.render_dotplot_workspace_ui(ui);
-                    });
-            });
+            crate::egui_compat::show_central_panel(
+                &mut *ctx,
+                egui::CentralPanel::default(),
+                |ui| {
+                    let backdrop_settings = current_window_backdrop_settings();
+                    paint_window_backdrop(ui, WindowBackdropKind::Sequence, &backdrop_settings);
+                    egui::ScrollArea::both()
+                        .id_salt(format!(
+                            "dotplot_window_scroll_viewport_{}",
+                            viewport_seq_id
+                        ))
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                                ui,
+                                scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                            );
+                            ui.set_min_size(content_min_size);
+                            self.render_dotplot_workspace_ui(ui);
+                        });
+                },
+            );
 
             if crate::app::GENtleApp::viewport_close_requested_or_shortcut(ctx) {
                 self.show_dotplot_window = false;

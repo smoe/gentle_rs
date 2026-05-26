@@ -187,13 +187,17 @@ impl GENtleApp {
                     Vec2::new(560.0, 320.0),
                 )
                 .foreground(render_history_in_foreground);
-                crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                crate::egui_compat::show_hosted_window(&mut *ctx, &spec, &mut open, |ui| {
                     render_contents(ui)
                 });
             } else {
-                crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
-                    render_contents(ui);
-                });
+                crate::egui_compat::show_central_panel(
+                    &mut *ctx,
+                    egui::CentralPanel::default(),
+                    |ui| {
+                        render_contents(ui);
+                    },
+                );
                 if Self::viewport_close_requested_or_shortcut(ctx) {
                     open = false;
                 }

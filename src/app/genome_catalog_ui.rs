@@ -997,7 +997,7 @@ impl GENtleApp {
             if class == egui::ViewportClass::EmbeddedWindow {
                 let mut open = self.show_reference_genome_prepare_dialog;
                 let mut close_requested = false;
-                crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                crate::egui_compat::show_hosted_window(&mut *ctx, &spec, &mut open, |ui| {
                     close_requested = self
                         .render_reference_genome_prepare_scroll_area(
                             ui,
@@ -1026,14 +1026,18 @@ impl GENtleApp {
             }
 
             let mut close_requested = false;
-            crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
-                close_requested = self
-                    .render_reference_genome_prepare_scroll_area(
-                        ui,
-                        "prepare_genome_viewport_scroll",
-                    )
-                    .inner;
-            });
+            crate::egui_compat::show_central_panel(
+                &mut *ctx,
+                egui::CentralPanel::default(),
+                |ui| {
+                    close_requested = self
+                        .render_reference_genome_prepare_scroll_area(
+                            ui,
+                            "prepare_genome_viewport_scroll",
+                        )
+                        .inner;
+                },
+            );
             self.render_prepared_genome_reinstall_confirm_dialog(
                 ctx,
                 PreparedGenomeReinstallDialogHost::PrepareDialog,
@@ -2147,7 +2151,7 @@ impl GENtleApp {
             if class == egui::ViewportClass::EmbeddedWindow {
                 let mut open = self.show_reference_genome_retrieve_dialog;
                 let mut close_requested = false;
-                crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                crate::egui_compat::show_hosted_window(&mut *ctx, &spec, &mut open, |ui| {
                     close_requested = self.render_reference_genome_retrieve_contents(ui);
                 });
                 if close_requested {
@@ -2158,9 +2162,13 @@ impl GENtleApp {
             }
 
             let mut close_requested = false;
-            crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
-                close_requested = self.render_reference_genome_retrieve_contents(ui);
-            });
+            crate::egui_compat::show_central_panel(
+                &mut *ctx,
+                egui::CentralPanel::default(),
+                |ui| {
+                    close_requested = self.render_reference_genome_retrieve_contents(ui);
+                },
+            );
 
             if close_requested || Self::viewport_close_requested_or_shortcut(ctx) {
                 self.show_reference_genome_retrieve_dialog = false;
@@ -2830,7 +2838,7 @@ impl GENtleApp {
             if class == egui::ViewportClass::EmbeddedWindow {
                 let mut open = self.show_reference_genome_blast_dialog;
                 let mut close_requested = false;
-                crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                crate::egui_compat::show_hosted_window(&mut *ctx, &spec, &mut open, |ui| {
                     close_requested = self.render_reference_genome_blast_contents(ui);
                 });
                 if close_requested {
@@ -2841,9 +2849,13 @@ impl GENtleApp {
             }
 
             let mut close_requested = false;
-            crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
-                close_requested = self.render_reference_genome_blast_contents(ui);
-            });
+            crate::egui_compat::show_central_panel(
+                &mut *ctx,
+                egui::CentralPanel::default(),
+                |ui| {
+                    close_requested = self.render_reference_genome_blast_contents(ui);
+                },
+            );
 
             if close_requested || Self::viewport_close_requested_or_shortcut(ctx) {
                 self.show_reference_genome_blast_dialog = false;
@@ -3682,7 +3694,7 @@ impl GENtleApp {
             if class == egui::ViewportClass::EmbeddedWindow {
                 let mut open = self.show_genome_bed_track_dialog;
                 let mut close_requested = false;
-                crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                crate::egui_compat::show_hosted_window(&mut *ctx, &spec, &mut open, |ui| {
                     close_requested = self.render_genome_bed_track_contents(ui)
                 });
                 if close_requested {
@@ -3693,9 +3705,13 @@ impl GENtleApp {
             }
 
             let mut close_requested = false;
-            crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
-                close_requested = self.render_genome_bed_track_contents(ui);
-            });
+            crate::egui_compat::show_central_panel(
+                &mut *ctx,
+                egui::CentralPanel::default(),
+                |ui| {
+                    close_requested = self.render_genome_bed_track_contents(ui);
+                },
+            );
 
             if close_requested || Self::viewport_close_requested_or_shortcut(ctx) {
                 self.show_genome_bed_track_dialog = false;

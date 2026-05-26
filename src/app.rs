@@ -13380,7 +13380,7 @@ Error: `{err}`"
             self.note_viewport_focus_if_active(ctx, viewport_id);
             if class == egui::ViewportClass::EmbeddedWindow {
                 let mut close_requested = false;
-                crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                crate::egui_compat::show_hosted_window(&mut *ctx, &spec, &mut open, |ui| {
                     egui::ScrollArea::vertical()
                         .id_salt("arrangement_gel_embedded_scroll")
                         .auto_shrink([false, false])
@@ -13393,14 +13393,18 @@ Error: `{err}`"
                 }
             } else {
                 let mut close_requested = false;
-                crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
-                    egui::ScrollArea::vertical()
-                        .id_salt("arrangement_gel_viewport_scroll")
-                        .auto_shrink([false, false])
-                        .show(ui, |ui| {
-                            close_requested = self.render_arrangement_gel_preview_contents(ui);
-                        });
-                });
+                crate::egui_compat::show_central_panel(
+                    &mut *ctx,
+                    egui::CentralPanel::default(),
+                    |ui| {
+                        egui::ScrollArea::vertical()
+                            .id_salt("arrangement_gel_viewport_scroll")
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                close_requested = self.render_arrangement_gel_preview_contents(ui);
+                            });
+                    },
+                );
                 if close_requested || Self::viewport_close_requested_or_shortcut(ctx) {
                     open = false;
                 }
@@ -13545,7 +13549,7 @@ Error: `{err}`"
             self.note_viewport_focus_if_active(ctx, viewport_id);
             if class == egui::ViewportClass::EmbeddedWindow {
                 let mut close_requested = false;
-                crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                crate::egui_compat::show_hosted_window(&mut *ctx, &spec, &mut open, |ui| {
                     egui::ScrollArea::vertical()
                         .auto_shrink([false, false])
                         .show(ui, |ui| {
@@ -13557,13 +13561,17 @@ Error: `{err}`"
                 }
             } else {
                 let mut close_requested = false;
-                crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
-                    egui::ScrollArea::vertical()
-                        .auto_shrink([false, false])
-                        .show(ui, |ui| {
-                            close_requested = self.render_rack_labels_preview_contents(ui);
-                        });
-                });
+                crate::egui_compat::show_central_panel(
+                    &mut *ctx,
+                    egui::CentralPanel::default(),
+                    |ui| {
+                        egui::ScrollArea::vertical()
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                close_requested = self.render_rack_labels_preview_contents(ui);
+                            });
+                    },
+                );
                 if close_requested || Self::viewport_close_requested_or_shortcut(ctx) {
                     open = false;
                 }
@@ -13674,14 +13682,16 @@ Error: `{err}`"
         let builder = crate::egui_compat::viewport_builder_for_hosted_window(&spec);
         ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
             self.note_viewport_focus_if_active(ctx, viewport_id);
+            let viewport_ctx = ctx.ctx().clone();
             if class == egui::ViewportClass::EmbeddedWindow {
                 let mut close_requested = false;
-                crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                crate::egui_compat::show_hosted_window(&mut *ctx, &spec, &mut open, |ui| {
                     egui::ScrollArea::vertical()
                         .id_salt("pcr_design_embedded_scroll")
                         .auto_shrink([false, false])
                         .show(ui, |ui| {
-                            close_requested = self.render_pcr_design_contents(ui, ctx)
+                            close_requested =
+                                self.render_pcr_design_contents(ui, &viewport_ctx)
                         });
                 });
                 if close_requested {
@@ -13689,14 +13699,19 @@ Error: `{err}`"
                 }
             } else {
                 let mut close_requested = false;
-                crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
-                    egui::ScrollArea::vertical()
-                        .id_salt("pcr_design_viewport_scroll")
-                        .auto_shrink([false, false])
-                        .show(ui, |ui| {
-                            close_requested = self.render_pcr_design_contents(ui, ctx)
-                        });
-                });
+                crate::egui_compat::show_central_panel(
+                    &mut *ctx,
+                    egui::CentralPanel::default(),
+                    |ui| {
+                        egui::ScrollArea::vertical()
+                            .id_salt("pcr_design_viewport_scroll")
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                close_requested =
+                                    self.render_pcr_design_contents(ui, &viewport_ctx)
+                            });
+                    },
+                );
                 if close_requested || Self::viewport_close_requested_or_shortcut(ctx) {
                     open = false;
                 }
@@ -13814,14 +13829,16 @@ Error: `{err}`"
         let builder = crate::egui_compat::viewport_builder_for_hosted_window(&spec);
         ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
             self.note_viewport_focus_if_active(ctx, viewport_id);
+            let viewport_ctx = ctx.ctx().clone();
             if class == egui::ViewportClass::EmbeddedWindow {
                 let mut close_requested = false;
-                crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                crate::egui_compat::show_hosted_window(&mut *ctx, &spec, &mut open, |ui| {
                     egui::ScrollArea::vertical()
                         .id_salt("sequencing_confirmation_embedded_scroll")
                         .auto_shrink([false, false])
                         .show(ui, |ui| {
-                            close_requested = self.render_sequencing_confirmation_contents(ui, ctx)
+                            close_requested = self
+                                .render_sequencing_confirmation_contents(ui, &viewport_ctx)
                         });
                 });
                 if close_requested {
@@ -13829,14 +13846,19 @@ Error: `{err}`"
                 }
             } else {
                 let mut close_requested = false;
-                crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
-                    egui::ScrollArea::vertical()
-                        .id_salt("sequencing_confirmation_viewport_scroll")
-                        .auto_shrink([false, false])
-                        .show(ui, |ui| {
-                            close_requested = self.render_sequencing_confirmation_contents(ui, ctx)
-                        });
-                });
+                crate::egui_compat::show_central_panel(
+                    &mut *ctx,
+                    egui::CentralPanel::default(),
+                    |ui| {
+                        egui::ScrollArea::vertical()
+                            .id_salt("sequencing_confirmation_viewport_scroll")
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                close_requested = self
+                                    .render_sequencing_confirmation_contents(ui, &viewport_ctx)
+                            });
+                    },
+                );
                 if close_requested || Self::viewport_close_requested_or_shortcut(ctx) {
                     open = false;
                 }
@@ -14408,7 +14430,7 @@ Error: `{err}`"
             self.note_viewport_focus_if_active(ctx, viewport_id);
             if class == egui::ViewportClass::EmbeddedWindow {
                 let mut close_requested = false;
-                crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                crate::egui_compat::show_hosted_window(&mut *ctx, &spec, &mut open, |ui| {
                     close_requested = self.render_planning_contents(ui)
                 });
                 if close_requested {
@@ -14416,9 +14438,13 @@ Error: `{err}`"
                 }
             } else {
                 let mut close_requested = false;
-                crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
-                    close_requested = self.render_planning_contents(ui);
-                });
+                crate::egui_compat::show_central_panel(
+                    &mut *ctx,
+                    egui::CentralPanel::default(),
+                    |ui| {
+                        close_requested = self.render_planning_contents(ui);
+                    },
+                );
                 if close_requested || Self::viewport_close_requested_or_shortcut(ctx) {
                     open = false;
                 }
@@ -16240,6 +16266,7 @@ Error: `{err}`"
         }
         if Self::use_immediate_sequence_viewports() {
             ctx.show_viewport_immediate(id, builder, move |ui, class| {
+                let _root_ui_guard = crate::egui_compat::install_current_root_ui(ui);
                 if !matches!(
                     class,
                     egui::ViewportClass::Immediate | egui::ViewportClass::EmbeddedWindow
@@ -16290,6 +16317,7 @@ Error: `{err}`"
             });
         } else {
             ctx.show_viewport_deferred(id, builder, move |ctx, class| {
+                let _root_ui_guard = crate::egui_compat::install_current_root_ui(ctx);
                 if !matches!(
                     class,
                     egui::ViewportClass::Deferred | egui::ViewportClass::EmbeddedWindow
@@ -21293,13 +21321,17 @@ Error: `{err}`"
                     Vec2::new(500.0, 320.0),
                 )
                 .foreground(render_command_palette_in_foreground);
-                crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                crate::egui_compat::show_hosted_window(&mut *ctx, &spec, &mut open, |ui| {
                     render_contents(ui)
                 });
             } else {
-                crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
-                    render_contents(ui);
-                });
+                crate::egui_compat::show_central_panel(
+                    &mut *ctx,
+                    egui::CentralPanel::default(),
+                    |ui| {
+                        render_contents(ui);
+                    },
+                );
                 if Self::viewport_close_requested_or_shortcut(ctx) {
                     open = false;
                 }
@@ -22294,7 +22326,7 @@ Error: `{err}`"
                     egui::Order::Middle,
                     egui::Id::new(Self::help_viewport_id()),
                 ));
-                crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                crate::egui_compat::show_hosted_window(&mut *ctx, &spec, &mut open, |ui| {
                     self.render_help_contents(ui);
                 });
                 self.note_slow_open_phase(
@@ -22312,7 +22344,7 @@ Error: `{err}`"
 
             let render_started = Instant::now();
             crate::egui_compat::show_central_panel(
-                ctx,
+                &mut *ctx,
                 egui::CentralPanel::default().frame(egui::Frame::NONE),
                 |ui| {
                     self.render_help_contents(ui);
@@ -23723,8 +23755,9 @@ Error: `{err}`"
 
 impl eframe::App for GENtleApp {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
-        let ctx = ui.ctx().clone();
-        self.render_root_ui(&ctx, frame);
+        crate::egui_compat::with_current_root_ui(ui, |ctx| {
+            self.render_root_ui(ctx, frame);
+        });
     }
 }
 

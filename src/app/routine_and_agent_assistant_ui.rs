@@ -1989,7 +1989,7 @@ impl GENtleApp {
             self.note_viewport_focus_if_active(ctx, viewport_id);
             if class == egui::ViewportClass::EmbeddedWindow {
                 let mut close_requested = false;
-                crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                crate::egui_compat::show_hosted_window(&mut *ctx, &spec, &mut open, |ui| {
                     close_requested = self.render_routine_assistant_contents(ui);
                 });
                 if close_requested {
@@ -1997,9 +1997,13 @@ impl GENtleApp {
                 }
             } else {
                 let mut close_requested = false;
-                crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
-                    close_requested = self.render_routine_assistant_contents(ui);
-                });
+                crate::egui_compat::show_central_panel(
+                    &mut *ctx,
+                    egui::CentralPanel::default(),
+                    |ui| {
+                        close_requested = self.render_routine_assistant_contents(ui);
+                    },
+                );
                 if close_requested || Self::viewport_close_requested_or_shortcut(ctx) {
                     open = false;
                 }
@@ -2962,27 +2966,36 @@ impl GENtleApp {
             self.note_viewport_focus_if_active(ctx, viewport_id);
             if class == egui::ViewportClass::EmbeddedWindow {
                 let mut close_requested = false;
-                crate::egui_compat::show_hosted_window(ctx, &viewport_spec, &mut open, |ui| {
-                    close_requested = self
-                        .render_agent_assistant_contents_scrollable(
-                            ui,
-                            "agent_assistant_main_scroll",
-                        )
-                        .inner;
-                });
+                crate::egui_compat::show_hosted_window(
+                    &mut *ctx,
+                    &viewport_spec,
+                    &mut open,
+                    |ui| {
+                        close_requested = self
+                            .render_agent_assistant_contents_scrollable(
+                                ui,
+                                "agent_assistant_main_scroll",
+                            )
+                            .inner;
+                    },
+                );
                 if close_requested {
                     open = false;
                 }
             } else {
                 let mut close_requested = false;
-                crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
-                    close_requested = self
-                        .render_agent_assistant_contents_scrollable(
-                            ui,
-                            "agent_assistant_main_scroll",
-                        )
-                        .inner;
-                });
+                crate::egui_compat::show_central_panel(
+                    &mut *ctx,
+                    egui::CentralPanel::default(),
+                    |ui| {
+                        close_requested = self
+                            .render_agent_assistant_contents_scrollable(
+                                ui,
+                                "agent_assistant_main_scroll",
+                            )
+                            .inner;
+                    },
+                );
 
                 if close_requested || Self::viewport_close_requested_or_shortcut(ctx) {
                     open = false;

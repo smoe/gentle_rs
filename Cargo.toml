@@ -179,5 +179,15 @@ codegen-units = 16
 opt-level = 2
 
 [patch.crates-io]
+ecolor = { git = "https://github.com/emilk/egui", rev = "8d5a7b4557e4f1163a17debf940fc87b4f45c044" }
+eframe = { git = "https://github.com/emilk/egui", rev = "8d5a7b4557e4f1163a17debf940fc87b4f45c044" }
+egui = { git = "https://github.com/emilk/egui", rev = "8d5a7b4557e4f1163a17debf940fc87b4f45c044" }
+egui-wgpu = { git = "https://github.com/emilk/egui", rev = "8d5a7b4557e4f1163a17debf940fc87b4f45c044" }
+egui-winit = { git = "https://github.com/emilk/egui", rev = "8d5a7b4557e4f1163a17debf940fc87b4f45c044" }
 egui_commonmark = { path = "vendor/egui_commonmark" }
 egui_commonmark_backend = { path = "vendor/egui_commonmark_backend" }
+egui_extras = { git = "https://github.com/emilk/egui", rev = "8d5a7b4557e4f1163a17debf940fc87b4f45c044" }
+egui_glow = { git = "https://github.com/emilk/egui", rev = "8d5a7b4557e4f1163a17debf940fc87b4f45c044" }
+emath = { git = "https://github.com/emilk/egui", rev = "8d5a7b4557e4f1163a17debf940fc87b4f45c044" }
+epaint = { git = "https://github.com/emilk/egui", rev = "8d5a7b4557e4f1163a17debf940fc87b4f45c044" }
+epaint_default_fonts = { git = "https://github.com/emilk/egui", rev = "8d5a7b4557e4f1163a17debf940fc87b4f45c044" }

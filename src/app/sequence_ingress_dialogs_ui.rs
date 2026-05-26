@@ -3575,7 +3575,7 @@ impl GENtleApp {
             if class == egui::ViewportClass::EmbeddedWindow {
                 let mut open = self.show_uniprot_dialog;
                 let mut close_requested = false;
-                crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                crate::egui_compat::show_hosted_window(&mut *ctx, &spec, &mut open, |ui| {
                     egui::ScrollArea::vertical()
                         .id_salt("protein_evidence_embedded_scroll")
                         .auto_shrink([false, false])
@@ -3595,18 +3595,22 @@ impl GENtleApp {
             }
 
             let mut close_requested = false;
-            crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
-                egui::ScrollArea::vertical()
-                    .id_salt("protein_evidence_viewport_scroll")
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| {
-                        scroll_input_policy::apply_scrollarea_keyboard_navigation(
-                            ui,
-                            scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
-                        );
-                        close_requested = self.render_uniprot_dialog_contents(ui);
-                    });
-            });
+            crate::egui_compat::show_central_panel(
+                &mut *ctx,
+                egui::CentralPanel::default(),
+                |ui| {
+                    egui::ScrollArea::vertical()
+                        .id_salt("protein_evidence_viewport_scroll")
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                                ui,
+                                scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                            );
+                            close_requested = self.render_uniprot_dialog_contents(ui);
+                        });
+                },
+            );
 
             if close_requested || Self::viewport_close_requested_or_shortcut(ctx) {
                 self.show_uniprot_dialog = false;

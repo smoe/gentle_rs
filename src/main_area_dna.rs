@@ -15346,6 +15346,7 @@ impl MainAreaDna {
             .with_inner_size([default_size.x, default_size.y])
             .with_min_inner_size([min_size.x, min_size.y]);
         ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
+            let viewport_ctx = ctx.ctx().clone();
             if class == egui::ViewportClass::EmbeddedWindow {
                 self.render_splicing_expert_embedded_window_shell(
                     ctx,
@@ -15359,30 +15360,34 @@ impl MainAreaDna {
                 return;
             }
 
-            crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
-                let backdrop_settings = current_window_backdrop_settings();
-                paint_window_backdrop(ui, WindowBackdropKind::Splicing, &backdrop_settings);
-                egui::ScrollArea::both()
-                    .id_salt(format!(
-                        "splicing_expert_scroll_viewport_{}_{}",
-                        view.seq_id, view.target_feature_id
-                    ))
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| {
-                        scroll_input_policy::apply_scrollarea_keyboard_navigation(
-                            ui,
-                            scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
-                        );
-                        ui.set_min_size(content_min_size);
-                        self.render_splicing_expert_window_body(
-                            ctx,
-                            ui,
-                            &view,
-                            "splicing_window_viewport",
-                            pending_initial_render,
-                        );
-                    });
-            });
+            crate::egui_compat::show_central_panel(
+                &mut *ctx,
+                egui::CentralPanel::default(),
+                |ui| {
+                    let backdrop_settings = current_window_backdrop_settings();
+                    paint_window_backdrop(ui, WindowBackdropKind::Splicing, &backdrop_settings);
+                    egui::ScrollArea::both()
+                        .id_salt(format!(
+                            "splicing_expert_scroll_viewport_{}_{}",
+                            view.seq_id, view.target_feature_id
+                        ))
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                                ui,
+                                scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                            );
+                            ui.set_min_size(content_min_size);
+                            self.render_splicing_expert_window_body(
+                                &viewport_ctx,
+                                ui,
+                                &view,
+                                "splicing_window_viewport",
+                                pending_initial_render,
+                            );
+                        });
+                },
+            );
 
             if crate::app::GENtleApp::viewport_close_requested_or_shortcut(ctx) {
                 self.show_splicing_expert_window = false;
@@ -16682,7 +16687,7 @@ impl MainAreaDna {
                     default_size,
                     min_size,
                 );
-                crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                crate::egui_compat::show_hosted_window(&mut *ctx, &spec, &mut open, |ui| {
                     let backdrop_settings = current_window_backdrop_settings();
                     paint_window_backdrop(ui, WindowBackdropKind::Splicing, &backdrop_settings);
                     egui::ScrollArea::both()
@@ -16704,24 +16709,28 @@ impl MainAreaDna {
                 return;
             }
 
-            crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
-                let backdrop_settings = current_window_backdrop_settings();
-                paint_window_backdrop(ui, WindowBackdropKind::Splicing, &backdrop_settings);
-                egui::ScrollArea::both()
-                    .id_salt(format!(
-                        "isoform_expert_window_scroll_viewport_{}_{}",
-                        view.seq_id, panel_id
-                    ))
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| {
-                        scroll_input_policy::apply_scrollarea_keyboard_navigation(
-                            ui,
-                            scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
-                        );
-                        ui.set_min_size(Vec2::new(1040.0, 620.0));
-                        self.render_isoform_architecture_expert_view_ui(ui, &view);
-                    });
-            });
+            crate::egui_compat::show_central_panel(
+                &mut *ctx,
+                egui::CentralPanel::default(),
+                |ui| {
+                    let backdrop_settings = current_window_backdrop_settings();
+                    paint_window_backdrop(ui, WindowBackdropKind::Splicing, &backdrop_settings);
+                    egui::ScrollArea::both()
+                        .id_salt(format!(
+                            "isoform_expert_window_scroll_viewport_{}_{}",
+                            view.seq_id, panel_id
+                        ))
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                                ui,
+                                scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                            );
+                            ui.set_min_size(Vec2::new(1040.0, 620.0));
+                            self.render_isoform_architecture_expert_view_ui(ui, &view);
+                        });
+                },
+            );
 
             if crate::app::GENtleApp::viewport_close_requested_or_shortcut(ctx) {
                 self.show_isoform_expert_window = false;
