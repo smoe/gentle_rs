@@ -63,6 +63,7 @@ INTENT_EXAMPLE_ALLOWLIST = {
     "request_inspect_feature_expert_tp53_isoform.json",
     "request_inspect_feature_expert_tp53_splicing.json",
     "request_inspect_sequence_context_rs9923231_vkorc1.json",
+    "request_planning_consult_cloning.json",
     "request_protein_residue_genomic_coordinates_tp73.json",
     "request_protocol_cartoon_gibson_svg.json",
     "request_protocol_cartoon_pcr_oe_substitution_svg.json",
