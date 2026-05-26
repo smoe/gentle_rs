@@ -293,7 +293,7 @@ fn render_svg_text_to_png_bytes(
     let font_face_count = opt.fontdb.len();
     ensure_svg_text_fonts_available(svg_text, font_face_count)?;
 
-    let tree = usvg::Tree::from_str(&svg_text, &opt)
+    let tree = usvg::Tree::from_str(svg_text, &opt)
         .map_err(|e| format!("Could not parse SVG {input_label}: {e}"))?;
     let pixmap_size = tree
         .size()

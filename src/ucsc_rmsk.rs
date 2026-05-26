@@ -1058,7 +1058,7 @@ pub fn write_ucsc_rmsk_resource_snapshot<R: BufRead>(
                 break;
             }
             if row_count > 0 {
-                write!(writer, ",\n")
+                writeln!(writer, ",")
                     .map_err(|e| format!("Could not write UCSC rmsk output '{output}': {e}"))?;
             }
             write!(writer, "    ")

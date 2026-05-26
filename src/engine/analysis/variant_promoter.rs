@@ -112,16 +112,16 @@ impl GentleEngine {
             .features()
             .iter()
             .enumerate()
-            .filter_map(|(feature_id, feature)| {
-                (Self::construct_reasoning_role_from_feature(feature) == Some(ConstructRole::Gene)
+            .filter(|&(_feature_id, feature)| {
+                Self::construct_reasoning_role_from_feature(feature) == Some(ConstructRole::Gene)
                     && feature_is_reverse(feature) == tx_reverse
-                    && Self::feature_overlaps_span(feature, tx_start, tx_end))
-                .then(|| {
-                    (
-                        Self::feature_display_label(feature, feature_id),
-                        Self::first_nonempty_feature_qualifier(feature, &["gene_id", "locus_tag"]),
-                    )
-                })
+                    && Self::feature_overlaps_span(feature, tx_start, tx_end)
+            })
+            .map(|(feature_id, feature)| {
+                (
+                    Self::feature_display_label(feature, feature_id),
+                    Self::first_nonempty_feature_qualifier(feature, &["gene_id", "locus_tag"]),
+                )
             })
             .collect::<Vec<_>>();
         candidates.sort_by(|left, right| {
@@ -1578,28 +1578,24 @@ impl GentleEngine {
             .as_deref()
             .map(str::trim)
             .filter(|value| !value.is_empty())
-        {
-            if promoter
+            && promoter
                 .transcript_ids
                 .iter()
                 .any(|value| value.eq_ignore_ascii_case(transcript_id))
-            {
-                matched_by.push("transcript_id".to_string());
-            }
+        {
+            matched_by.push("transcript_id".to_string());
         }
         if let Some(transcript_label) = input
             .transcript_label
             .as_deref()
             .map(str::trim)
             .filter(|value| !value.is_empty())
-        {
-            if promoter
+            && promoter
                 .transcript_labels
                 .iter()
                 .any(|value| value.eq_ignore_ascii_case(transcript_label))
-            {
-                matched_by.push("transcript_label".to_string());
-            }
+        {
+            matched_by.push("transcript_label".to_string());
         }
         if let Some(promoter_label) = input
             .promoter_label
@@ -1616,21 +1612,19 @@ impl GentleEngine {
         let explicit_promoter_or_transcript_match_requested = input.transcript_id.is_some()
             || input.transcript_label.is_some()
             || input.promoter_label.is_some();
-        if matched_by.is_empty() && !explicit_promoter_or_transcript_match_requested {
-            if let Some(gene_label) = input
+        if matched_by.is_empty()
+            && !explicit_promoter_or_transcript_match_requested
+            && let Some(gene_label) = input
                 .gene_label
                 .as_deref()
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
-            {
-                if promoter
-                    .gene_label
-                    .as_deref()
-                    .is_some_and(|value| value.eq_ignore_ascii_case(gene_label))
-                {
-                    matched_by.push("gene_label".to_string());
-                }
-            }
+            && promoter
+                .gene_label
+                .as_deref()
+                .is_some_and(|value| value.eq_ignore_ascii_case(gene_label))
+        {
+            matched_by.push("gene_label".to_string());
         }
         matched_by
     }
@@ -1742,21 +1736,22 @@ impl GentleEngine {
             .collect::<BTreeSet<_>>();
         let mut differential_evidence = group_ids_by_signature
             .iter()
-            .filter_map(|(signature_id, present_group_ids)| {
-                (group_count >= 2 && present_group_ids.len() < group_count).then(|| {
-                    let absent_group_ids = all_group_ids
-                        .difference(present_group_ids)
+            .filter(|&(_signature_id, present_group_ids)| {
+                group_count >= 2 && present_group_ids.len() < group_count
+            })
+            .map(|(signature_id, present_group_ids)| {
+                let absent_group_ids = all_group_ids
+                    .difference(present_group_ids)
+                    .cloned()
+                    .collect::<Vec<_>>();
+                IsoformPromoterDifferentialEvidence {
+                    signature: signatures_by_id
+                        .get(signature_id)
                         .cloned()
-                        .collect::<Vec<_>>();
-                    IsoformPromoterDifferentialEvidence {
-                        signature: signatures_by_id
-                            .get(signature_id)
-                            .cloned()
-                            .unwrap_or_default(),
-                        present_group_ids: present_group_ids.iter().cloned().collect(),
-                        absent_group_ids,
-                    }
-                })
+                        .unwrap_or_default(),
+                    present_group_ids: present_group_ids.iter().cloned().collect(),
+                    absent_group_ids,
+                }
             })
             .collect::<Vec<_>>();
         differential_evidence.sort_by(|left, right| {
@@ -1914,7 +1909,8 @@ impl GentleEngine {
         let unassigned_expression_records = expression_rows
             .iter()
             .enumerate()
-            .filter_map(|(idx, row)| (!matched_input_indices.contains(&idx)).then(|| row.clone()))
+            .filter(|&(idx, _row)| !matched_input_indices.contains(&idx))
+            .map(|(_idx, row)| row.clone())
             .collect::<Vec<_>>();
         let mut warnings = matrix.warnings.clone();
         if expression_rows.is_empty() {
@@ -2123,17 +2119,12 @@ impl GentleEngine {
             && record.start_0based < variant_end_0based_exclusive
     }
 
-    fn choose_promoter_context_record<'a>(
-        records: &'a [PromoterWindowRecord],
+    fn choose_promoter_context_record(
+        records: &[PromoterWindowRecord],
         variant_start_0based: usize,
         variant_end_0based_exclusive: usize,
         transcript_filter_present: bool,
-    ) -> (
-        Option<&'a PromoterWindowRecord>,
-        String,
-        Option<isize>,
-        bool,
-    ) {
+    ) -> (Option<&PromoterWindowRecord>, String, Option<isize>, bool) {
         if records.is_empty() {
             return (None, "no_transcript_context".to_string(), None, false);
         }

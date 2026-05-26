@@ -392,13 +392,13 @@ impl ProtocolCartoonSpec {
                     ("left", molecule.left_end.as_ref()),
                     ("right", molecule.right_end.as_ref()),
                 ] {
-                    if let Some(DnaEndStyle::Sticky { nt, .. }) = end {
-                        if *nt == 0 {
-                            return Err(format!(
-                                "Molecule '{}' in event '{}' has a {} sticky end with zero nt overhang",
-                                molecule.id, event.id, side
-                            ));
-                        }
+                    if let Some(DnaEndStyle::Sticky { nt, .. }) = end
+                        && *nt == 0
+                    {
+                        return Err(format!(
+                            "Molecule '{}' in event '{}' has a {} sticky end with zero nt overhang",
+                            molecule.id, event.id, side
+                        ));
                     }
                 }
                 for feature in &molecule.features {
@@ -578,13 +578,12 @@ pub fn apply_protocol_cartoon_template_bindings(
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty())
+        && template.id.trim() != template_id
     {
-        if template.id.trim() != template_id {
-            return Err(format!(
-                "Template id mismatch: bindings expect '{}' but template id is '{}'",
-                template_id, template.id
-            ));
-        }
+        return Err(format!(
+            "Template id mismatch: bindings expect '{}' but template id is '{}'",
+            template_id, template.id
+        ));
     }
 
     let mut bound = template.clone();

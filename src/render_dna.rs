@@ -248,10 +248,10 @@ impl RenderDna {
     }
 
     pub fn set_linear_external_labeled_feature_numbers(&self, feature_numbers: BTreeSet<usize>) {
-        if let RenderDna::Linear(renderer) = self {
-            if let Ok(mut renderer) = renderer.write() {
-                renderer.set_external_labeled_feature_numbers(feature_numbers);
-            }
+        if let RenderDna::Linear(renderer) = self
+            && let Ok(mut renderer) = renderer.write()
+        {
+            renderer.set_external_labeled_feature_numbers(feature_numbers);
         }
     }
 
@@ -348,7 +348,7 @@ impl RenderDna {
     }
 
     pub fn is_variation_feature(feature: &Feature) -> bool {
-        feature.kind.to_string().to_ascii_uppercase() == "VARIATION"
+        feature.kind.to_string().eq_ignore_ascii_case("VARIATION")
     }
 
     pub fn is_exon_length_frame_cue_feature(feature: &Feature) -> bool {
@@ -401,14 +401,14 @@ impl RenderDna {
             let (r, g, b) = repeat.class.color_rgb();
             return Color32::from_rgb(r, g, b);
         }
-        if Self::is_regulatory_feature(feature) {
-            if let Some(reg_class) = Self::regulatory_class(feature) {
-                if reg_class.contains("silencer") || reg_class.contains("repressor") {
-                    return Color32::from_rgb(190, 50, 50);
-                }
-                if reg_class.contains("enhancer") || reg_class.contains("activator") {
-                    return Color32::from_rgb(45, 150, 65);
-                }
+        if Self::is_regulatory_feature(feature)
+            && let Some(reg_class) = Self::regulatory_class(feature)
+        {
+            if reg_class.contains("silencer") || reg_class.contains("repressor") {
+                return Color32::from_rgb(190, 50, 50);
+            }
+            if reg_class.contains("enhancer") || reg_class.contains("activator") {
+                return Color32::from_rgb(45, 150, 65);
             }
         }
         match feature.kind.to_string().to_ascii_uppercase().as_str() {
@@ -434,15 +434,15 @@ impl RenderDna {
     }
 
     pub fn is_cds_feature(feature: &Feature) -> bool {
-        feature.kind.to_string().to_ascii_uppercase() == "CDS"
+        feature.kind.to_string().eq_ignore_ascii_case("CDS")
     }
 
     pub fn is_gene_feature(feature: &Feature) -> bool {
-        feature.kind.to_string().to_ascii_uppercase() == "GENE"
+        feature.kind.to_string().eq_ignore_ascii_case("GENE")
     }
 
     pub fn is_mrna_feature(feature: &Feature) -> bool {
-        feature.kind.to_string().to_ascii_uppercase() == "MRNA"
+        feature.kind.to_string().eq_ignore_ascii_case("MRNA")
     }
 
     pub fn is_contextual_transcript_feature(feature: &Feature) -> bool {
@@ -580,7 +580,7 @@ impl RenderDna {
     }
 
     fn compact_mcs_label(text: &str) -> String {
-        let short = text.split(|c| c == ';' || c == '\n').next().unwrap_or(text);
+        let short = text.split([';', '\n']).next().unwrap_or(text);
         let normalized = short.split_whitespace().collect::<Vec<_>>().join(" ");
         let normalized = normalized.trim();
         if normalized.is_empty() {
@@ -875,10 +875,9 @@ impl RenderDna {
             "divergence_percent",
             feature,
             &["rmsk_divergence_percent"],
-        ) {
-            if let Some(value) = Self::repeat_divergence_percent_from_milli_div(feature) {
-                Self::push_repeat_detail_once(&mut lines, &mut seen, "divergence_percent", value);
-            }
+        ) && let Some(value) = Self::repeat_divergence_percent_from_milli_div(feature)
+        {
+            Self::push_repeat_detail_once(&mut lines, &mut seen, "divergence_percent", value);
         }
         Self::push_repeat_qualifier_detail(
             &mut lines,
@@ -1061,12 +1060,12 @@ impl RenderDna {
             }
         }
 
-        if let Ok((from, to)) = feature.location.find_bounds() {
-            if to > from {
-                let line = format!("local_interval: {}..{}", from + 1, to);
-                if seen.insert(line.clone()) {
-                    lines.push(line);
-                }
+        if let Ok((from, to)) = feature.location.find_bounds()
+            && to > from
+        {
+            let line = format!("local_interval: {}..{}", from + 1, to);
+            if seen.insert(line.clone()) {
+                lines.push(line);
             }
         }
 
@@ -1389,7 +1388,7 @@ impl RenderDna {
         }
         if criteria.pass_only {
             let filter = Self::feature_qualifier_text(feature, "vcf_filter")
-                .unwrap_or_else(|| String::new())
+                .unwrap_or_default()
                 .trim()
                 .to_ascii_uppercase();
             if filter != "PASS" {
@@ -1481,7 +1480,7 @@ impl RenderDna {
     }
 
     pub fn is_source_feature(feature: &Feature) -> bool {
-        feature.kind.to_string().to_ascii_uppercase() == "SOURCE"
+        feature.kind.to_string().eq_ignore_ascii_case("SOURCE")
     }
 
     pub fn feature_name(feature: &Feature) -> String {
@@ -1489,22 +1488,22 @@ impl RenderDna {
         if let Some(repeat) = repeat_feature_display(feature) {
             return repeat.display_label();
         }
-        if Self::is_regulatory_feature(feature) {
-            if let Some(reg_class) = Self::feature_qualifier_text(feature, "regulatory_class") {
-                let note = Self::feature_qualifier_text(feature, "note");
-                return if let Some(note) = note {
-                    format!("{reg_class}: {note}")
-                } else {
-                    reg_class
-                };
-            }
+        if Self::is_regulatory_feature(feature)
+            && let Some(reg_class) = Self::feature_qualifier_text(feature, "regulatory_class")
+        {
+            let note = Self::feature_qualifier_text(feature, "note");
+            return if let Some(note) = note {
+                format!("{reg_class}: {note}")
+            } else {
+                reg_class
+            };
         }
         if Self::is_mcs_feature(feature) {
             for key in ["label", "standard_name", "name", "gene", "note"] {
-                if let Some(value) = Self::feature_qualifier_text(feature, key) {
-                    if Self::text_mentions_mcs(&value) {
-                        return Self::compact_mcs_label(&value);
-                    }
+                if let Some(value) = Self::feature_qualifier_text(feature, key)
+                    && Self::text_mentions_mcs(&value)
+                {
+                    return Self::compact_mcs_label(&value);
                 }
             }
             if let Some(value) = Self::first_nonempty_qualifier(
@@ -1515,8 +1514,8 @@ impl RenderDna {
             }
             return "MCS".to_string();
         }
-        if kind == "MRNA" {
-            if let Some(name) = Self::first_nonempty_qualifier(
+        if kind == "MRNA"
+            && let Some(name) = Self::first_nonempty_qualifier(
                 feature,
                 &[
                     "transcript_id",
@@ -1527,12 +1526,12 @@ impl RenderDna {
                     "gene",
                     "locus_tag",
                 ],
-            ) {
-                return name;
-            }
+            )
+        {
+            return name;
         }
-        if kind == "GENE" {
-            if let Some(name) = Self::first_nonempty_qualifier(
+        if kind == "GENE"
+            && let Some(name) = Self::first_nonempty_qualifier(
                 feature,
                 &[
                     "gene",
@@ -1542,17 +1541,17 @@ impl RenderDna {
                     "name",
                     "standard_name",
                 ],
-            ) {
-                return name;
-            }
+            )
+        {
+            return name;
         }
-        if Self::is_tfbs_feature(feature) {
-            if let Some(name) = Self::first_nonempty_qualifier(
+        if Self::is_tfbs_feature(feature)
+            && let Some(name) = Self::first_nonempty_qualifier(
                 feature,
                 &["bound_moiety", "standard_name", "name", "tf_id", "label"],
-            ) {
-                return name;
-            }
+            )
+        {
+            return name;
         }
         for k in [
             "label",

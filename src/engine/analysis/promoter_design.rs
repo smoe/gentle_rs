@@ -768,14 +768,14 @@ impl GentleEngine {
         clip_negative: bool,
         llr_modeled_distribution: Option<&ModeledTfbsScoreDistribution>,
         true_log_odds_modeled_distribution: Option<&ModeledTfbsScoreDistribution>,
-        mut on_progress: impl FnMut(usize, usize) -> bool,
+        on_progress: impl FnMut(usize, usize) -> bool,
     ) -> Result<(Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>), EngineError> {
         let hits = Self::scan_tf_scores_with_topology_and_cancel(
             random_background,
             llr_matrix,
             true_log_odds_matrix,
             InlineSequenceTopology::Linear,
-            |scanned_steps, total_steps| on_progress(scanned_steps, total_steps),
+            on_progress,
         )?;
         let mut llr_background_scores = hits.iter().map(|row| row.2).collect::<Vec<_>>();
         let mut true_log_odds_background_scores = hits.iter().map(|row| row.4).collect::<Vec<_>>();
@@ -1624,10 +1624,10 @@ impl GentleEngine {
                 .then(left.candidate_tf_id.cmp(&right.candidate_tf_id))
         });
         let scanned_candidate_count = rows.len();
-        if let Some(limit) = limit {
-            if rows.len() > limit {
-                rows.truncate(limit);
-            }
+        if let Some(limit) = limit
+            && rows.len() > limit
+        {
+            rows.truncate(limit);
         }
 
         Ok(TfbsTrackSimilarityReport {

@@ -358,15 +358,15 @@ impl GentleEngine {
             let trimmed = token.trim_matches(|c: char| {
                 !c.is_ascii_alphanumeric() && c != '_' && c != '=' && c != '-'
             });
-            if let Some(value) = trimmed.strip_prefix("gel_topology=") {
-                if let Some(form) = gentle_protocol::GelTopologyForm::from_hint(value) {
-                    return form;
-                }
+            if let Some(value) = trimmed.strip_prefix("gel_topology=")
+                && let Some(form) = gentle_protocol::GelTopologyForm::from_hint(value)
+            {
+                return form;
             }
-            if let Some(form) = gentle_protocol::GelTopologyForm::from_hint(trimmed) {
-                if form.is_circular() {
-                    return form;
-                }
+            if let Some(form) = gentle_protocol::GelTopologyForm::from_hint(trimmed)
+                && form.is_circular()
+            {
+                return form;
             }
         }
         if lowered.contains("open circular")
@@ -1902,10 +1902,10 @@ impl GentleEngine {
         if let Some(snapshot) = trace.preflight_snapshot.as_mut() {
             Self::normalize_routine_decision_trace_preflight_snapshot(snapshot);
         }
-        if trace.preflight_history.is_empty() {
-            if let Some(snapshot) = trace.preflight_snapshot.clone() {
-                trace.preflight_history.push(snapshot);
-            }
+        if trace.preflight_history.is_empty()
+            && let Some(snapshot) = trace.preflight_snapshot.clone()
+        {
+            trace.preflight_history.push(snapshot);
         }
         trace.preflight_snapshot = trace.preflight_history.last().cloned();
 
@@ -3340,10 +3340,10 @@ impl GentleEngine {
             ),
             ("gentle_generated".into(), Some("tfbs".to_string())),
         ];
-        if let Some(name) = tf_name {
-            if !name.trim().is_empty() {
-                qualifiers.push(("bound_moiety".into(), Some(name.trim().to_string())));
-            }
+        if let Some(name) = tf_name
+            && !name.trim().is_empty()
+        {
+            qualifiers.push(("bound_moiety".into(), Some(name.trim().to_string())));
         }
         gb_io::seq::Feature {
             kind: "TFBS".into(),
@@ -3558,10 +3558,10 @@ impl GentleEngine {
                     if feature.kind.to_string().eq_ignore_ascii_case("SOURCE") {
                         continue;
                     }
-                    if let Some(expected_kind) = &kind_filter {
-                        if feature.kind.to_string().to_ascii_uppercase() != *expected_kind {
-                            continue;
-                        }
+                    if let Some(expected_kind) = &kind_filter
+                        && feature.kind.to_string().to_ascii_uppercase() != *expected_kind
+                    {
+                        continue;
                     }
                     if let Some(expected_label) = &label_filter {
                         let labels = Self::feature_labels(feature);
@@ -4462,17 +4462,17 @@ impl GentleEngine {
                 });
             }
         }
-        if let (Some(start), Some(end)) = (side.start_0based, side.end_0based) {
-            if start >= end {
-                return Err(EngineError {
-                    code: ErrorCode::InvalidInput,
-                    message: format!(
-                        "{label}.start_0based ({start}) must be < {label}.end_0based ({end})"
-                    ),
+        if let (Some(start), Some(end)) = (side.start_0based, side.end_0based)
+            && start >= end
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "{label}.start_0based ({start}) must be < {label}.end_0based ({end})"
+                ),
 
-                    cause_chain: vec![],
-                });
-            }
+                cause_chain: vec![],
+            });
         }
         Ok(())
     }
@@ -4540,17 +4540,16 @@ impl GentleEngine {
         if let (Some(start), Some(end)) = (
             constraints.fixed_amplicon_start_0based,
             constraints.fixed_amplicon_end_0based_exclusive,
-        ) {
-            if start >= end {
-                return Err(EngineError {
-                    code: ErrorCode::InvalidInput,
-                    message: format!(
-                        "pair_constraints.fixed_amplicon_start_0based ({start}) must be < pair_constraints.fixed_amplicon_end_0based_exclusive ({end})"
-                    ),
+        ) && start >= end
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "pair_constraints.fixed_amplicon_start_0based ({start}) must be < pair_constraints.fixed_amplicon_end_0based_exclusive ({end})"
+                ),
 
-                    cause_chain: vec![],
-                });
-            }
+                cause_chain: vec![],
+            });
         }
         let mut required_amplicon_motifs =
             Vec::with_capacity(constraints.required_amplicon_motifs.len());
@@ -4590,15 +4589,15 @@ impl GentleEngine {
         }
         let max_start = template.len().saturating_sub(side.min_length);
         for start in 0..=max_start {
-            if let Some(location) = side.location_0based {
-                if start != location {
-                    continue;
-                }
+            if let Some(location) = side.location_0based
+                && start != location
+            {
+                continue;
             }
-            if let Some(min_start) = side.start_0based {
-                if start < min_start {
-                    continue;
-                }
+            if let Some(min_start) = side.start_0based
+                && start < min_start
+            {
+                continue;
             }
             for length in side.min_length..=side.max_length {
                 let Some(end) = start.checked_add(length) else {
@@ -4607,11 +4606,11 @@ impl GentleEngine {
                 if end > template.len() {
                     break;
                 }
-                if let Some(max_end) = side.end_0based {
-                    if end > max_end {
-                        rejections.out_of_window = rejections.out_of_window.saturating_add(1);
-                        continue;
-                    }
+                if let Some(max_end) = side.end_0based
+                    && end > max_end
+                {
+                    rejections.out_of_window = rejections.out_of_window.saturating_add(1);
+                    continue;
                 }
                 let binding_window = &template[start..end];
                 let anneal_bytes = if reverse_orientation {
@@ -4671,23 +4670,21 @@ impl GentleEngine {
         primer_sequence: &[u8],
         constraints: &NormalizedPrimerSideSequenceConstraints,
     ) -> bool {
-        if let Some(prefix) = &constraints.fixed_5prime {
-            if primer_sequence.len() < prefix.len()
-                || !Self::iupac_match_at(primer_sequence, prefix.as_bytes(), 0)
-            {
-                return false;
-            }
+        if let Some(prefix) = &constraints.fixed_5prime
+            && (primer_sequence.len() < prefix.len()
+                || !Self::iupac_match_at(primer_sequence, prefix.as_bytes(), 0))
+        {
+            return false;
         }
-        if let Some(suffix) = &constraints.fixed_3prime {
-            if primer_sequence.len() < suffix.len()
+        if let Some(suffix) = &constraints.fixed_3prime
+            && (primer_sequence.len() < suffix.len()
                 || !Self::iupac_match_at(
                     primer_sequence,
                     suffix.as_bytes(),
                     primer_sequence.len().saturating_sub(suffix.len()),
-                )
-            {
-                return false;
-            }
+                ))
+        {
+            return false;
         }
         for motif in &constraints.required_motifs {
             if !Self::contains_iupac_pattern(primer_sequence, motif.as_bytes()) {
@@ -4988,15 +4985,15 @@ impl GentleEngine {
                 return false;
             }
         }
-        if let Some(expected_start) = constraints.fixed_amplicon_start_0based {
-            if pair.amplicon_start_0based != expected_start {
-                return false;
-            }
+        if let Some(expected_start) = constraints.fixed_amplicon_start_0based
+            && pair.amplicon_start_0based != expected_start
+        {
+            return false;
         }
-        if let Some(expected_end) = constraints.fixed_amplicon_end_0based_exclusive {
-            if pair.amplicon_end_0based_exclusive != expected_end {
-                return false;
-            }
+        if let Some(expected_end) = constraints.fixed_amplicon_end_0based_exclusive
+            && pair.amplicon_end_0based_exclusive != expected_end
+        {
+            return false;
         }
         if pair.amplicon_end_0based_exclusive > template.len()
             || pair.amplicon_start_0based >= pair.amplicon_end_0based_exclusive
@@ -5245,7 +5242,7 @@ impl GentleEngine {
                 ) else {
                     rejection_summary.amplicon_or_roi_failure =
                         rejection_summary.amplicon_or_roi_failure.saturating_add(1);
-                    if pair_evaluations % pair_progress_stride == 0 {
+                    if pair_evaluations.is_multiple_of(pair_progress_stride) {
                         Self::emit_primer_design_progress(
                             progress_context,
                             on_progress,
@@ -5276,7 +5273,7 @@ impl GentleEngine {
                 {
                     rejection_summary.amplicon_or_roi_failure =
                         rejection_summary.amplicon_or_roi_failure.saturating_add(1);
-                    if pair_evaluations % pair_progress_stride == 0 {
+                    if pair_evaluations.is_multiple_of(pair_progress_stride) {
                         Self::emit_primer_design_progress(
                             progress_context,
                             on_progress,
@@ -5310,7 +5307,7 @@ impl GentleEngine {
                 ) {
                     rejection_summary.pair_constraint_failure =
                         rejection_summary.pair_constraint_failure.saturating_add(1);
-                    if pair_evaluations % pair_progress_stride == 0 {
+                    if pair_evaluations.is_multiple_of(pair_progress_stride) {
                         Self::emit_primer_design_progress(
                             progress_context,
                             on_progress,
@@ -5336,7 +5333,7 @@ impl GentleEngine {
                     continue;
                 }
                 pairs.push(pair);
-                if pair_evaluations % pair_progress_stride == 0 {
+                if pair_evaluations.is_multiple_of(pair_progress_stride) {
                     Self::emit_primer_design_progress(
                         progress_context,
                         on_progress,
@@ -5571,7 +5568,7 @@ impl GentleEngine {
                 if !probe_inside_amplicon {
                     rejection.probe_or_assay_failure =
                         rejection.probe_or_assay_failure.saturating_add(1);
-                    if assays_evaluated % assay_progress_stride == 0 {
+                    if assays_evaluated.is_multiple_of(assay_progress_stride) {
                         Self::emit_primer_design_progress(
                             progress_context,
                             on_progress,
@@ -5600,7 +5597,7 @@ impl GentleEngine {
                 if !probe_tm_ok {
                     rejection.probe_or_assay_failure =
                         rejection.probe_or_assay_failure.saturating_add(1);
-                    if assays_evaluated % assay_progress_stride == 0 {
+                    if assays_evaluated.is_multiple_of(assay_progress_stride) {
                         Self::emit_primer_design_progress(
                             progress_context,
                             on_progress,
@@ -5660,7 +5657,7 @@ impl GentleEngine {
                         probe_tm_delta_in_range: probe_tm_ok,
                     },
                 });
-                if assays_evaluated % assay_progress_stride == 0 {
+                if assays_evaluated.is_multiple_of(assay_progress_stride) {
                     Self::emit_primer_design_progress(
                         progress_context,
                         on_progress,

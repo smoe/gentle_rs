@@ -80,7 +80,7 @@ impl RowRestrictionEnzymes {
         self.blocks = if span == 0 {
             0
         } else {
-            (span + self.bases_per_line - 1) / self.bases_per_line
+            span.div_ceil(self.bases_per_line)
         };
     }
 

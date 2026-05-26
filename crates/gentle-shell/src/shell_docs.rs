@@ -141,7 +141,7 @@ fn docs_for_interface_from_glossary<'a>(
         .filter(|doc| {
             interface_filter
                 .as_ref()
-                .map_or(true, |f| doc.interfaces.iter().any(|iface| iface == f))
+                .is_none_or(|f| doc.interfaces.iter().any(|iface| iface == f))
         })
         .collect())
 }
@@ -171,7 +171,7 @@ fn find_doc_for_topic<'a>(
             for alias in &doc.aliases {
                 if is_prefix_path(alias, &topic) {
                     let score = path_tokens(alias).len();
-                    if longest.map_or(true, |v| score > v) {
+                    if longest.is_none_or(|v| score > v) {
                         longest = Some(score);
                     }
                 }

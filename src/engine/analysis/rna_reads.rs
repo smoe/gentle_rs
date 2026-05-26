@@ -612,8 +612,7 @@ impl GentleEngine {
             .filter(|raw| !raw.is_empty())
             .map(|raw| raw.to_string())
             .collect::<Vec<_>>();
-        normalized
-            .sort_by(|left, right| left.to_ascii_lowercase().cmp(&right.to_ascii_lowercase()));
+        normalized.sort_by_key(|left| left.to_ascii_lowercase());
         normalized.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
         if normalized.is_empty() {
             return Err(EngineError {
@@ -1011,22 +1010,19 @@ impl GentleEngine {
                     .cloned();
                 row.gene_id = resolved_gene_id.clone();
 
-                if let Some(gene_id) = resolved_gene_id.as_deref() {
-                    if !prepared.contexts.contains_key(gene_id) {
-                        if let Some(feature_id) = prepared.context_feature_ids.get(gene_id).copied()
-                        {
-                            let group_scope =
-                                Self::rna_read_gene_support_group_scope(prepared.report.scope);
-                            let splicing = self.build_splicing_expert_view(
-                                &prepared.report.seq_id,
-                                feature_id,
-                                group_scope,
-                            )?;
-                            let context =
-                                Self::rna_read_gene_support_context_from_splicing(splicing);
-                            prepared.contexts.insert(gene_id.to_string(), context);
-                        }
-                    }
+                if let Some(gene_id) = resolved_gene_id.as_deref()
+                    && !prepared.contexts.contains_key(gene_id)
+                    && let Some(feature_id) = prepared.context_feature_ids.get(gene_id).copied()
+                {
+                    let group_scope =
+                        Self::rna_read_gene_support_group_scope(prepared.report.scope);
+                    let splicing = self.build_splicing_expert_view(
+                        &prepared.report.seq_id,
+                        feature_id,
+                        group_scope,
+                    )?;
+                    let context = Self::rna_read_gene_support_context_from_splicing(splicing);
+                    prepared.contexts.insert(gene_id.to_string(), context);
                 }
 
                 let target_length_bp = resolved_gene_id
@@ -4372,15 +4368,15 @@ impl GentleEngine {
                 cause_chain: vec![],
             });
         }
-        if let Some(value) = limit {
-            if value == 0 {
-                return Err(EngineError {
-                    code: ErrorCode::InvalidInput,
-                    message: "RNA-read alignment TSV export requires --limit >= 1".to_string(),
+        if let Some(value) = limit
+            && value == 0
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "RNA-read alignment TSV export requires --limit >= 1".to_string(),
 
-                    cause_chain: vec![],
-                });
-            }
+                cause_chain: vec![],
+            });
         }
         let report = self.get_rna_read_report(report_id)?;
         let mut inspection = self.inspect_rna_read_alignments(report_id, selection, usize::MAX)?;
@@ -4534,12 +4530,12 @@ impl GentleEngine {
                 "RNA-read isoform triage TSV export requires non-empty path",
             ));
         }
-        if let Some(value) = limit {
-            if value == 0 {
-                return Err(EngineError::invalid_input(
-                    "RNA-read isoform triage TSV export requires --limit >= 1",
-                ));
-            }
+        if let Some(value) = limit
+            && value == 0
+        {
+            return Err(EngineError::invalid_input(
+                "RNA-read isoform triage TSV export requires --limit >= 1",
+            ));
         }
         let report = self.get_rna_read_report(report_id)?;
         let defaults = Self::default_rna_read_isoform_triage_thresholds(
@@ -4622,10 +4618,10 @@ impl GentleEngine {
             ) {
                 continue;
             }
-            if let Some(value) = limit {
-                if row_count >= value {
-                    break;
-                }
+            if let Some(value) = limit
+                && row_count >= value
+            {
+                break;
             }
             let triage = Self::classify_rna_read_isoform_triage_hit(hit, thresholds);
             *bin_counts.entry(triage.0.as_str().to_string()).or_default() += 1;
@@ -5087,10 +5083,10 @@ impl GentleEngine {
                 current.clear();
             }
         }
-        if !current.is_empty() {
-            if let Ok(value) = current.parse::<usize>() {
-                ordinals.push(value);
-            }
+        if !current.is_empty()
+            && let Ok(value) = current.parse::<usize>()
+        {
+            ordinals.push(value);
         }
         while transitions.len() > ordinals.len().saturating_sub(1) {
             let _ = transitions.pop();
@@ -7615,7 +7611,7 @@ impl GentleEngine {
                 .filter(|value| !value.is_empty())
                 .collect::<Vec<_>>()
         };
-        let origin_mode = origin_mode.unwrap_or_else(|| {
+        let origin_mode = origin_mode.unwrap_or({
             if gene_ids.len() > 1 || target_gene_ids.len() > 1 {
                 RnaReadOriginMode::MultiGeneSparse
             } else {
@@ -7666,12 +7662,10 @@ impl GentleEngine {
                 };
                 if let Some(prepared) = acquisition.rows.iter().find(|prepared| {
                     prepared.sample_id == row.sample_id && prepared.sra_accession == accession
-                }) {
-                    if prepared.lifecycle_status == "ready" {
-                        if let Some(first_output) = prepared.output_paths.first() {
-                            row.input_path = Some(first_output.path.clone());
-                        }
-                    }
+                }) && prepared.lifecycle_status == "ready"
+                    && let Some(first_output) = prepared.output_paths.first()
+                {
+                    row.input_path = Some(first_output.path.clone());
                 }
             }
             Some(acquisition)
@@ -9162,7 +9156,7 @@ impl GentleEngine {
                     record_index,
                     source_byte_offset: header_offset,
                     header_id,
-                    header_text: header_text,
+                    header_text,
                     sequence: normalized.as_bytes().to_vec(),
                 },
                 FastaVisitProgress {
@@ -9243,7 +9237,7 @@ impl GentleEngine {
         Self::visit_fasta_records_with_offsets(path, &mut |record, progress| {
             out.push(record);
             processed = progress.records_processed;
-            if (processed % RNA_READ_PROGRESS_UPDATE_EVERY_READS == 0 || processed <= 3)
+            if (processed.is_multiple_of(RNA_READ_PROGRESS_UPDATE_EVERY_READS) || processed <= 3)
                 && !on_record_progress(processed)
             {
                 return Err(EngineError {
@@ -9571,7 +9565,7 @@ impl GentleEngine {
             }
         }
         for bits in &matched_seed_bits {
-            if let Some(weights) = histogram_index.get(&bits) {
+            if let Some(weights) = histogram_index.get(bits) {
                 for weight in weights {
                     if weight.strand_minus {
                         minus_bins_touched.insert(weight.bin_index);
@@ -10334,7 +10328,7 @@ impl GentleEngine {
     ) -> bool {
         let update_every_reads = update_every_reads.max(1);
         reads_processed <= 3
-            || reads_processed % update_every_reads == 0
+            || reads_processed.is_multiple_of(update_every_reads)
             || elapsed_since_last_emit >= RNA_READ_PROGRESS_UPDATE_MAX_INTERVAL
     }
 
@@ -10655,10 +10649,11 @@ impl GentleEngine {
             }
             let exon_offset_start = template_cursor;
             let exon_offset_end = template_cursor.saturating_add(exon_len);
-            if aligned_start < exon_offset_end && aligned_end > exon_offset_start {
-                if let Some(exon_idx) = exon_index.get(&(exon_start_1based, exon_end_1based)) {
-                    exon_indices.insert(*exon_idx);
-                }
+            if aligned_start < exon_offset_end
+                && aligned_end > exon_offset_start
+                && let Some(exon_idx) = exon_index.get(&(exon_start_1based, exon_end_1based))
+            {
+                exon_indices.insert(*exon_idx);
             }
             if idx + 1 < ordered_exons.len() {
                 let boundary_offset = exon_offset_end;
@@ -11089,7 +11084,7 @@ impl GentleEngine {
             .filter(|raw| !raw.is_empty())
             .map(|raw| raw.to_string())
             .collect::<Vec<_>>();
-        requested.sort_by(|left, right| left.to_ascii_lowercase().cmp(&right.to_ascii_lowercase()));
+        requested.sort_by_key(|left| left.to_ascii_lowercase());
         requested.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
         let requested_lower = requested
             .iter()
@@ -11172,10 +11167,8 @@ impl GentleEngine {
             .filter(|gene| !matched_requested.contains(&gene.to_ascii_lowercase()))
             .cloned()
             .collect::<Vec<_>>();
-        matched_gene_ids
-            .sort_by(|left, right| left.to_ascii_lowercase().cmp(&right.to_ascii_lowercase()));
-        missing_gene_ids
-            .sort_by(|left, right| left.to_ascii_lowercase().cmp(&right.to_ascii_lowercase()));
+        matched_gene_ids.sort_by_key(|left| left.to_ascii_lowercase());
+        missing_gene_ids.sort_by_key(|left| left.to_ascii_lowercase());
         if restrict_to_target_strand && target_feature_strand.trim().is_empty() {
             missing_gene_ids = requested;
             lanes.clear();
@@ -11252,12 +11245,12 @@ impl GentleEngine {
         if ambiguous_strand_tie {
             row.reads_ambiguous_strand_ties = row.reads_ambiguous_strand_ties.saturating_add(1);
         }
-        if passed_seed_filter {
-            if let Some(model) = transcript_models_by_id.get(assigned_transcript_id) {
-                for transition in &model.transitions {
-                    if read_supported_transitions.contains(transition) {
-                        row.transition_rows_supported.insert(*transition);
-                    }
+        if passed_seed_filter
+            && let Some(model) = transcript_models_by_id.get(assigned_transcript_id)
+        {
+            for transition in &model.transitions {
+                if read_supported_transitions.contains(transition) {
+                    row.transition_rows_supported.insert(*transition);
                 }
             }
         }
@@ -11449,7 +11442,7 @@ impl GentleEngine {
             if count == 0 {
                 continue;
             }
-            if best.map_or(true, |(_best_bin, best_count)| count > best_count) {
+            if best.is_none_or(|(_best_bin, best_count)| count > best_count) {
                 best = Some((bin, count));
             }
         }
@@ -11482,13 +11475,13 @@ impl GentleEngine {
         if candidate.exon_hits != current.exon_hits {
             return candidate.exon_hits > current.exon_hits;
         }
-        if candidate.model.strand != current.model.strand {
-            if let Some(preferred) = chain_preferred_strand {
-                let candidate_pref = candidate.model.strand == preferred;
-                let current_pref = current.model.strand == preferred;
-                if candidate_pref != current_pref {
-                    return candidate_pref;
-                }
+        if candidate.model.strand != current.model.strand
+            && let Some(preferred) = chain_preferred_strand
+        {
+            let candidate_pref = candidate.model.strand == preferred;
+            let current_pref = current.model.strand == preferred;
+            if candidate_pref != current_pref {
+                return candidate_pref;
             }
         }
         candidate.model.transcript_feature_id < current.model.transcript_feature_id
@@ -13065,7 +13058,7 @@ impl GentleEngine {
                 cumulative_progress_emit_ms += emit_started.elapsed().as_secs_f64() * 1000.0;
                 last_progress_emit_at = Instant::now();
             }
-            if reads_processed % RNA_READ_COOPERATIVE_YIELD_EVERY_READS == 0 {
+            if reads_processed.is_multiple_of(RNA_READ_COOPERATIVE_YIELD_EVERY_READS) {
                 std::thread::yield_now();
             }
         }
@@ -13560,8 +13553,7 @@ impl GentleEngine {
             .filter(|id| !id.is_empty())
             .map(|id| id.to_string())
             .collect::<Vec<_>>();
-        normalized_target_gene_ids
-            .sort_by(|left, right| left.to_ascii_lowercase().cmp(&right.to_ascii_lowercase()));
+        normalized_target_gene_ids.sort_by_key(|left| left.to_ascii_lowercase());
         normalized_target_gene_ids.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
         let mut origin_mode_warnings = Vec::<String>::new();
         if matches!(origin_mode, RnaReadOriginMode::SingleGene)
@@ -14506,70 +14498,71 @@ impl GentleEngine {
                 if reads_processed % RNA_READ_COOPERATIVE_YIELD_EVERY_READS == 0 {
                     std::thread::yield_now();
                 }
-                if let Some(path) = checkpoint_path.as_deref() {
-                    if reads_processed > 0 && reads_processed % checkpoint_every_reads == 0 {
-                        let retained_rows = Self::collect_retained_rna_read_hits_union(
-                            &retained_hits,
-                            &guaranteed_score_hits,
-                            &guaranteed_high_bin_hits,
-                        );
-                        let checkpoint = RnaReadInterpretCheckpoint {
-                            schema: RNA_READ_CHECKPOINT_SCHEMA.to_string(),
-                            created_at_unix_ms: Self::now_unix_ms(),
-                            report_id: report_id.clone(),
-                            report_mode,
-                            seq_id: seq_id.to_string(),
-                            seed_feature_id,
-                            profile,
-                            input_path: input_path.to_string(),
-                            input_format,
-                            scope,
-                            origin_mode,
-                            target_gene_ids: normalized_target_gene_ids.clone(),
-                            roi_seed_capture_enabled,
-                            seed_filter: seed_filter.clone(),
-                            align_config: align_config.clone(),
-                            checkpoint_path: checkpoint_path.clone(),
-                            checkpoint_every_reads,
-                            reads_processed,
-                            read_count_seed_passed: seed_passed,
-                            read_count_aligned: aligned,
-                            input_bytes_processed,
-                            input_bytes_total,
-                            cumulative_tested_kmers,
-                            cumulative_matched_kmers,
-                            cumulative_seed_compute_ms,
-                            cumulative_align_compute_ms,
-                            cumulative_io_read_ms,
-                            cumulative_fasta_parse_ms,
-                            cumulative_normalize_compute_ms,
-                            cumulative_inference_compute_ms,
-                            cumulative_progress_emit_ms,
-                            cumulative_read_bases_processed,
-                            read_length_counts_all: read_length_counts_all.clone(),
-                            read_length_counts_seed_passed: read_length_counts_seed_passed.clone(),
-                            read_length_counts_aligned: read_length_counts_aligned.clone(),
-                            read_length_counts_full_length_exact:
-                                read_length_counts_full_length_exact.clone(),
-                            read_length_counts_full_length_near:
-                                read_length_counts_full_length_near.clone(),
-                            read_length_counts_full_length_strict:
-                                read_length_counts_full_length_strict.clone(),
-                            support_aligned_reads,
-                            support_exon_counts: support_exon_counts.clone(),
-                            support_junction_counts: support_junction_counts.clone(),
-                            reads_with_transition_support,
-                            transition_confirmations,
-                            transition_support_rows: transition_support_rows.clone(),
-                            isoform_support_accumulators: isoform_support_accumulators.clone(),
-                            origin_class_counts: origin_class_counts.clone(),
-                            bins: bins.clone(),
-                            score_density_bins: score_density_bins.clone(),
-                            seed_pass_score_density_bins: seed_pass_score_density_bins.clone(),
-                            retained_hits: retained_rows,
-                        };
-                        Self::write_rna_read_interpret_checkpoint(path, &checkpoint)?;
-                    }
+                if let Some(path) = checkpoint_path.as_deref()
+                    && reads_processed > 0
+                    && reads_processed % checkpoint_every_reads == 0
+                {
+                    let retained_rows = Self::collect_retained_rna_read_hits_union(
+                        &retained_hits,
+                        &guaranteed_score_hits,
+                        &guaranteed_high_bin_hits,
+                    );
+                    let checkpoint = RnaReadInterpretCheckpoint {
+                        schema: RNA_READ_CHECKPOINT_SCHEMA.to_string(),
+                        created_at_unix_ms: Self::now_unix_ms(),
+                        report_id: report_id.clone(),
+                        report_mode,
+                        seq_id: seq_id.to_string(),
+                        seed_feature_id,
+                        profile,
+                        input_path: input_path.to_string(),
+                        input_format,
+                        scope,
+                        origin_mode,
+                        target_gene_ids: normalized_target_gene_ids.clone(),
+                        roi_seed_capture_enabled,
+                        seed_filter: seed_filter.clone(),
+                        align_config: align_config.clone(),
+                        checkpoint_path: checkpoint_path.clone(),
+                        checkpoint_every_reads,
+                        reads_processed,
+                        read_count_seed_passed: seed_passed,
+                        read_count_aligned: aligned,
+                        input_bytes_processed,
+                        input_bytes_total,
+                        cumulative_tested_kmers,
+                        cumulative_matched_kmers,
+                        cumulative_seed_compute_ms,
+                        cumulative_align_compute_ms,
+                        cumulative_io_read_ms,
+                        cumulative_fasta_parse_ms,
+                        cumulative_normalize_compute_ms,
+                        cumulative_inference_compute_ms,
+                        cumulative_progress_emit_ms,
+                        cumulative_read_bases_processed,
+                        read_length_counts_all: read_length_counts_all.clone(),
+                        read_length_counts_seed_passed: read_length_counts_seed_passed.clone(),
+                        read_length_counts_aligned: read_length_counts_aligned.clone(),
+                        read_length_counts_full_length_exact: read_length_counts_full_length_exact
+                            .clone(),
+                        read_length_counts_full_length_near: read_length_counts_full_length_near
+                            .clone(),
+                        read_length_counts_full_length_strict:
+                            read_length_counts_full_length_strict.clone(),
+                        support_aligned_reads,
+                        support_exon_counts: support_exon_counts.clone(),
+                        support_junction_counts: support_junction_counts.clone(),
+                        reads_with_transition_support,
+                        transition_confirmations,
+                        transition_support_rows: transition_support_rows.clone(),
+                        isoform_support_accumulators: isoform_support_accumulators.clone(),
+                        origin_class_counts: origin_class_counts.clone(),
+                        bins: bins.clone(),
+                        score_density_bins: score_density_bins.clone(),
+                        seed_pass_score_density_bins: seed_pass_score_density_bins.clone(),
+                        retained_hits: retained_rows,
+                    };
+                    Self::write_rna_read_interpret_checkpoint(path, &checkpoint)?;
                 }
                 Ok(())
             })?;

@@ -185,10 +185,11 @@ impl GentleEngine {
         {
             return false;
         }
-        if let Some(chromosome) = filter.chromosome.as_deref() {
-            if !chromosome.trim().is_empty() && !chromosome.eq_ignore_ascii_case(&row.chromosome) {
-                return false;
-            }
+        if let Some(chromosome) = filter.chromosome.as_deref()
+            && !chromosome.trim().is_empty()
+            && !chromosome.eq_ignore_ascii_case(&row.chromosome)
+        {
+            return false;
         }
         if filter.span_start_0based.is_some() || filter.span_end_0based_exclusive.is_some() {
             let span_start = filter.span_start_0based.unwrap_or(0);

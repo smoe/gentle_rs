@@ -1138,11 +1138,11 @@ impl GENtleApp {
         Some((start, end))
     }
 
-    pub(super) fn current_gibson_opening_suggestion_for_edges<'a>(
-        suggestions: &'a [GibsonDestinationOpeningSuggestion],
+    pub(super) fn current_gibson_opening_suggestion_for_edges(
+        suggestions: &[GibsonDestinationOpeningSuggestion],
         start: usize,
         end: usize,
-    ) -> Option<&'a GibsonDestinationOpeningSuggestion> {
+    ) -> Option<&GibsonDestinationOpeningSuggestion> {
         suggestions
             .iter()
             .find(|row| row.start_0based == start && row.end_0based_exclusive == end)
@@ -1944,8 +1944,7 @@ impl GENtleApp {
                     }
                 } else if self.gibson_show_all_unique_cutters
                     && suggestions.iter().any(|row| row.in_mcs_context)
-                {
-                    if ui
+                    && ui
                         .button("Show MCS-linked cutters only")
                         .on_hover_text(
                             "Collapse the list back to unique cutters named by the current MCS annotation.",
@@ -1954,7 +1953,6 @@ impl GENtleApp {
                     {
                         self.gibson_show_all_unique_cutters = false;
                     }
-                }
             }
             Ok(_) => {
                 if !self.gibson_destination_seq_id.trim().is_empty() {

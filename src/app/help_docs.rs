@@ -302,11 +302,11 @@ impl GENtleApp {
         hasher.update(svg_path.to_string_lossy().as_bytes());
         if let Some(metadata) = metadata {
             hasher.update(metadata.len().to_le_bytes());
-            if let Ok(modified) = metadata.modified() {
-                if let Ok(duration) = modified.duration_since(UNIX_EPOCH) {
-                    hasher.update(duration.as_secs().to_le_bytes());
-                    hasher.update(duration.subsec_nanos().to_le_bytes());
-                }
+            if let Ok(modified) = metadata.modified()
+                && let Ok(duration) = modified.duration_since(UNIX_EPOCH)
+            {
+                hasher.update(duration.as_secs().to_le_bytes());
+                hasher.update(duration.subsec_nanos().to_le_bytes());
             }
         }
         let digest = format!("{:x}", hasher.finalize());
@@ -337,10 +337,10 @@ impl GENtleApp {
         if png_path.is_file() {
             return png_path;
         }
-        if let Some(parent) = png_path.parent() {
-            if fs::create_dir_all(parent).is_err() {
-                return absolute_dest.to_path_buf();
-            }
+        if let Some(parent) = png_path.parent()
+            && fs::create_dir_all(parent).is_err()
+        {
+            return absolute_dest.to_path_buf();
         }
         match crate::svg_png::render_svg_file_to_png(
             absolute_dest,
@@ -523,13 +523,13 @@ impl GENtleApp {
     }
 
     pub(super) fn load_help_doc(path: &str, fallback: &'static str) -> String {
-        if let Some(runtime_path) = Self::resolve_runtime_doc_path(path) {
-            if let Ok(text) = fs::read_to_string(&runtime_path) {
-                if let Some(base_dir) = runtime_path.parent() {
-                    return Self::rewrite_markdown_relative_image_links(&text, base_dir);
-                }
-                return text;
+        if let Some(runtime_path) = Self::resolve_runtime_doc_path(path)
+            && let Ok(text) = fs::read_to_string(&runtime_path)
+        {
+            if let Some(base_dir) = runtime_path.parent() {
+                return Self::rewrite_markdown_relative_image_links(&text, base_dir);
             }
+            return text;
         }
         fallback.to_string()
     }
@@ -593,18 +593,18 @@ impl GENtleApp {
     }
 
     pub(super) fn discover_help_tutorial_entries() -> Vec<HelpTutorialDocEntry> {
-        if let Some(catalog_path) = Self::resolve_runtime_doc_path(DEFAULT_TUTORIAL_CATALOG_PATH) {
-            if let Ok(catalog) = load_tutorial_catalog(&catalog_path) {
-                let mut catalog_entries = catalog
-                    .entries
-                    .into_iter()
-                    .filter_map(Self::help_tutorial_entry_from_catalog_entry)
-                    .collect::<Vec<_>>();
-                Self::ensure_agent_interfaces_tutorial_entry(&mut catalog_entries);
-                Self::sort_help_tutorial_entries_by_audience_group(&mut catalog_entries);
-                if !catalog_entries.is_empty() {
-                    return catalog_entries;
-                }
+        if let Some(catalog_path) = Self::resolve_runtime_doc_path(DEFAULT_TUTORIAL_CATALOG_PATH)
+            && let Ok(catalog) = load_tutorial_catalog(&catalog_path)
+        {
+            let mut catalog_entries = catalog
+                .entries
+                .into_iter()
+                .filter_map(Self::help_tutorial_entry_from_catalog_entry)
+                .collect::<Vec<_>>();
+            Self::ensure_agent_interfaces_tutorial_entry(&mut catalog_entries);
+            Self::sort_help_tutorial_entries_by_audience_group(&mut catalog_entries);
+            if !catalog_entries.is_empty() {
+                return catalog_entries;
             }
         }
         let Some(tutorial_root) = Self::resolve_runtime_doc_path("docs/tutorial") else {
@@ -657,19 +657,19 @@ impl GENtleApp {
     }
 
     pub(super) fn discover_guided_walkthrough_entries() -> Vec<HelpTutorialDocEntry> {
-        if let Some(catalog_path) = Self::resolve_runtime_doc_path(DEFAULT_TUTORIAL_CATALOG_PATH) {
-            if let Ok(catalog) = load_tutorial_catalog(&catalog_path) {
-                let mut entries = catalog
-                    .entries
-                    .into_iter()
-                    .filter(|entry| entry.status == "manual/reference")
-                    .filter_map(Self::help_tutorial_entry_from_catalog_entry)
-                    .collect::<Vec<_>>();
-                Self::ensure_agent_interfaces_tutorial_entry(&mut entries);
-                Self::sort_help_tutorial_entries_by_audience_group(&mut entries);
-                if !entries.is_empty() {
-                    return entries;
-                }
+        if let Some(catalog_path) = Self::resolve_runtime_doc_path(DEFAULT_TUTORIAL_CATALOG_PATH)
+            && let Ok(catalog) = load_tutorial_catalog(&catalog_path)
+        {
+            let mut entries = catalog
+                .entries
+                .into_iter()
+                .filter(|entry| entry.status == "manual/reference")
+                .filter_map(Self::help_tutorial_entry_from_catalog_entry)
+                .collect::<Vec<_>>();
+            Self::ensure_agent_interfaces_tutorial_entry(&mut entries);
+            Self::sort_help_tutorial_entries_by_audience_group(&mut entries);
+            if !entries.is_empty() {
+                return entries;
             }
         }
         let mut entries = vec![];

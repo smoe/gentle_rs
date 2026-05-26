@@ -302,12 +302,12 @@ pub fn render_svg(
         });
     }
 
-    if let Some(parent) = Path::new(output_path).parent() {
-        if !parent.as_os_str().is_empty() {
-            std::fs::create_dir_all(parent).map_err(|e| RnaStructureError::Io {
-                message: format!("Could not create RNA structure output directory: {e}"),
-            })?;
-        }
+    if let Some(parent) = Path::new(output_path).parent()
+        && !parent.as_os_str().is_empty()
+    {
+        std::fs::create_dir_all(parent).map_err(|e| RnaStructureError::Io {
+            message: format!("Could not create RNA structure output directory: {e}"),
+        })?;
     }
 
     let fold = fold_rna_sequence(&sequence)?;

@@ -115,10 +115,9 @@ fn resolve_ladder_names(requested: &[String], min_bp: usize, max_bp: usize) -> V
                 .iter()
                 .find(|name| normalize_ladder_name(name).contains(&needle))
                 .cloned()
+                && !picked.iter().any(|n| n == &found)
             {
-                if !picked.iter().any(|n| n == &found) {
-                    picked.push(found);
-                }
+                picked.push(found);
             }
         }
         if !picked.is_empty() {
@@ -498,7 +497,7 @@ pub fn build_pool_gel_layout(
 
 fn format_bp_label(bp: usize) -> String {
     if bp >= 1_000 {
-        if bp % 1_000 == 0 {
+        if bp.is_multiple_of(1_000) {
             format!("{} kb", bp / 1_000)
         } else {
             format!("{:.1} kb", bp as f32 / 1_000.0)
@@ -823,32 +822,31 @@ pub fn export_pool_gel_svg(layout: &PoolGelLayout) -> String {
                     .set("fill", "#0f172a"),
             );
 
-        if !lane.is_ladder {
-            if let Some((badge_text, badge_fill, badge_text_fill)) =
+        if !lane.is_ladder
+            && let Some((badge_text, badge_fill, badge_text_fill)) =
                 lane_role_badge(&normalized_lane_role(lane))
-            {
-                doc = doc
-                    .add(
-                        Rectangle::new()
-                            .set("x", x - 28.0)
-                            .set("y", GEL_BOTTOM + 34.0)
-                            .set("width", 56.0)
-                            .set("height", 16.0)
-                            .set("rx", 8)
-                            .set("ry", 8)
-                            .set("fill", badge_fill),
-                    )
-                    .add(
-                        Text::new(badge_text)
-                            .set("x", x)
-                            .set("y", GEL_BOTTOM + 45.0)
-                            .set("text-anchor", "middle")
-                            .set("font-family", "monospace")
-                            .set("font-size", 9)
-                            .set("font-weight", 700)
-                            .set("fill", badge_text_fill),
-                    );
-            }
+        {
+            doc = doc
+                .add(
+                    Rectangle::new()
+                        .set("x", x - 28.0)
+                        .set("y", GEL_BOTTOM + 34.0)
+                        .set("width", 56.0)
+                        .set("height", 16.0)
+                        .set("rx", 8)
+                        .set("ry", 8)
+                        .set("fill", badge_fill),
+                )
+                .add(
+                    Text::new(badge_text)
+                        .set("x", x)
+                        .set("y", GEL_BOTTOM + 45.0)
+                        .set("text-anchor", "middle")
+                        .set("font-family", "monospace")
+                        .set("font-size", 9)
+                        .set("font-weight", 700)
+                        .set("fill", badge_text_fill),
+                );
         }
 
         for band in &lane.bands {
@@ -1479,7 +1477,7 @@ mod tests {
 
     #[test]
     fn test_mass_based_intensity_favors_larger_single_band() {
-        let members = vec![
+        let members = [
             GelSampleMember {
                 seq_id: "small".to_string(),
                 bp: 300,

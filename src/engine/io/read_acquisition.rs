@@ -49,10 +49,9 @@ impl ReadAcquisitionActivityTracker {
         let cancel_path = read_acquire_cancel_path(run_dir);
         if let Some(existing) =
             inspect_read_acquire_activity_status_paths(&status_path, &lock_path)?
+            && existing.lifecycle_status == "running"
         {
-            if existing.lifecycle_status == "running" {
-                return Ok(ReadAcquisitionActivityStart::Running);
-            }
+            return Ok(ReadAcquisitionActivityStart::Running);
         }
 
         let now = GentleEngine::now_unix_ms();
@@ -80,10 +79,9 @@ impl ReadAcquisitionActivityTracker {
             if let Some(existing) = inspect_read_acquire_activity_status_paths(
                 &tracker.status_path,
                 &tracker.lock_path,
-            )? {
-                if existing.lifecycle_status == "running" {
-                    return Ok(ReadAcquisitionActivityStart::Running);
-                }
+            )? && existing.lifecycle_status == "running"
+            {
+                return Ok(ReadAcquisitionActivityStart::Running);
             }
             return Err(format!(
                 "Could not acquire read-acquisition lock '{}'",
@@ -152,223 +150,6 @@ impl ReadAcquisitionActivityTracker {
     fn write_status(&self) {
         let _ = write_read_acquire_activity_status(&self.status_path, &self.status);
         let _ = write_read_acquire_activity_status(&self.lock_path, &self.status);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tempfile::tempdir;
-
-    #[test]
-    fn parse_read_acquisition_manifest_reads_optional_fields() {
-        let td = tempdir().expect("tempdir");
-        let manifest = td.path().join("reads.tsv");
-        fs::write(
-            &manifest,
-            "sample_id\tsample_name\tsra_accession\tassay_kind\tread_layout\tanalysis_format\tnote\nsample_a\tSample A\tSRRFAKE001\trna\tpaired_end\tfastq\tprimary\n",
-        )
-        .expect("write read acquisition manifest");
-
-        let rows = parse_read_acquisition_manifest(&manifest.display().to_string())
-            .expect("parse manifest");
-
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].sample_id, "sample_a");
-        assert_eq!(rows[0].sample_name.as_deref(), Some("Sample A"));
-        assert_eq!(rows[0].sra_accession, "SRRFAKE001");
-        assert_eq!(rows[0].assay_kind.as_deref(), Some("rna"));
-        assert_eq!(
-            rows[0].read_layout,
-            Some(ReadAcquisitionReadLayout::PairedEnd)
-        );
-        assert_eq!(
-            rows[0].analysis_format,
-            Some(ReadAcquisitionAnalysisFormat::Fastq)
-        );
-        assert_eq!(rows[0].note.as_deref(), Some("primary"));
-    }
-
-    #[test]
-    fn parse_read_acquisition_manifest_rejects_missing_required_columns() {
-        let td = tempdir().expect("tempdir");
-        let manifest = td.path().join("reads.tsv");
-        fs::write(&manifest, "sample_id\tnote\nsample_a\tmissing accession\n")
-            .expect("write invalid manifest");
-
-        let error = parse_read_acquisition_manifest(&manifest.display().to_string())
-            .expect_err("missing sra_accession should fail");
-
-        assert_eq!(error.code, ErrorCode::InvalidInput);
-        assert!(error.message.contains("sra_accession"));
-    }
-
-    #[test]
-    fn read_acquisition_status_reports_missing_without_external_tools() {
-        let td = tempdir().expect("tempdir");
-        let manifest = td.path().join("reads.tsv");
-        fs::write(
-            &manifest,
-            "sample_id\tsra_accession\nsample_a\tSRRFAKE001\n",
-        )
-        .expect("write manifest");
-        let engine = GentleEngine::default();
-
-        let report = engine
-            .read_acquisition_status(
-                &manifest.display().to_string(),
-                &td.path().join("cache").display().to_string(),
-                &td.path().join("work").display().to_string(),
-            )
-            .expect("status report");
-
-        assert_eq!(report.lifecycle_status, "missing");
-        assert_eq!(report.sample_count, 1);
-        assert_eq!(report.missing_count, 1);
-        assert_eq!(report.rows[0].resource_key, "read_acquisition:SRRFAKE001");
-    }
-
-    #[test]
-    fn read_acquisition_cancel_writes_marker_for_running_activity() {
-        let td = tempdir().expect("tempdir");
-        let cache_dir = td.path().join("cache");
-        let work_dir = td.path().join("work");
-        let run_dir = read_acquire_run_dir(&work_dir, "SRRFAKE001");
-        fs::create_dir_all(&run_dir).expect("create run dir");
-        let status_path = read_acquire_activity_status_path(&run_dir);
-        let lock_path = read_acquire_activity_lock_path(&run_dir);
-        let cancel_path = read_acquire_cancel_path(&run_dir);
-        let status = SharedAssetActivityStatus {
-            resource_key: read_acquisition_resource_key("SRRFAKE001"),
-            display_name: "SRRFAKE001".to_string(),
-            status_path: read_acquisition_path_string(&status_path),
-            lock_path: Some(read_acquisition_path_string(&lock_path)),
-            cancel_path: Some(read_acquisition_path_string(&cancel_path)),
-            lifecycle_status: "running".to_string(),
-            phase: Some("prefetch".to_string()),
-            item: Some("SRRFAKE001".to_string()),
-            started_at_unix_ms: GentleEngine::now_unix_ms(),
-            updated_at_unix_ms: GentleEngine::now_unix_ms(),
-            owner_pid: Some(std::process::id()),
-            ..Default::default()
-        };
-        write_read_acquire_activity_status(&status_path, &status).expect("write status");
-        write_read_acquire_activity_status(&lock_path, &status).expect("write lock");
-        let engine = GentleEngine::default();
-
-        let report = engine
-            .read_acquisition_cancel(
-                "SRRFAKE001",
-                &cache_dir.display().to_string(),
-                &work_dir.display().to_string(),
-            )
-            .expect("cancel running acquisition");
-
-        assert!(cancel_path.exists(), "cancel marker should be written");
-        assert_eq!(report.lifecycle_status, "running");
-        assert!(
-            report
-                .warnings
-                .iter()
-                .any(|warning| warning.contains("Cancellation requested")),
-            "cancel report should tell the user cancellation was requested"
-        );
-    }
-
-    #[test]
-    fn read_acquisition_monitor_rejects_disk_space_drop() {
-        let td = tempdir().expect("tempdir");
-        if available_disk_bytes(td.path()).is_none() {
-            return;
-        }
-        let cache_dir = td.path().join("cache");
-        let work_dir = td.path().join("work");
-        let run_dir = read_acquire_run_dir(&work_dir, "SRRFAKE001");
-        fs::create_dir_all(&run_dir).expect("create run dir");
-        let mut tracker = ReadAcquisitionActivityTracker {
-            status_path: read_acquire_activity_status_path(&run_dir),
-            lock_path: read_acquire_activity_lock_path(&run_dir),
-            cancel_path: read_acquire_cancel_path(&run_dir),
-            status: SharedAssetActivityStatus {
-                resource_key: read_acquisition_resource_key("SRRFAKE001"),
-                display_name: "SRRFAKE001".to_string(),
-                status_path: read_acquisition_path_string(&read_acquire_activity_status_path(
-                    &run_dir,
-                )),
-                lock_path: Some(read_acquisition_path_string(
-                    &read_acquire_activity_lock_path(&run_dir),
-                )),
-                cancel_path: Some(read_acquisition_path_string(&read_acquire_cancel_path(
-                    &run_dir,
-                ))),
-                lifecycle_status: "running".to_string(),
-                phase: Some("prefetch".to_string()),
-                item: Some("SRRFAKE001".to_string()),
-                started_at_unix_ms: GentleEngine::now_unix_ms(),
-                updated_at_unix_ms: GentleEngine::now_unix_ms(),
-                owner_pid: Some(std::process::id()),
-                ..Default::default()
-            },
-        };
-        let mut progress_called = false;
-
-        let error = update_read_acquisition_command_monitor(
-            &mut tracker,
-            "prefetch",
-            &cache_dir,
-            &work_dir,
-            std::slice::from_ref(&run_dir),
-            Some(u64::MAX),
-            &mut |_progress| {
-                progress_called = true;
-                true
-            },
-        )
-        .expect_err("huge min-free-gb should trip monitored disk threshold");
-
-        assert!(!progress_called, "disk failure should stop before progress");
-        assert!(error.message.contains("free disk dropped"));
-        assert!(tracker.status.monitored_free_bytes.is_some());
-        assert_eq!(tracker.status.minimum_free_bytes, Some(u64::MAX));
-    }
-
-    #[test]
-    fn read_acquisition_inspect_infers_paired_fastq_outputs() {
-        let td = tempdir().expect("tempdir");
-        let work_dir = td.path().join("work");
-        let fastq_dir = work_dir.join("SRRFAKE001/fastq");
-        fs::create_dir_all(&fastq_dir).expect("create FASTQ dir");
-        fs::write(
-            fastq_dir.join("SRRFAKE001_1.fastq"),
-            "@read/1\nACGT\n+\n!!!!\n",
-        )
-        .expect("write R1");
-        fs::write(
-            fastq_dir.join("SRRFAKE001_2.fastq"),
-            "@read/2\nTGCA\n+\n!!!!\n",
-        )
-        .expect("write R2");
-        let engine = GentleEngine::default();
-
-        let report = engine
-            .read_acquisition_inspect(
-                "SRRFAKE001",
-                &td.path().join("cache").display().to_string(),
-                &work_dir.display().to_string(),
-            )
-            .expect("inspect report");
-
-        assert_eq!(report.lifecycle_status, "ready");
-        assert_eq!(report.ready_count, 1);
-        assert_eq!(
-            report.rows[0].analysis_format,
-            ReadAcquisitionAnalysisFormat::Fastq
-        );
-        assert_eq!(
-            report.rows[0].read_layout,
-            ReadAcquisitionReadLayout::PairedEnd
-        );
-        assert_eq!(report.rows[0].output_paths.len(), 2);
     }
 }
 
@@ -953,14 +734,14 @@ fn update_read_acquisition_command_monitor(
     let monitored_free = monitored_free_bytes(cache_dir, work_dir);
     let minimum_free = min_free_bytes(min_free_gb);
     tracker.update_monitor(phase, produced_bytes, monitored_free, minimum_free);
-    if let (Some(available), Some(required)) = (monitored_free, minimum_free) {
-        if available < required {
-            return Err(read_acquisition_invalid_input(format!(
-                "Read acquisition free disk dropped below the configured minimum during phase '{phase}': required {:.2} GB, available {:.2} GB",
-                required as f64 / 1024.0 / 1024.0 / 1024.0,
-                available as f64 / 1024.0 / 1024.0 / 1024.0
-            )));
-        }
+    if let (Some(available), Some(required)) = (monitored_free, minimum_free)
+        && available < required
+    {
+        return Err(read_acquisition_invalid_input(format!(
+            "Read acquisition free disk dropped below the configured minimum during phase '{phase}': required {:.2} GB, available {:.2} GB",
+            required as f64 / 1024.0 / 1024.0 / 1024.0,
+            available as f64 / 1024.0 / 1024.0 / 1024.0
+        )));
     }
     Ok(on_progress(OperationProgress::ReadAcquisition(
         tracker.status.clone(),
@@ -2076,5 +1857,222 @@ impl GentleEngine {
             drop_intermediate_fastq,
             on_progress,
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn parse_read_acquisition_manifest_reads_optional_fields() {
+        let td = tempdir().expect("tempdir");
+        let manifest = td.path().join("reads.tsv");
+        fs::write(
+            &manifest,
+            "sample_id\tsample_name\tsra_accession\tassay_kind\tread_layout\tanalysis_format\tnote\nsample_a\tSample A\tSRRFAKE001\trna\tpaired_end\tfastq\tprimary\n",
+        )
+        .expect("write read acquisition manifest");
+
+        let rows = parse_read_acquisition_manifest(&manifest.display().to_string())
+            .expect("parse manifest");
+
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].sample_id, "sample_a");
+        assert_eq!(rows[0].sample_name.as_deref(), Some("Sample A"));
+        assert_eq!(rows[0].sra_accession, "SRRFAKE001");
+        assert_eq!(rows[0].assay_kind.as_deref(), Some("rna"));
+        assert_eq!(
+            rows[0].read_layout,
+            Some(ReadAcquisitionReadLayout::PairedEnd)
+        );
+        assert_eq!(
+            rows[0].analysis_format,
+            Some(ReadAcquisitionAnalysisFormat::Fastq)
+        );
+        assert_eq!(rows[0].note.as_deref(), Some("primary"));
+    }
+
+    #[test]
+    fn parse_read_acquisition_manifest_rejects_missing_required_columns() {
+        let td = tempdir().expect("tempdir");
+        let manifest = td.path().join("reads.tsv");
+        fs::write(&manifest, "sample_id\tnote\nsample_a\tmissing accession\n")
+            .expect("write invalid manifest");
+
+        let error = parse_read_acquisition_manifest(&manifest.display().to_string())
+            .expect_err("missing sra_accession should fail");
+
+        assert_eq!(error.code, ErrorCode::InvalidInput);
+        assert!(error.message.contains("sra_accession"));
+    }
+
+    #[test]
+    fn read_acquisition_status_reports_missing_without_external_tools() {
+        let td = tempdir().expect("tempdir");
+        let manifest = td.path().join("reads.tsv");
+        fs::write(
+            &manifest,
+            "sample_id\tsra_accession\nsample_a\tSRRFAKE001\n",
+        )
+        .expect("write manifest");
+        let engine = GentleEngine::default();
+
+        let report = engine
+            .read_acquisition_status(
+                &manifest.display().to_string(),
+                &td.path().join("cache").display().to_string(),
+                &td.path().join("work").display().to_string(),
+            )
+            .expect("status report");
+
+        assert_eq!(report.lifecycle_status, "missing");
+        assert_eq!(report.sample_count, 1);
+        assert_eq!(report.missing_count, 1);
+        assert_eq!(report.rows[0].resource_key, "read_acquisition:SRRFAKE001");
+    }
+
+    #[test]
+    fn read_acquisition_cancel_writes_marker_for_running_activity() {
+        let td = tempdir().expect("tempdir");
+        let cache_dir = td.path().join("cache");
+        let work_dir = td.path().join("work");
+        let run_dir = read_acquire_run_dir(&work_dir, "SRRFAKE001");
+        fs::create_dir_all(&run_dir).expect("create run dir");
+        let status_path = read_acquire_activity_status_path(&run_dir);
+        let lock_path = read_acquire_activity_lock_path(&run_dir);
+        let cancel_path = read_acquire_cancel_path(&run_dir);
+        let status = SharedAssetActivityStatus {
+            resource_key: read_acquisition_resource_key("SRRFAKE001"),
+            display_name: "SRRFAKE001".to_string(),
+            status_path: read_acquisition_path_string(&status_path),
+            lock_path: Some(read_acquisition_path_string(&lock_path)),
+            cancel_path: Some(read_acquisition_path_string(&cancel_path)),
+            lifecycle_status: "running".to_string(),
+            phase: Some("prefetch".to_string()),
+            item: Some("SRRFAKE001".to_string()),
+            started_at_unix_ms: GentleEngine::now_unix_ms(),
+            updated_at_unix_ms: GentleEngine::now_unix_ms(),
+            owner_pid: Some(std::process::id()),
+            ..Default::default()
+        };
+        write_read_acquire_activity_status(&status_path, &status).expect("write status");
+        write_read_acquire_activity_status(&lock_path, &status).expect("write lock");
+        let engine = GentleEngine::default();
+
+        let report = engine
+            .read_acquisition_cancel(
+                "SRRFAKE001",
+                &cache_dir.display().to_string(),
+                &work_dir.display().to_string(),
+            )
+            .expect("cancel running acquisition");
+
+        assert!(cancel_path.exists(), "cancel marker should be written");
+        assert_eq!(report.lifecycle_status, "running");
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("Cancellation requested")),
+            "cancel report should tell the user cancellation was requested"
+        );
+    }
+
+    #[test]
+    fn read_acquisition_monitor_rejects_disk_space_drop() {
+        let td = tempdir().expect("tempdir");
+        if available_disk_bytes(td.path()).is_none() {
+            return;
+        }
+        let cache_dir = td.path().join("cache");
+        let work_dir = td.path().join("work");
+        let run_dir = read_acquire_run_dir(&work_dir, "SRRFAKE001");
+        fs::create_dir_all(&run_dir).expect("create run dir");
+        let mut tracker = ReadAcquisitionActivityTracker {
+            status_path: read_acquire_activity_status_path(&run_dir),
+            lock_path: read_acquire_activity_lock_path(&run_dir),
+            cancel_path: read_acquire_cancel_path(&run_dir),
+            status: SharedAssetActivityStatus {
+                resource_key: read_acquisition_resource_key("SRRFAKE001"),
+                display_name: "SRRFAKE001".to_string(),
+                status_path: read_acquisition_path_string(&read_acquire_activity_status_path(
+                    &run_dir,
+                )),
+                lock_path: Some(read_acquisition_path_string(
+                    &read_acquire_activity_lock_path(&run_dir),
+                )),
+                cancel_path: Some(read_acquisition_path_string(&read_acquire_cancel_path(
+                    &run_dir,
+                ))),
+                lifecycle_status: "running".to_string(),
+                phase: Some("prefetch".to_string()),
+                item: Some("SRRFAKE001".to_string()),
+                started_at_unix_ms: GentleEngine::now_unix_ms(),
+                updated_at_unix_ms: GentleEngine::now_unix_ms(),
+                owner_pid: Some(std::process::id()),
+                ..Default::default()
+            },
+        };
+        let mut progress_called = false;
+
+        let error = update_read_acquisition_command_monitor(
+            &mut tracker,
+            "prefetch",
+            &cache_dir,
+            &work_dir,
+            std::slice::from_ref(&run_dir),
+            Some(u64::MAX),
+            &mut |_progress| {
+                progress_called = true;
+                true
+            },
+        )
+        .expect_err("huge min-free-gb should trip monitored disk threshold");
+
+        assert!(!progress_called, "disk failure should stop before progress");
+        assert!(error.message.contains("free disk dropped"));
+        assert!(tracker.status.monitored_free_bytes.is_some());
+        assert_eq!(tracker.status.minimum_free_bytes, Some(u64::MAX));
+    }
+
+    #[test]
+    fn read_acquisition_inspect_infers_paired_fastq_outputs() {
+        let td = tempdir().expect("tempdir");
+        let work_dir = td.path().join("work");
+        let fastq_dir = work_dir.join("SRRFAKE001/fastq");
+        fs::create_dir_all(&fastq_dir).expect("create FASTQ dir");
+        fs::write(
+            fastq_dir.join("SRRFAKE001_1.fastq"),
+            "@read/1\nACGT\n+\n!!!!\n",
+        )
+        .expect("write R1");
+        fs::write(
+            fastq_dir.join("SRRFAKE001_2.fastq"),
+            "@read/2\nTGCA\n+\n!!!!\n",
+        )
+        .expect("write R2");
+        let engine = GentleEngine::default();
+
+        let report = engine
+            .read_acquisition_inspect(
+                "SRRFAKE001",
+                &td.path().join("cache").display().to_string(),
+                &work_dir.display().to_string(),
+            )
+            .expect("inspect report");
+
+        assert_eq!(report.lifecycle_status, "ready");
+        assert_eq!(report.ready_count, 1);
+        assert_eq!(
+            report.rows[0].analysis_format,
+            ReadAcquisitionAnalysisFormat::Fastq
+        );
+        assert_eq!(
+            report.rows[0].read_layout,
+            ReadAcquisitionReadLayout::PairedEnd
+        );
+        assert_eq!(report.rows[0].output_paths.len(), 2);
     }
 }

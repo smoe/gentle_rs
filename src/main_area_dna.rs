@@ -2272,15 +2272,13 @@ impl MainAreaDna {
     }
 
     fn ensure_full_restriction_site_catalog_current(&mut self) {
-        if let Some(engine) = &self.engine {
-            if let Some(seq_id) = self.seq_id.as_deref() {
-                if let Ok(mut guard) = engine.write() {
-                    if let Some(dna) = guard.state_mut().sequences.get_mut(seq_id) {
-                        dna.set_max_restriction_enzyme_sites(None);
-                        dna.update_computed_features();
-                    }
-                }
-            }
+        if let Some(engine) = &self.engine
+            && let Some(seq_id) = self.seq_id.as_deref()
+            && let Ok(mut guard) = engine.write()
+            && let Some(dna) = guard.state_mut().sequences.get_mut(seq_id)
+        {
+            dna.set_max_restriction_enzyme_sites(None);
+            dna.update_computed_features();
         }
         if let Ok(mut dna) = self.dna.write() {
             dna.set_max_restriction_enzyme_sites(None);
@@ -2905,11 +2903,7 @@ impl MainAreaDna {
     fn active_sequence_has_gene_annotations(&self) -> bool {
         self.dna
             .read()
-            .map(|dna| {
-                dna.features()
-                    .iter()
-                    .any(|feature| RenderDna::is_gene_feature(feature))
-            })
+            .map(|dna| dna.features().iter().any(RenderDna::is_gene_feature))
             .unwrap_or(false)
     }
 
@@ -2976,17 +2970,17 @@ impl MainAreaDna {
     ) -> bool {
         let mut ranges: Vec<(usize, usize)> = vec![];
         collect_location_ranges_usize(&feature.location, &mut ranges);
-        if ranges.is_empty() {
-            if let Ok((raw_from, raw_to)) = feature.location.find_bounds() {
-                if raw_from >= 0 && raw_to >= 0 {
-                    let mut from = raw_from as usize;
-                    let mut to = raw_to as usize;
-                    if to < from {
-                        std::mem::swap(&mut from, &mut to);
-                    }
-                    ranges.push((from, to));
-                }
+        if ranges.is_empty()
+            && let Ok((raw_from, raw_to)) = feature.location.find_bounds()
+            && raw_from >= 0
+            && raw_to >= 0
+        {
+            let mut from = raw_from as usize;
+            let mut to = raw_to as usize;
+            if to < from {
+                std::mem::swap(&mut from, &mut to);
             }
+            ranges.push((from, to));
         }
         ranges.into_iter().any(|(mut from, mut to)| {
             if to < from {
@@ -3119,11 +3113,10 @@ impl MainAreaDna {
                 if RenderDna::is_source_feature(feature) {
                     continue;
                 }
-                if let Some((start, end)) = viewport {
-                    if !Self::feature_overlaps_linear_viewport(feature, sequence_length, start, end)
-                    {
-                        continue;
-                    }
+                if let Some((start, end)) = viewport
+                    && !Self::feature_overlaps_linear_viewport(feature, sequence_length, start, end)
+                {
+                    continue;
                 }
                 if !RenderDna::feature_visible_for_view_span(
                     feature,
@@ -4876,11 +4869,10 @@ impl MainAreaDna {
                     .on_hover_text(format!(
                         "Show or hide {kind} features ({kind_count} in current view)"
                     ));
-                if response.clicked() {
-                    if let Ok(mut display) = self.dna_display.write() {
+                if response.clicked()
+                    && let Ok(mut display) = self.dna_display.write() {
                         display.set_feature_kind_visible(&kind, !visible);
                     }
-                }
             }
 
             let re_active = self
@@ -7120,8 +7112,8 @@ impl MainAreaDna {
                 }
                 if let Some(task) = self.tfbs_task.as_ref().filter(|task| {
                     matches!(task.task_kind, TfbsTaskKind::ActiveSequenceScoreTracks { .. })
-                }) {
-                    if Self::render_tfbs_task_progress_panel(
+                })
+                    && Self::render_tfbs_task_progress_panel(
                         ui,
                         task,
                         self.tfbs_progress.as_ref(),
@@ -7130,7 +7122,6 @@ impl MainAreaDna {
                         task.cancel_requested.store(true, AtomicOrdering::Relaxed);
                         self.op_status = format!("Cancel requested for {}", task.operation_label);
                     }
-                }
                 ui.horizontal_wrapped(|ui| {
                     if ui
                         .add_enabled(
@@ -7283,8 +7274,8 @@ impl MainAreaDna {
                         task.task_kind,
                         TfbsTaskKind::ActiveSequenceTrackSimilarity { .. }
                     )
-                }) {
-                    if Self::render_tfbs_task_progress_panel(
+                })
+                    && Self::render_tfbs_task_progress_panel(
                         ui,
                         task,
                         self.tfbs_progress.as_ref(),
@@ -7293,7 +7284,6 @@ impl MainAreaDna {
                         task.cancel_requested.store(true, AtomicOrdering::Relaxed);
                         self.op_status = format!("Cancel requested for {}", task.operation_label);
                     }
-                }
                 ui.horizontal_wrapped(|ui| {
                     if ui
                         .add_enabled(
@@ -9101,10 +9091,9 @@ impl MainAreaDna {
         if let Ok(max_amplicon_bp) = Self::parse_positive_usize_text(
             &self.primer_design_ui.max_amplicon_bp,
             "max_amplicon_bp",
-        ) {
-            if max_amplicon_bp < core_len_bp {
-                self.primer_design_ui.max_amplicon_bp = core_len_bp.to_string();
-            }
+        ) && max_amplicon_bp < core_len_bp
+        {
+            self.primer_design_ui.max_amplicon_bp = core_len_bp.to_string();
         }
         self.save_engine_ops_state();
         Ok((start, end_exclusive))
@@ -10963,13 +10952,17 @@ impl MainAreaDna {
         view: &SplicingExpertView,
         transcript_feature_id: usize,
     ) -> DotplotMode {
-        view.transcripts
+        if view
+            .transcripts
             .iter()
             .find(|row| row.transcript_feature_id == transcript_feature_id)
             .map(|row| row.strand.trim() == "-")
             .unwrap_or_else(|| view.strand.trim() == "-")
-            .then_some(DotplotMode::PairReverseComplement)
-            .unwrap_or(DotplotMode::PairForward)
+        {
+            DotplotMode::PairReverseComplement
+        } else {
+            DotplotMode::PairForward
+        }
     }
 
     fn recommend_pair_dotplot_step(
@@ -13324,7 +13317,7 @@ impl MainAreaDna {
             .ok()
             .and_then(|dna| dna.restriction_enzyme_groups().get(key).cloned())
             .unwrap_or_default();
-        names.sort_by(|a, b| a.to_ascii_uppercase().cmp(&b.to_ascii_uppercase()));
+        names.sort_by_key(|a| a.to_ascii_uppercase());
         names.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
         FeatureExpertTarget::RestrictionSite {
             cut_pos_1based: key.pos().max(0) as usize + 1,
@@ -14075,9 +14068,9 @@ impl MainAreaDna {
         }
     }
 
-    fn splicing_signal_lookup<'a>(
-        view: &'a SplicingExpertView,
-    ) -> std::collections::HashMap<(usize, usize, usize), &'a SplicingIntronSignal> {
+    fn splicing_signal_lookup(
+        view: &SplicingExpertView,
+    ) -> std::collections::HashMap<(usize, usize, usize), &SplicingIntronSignal> {
         view.intron_signals
             .iter()
             .map(|signal| {
@@ -14688,8 +14681,8 @@ impl MainAreaDna {
                     }
                 }
                 if let Some(pointer_pos) = response.hover_pos() {
-                    if !has_boundary_hover {
-                        if let Some((key, transcript_id, length_bp)) = intron_at_pos(pointer_pos) {
+                    if !has_boundary_hover
+                        && let Some((key, transcript_id, length_bp)) = intron_at_pos(pointer_pos) {
                             let signal_tuple = (
                                 key.transcript_feature_id,
                                 key.donor_position_1based,
@@ -14749,7 +14742,6 @@ impl MainAreaDna {
                                 }
                             });
                         }
-                    }
                     if !has_boundary_hover {
                         let mut hovered_exon = None;
                         for (lane_idx, transcript) in view.transcripts.iter().enumerate() {
@@ -14856,8 +14848,8 @@ impl MainAreaDna {
 
                 if interactive {
                     if let Some(pointer_pos) = response.hover_pos() {
-                        if !has_boundary_hover && !has_exon_hover {
-                            if let Some(lane_idx) = Self::splicing_lane_index_at_y(
+                        if !has_boundary_hover && !has_exon_hover
+                            && let Some(lane_idx) = Self::splicing_lane_index_at_y(
                                 pointer_pos.y,
                                 lanes_top,
                                 style.lane_height_px,
@@ -14874,11 +14866,10 @@ impl MainAreaDna {
                                 );
                                 });
                             }
-                        }
                         ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::PointingHand);
                     }
-                    if response.clicked() {
-                        if let Some(pointer_pos) = response.interact_pointer_pos() {
+                    if response.clicked()
+                        && let Some(pointer_pos) = response.interact_pointer_pos() {
                             if let Some((key, _, _)) = intron_at_pos(pointer_pos) {
                                 let toggle = ui.input(|input| {
                                     input.modifiers.shift || input.modifiers.command
@@ -14903,7 +14894,6 @@ impl MainAreaDna {
                                     Some(view.transcripts[lane_idx].transcript_feature_id);
                             }
                         }
-                    }
                     let context_intron = response.interact_pointer_pos().and_then(intron_at_pos);
                     response.context_menu(|ui| {
                         if let Some((key, transcript_id, length_bp)) = context_intron.clone() {
@@ -16989,19 +16979,18 @@ impl MainAreaDna {
                         self.replace_active_dna(new_dna, true);
                     }
                 }
-            } else if let Some(current_seq_id) = self.seq_id.clone() {
-                if result
+            } else if let Some(current_seq_id) = self.seq_id.clone()
+                && result
                     .changed_seq_ids
                     .iter()
                     .any(|id| id == &current_seq_id)
-                {
-                    let updated_dna = {
-                        let guard = engine.read().expect("Engine lock poisoned");
-                        guard.state().sequences.get(&current_seq_id).cloned()
-                    };
-                    if let Some(updated_dna) = updated_dna {
-                        self.replace_active_dna(updated_dna, true);
-                    }
+            {
+                let updated_dna = {
+                    let guard = engine.read().expect("Engine lock poisoned");
+                    guard.state().sequences.get(&current_seq_id).cloned()
+                };
+                if let Some(updated_dna) = updated_dna {
+                    self.replace_active_dna(updated_dna, true);
                 }
             }
         }
@@ -17542,14 +17531,14 @@ impl MainAreaDna {
         result: OpResult,
         started: Instant,
     ) {
-        if let Some(report) = result.tfbs_track_similarity.clone() {
-            if let TfbsTaskKind::ActiveSequenceTrackSimilarity { source_label } = task_kind {
-                self.cached_tfbs_track_similarity = Some(report.clone());
-                self.op_status =
-                    Self::summarize_tfbs_track_similarity_report_status(&report, &source_label);
-                self.op_error_popup = None;
-                return;
-            }
+        if let Some(report) = result.tfbs_track_similarity.clone()
+            && let TfbsTaskKind::ActiveSequenceTrackSimilarity { source_label } = task_kind
+        {
+            self.cached_tfbs_track_similarity = Some(report.clone());
+            self.op_status =
+                Self::summarize_tfbs_track_similarity_report_status(&report, &source_label);
+            self.op_error_popup = None;
+            return;
         }
         if let Some(report) = result.tfbs_score_tracks.clone() {
             match task_kind {
@@ -17577,19 +17566,19 @@ impl MainAreaDna {
                 TfbsTaskKind::ActiveSequenceTrackSimilarity { .. } => {}
             }
         }
-        if let Some(report) = result.tfbs_track_similarity.clone() {
-            if matches!(task_kind, TfbsTaskKind::VariantFollowupTrackSimilarity) {
-                self.variant_followup_ui.cached_tfbs_track_similarity = Some(report.clone());
-                self.op_status = format!(
-                    "Promoter TFBS similarity updated for '{}' across {}..{} [{}]",
-                    report.target_label,
-                    report.view_start_0based,
-                    report.view_end_0based_exclusive,
-                    report.ranking_metric.as_str()
-                );
-                self.op_error_popup = None;
-                return;
-            }
+        if let Some(report) = result.tfbs_track_similarity.clone()
+            && matches!(task_kind, TfbsTaskKind::VariantFollowupTrackSimilarity)
+        {
+            self.variant_followup_ui.cached_tfbs_track_similarity = Some(report.clone());
+            self.op_status = format!(
+                "Promoter TFBS similarity updated for '{}' across {}..{} [{}]",
+                report.target_label,
+                report.view_start_0based,
+                report.view_end_0based_exclusive,
+                report.ranking_metric.as_str()
+            );
+            self.op_error_popup = None;
+            return;
         }
         self.handle_operation_success(result, started);
     }
@@ -20132,7 +20121,7 @@ impl MainAreaDna {
                         match export_result {
                             Ok((set, _, _)) => {
                                 let path = rfd::FileDialog::new()
-                                    .set_file_name(&format!(
+                                    .set_file_name(format!(
                                         "{}.candidate_set.json",
                                         self.candidate_selected_set.replace(' ', "_")
                                     ))
@@ -20321,10 +20310,10 @@ impl MainAreaDna {
         let mut out = vec![];
         let mut seen = HashSet::new();
         let mut push_candidate = |candidate: String| {
-            if let Some(name) = Self::canonicalize_rebase_enzyme_name(&candidate, lookup) {
-                if seen.insert(name.clone()) {
-                    out.push(name);
-                }
+            if let Some(name) = Self::canonicalize_rebase_enzyme_name(&candidate, lookup)
+                && seen.insert(name.clone())
+            {
+                out.push(name);
             }
         };
         for idx in 0..tokens.len() {
@@ -20605,7 +20594,7 @@ impl MainAreaDna {
 
     fn parse_tf_threshold_map(text: &str) -> Result<HashMap<String, f64>, String> {
         let mut out = HashMap::new();
-        for chunk in text.split(|c| matches!(c, ',' | ';' | '\n' | '\r')) {
+        for chunk in text.split([',', ';', '\n', '\r']) {
             let chunk = chunk.trim();
             if chunk.is_empty() {
                 continue;
@@ -21238,10 +21227,10 @@ impl MainAreaDna {
             .metadata
             .get(&key)
             .cloned();
-        if let Some(value) = value {
-            if let Ok(state) = serde_json::from_value::<EngineOpsUiState>(value) {
-                self.apply_engine_ops_state(state);
-            }
+        if let Some(value) = value
+            && let Ok(state) = serde_json::from_value::<EngineOpsUiState>(value)
+        {
+            self.apply_engine_ops_state(state);
         }
     }
 
@@ -21806,7 +21795,7 @@ impl MainAreaDna {
                     .get(key)
                     .cloned()
                     .unwrap_or_default();
-                names.sort_by(|a, b| a.to_ascii_uppercase().cmp(&b.to_ascii_uppercase()));
+                names.sort_by_key(|a| a.to_ascii_uppercase());
                 names.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
                 let enzyme_label = if names.is_empty() {
                     "Restriction site".to_string()
@@ -22802,8 +22791,8 @@ impl MainAreaDna {
                                 self.render_construct_reasoning_hover_ui(ui, &overlay, &span);
                             });
                         }
-                    } else if let Some(site) = self.map_dna.get_hovered_restriction_site() {
-                        if let Ok(view) = self.restriction_site_expert_view_for_position(&site) {
+                    } else if let Some(site) = self.map_dna.get_hovered_restriction_site()
+                        && let Ok(view) = self.restriction_site_expert_view_for_position(&site) {
                             let detail_font_size = self.feature_details_font_size();
                             response.clone().on_hover_ui_at_pointer(|ui| {
                                 Self::render_restriction_site_hover_ui(
@@ -22813,7 +22802,6 @@ impl MainAreaDna {
                                 );
                             });
                         }
-                    }
 
                     if !self.is_circular() {
                         let (wheel_delta, modifiers) =

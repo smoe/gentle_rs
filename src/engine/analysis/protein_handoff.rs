@@ -164,12 +164,7 @@ impl GentleEngine {
                 protein.name().as_deref().unwrap_or(protein_seq_id)
             );
         }
-        if !graph
-            .objective
-            .required_roles
-            .iter()
-            .any(|role| *role == ConstructRole::Cds)
-        {
+        if !graph.objective.required_roles.contains(&ConstructRole::Cds) {
             graph.objective.required_roles.push(ConstructRole::Cds);
         }
 

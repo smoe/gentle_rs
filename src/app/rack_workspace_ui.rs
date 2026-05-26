@@ -71,7 +71,7 @@ impl Default for ArrangementGelPreviewState {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub(super) struct RackLabelsPreviewState {
     pub(super) rack_id: String,
     pub(super) rack_title: String,
@@ -79,19 +79,6 @@ pub(super) struct RackLabelsPreviewState {
     pub(super) arrangement_title: Option<String>,
     pub(super) svg_uri: String,
     pub(super) status: String,
-}
-
-impl Default for RackLabelsPreviewState {
-    fn default() -> Self {
-        Self {
-            rack_id: String::new(),
-            rack_title: String::new(),
-            arrangement_id: None,
-            arrangement_title: None,
-            svg_uri: String::new(),
-            status: String::new(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -1797,7 +1784,7 @@ impl GENtleApp {
             return None;
         }
         let mut order_by_arrangement: HashMap<String, usize> = HashMap::new();
-        for (entry, coordinate) in reflowed.iter_mut().zip(available_coordinates.into_iter()) {
+        for (entry, coordinate) in reflowed.iter_mut().zip(available_coordinates) {
             entry.coordinate = coordinate;
             let next = order_by_arrangement
                 .entry(entry.arrangement_id.clone())
@@ -2496,8 +2483,8 @@ impl GENtleApp {
                     .on_hover_text("Drag this arrangement block onto another rack slot, or click once to select it for a later target click. Command/Ctrl-click toggles multi-selection.");
                 if response.drag_started() {
                     if selected && selected_arrangement_ids.len() > 1 {
-                        if let Some(first_selected) = selected_arrangement_ids.first() {
-                            if let Some(from_coordinate) = Self::rack_first_coordinate_for_arrangement(
+                        if let Some(first_selected) = selected_arrangement_ids.first()
+                            && let Some(from_coordinate) = Self::rack_first_coordinate_for_arrangement(
                                 &sorted_entries,
                                 first_selected,
                             ) {
@@ -2506,7 +2493,6 @@ impl GENtleApp {
                                     from_coordinate,
                                 });
                             }
-                        }
                     } else if let Some(from_coordinate) =
                         Self::rack_first_coordinate_for_arrangement(&sorted_entries, arrangement_id)
                     {
@@ -2643,8 +2629,8 @@ impl GENtleApp {
                                         egui::StrokeKind::Outside,
                                     );
                                 }
-                                if let Some(drop_ghost) = self.rack_view_recent_drop_ghost.as_ref() {
-                                    if drop_ghost.rack_id == rack.rack_id
+                                if let Some(drop_ghost) = self.rack_view_recent_drop_ghost.as_ref()
+                                    && drop_ghost.rack_id == rack.rack_id
                                         && drop_ghost.changed_coordinates.contains(&coordinate)
                                     {
                                         let fade = 1.0
@@ -2668,7 +2654,6 @@ impl GENtleApp {
                                             ui.ctx().request_repaint();
                                         }
                                     }
-                                }
                                 if current_entry.is_some() && response.drag_started() {
                                     let current_arrangement_id = current_entry
                                         .as_ref()
@@ -2811,8 +2796,8 @@ impl GENtleApp {
                                         egui::StrokeKind::Outside,
                                     );
                                 }
-                                if let Some(drop_ghost) = self.rack_view_recent_drop_ghost.as_ref() {
-                                    if drop_ghost.rack_id == rack.rack_id
+                                if let Some(drop_ghost) = self.rack_view_recent_drop_ghost.as_ref()
+                                    && drop_ghost.rack_id == rack.rack_id
                                         && drop_ghost.changed_coordinates.contains(&coordinate)
                                     {
                                         let fade = 1.0
@@ -2833,7 +2818,6 @@ impl GENtleApp {
                                             ui.ctx().request_repaint();
                                         }
                                     }
-                                }
                                 if response.clicked() && self.rack_view_drag_state.is_none() {
                                     if !selected_arrangement_ids.is_empty() {
                                         if selected_arrangement_ids.len() == 1 {
@@ -2887,19 +2871,19 @@ impl GENtleApp {
         let mut next_rack_scroll_offset = rack_scroll_output.state.offset;
         next_rack_scroll_offset.x = next_rack_scroll_offset.x.clamp(0.0, max_scroll_x);
         next_rack_scroll_offset.y = next_rack_scroll_offset.y.clamp(0.0, max_scroll_y);
-        if self.rack_view_drag_state.is_some() {
-            if let Some(pointer) = pointer_pos {
-                let autoscrolled = Self::rack_autoscroll_offset_for_pointer(
-                    next_rack_scroll_offset,
-                    pointer,
-                    rack_scroll_output.inner_rect,
-                    max_scroll_x,
-                    max_scroll_y,
-                );
-                if (autoscrolled - next_rack_scroll_offset).length_sq() > 0.01 {
-                    next_rack_scroll_offset = autoscrolled;
-                    ui.ctx().request_repaint();
-                }
+        if self.rack_view_drag_state.is_some()
+            && let Some(pointer) = pointer_pos
+        {
+            let autoscrolled = Self::rack_autoscroll_offset_for_pointer(
+                next_rack_scroll_offset,
+                pointer,
+                rack_scroll_output.inner_rect,
+                max_scroll_x,
+                max_scroll_y,
+            );
+            if (autoscrolled - next_rack_scroll_offset).length_sq() > 0.01 {
+                next_rack_scroll_offset = autoscrolled;
+                ui.ctx().request_repaint();
             }
         }
         self.rack_view_scroll_offset = next_rack_scroll_offset;
@@ -2917,40 +2901,38 @@ impl GENtleApp {
                 drop_target_coordinate.as_deref(),
             ));
         }
-        if pointer_released {
-            if let Some(drag) = self.rack_view_drag_state.clone() {
-                match drag {
-                    RackDragState::Sample {
-                        from_coordinate, ..
-                    } => {
-                        if let Some(target) = drop_target_coordinate.as_deref() {
-                            self.apply_rack_move(&rack.rack_id, &from_coordinate, target, false);
-                        }
-                    }
-                    RackDragState::Samples {
-                        from_coordinates, ..
-                    } => {
-                        if let Some(target) = drop_target_coordinate.as_deref() {
-                            self.apply_rack_move_samples(&rack.rack_id, &from_coordinates, target);
-                        }
-                    }
-                    RackDragState::ArrangementBlock {
-                        from_coordinate, ..
-                    } => {
-                        if let Some(target) = drop_target_coordinate.as_deref() {
-                            self.apply_rack_move(&rack.rack_id, &from_coordinate, target, true);
-                        }
-                    }
-                    RackDragState::ArrangementBlocks {
-                        arrangement_ids, ..
-                    } => {
-                        if let Some(target) = drop_target_coordinate.as_deref() {
-                            self.apply_rack_move_blocks(&rack.rack_id, &arrangement_ids, target);
-                        }
+        if pointer_released && let Some(drag) = self.rack_view_drag_state.clone() {
+            match drag {
+                RackDragState::Sample {
+                    from_coordinate, ..
+                } => {
+                    if let Some(target) = drop_target_coordinate.as_deref() {
+                        self.apply_rack_move(&rack.rack_id, &from_coordinate, target, false);
                     }
                 }
-                self.rack_view_drag_state = None;
+                RackDragState::Samples {
+                    from_coordinates, ..
+                } => {
+                    if let Some(target) = drop_target_coordinate.as_deref() {
+                        self.apply_rack_move_samples(&rack.rack_id, &from_coordinates, target);
+                    }
+                }
+                RackDragState::ArrangementBlock {
+                    from_coordinate, ..
+                } => {
+                    if let Some(target) = drop_target_coordinate.as_deref() {
+                        self.apply_rack_move(&rack.rack_id, &from_coordinate, target, true);
+                    }
+                }
+                RackDragState::ArrangementBlocks {
+                    arrangement_ids, ..
+                } => {
+                    if let Some(target) = drop_target_coordinate.as_deref() {
+                        self.apply_rack_move_blocks(&rack.rack_id, &arrangement_ids, target);
+                    }
+                }
             }
+            self.rack_view_drag_state = None;
         }
         if self.rack_view_drag_state.is_some() {
             if previous_hover_target != drop_target_coordinate {
@@ -2960,12 +2942,11 @@ impl GENtleApp {
         } else {
             self.rack_view_hover_target_coordinate = None;
         }
-        if let Some(drop_ghost) = self.rack_view_recent_drop_ghost.as_ref() {
-            if drop_ghost.rack_id != rack.rack_id
-                || drop_ghost.started_at.elapsed().as_secs_f32() >= 0.7
-            {
-                self.rack_view_recent_drop_ghost = None;
-            }
+        if let Some(drop_ghost) = self.rack_view_recent_drop_ghost.as_ref()
+            && (drop_ghost.rack_id != rack.rack_id
+                || drop_ghost.started_at.elapsed().as_secs_f32() >= 0.7)
+        {
+            self.rack_view_recent_drop_ghost = None;
         }
         ui.separator();
         ui.horizontal(|ui| {
@@ -3136,10 +3117,10 @@ impl GENtleApp {
 
     pub(super) fn open_place_arrangement_on_rack_dialog(&mut self, arrangement_id: &str) {
         self.place_arrangement_source_id = arrangement_id.trim().to_string();
-        if self.place_arrangement_target_rack_id.trim().is_empty() {
-            if let Some(first_rack) = self.lineage_racks.first() {
-                self.place_arrangement_target_rack_id = first_rack.rack_id.clone();
-            }
+        if self.place_arrangement_target_rack_id.trim().is_empty()
+            && let Some(first_rack) = self.lineage_racks.first()
+        {
+            self.place_arrangement_target_rack_id = first_rack.rack_id.clone();
         }
         self.place_arrangement_status.clear();
         self.show_place_arrangement_rack_dialog = true;

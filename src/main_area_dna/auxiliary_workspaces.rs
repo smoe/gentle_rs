@@ -6705,39 +6705,39 @@ impl MainAreaDna {
 
     pub fn collect_open_auxiliary_window_entries(&self) -> Vec<(egui::ViewportId, String, String)> {
         let mut entries = Vec::new();
-        if self.show_dotplot_window {
-            if let Some(viewport_seq_id) = self.dotplot_window_identity_seq_id() {
-                let query_label = self.current_dotplot_query_label();
-                entries.push((
-                    Self::dotplot_viewport_id(&viewport_seq_id),
-                    Self::dotplot_window_title(&query_label),
-                    format!("Dotplot workspace for '{query_label}'"),
-                ));
-            }
+        if self.show_dotplot_window
+            && let Some(viewport_seq_id) = self.dotplot_window_identity_seq_id()
+        {
+            let query_label = self.current_dotplot_query_label();
+            entries.push((
+                Self::dotplot_viewport_id(&viewport_seq_id),
+                Self::dotplot_window_title(&query_label),
+                format!("Dotplot workspace for '{query_label}'"),
+            ));
         }
-        if self.show_splicing_expert_window {
-            if let Some(view) = self.splicing_expert_window_view.as_ref() {
-                entries.push((
-                    Self::splicing_expert_viewport_id(&view.seq_id, view.target_feature_id),
-                    Self::splicing_expert_window_title(view),
-                    format!(
-                        "Splicing expert for feature n-{} on '{}'",
-                        view.target_feature_id, view.seq_id
-                    ),
-                ));
-            }
+        if self.show_splicing_expert_window
+            && let Some(view) = self.splicing_expert_window_view.as_ref()
+        {
+            entries.push((
+                Self::splicing_expert_viewport_id(&view.seq_id, view.target_feature_id),
+                Self::splicing_expert_window_title(view),
+                format!(
+                    "Splicing expert for feature n-{} on '{}'",
+                    view.target_feature_id, view.seq_id
+                ),
+            ));
         }
-        if self.show_rna_read_mapping_window {
-            if let Some(view) = self.rna_read_mapping_window_view.as_ref() {
-                entries.push((
-                    Self::rna_read_mapping_viewport_id(&view.seq_id, view.target_feature_id),
-                    Self::rna_read_mapping_window_title(view),
-                    format!(
-                        "RNA-read mapping workspace for feature n-{} on '{}'",
-                        view.target_feature_id, view.seq_id
-                    ),
-                ));
-            }
+        if self.show_rna_read_mapping_window
+            && let Some(view) = self.rna_read_mapping_window_view.as_ref()
+        {
+            entries.push((
+                Self::rna_read_mapping_viewport_id(&view.seq_id, view.target_feature_id),
+                Self::rna_read_mapping_window_title(view),
+                format!(
+                    "RNA-read mapping workspace for feature n-{} on '{}'",
+                    view.target_feature_id, view.seq_id
+                ),
+            ));
         }
         if self.show_variant_followup_window {
             let seq_id = self.variant_followup_ui.source_seq_id.trim();
@@ -6759,34 +6759,34 @@ impl MainAreaDna {
                 ));
             }
         }
-        if self.show_isoform_expert_window {
-            if let Some(view) = self.isoform_expert_window_view.as_ref() {
-                let panel_id = self
-                    .isoform_expert_window_panel_id
+        if self.show_isoform_expert_window
+            && let Some(view) = self.isoform_expert_window_view.as_ref()
+        {
+            let panel_id = self
+                .isoform_expert_window_panel_id
+                .as_deref()
+                .unwrap_or(view.panel_id.as_str());
+            entries.push((
+                Self::isoform_expert_viewport_id(&view.seq_id, panel_id),
+                Self::isoform_expert_window_title(panel_id, &view.seq_id, view),
+                if view
+                    .panel_source
                     .as_deref()
-                    .unwrap_or(view.panel_id.as_str());
-                entries.push((
-                    Self::isoform_expert_viewport_id(&view.seq_id, panel_id),
-                    Self::isoform_expert_window_title(panel_id, &view.seq_id, view),
-                    if view
-                        .panel_source
-                        .as_deref()
-                        .map(str::trim)
-                        .map(|value| {
-                            value.starts_with("UniProt projection ")
-                                || value.starts_with("Transcript-native protein")
-                        })
-                        .unwrap_or(false)
-                    {
-                        format!("Protein Expert '{}' on '{}'", panel_id, view.seq_id)
-                    } else {
-                        format!(
-                            "Isoform architecture panel '{panel_id}' on '{}'",
-                            view.seq_id
-                        )
-                    },
-                ));
-            }
+                    .map(str::trim)
+                    .map(|value| {
+                        value.starts_with("UniProt projection ")
+                            || value.starts_with("Transcript-native protein")
+                    })
+                    .unwrap_or(false)
+                {
+                    format!("Protein Expert '{}' on '{}'", panel_id, view.seq_id)
+                } else {
+                    format!(
+                        "Isoform architecture panel '{panel_id}' on '{}'",
+                        view.seq_id
+                    )
+                },
+            ));
         }
         entries
     }
@@ -6795,49 +6795,44 @@ impl MainAreaDna {
         &self,
         viewport_id: egui::ViewportId,
     ) -> Option<egui::LayerId> {
-        if self.show_dotplot_window {
-            if let Some(viewport_seq_id) = self.dotplot_window_identity_seq_id() {
-                if viewport_id == Self::dotplot_viewport_id(&viewport_seq_id) {
-                    return Some(egui::LayerId::new(
-                        egui::Order::Middle,
-                        egui::Id::new(format!("dotplot_window_embedded_{viewport_seq_id}")),
-                    ));
-                }
-            }
+        if self.show_dotplot_window
+            && let Some(viewport_seq_id) = self.dotplot_window_identity_seq_id()
+            && viewport_id == Self::dotplot_viewport_id(&viewport_seq_id)
+        {
+            return Some(egui::LayerId::new(
+                egui::Order::Middle,
+                egui::Id::new(format!("dotplot_window_embedded_{viewport_seq_id}")),
+            ));
         }
-        if self.show_splicing_expert_window {
-            if let Some(view) = self.splicing_expert_window_view.as_ref() {
-                if viewport_id
-                    == Self::splicing_expert_viewport_id(&view.seq_id, view.target_feature_id)
-                {
-                    let order = if self.splicing_expert_window_focus_requested {
-                        egui::Order::Foreground
-                    } else {
-                        egui::Order::Middle
-                    };
-                    return Some(egui::LayerId::new(
-                        order,
-                        Self::splicing_expert_embedded_window_id(view),
-                    ));
-                }
-            }
+        if self.show_splicing_expert_window
+            && let Some(view) = self.splicing_expert_window_view.as_ref()
+            && viewport_id
+                == Self::splicing_expert_viewport_id(&view.seq_id, view.target_feature_id)
+        {
+            let order = if self.splicing_expert_window_focus_requested {
+                egui::Order::Foreground
+            } else {
+                egui::Order::Middle
+            };
+            return Some(egui::LayerId::new(
+                order,
+                Self::splicing_expert_embedded_window_id(view),
+            ));
         }
-        if self.show_rna_read_mapping_window {
-            if let Some(view) = self.rna_read_mapping_window_view.as_ref() {
-                if viewport_id
-                    == Self::rna_read_mapping_viewport_id(&view.seq_id, view.target_feature_id)
-                {
-                    let order = if self.rna_read_mapping_window_focus_requested {
-                        egui::Order::Foreground
-                    } else {
-                        egui::Order::Middle
-                    };
-                    return Some(egui::LayerId::new(
-                        order,
-                        Self::rna_read_mapping_embedded_window_id(view),
-                    ));
-                }
-            }
+        if self.show_rna_read_mapping_window
+            && let Some(view) = self.rna_read_mapping_window_view.as_ref()
+            && viewport_id
+                == Self::rna_read_mapping_viewport_id(&view.seq_id, view.target_feature_id)
+        {
+            let order = if self.rna_read_mapping_window_focus_requested {
+                egui::Order::Foreground
+            } else {
+                egui::Order::Middle
+            };
+            return Some(egui::LayerId::new(
+                order,
+                Self::rna_read_mapping_embedded_window_id(view),
+            ));
         }
         if self.show_variant_followup_window {
             let seq_id = self.variant_followup_ui.source_seq_id.trim();
@@ -6859,46 +6854,42 @@ impl MainAreaDna {
                 ));
             }
         }
-        if self.show_isoform_expert_window {
-            if let Some(view) = self.isoform_expert_window_view.as_ref() {
-                let panel_id = self
-                    .isoform_expert_window_panel_id
-                    .as_deref()
-                    .unwrap_or(view.panel_id.as_str());
-                if viewport_id == Self::isoform_expert_viewport_id(&view.seq_id, panel_id) {
-                    return Some(egui::LayerId::new(
-                        egui::Order::Middle,
-                        egui::Id::new(format!(
-                            "isoform_expert_window_embedded_{}_{}",
-                            view.seq_id, panel_id
-                        )),
-                    ));
-                }
+        if self.show_isoform_expert_window
+            && let Some(view) = self.isoform_expert_window_view.as_ref()
+        {
+            let panel_id = self
+                .isoform_expert_window_panel_id
+                .as_deref()
+                .unwrap_or(view.panel_id.as_str());
+            if viewport_id == Self::isoform_expert_viewport_id(&view.seq_id, panel_id) {
+                return Some(egui::LayerId::new(
+                    egui::Order::Middle,
+                    egui::Id::new(format!(
+                        "isoform_expert_window_embedded_{}_{}",
+                        view.seq_id, panel_id
+                    )),
+                ));
             }
         }
         None
     }
 
     pub(crate) fn request_focus_auxiliary_window(&mut self, viewport_id: egui::ViewportId) -> bool {
-        if self.show_splicing_expert_window {
-            if let Some(view) = self.splicing_expert_window_view.as_ref() {
-                if viewport_id
-                    == Self::splicing_expert_viewport_id(&view.seq_id, view.target_feature_id)
-                {
-                    self.splicing_expert_window_focus_requested = true;
-                    return true;
-                }
-            }
+        if self.show_splicing_expert_window
+            && let Some(view) = self.splicing_expert_window_view.as_ref()
+            && viewport_id
+                == Self::splicing_expert_viewport_id(&view.seq_id, view.target_feature_id)
+        {
+            self.splicing_expert_window_focus_requested = true;
+            return true;
         }
-        if self.show_rna_read_mapping_window {
-            if let Some(view) = self.rna_read_mapping_window_view.as_ref() {
-                if viewport_id
-                    == Self::rna_read_mapping_viewport_id(&view.seq_id, view.target_feature_id)
-                {
-                    self.rna_read_mapping_window_focus_requested = true;
-                    return true;
-                }
-            }
+        if self.show_rna_read_mapping_window
+            && let Some(view) = self.rna_read_mapping_window_view.as_ref()
+            && viewport_id
+                == Self::rna_read_mapping_viewport_id(&view.seq_id, view.target_feature_id)
+        {
+            self.rna_read_mapping_window_focus_requested = true;
+            return true;
         }
         if self.show_variant_followup_window {
             let seq_id = self.variant_followup_ui.source_seq_id.trim();

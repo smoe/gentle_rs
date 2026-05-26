@@ -662,7 +662,7 @@ pub(super) fn handle_reference_family(
                 }
             }
             let op_catalog_path = operation_catalog_arg(&catalog_path, helper_mode);
-            let mut engine = GentleEngine::from_state(load_state(&state_path)?);
+            let mut engine = GentleEngine::from_state(load_state(state_path)?);
             let op = Operation::PrepareGenome {
                 genome_id,
                 catalog_path: op_catalog_path,
@@ -682,7 +682,7 @@ pub(super) fn handle_reference_family(
             };
             engine
                 .state()
-                .save_to_path(&state_path)
+                .save_to_path(state_path)
                 .map_err(|e| e.to_string())?;
             print_json(&result)
         }
@@ -924,7 +924,7 @@ pub(super) fn handle_reference_family(
                 }
             }
             let op_catalog_path = operation_catalog_arg(&catalog_path, helper_mode);
-            let mut engine = GentleEngine::from_state(load_state(&state_path)?);
+            let mut engine = GentleEngine::from_state(load_state(state_path)?);
             let result = engine
                 .apply(Operation::ExtractGenomeRegion {
                     genome_id,
@@ -941,7 +941,7 @@ pub(super) fn handle_reference_family(
                 .map_err(|e| e.to_string())?;
             engine
                 .state()
-                .save_to_path(&state_path)
+                .save_to_path(state_path)
                 .map_err(|e| e.to_string())?;
             print_json(&result)
         }
@@ -1123,7 +1123,7 @@ pub(super) fn handle_reference_family(
                 ));
             }
             let op_catalog_path = operation_catalog_arg(&catalog_path, helper_mode);
-            let mut engine = GentleEngine::from_state(load_state(&state_path)?);
+            let mut engine = GentleEngine::from_state(load_state(state_path)?);
             let result = engine
                 .apply(Operation::ExtractGenomeGene {
                     genome_id,
@@ -1141,7 +1141,7 @@ pub(super) fn handle_reference_family(
                 .map_err(|e| e.to_string())?;
             engine
                 .state()
-                .save_to_path(&state_path)
+                .save_to_path(state_path)
                 .map_err(|e| e.to_string())?;
             print_json(&result)
         }
@@ -1320,7 +1320,7 @@ pub(super) fn handle_reference_family(
                 }
             }
             let op_catalog_path = operation_catalog_arg(&catalog_path, helper_mode);
-            let mut engine = GentleEngine::from_state(load_state(&state_path)?);
+            let mut engine = GentleEngine::from_state(load_state(state_path)?);
             let result = engine
                 .apply(Operation::ExtractGenomePromoterSlice {
                     genome_id,
@@ -1339,7 +1339,7 @@ pub(super) fn handle_reference_family(
                 .map_err(|e| e.to_string())?;
             engine
                 .state()
-                .save_to_path(&state_path)
+                .save_to_path(state_path)
                 .map_err(|e| e.to_string())?;
             print_json(&result)
         }

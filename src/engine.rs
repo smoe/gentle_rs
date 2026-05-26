@@ -5489,10 +5489,10 @@ impl GentleEngine {
 
         let mut ladders: Vec<DnaLadderInfo> = vec![];
         for name in DNA_LADDERS.names_sorted() {
-            if let Some(filter_text) = &filter {
-                if !name.to_ascii_lowercase().contains(filter_text) {
-                    continue;
-                }
+            if let Some(filter_text) = &filter
+                && !name.to_ascii_lowercase().contains(filter_text)
+            {
+                continue;
             }
             let Some(ladder) = DNA_LADDERS.get(&name) else {
                 continue;
@@ -5553,10 +5553,10 @@ impl GentleEngine {
 
         let mut ladders: Vec<RnaLadderInfo> = vec![];
         for name in RNA_LADDERS.names_sorted() {
-            if let Some(filter_text) = &filter {
-                if !name.to_ascii_lowercase().contains(filter_text) {
-                    continue;
-                }
+            if let Some(filter_text) = &filter
+                && !name.to_ascii_lowercase().contains(filter_text)
+            {
+                continue;
             }
             let Some(ladder) = RNA_LADDERS.get(&name) else {
                 continue;
@@ -5924,7 +5924,7 @@ impl GentleEngine {
         if tokens.is_empty() {
             return true;
         }
-        let mut haystack = vec![
+        let mut haystack = [
             profile.profile_id.as_str(),
             profile.species.as_str(),
             profile.strain.as_str(),
@@ -6142,11 +6142,11 @@ impl GentleEngine {
         let started = Instant::now();
         let mut timed_out = false;
         let mut guarded_progress = |progress: PrepareGenomeProgress| -> bool {
-            if let Some(limit) = timeout {
-                if started.elapsed() >= limit {
-                    timed_out = true;
-                    return false;
-                }
+            if let Some(limit) = timeout
+                && started.elapsed() >= limit
+            {
+                timed_out = true;
+                return false;
             }
             on_progress(progress)
         };
@@ -6815,55 +6815,55 @@ impl GentleEngine {
     }
 
     fn validate_blast_thresholds(thresholds: &BlastThresholdOptions) -> Result<(), EngineError> {
-        if let Some(max_evalue) = thresholds.max_evalue {
-            if !max_evalue.is_finite() || max_evalue < 0.0 {
-                return Err(EngineError {
-                    code: ErrorCode::InvalidInput,
-                    message: "BLAST max_evalue must be a finite number >= 0.0".to_string(),
+        if let Some(max_evalue) = thresholds.max_evalue
+            && (!max_evalue.is_finite() || max_evalue < 0.0)
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "BLAST max_evalue must be a finite number >= 0.0".to_string(),
 
-                    cause_chain: vec![],
-                });
-            }
+                cause_chain: vec![],
+            });
         }
-        if let Some(identity) = thresholds.min_identity_percent {
-            if !identity.is_finite() || !(0.0..=100.0).contains(&identity) {
-                return Err(EngineError {
-                    code: ErrorCode::InvalidInput,
-                    message: "BLAST min_identity_percent must be within [0, 100]".to_string(),
+        if let Some(identity) = thresholds.min_identity_percent
+            && (!identity.is_finite() || !(0.0..=100.0).contains(&identity))
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "BLAST min_identity_percent must be within [0, 100]".to_string(),
 
-                    cause_chain: vec![],
-                });
-            }
+                cause_chain: vec![],
+            });
         }
-        if let Some(qcov) = thresholds.min_query_coverage_percent {
-            if !qcov.is_finite() || !(0.0..=100.0).contains(&qcov) {
-                return Err(EngineError {
-                    code: ErrorCode::InvalidInput,
-                    message: "BLAST min_query_coverage_percent must be within [0, 100]".to_string(),
+        if let Some(qcov) = thresholds.min_query_coverage_percent
+            && (!qcov.is_finite() || !(0.0..=100.0).contains(&qcov))
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "BLAST min_query_coverage_percent must be within [0, 100]".to_string(),
 
-                    cause_chain: vec![],
-                });
-            }
+                cause_chain: vec![],
+            });
         }
-        if let Some(min_len) = thresholds.min_alignment_length_bp {
-            if min_len == 0 {
-                return Err(EngineError {
-                    code: ErrorCode::InvalidInput,
-                    message: "BLAST min_alignment_length_bp must be >= 1".to_string(),
+        if let Some(min_len) = thresholds.min_alignment_length_bp
+            && min_len == 0
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "BLAST min_alignment_length_bp must be >= 1".to_string(),
 
-                    cause_chain: vec![],
-                });
-            }
+                cause_chain: vec![],
+            });
         }
-        if let Some(min_bitscore) = thresholds.min_bit_score {
-            if !min_bitscore.is_finite() || min_bitscore < 0.0 {
-                return Err(EngineError {
-                    code: ErrorCode::InvalidInput,
-                    message: "BLAST min_bit_score must be a finite number >= 0.0".to_string(),
+        if let Some(min_bitscore) = thresholds.min_bit_score
+            && (!min_bitscore.is_finite() || min_bitscore < 0.0)
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "BLAST min_bit_score must be a finite number >= 0.0".to_string(),
 
-                    cause_chain: vec![],
-                });
-            }
+                cause_chain: vec![],
+            });
         }
         Ok(())
     }
@@ -7000,15 +7000,15 @@ impl GentleEngine {
         hit: &crate::genomes::BlastHit,
         t: &BlastThresholdOptions,
     ) -> bool {
-        if let Some(max_evalue) = t.max_evalue {
-            if hit.evalue > max_evalue {
-                return false;
-            }
+        if let Some(max_evalue) = t.max_evalue
+            && hit.evalue > max_evalue
+        {
+            return false;
         }
-        if let Some(min_identity_percent) = t.min_identity_percent {
-            if hit.identity_percent < min_identity_percent {
-                return false;
-            }
+        if let Some(min_identity_percent) = t.min_identity_percent
+            && hit.identity_percent < min_identity_percent
+        {
+            return false;
         }
         if let Some(min_query_coverage_percent) = t.min_query_coverage_percent {
             match hit.query_coverage_percent {
@@ -7016,15 +7016,15 @@ impl GentleEngine {
                 _ => return false,
             }
         }
-        if let Some(min_alignment_length_bp) = t.min_alignment_length_bp {
-            if hit.alignment_length < min_alignment_length_bp {
-                return false;
-            }
+        if let Some(min_alignment_length_bp) = t.min_alignment_length_bp
+            && hit.alignment_length < min_alignment_length_bp
+        {
+            return false;
         }
-        if let Some(min_bit_score) = t.min_bit_score {
-            if hit.bit_score < min_bit_score {
-                return false;
-            }
+        if let Some(min_bit_score) = t.min_bit_score
+            && hit.bit_score < min_bit_score
+        {
+            return false;
         }
         true
     }
@@ -7329,11 +7329,11 @@ impl GentleEngine {
         let started = Instant::now();
         let mut timed_out = false;
         let mut guarded_progress = |progress: PrepareGenomeProgress| -> bool {
-            if let Some(limit) = timeout {
-                if started.elapsed() >= limit {
-                    timed_out = true;
-                    return false;
-                }
+            if let Some(limit) = timeout
+                && started.elapsed() >= limit
+            {
+                timed_out = true;
+                return false;
             }
             on_progress(progress)
         };
@@ -7483,11 +7483,11 @@ impl GentleEngine {
         let started = Instant::now();
         let mut timed_out = false;
         let mut guarded_progress = |progress: PrepareGenomeProgress| -> bool {
-            if let Some(limit) = timeout {
-                if started.elapsed() >= limit {
-                    timed_out = true;
-                    return false;
-                }
+            if let Some(limit) = timeout
+                && started.elapsed() >= limit
+            {
+                timed_out = true;
+                return false;
             }
             on_progress(progress)
         };
@@ -8630,10 +8630,10 @@ impl GentleEngine {
         let mut seen: HashSet<String> = HashSet::new();
         let mut push_candidate = |candidate: String| {
             let normalized = Self::normalize_enzyme_match_token(&candidate);
-            if let Some(name) = lookup.get(&normalized) {
-                if seen.insert(name.clone()) {
-                    out.push(name.clone());
-                }
+            if let Some(name) = lookup.get(&normalized)
+                && seen.insert(name.clone())
+            {
+                out.push(name.clone());
             }
         };
         for idx in 0..tokens.len() {
@@ -8699,10 +8699,10 @@ impl GentleEngine {
                     .map(str::trim)
                     .filter(|value| !value.is_empty())
                 {
-                    if let Some(name) = Self::canonicalize_rebase_enzyme_name(token, &lookup) {
-                        if seen.insert(name.clone()) {
-                            ordered.push(name);
-                        }
+                    if let Some(name) = Self::canonicalize_rebase_enzyme_name(token, &lookup)
+                        && seen.insert(name.clone())
+                    {
+                        ordered.push(name);
                     }
                 }
             }
@@ -13787,10 +13787,10 @@ impl GentleEngine {
                         }
                     }
                 }
-                if let Some(regex) = regex {
-                    if !values.iter().any(|value| regex.is_match(value)) {
-                        return false;
-                    }
+                if let Some(regex) = regex
+                    && !values.iter().any(|value| regex.is_match(value))
+                {
+                    return false;
                 }
                 true
             });
@@ -14541,12 +14541,7 @@ impl GentleEngine {
         let mut terms = BTreeSet::new();
         terms.insert(compact.to_ascii_lowercase());
         terms.insert(compact.replace('.', "_").to_ascii_lowercase());
-        terms.insert(
-            compact
-                .replace('.', " ")
-                .replace('_', " ")
-                .to_ascii_lowercase(),
-        );
+        terms.insert(compact.replace(['.', '_'], " ").to_ascii_lowercase());
         terms.into_iter().collect()
     }
 
@@ -16373,12 +16368,11 @@ impl GentleEngine {
             .map(Self::normalize_construct_reasoning_graph)
             .map(|graph| (graph.graph_id.clone(), graph))
             .collect();
-        if let Some(preferred_graph_id) = store.preferred_graph_id.clone() {
-            if preferred_graph_id.trim().is_empty()
-                || !store.graphs.contains_key(&preferred_graph_id)
-            {
-                store.preferred_graph_id = None;
-            }
+        if let Some(preferred_graph_id) = store.preferred_graph_id.clone()
+            && (preferred_graph_id.trim().is_empty()
+                || !store.graphs.contains_key(&preferred_graph_id))
+        {
+            store.preferred_graph_id = None;
         }
         if store.objectives.is_empty()
             && store.graphs.is_empty()
@@ -17450,22 +17444,20 @@ impl GentleEngine {
             spans.sort_by_key(|row| (row.start_0based, row.end_0based_exclusive));
             let mut merged: Vec<LowComplexitySpan> = vec![];
             for span in spans {
-                if let Some(last) = merged.last_mut() {
-                    if span.start_0based
+                if let Some(last) = merged.last_mut()
+                    && span.start_0based
                         <= last
                             .end_0based_exclusive
                             .saturating_add(LOW_COMPLEXITY_STEP_BP)
-                    {
-                        last.end_0based_exclusive =
-                            last.end_0based_exclusive.max(span.end_0based_exclusive);
-                        last.complexity_score = last.complexity_score.min(span.complexity_score);
-                        last.normalized_entropy =
-                            last.normalized_entropy.min(span.normalized_entropy);
-                        last.unique_kmer_ratio = last.unique_kmer_ratio.min(span.unique_kmer_ratio);
-                        last.longest_homopolymer =
-                            last.longest_homopolymer.max(span.longest_homopolymer);
-                        continue;
-                    }
+                {
+                    last.end_0based_exclusive =
+                        last.end_0based_exclusive.max(span.end_0based_exclusive);
+                    last.complexity_score = last.complexity_score.min(span.complexity_score);
+                    last.normalized_entropy = last.normalized_entropy.min(span.normalized_entropy);
+                    last.unique_kmer_ratio = last.unique_kmer_ratio.min(span.unique_kmer_ratio);
+                    last.longest_homopolymer =
+                        last.longest_homopolymer.max(span.longest_homopolymer);
+                    continue;
                 }
                 merged.push(span);
             }
@@ -17479,25 +17471,24 @@ impl GentleEngine {
             spans.sort_by_key(|row| (row.start_0based, row.end_0based_exclusive));
             let mut merged: Vec<RepeatClusterSpan> = vec![];
             for span in spans {
-                if let Some(last) = merged.last_mut() {
-                    if last.label == span.label
-                        && span.start_0based <= last.end_0based_exclusive.saturating_add(max_gap_bp)
-                    {
-                        last.end_0based_exclusive =
-                            last.end_0based_exclusive.max(span.end_0based_exclusive);
-                        last.pair_count = last.pair_count.max(span.pair_count);
-                        last.risk_score = last.risk_score.max(span.risk_score);
-                        last.seed_examples.extend(span.seed_examples);
-                        last.seed_examples.sort();
-                        last.seed_examples.dedup();
-                        last.context_tags.extend(span.context_tags);
-                        last.context_tags.sort();
-                        last.context_tags.dedup();
-                        last.notes.extend(span.notes);
-                        last.notes.sort();
-                        last.notes.dedup();
-                        continue;
-                    }
+                if let Some(last) = merged.last_mut()
+                    && last.label == span.label
+                    && span.start_0based <= last.end_0based_exclusive.saturating_add(max_gap_bp)
+                {
+                    last.end_0based_exclusive =
+                        last.end_0based_exclusive.max(span.end_0based_exclusive);
+                    last.pair_count = last.pair_count.max(span.pair_count);
+                    last.risk_score = last.risk_score.max(span.risk_score);
+                    last.seed_examples.extend(span.seed_examples);
+                    last.seed_examples.sort();
+                    last.seed_examples.dedup();
+                    last.context_tags.extend(span.context_tags);
+                    last.context_tags.sort();
+                    last.context_tags.dedup();
+                    last.notes.extend(span.notes);
+                    last.notes.sort();
+                    last.notes.dedup();
+                    continue;
                 }
                 merged.push(span);
             }
@@ -17508,22 +17499,21 @@ impl GentleEngine {
             spans.sort_by_key(|row| (row.start_0based, row.end_0based_exclusive));
             let mut merged: Vec<AluLikeSpan> = vec![];
             for span in spans {
-                if let Some(last) = merged.last_mut() {
-                    if last.strand == span.strand
-                        && span.start_0based <= last.end_0based_exclusive.saturating_add(24)
-                    {
-                        if span.score > last.score {
-                            last.start_0based = last.start_0based.min(span.start_0based);
-                            last.end_0based_exclusive =
-                                last.end_0based_exclusive.max(span.end_0based_exclusive);
-                            last.tail_length_bp = last.tail_length_bp.max(span.tail_length_bp);
-                            last.arm_similarity = last.arm_similarity.max(span.arm_similarity);
-                            last.candidate_length_bp =
-                                last.end_0based_exclusive.saturating_sub(last.start_0based);
-                            last.score = span.score.max(last.score);
-                        }
-                        continue;
+                if let Some(last) = merged.last_mut()
+                    && last.strand == span.strand
+                    && span.start_0based <= last.end_0based_exclusive.saturating_add(24)
+                {
+                    if span.score > last.score {
+                        last.start_0based = last.start_0based.min(span.start_0based);
+                        last.end_0based_exclusive =
+                            last.end_0based_exclusive.max(span.end_0based_exclusive);
+                        last.tail_length_bp = last.tail_length_bp.max(span.tail_length_bp);
+                        last.arm_similarity = last.arm_similarity.max(span.arm_similarity);
+                        last.candidate_length_bp =
+                            last.end_0based_exclusive.saturating_sub(last.start_0based);
+                        last.score = span.score.max(last.score);
                     }
+                    continue;
                 }
                 merged.push(span);
             }
@@ -17948,16 +17938,16 @@ impl GentleEngine {
         for (idx, base) in bytes.iter().copied().enumerate() {
             if base == b'A' {
                 run_start.get_or_insert(idx);
-            } else if let Some(start) = run_start.take() {
-                if idx.saturating_sub(start) >= ALU_LIKE_POLYA_MIN_BP {
-                    poly_a_runs.push((start, idx));
-                }
+            } else if let Some(start) = run_start.take()
+                && idx.saturating_sub(start) >= ALU_LIKE_POLYA_MIN_BP
+            {
+                poly_a_runs.push((start, idx));
             }
         }
-        if let Some(start) = run_start.take() {
-            if bytes.len().saturating_sub(start) >= ALU_LIKE_POLYA_MIN_BP {
-                poly_a_runs.push((start, bytes.len()));
-            }
+        if let Some(start) = run_start.take()
+            && bytes.len().saturating_sub(start) >= ALU_LIKE_POLYA_MIN_BP
+        {
+            poly_a_runs.push((start, bytes.len()));
         }
         for (tail_start, tail_end) in poly_a_runs {
             for candidate_length_bp in (ALU_LIKE_MIN_BP..=ALU_LIKE_MAX_BP).step_by(20) {
@@ -18009,16 +17999,16 @@ impl GentleEngine {
         for (idx, base) in bytes.iter().copied().enumerate() {
             if base == b'T' {
                 run_start.get_or_insert(idx);
-            } else if let Some(start) = run_start.take() {
-                if idx.saturating_sub(start) >= ALU_LIKE_POLYA_MIN_BP {
-                    poly_t_runs.push((start, idx));
-                }
+            } else if let Some(start) = run_start.take()
+                && idx.saturating_sub(start) >= ALU_LIKE_POLYA_MIN_BP
+            {
+                poly_t_runs.push((start, idx));
             }
         }
-        if let Some(start) = run_start.take() {
-            if bytes.len().saturating_sub(start) >= ALU_LIKE_POLYA_MIN_BP {
-                poly_t_runs.push((start, bytes.len()));
-            }
+        if let Some(start) = run_start.take()
+            && bytes.len().saturating_sub(start) >= ALU_LIKE_POLYA_MIN_BP
+        {
+            poly_t_runs.push((start, bytes.len()));
         }
         for (tail_start, tail_end) in poly_t_runs {
             for candidate_length_bp in (ALU_LIKE_MIN_BP..=ALU_LIKE_MAX_BP).step_by(20) {
@@ -18498,7 +18488,7 @@ impl GentleEngine {
                 evidence.push(DesignEvidence {
                     evidence_id: format!(
                         "feature_{}_{}_{}_{}_{}",
-                        Self::normalize_id_token(&feature.kind.to_string()),
+                        Self::normalize_id_token(feature.kind.as_ref()),
                         feature_id,
                         start_0based,
                         end_0based_exclusive,
@@ -18698,7 +18688,7 @@ impl GentleEngine {
         }
         let sequence_ref = bytes[variant_start_0based] as char;
         let expected_ref = reference_allele.as_bytes()[0] as char;
-        if sequence_ref.to_ascii_uppercase() != expected_ref.to_ascii_uppercase() {
+        if !sequence_ref.eq_ignore_ascii_case(&expected_ref) {
             return vec![];
         }
 
@@ -18788,9 +18778,7 @@ impl GentleEngine {
             if oriented_ref.len() != 1 || oriented_alt.len() != 1 {
                 continue;
             }
-            if ref_codon[codon_pos].to_ascii_uppercase()
-                != oriented_ref.as_bytes()[0].to_ascii_uppercase()
-            {
+            if !ref_codon[codon_pos].eq_ignore_ascii_case(&oriented_ref.as_bytes()[0]) {
                 continue;
             }
             alt_codon[codon_pos] = oriented_alt.as_bytes()[0].to_ascii_uppercase();
@@ -19468,8 +19456,8 @@ impl GentleEngine {
                     .collect::<Vec<_>>();
                 let mut attribute_matches = component
                     .attributes
-                    .iter()
-                    .flat_map(|(_, value)| {
+                    .values()
+                    .flat_map(|value| {
                         Self::construct_reasoning_value_contains_any_term(
                             value,
                             rule.helper_component_attribute_terms,
@@ -21682,19 +21670,23 @@ impl GentleEngine {
                 .iter()
                 .map(|row| row.evidence_id.clone())
                 .collect::<Vec<_>>();
-            variant_related_evidence_ids.extend(evidence.iter().filter_map(|row| {
-                (row.scope == EvidenceScope::SequenceSpan
-                    && row.role != ConstructRole::Variant
-                    && variant_evidence_rows.iter().any(|variant| {
-                        Self::construct_reasoning_ranges_overlap(
-                            variant.start_0based,
-                            variant.end_0based_exclusive,
-                            row.start_0based,
-                            row.end_0based_exclusive,
-                        )
-                    }))
-                .then(|| row.evidence_id.clone())
-            }));
+            variant_related_evidence_ids.extend(
+                evidence
+                    .iter()
+                    .filter(|&row| {
+                        row.scope == EvidenceScope::SequenceSpan
+                            && row.role != ConstructRole::Variant
+                            && variant_evidence_rows.iter().any(|variant| {
+                                Self::construct_reasoning_ranges_overlap(
+                                    variant.start_0based,
+                                    variant.end_0based_exclusive,
+                                    row.start_0based,
+                                    row.end_0based_exclusive,
+                                )
+                            })
+                    })
+                    .map(|row| row.evidence_id.clone()),
+            );
             variant_related_evidence_ids.sort();
             variant_related_evidence_ids.dedup();
 
@@ -22207,7 +22199,7 @@ impl GentleEngine {
         let label = repeat_name
             .or_else(|| repeat_family.clone())
             .or_else(|| repeat_class.clone())
-            .unwrap_or_else(|| kind);
+            .unwrap_or(kind);
         Some((label, repeat_class, repeat_family))
     }
 
@@ -23219,55 +23211,55 @@ impl GentleEngine {
     fn normalize_practical_filter_config(
         mut config: GuidePracticalFilterConfig,
     ) -> Result<GuidePracticalFilterConfig, EngineError> {
-        if let Some(min) = config.gc_min {
-            if !(0.0..=1.0).contains(&min) {
-                return Err(EngineError {
-                    code: ErrorCode::InvalidInput,
-                    message: format!("gc_min ({min}) must be between 0.0 and 1.0"),
+        if let Some(min) = config.gc_min
+            && !(0.0..=1.0).contains(&min)
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("gc_min ({min}) must be between 0.0 and 1.0"),
 
-                    cause_chain: vec![],
-                });
-            }
+                cause_chain: vec![],
+            });
         }
-        if let Some(max) = config.gc_max {
-            if !(0.0..=1.0).contains(&max) {
-                return Err(EngineError {
-                    code: ErrorCode::InvalidInput,
-                    message: format!("gc_max ({max}) must be between 0.0 and 1.0"),
+        if let Some(max) = config.gc_max
+            && !(0.0..=1.0).contains(&max)
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("gc_max ({max}) must be between 0.0 and 1.0"),
 
-                    cause_chain: vec![],
-                });
-            }
+                cause_chain: vec![],
+            });
         }
-        if let (Some(min), Some(max)) = (config.gc_min, config.gc_max) {
-            if min > max {
-                return Err(EngineError {
-                    code: ErrorCode::InvalidInput,
-                    message: format!("gc_min ({min}) must be <= gc_max ({max})"),
+        if let (Some(min), Some(max)) = (config.gc_min, config.gc_max)
+            && min > max
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("gc_min ({min}) must be <= gc_max ({max})"),
 
-                    cause_chain: vec![],
-                });
-            }
+                cause_chain: vec![],
+            });
         }
-        if let Some(max_run) = config.max_homopolymer_run {
-            if max_run == 0 {
-                return Err(EngineError {
-                    code: ErrorCode::InvalidInput,
-                    message: "max_homopolymer_run must be >= 1".to_string(),
+        if let Some(max_run) = config.max_homopolymer_run
+            && max_run == 0
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "max_homopolymer_run must be >= 1".to_string(),
 
-                    cause_chain: vec![],
-                });
-            }
+                cause_chain: vec![],
+            });
         }
-        if let Some(max_repeat) = config.max_dinucleotide_repeat_units {
-            if max_repeat == 0 {
-                return Err(EngineError {
-                    code: ErrorCode::InvalidInput,
-                    message: "max_dinucleotide_repeat_units must be >= 1".to_string(),
+        if let Some(max_repeat) = config.max_dinucleotide_repeat_units
+            && max_repeat == 0
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "max_dinucleotide_repeat_units must be >= 1".to_string(),
 
-                    cause_chain: vec![],
-                });
-            }
+                cause_chain: vec![],
+            });
         }
 
         let mut normalized_per_base = HashMap::new();

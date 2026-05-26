@@ -339,7 +339,7 @@ impl GentleEngine {
         text: &str,
     ) -> Result<serde_json::Value, EngineError> {
         let document =
-            serde_json::from_str::<serde_json::Value>(&text).map_err(|e| EngineError {
+            serde_json::from_str::<serde_json::Value>(text).map_err(|e| EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!(
                     "Could not parse dbSNP response JSON for rs{}: {e}",
@@ -714,7 +714,7 @@ impl GentleEngine {
         feature: &gb_io::seq::Feature,
         feature_id: usize,
     ) -> String {
-        let fallback = format!("{} #{}", feature.kind.to_string(), feature_id + 1);
+        let fallback = format!("{} #{}", feature.kind, feature_id + 1);
         let label = Self::first_nonempty_feature_qualifier(
             feature,
             &[
@@ -731,7 +731,7 @@ impl GentleEngine {
         .unwrap_or(fallback);
         let trimmed = label.trim();
         if trimmed.is_empty() {
-            format!("{} #{}", feature.kind.to_string(), feature_id + 1)
+            format!("{} #{}", feature.kind, feature_id + 1)
         } else {
             trimmed.to_string()
         }
@@ -741,7 +741,7 @@ impl GentleEngine {
         feature: &gb_io::seq::Feature,
         feature_id: usize,
     ) -> String {
-        let fallback = format!("{} #{}", feature.kind.to_string(), feature_id + 1);
+        let fallback = format!("{} #{}", feature.kind, feature_id + 1);
         let label = Self::first_nonempty_feature_qualifier(
             feature,
             &[
@@ -758,7 +758,7 @@ impl GentleEngine {
         .unwrap_or(fallback);
         let trimmed = label.trim();
         if trimmed.is_empty() {
-            format!("{} #{}", feature.kind.to_string(), feature_id + 1)
+            format!("{} #{}", feature.kind, feature_id + 1)
         } else {
             trimmed.to_string()
         }
@@ -1037,23 +1037,22 @@ impl GentleEngine {
             if key.pos() < 0 || (key.pos() as usize + 1) != cut_pos_1based {
                 continue;
             }
-            if let Some(start) = recognition_start_1based {
-                if key.from() < 0 || (key.from() as usize + 1) != start {
-                    continue;
-                }
+            if let Some(start) = recognition_start_1based
+                && (key.from() < 0 || (key.from() as usize + 1) != start)
+            {
+                continue;
             }
-            if let Some(end) = recognition_end_1based {
-                if key.to() < 0 || key.to() as usize != end {
-                    continue;
-                }
+            if let Some(end) = recognition_end_1based
+                && (key.to() < 0 || key.to() as usize != end)
+            {
+                continue;
             }
-            if let Some(filter) = &enzyme_filter {
-                if !names
+            if let Some(filter) = &enzyme_filter
+                && !names
                     .iter()
                     .any(|name| name.to_ascii_uppercase() == *filter)
-                {
-                    continue;
-                }
+            {
+                continue;
             }
             candidates.push((key.clone(), names.clone()));
         }
@@ -1080,7 +1079,7 @@ impl GentleEngine {
             });
         }
         let (key, mut names) = candidates.into_iter().next().unwrap_or_default();
-        names.sort_by(|a, b| a.to_ascii_uppercase().cmp(&b.to_ascii_uppercase()));
+        names.sort_by_key(|a| a.to_ascii_uppercase());
         names.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
         let selected_enzyme = if let Some(filter) = enzyme_filter {
             names
@@ -1155,10 +1154,10 @@ impl GentleEngine {
         });
         let rebase_url = selected_enzyme_def
             .map(|enzyme| format!("https://rebase.neb.com/rebase/enz/{}.html", enzyme.name));
-        if site_sequence.is_empty() {
-            if let Some(iupac) = &recognition_iupac {
-                site_sequence = iupac.to_ascii_uppercase();
-            }
+        if site_sequence.is_empty()
+            && let Some(iupac) = &recognition_iupac
+        {
+            site_sequence = iupac.to_ascii_uppercase();
         }
         let site_sequence_complement = Self::complement_iupac_text(&site_sequence);
         let max_cut = site_sequence.chars().count();
@@ -1468,9 +1467,9 @@ impl GentleEngine {
         let mut aliases = BTreeSet::new();
         for value in std::iter::once(entry.entry_id.clone())
             .chain(std::iter::once(entry.gene_id.clone()))
-            .chain(entry.aliases.clone().into_iter())
-            .chain(entry.gene_symbol.clone().into_iter())
-            .chain(entry.gene_display_name.clone().into_iter())
+            .chain(entry.aliases.clone())
+            .chain(entry.gene_symbol.clone())
+            .chain(entry.gene_display_name.clone())
             .chain(
                 entry
                     .transcripts
@@ -1616,10 +1615,10 @@ impl GentleEngine {
         for value in std::iter::once(entry.entry_id.clone())
             .chain(std::iter::once(entry.protein_id.clone()))
             .chain(std::iter::once(entry.transcript_id.clone()))
-            .chain(entry.aliases.clone().into_iter())
-            .chain(entry.gene_id.clone().into_iter())
-            .chain(entry.gene_symbol.clone().into_iter())
-            .chain(entry.transcript_display_name.clone().into_iter())
+            .chain(entry.aliases.clone())
+            .chain(entry.gene_id.clone())
+            .chain(entry.gene_symbol.clone())
+            .chain(entry.transcript_display_name.clone())
         {
             let normalized_alias = normalize_ensembl_protein_entry_id(&value);
             if !normalized_alias.is_empty() {
@@ -1798,7 +1797,7 @@ impl GentleEngine {
         entry.imported_at_unix_ms = Self::now_unix_ms();
         let mut aliases = BTreeSet::new();
         for value in std::iter::once(entry.entry_id.clone())
-            .chain(entry.aliases.clone().into_iter())
+            .chain(entry.aliases.clone())
             .chain(std::iter::once(entry.accession.clone()))
             .chain(std::iter::once(entry.primary_id.clone()))
         {
@@ -3987,7 +3986,7 @@ impl GentleEngine {
             entry.species, entry.chromosome, entry.start_1based, entry.end_1based, entry.strand
         ));
         dna.set_molecule_type("dsDNA");
-        if dna.len() > 0 {
+        if !dna.is_empty() {
             let dna_len = dna.len() as i64;
             let mut qualifiers = vec![
                 ("organism".into(), Some(entry.species.clone())),
@@ -4281,12 +4280,11 @@ impl GentleEngine {
                 Self::ensembl_gene_local_range_0based(entry, exon.start_1based, exon.end_1based)
             })
             .collect::<Vec<_>>();
-        if ranges.is_empty() {
-            if let (Some(start), Some(end)) = (transcript.start_1based, transcript.end_1based) {
-                if let Some(range) = Self::ensembl_gene_local_range_0based(entry, start, end) {
-                    ranges.push(range);
-                }
-            }
+        if ranges.is_empty()
+            && let (Some(start), Some(end)) = (transcript.start_1based, transcript.end_1based)
+            && let Some(range) = Self::ensembl_gene_local_range_0based(entry, start, end)
+        {
+            ranges.push(range);
         }
         ranges
     }
@@ -4515,7 +4513,7 @@ impl GentleEngine {
                 .unwrap_or_else(|| entry.entry_id.clone()),
         );
         dna.set_molecule_type("dsDNA");
-        if dna.len() > 0 {
+        if !dna.is_empty() {
             let mut qualifiers = vec![
                 ("entry_id".into(), Some(entry.entry_id.clone())),
                 ("gene_id".into(), Some(entry.gene_id.clone())),
@@ -4617,7 +4615,7 @@ impl GentleEngine {
                 .unwrap_or_else(|| entry.entry_id.clone()),
         );
         protein.set_molecule_type("protein");
-        if protein.len() > 0 {
+        if !protein.is_empty() {
             let mut protein_qualifiers = vec![
                 ("entry_id".into(), Some(entry.entry_id.clone())),
                 ("protein_id".into(), Some(entry.protein_id.clone())),
@@ -4880,7 +4878,7 @@ impl GentleEngine {
                 .unwrap_or_else(|| entry.entry_id.clone()),
         );
         protein.set_molecule_type("protein");
-        if protein.len() > 0 {
+        if !protein.is_empty() {
             let mut protein_qualifiers = vec![
                 ("entry_id".into(), Some(entry.entry_id.clone())),
                 ("accession".into(), Some(entry.accession.clone())),
@@ -5928,16 +5926,14 @@ impl GentleEngine {
             ));
         }
         if let (Some(derivation), Some(external_opinion)) = (derivation, external_opinion.as_ref())
+            && let Some(external_length_aa) = external_opinion.expected_length_aa
+            && derivation.protein_length_aa > 0
+            && derivation.protein_length_aa != external_length_aa
         {
-            if let Some(external_length_aa) = external_opinion.expected_length_aa
-                && derivation.protein_length_aa > 0
-                && derivation.protein_length_aa != external_length_aa
-            {
-                mismatch_reasons.push(format!(
+            mismatch_reasons.push(format!(
                     "Transcript-native product length is {} aa, while the external protein opinion expects {} aa.",
                     derivation.protein_length_aa, external_length_aa
                 ));
-            }
         }
 
         let has_derived = derivation

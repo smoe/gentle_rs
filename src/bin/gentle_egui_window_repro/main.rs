@@ -85,15 +85,14 @@ impl ReproWindowState {
 
         ui.heading(self.title());
         ui.horizontal_wrapped(|ui| {
-            if allow_nested_children {
-                if ui
+            if allow_nested_children
+                && ui
                     .button("Open another window")
                     .on_hover_text("Spawn another native viewport with the same controls")
                     .clicked()
-                {
-                    self.opened_children = self.opened_children.saturating_add(1);
-                    actions.open_child = true;
-                }
+            {
+                self.opened_children = self.opened_children.saturating_add(1);
+                actions.open_child = true;
             }
             if allow_close
                 && ui

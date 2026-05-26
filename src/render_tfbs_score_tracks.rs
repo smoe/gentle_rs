@@ -336,12 +336,12 @@ fn directional_correlation_value(
     }
 }
 
-fn cross_strand_lookup_cell<'a>(
-    row: &'a crate::engine::TfbsScoreTrackCrossStrandCorrelationRow,
+fn cross_strand_lookup_cell(
+    row: &crate::engine::TfbsScoreTrackCrossStrandCorrelationRow,
     row_is_left: bool,
     row_strand: crate::engine::TfbsScoreTrackStrandComponent,
     col_strand: crate::engine::TfbsScoreTrackStrandComponent,
-) -> Option<&'a crate::engine::TfbsScoreTrackCrossStrandCorrelationCell> {
+) -> Option<&crate::engine::TfbsScoreTrackCrossStrandCorrelationCell> {
     let (left_strand, right_strand) = if row_is_left {
         (row_strand, col_strand)
     } else {
@@ -475,7 +475,7 @@ fn layout_tss_marker_lanes(
     if markers.is_empty() {
         return 0;
     }
-    let mut lane_right_edges = vec![f64::NEG_INFINITY; SVG_TSS_MARKER_MAX_LANES];
+    let mut lane_right_edges = [f64::NEG_INFINITY; SVG_TSS_MARKER_MAX_LANES];
     for marker in markers {
         let x = tss_marker_x(
             marker.position_0based,
@@ -521,7 +521,7 @@ fn render_tss_marker_annotations(
     if markers.is_empty() {
         return String::new();
     }
-    let mut lane_right_edges = vec![f64::NEG_INFINITY; SVG_TSS_MARKER_MAX_LANES];
+    let mut lane_right_edges = [f64::NEG_INFINITY; SVG_TSS_MARKER_MAX_LANES];
     let mut svg = String::new();
     for marker in markers {
         let x = tss_marker_x(
@@ -1808,7 +1808,7 @@ mod tests {
 
         let svg = render_tfbs_score_tracks_svg(&report);
         assert!(svg.contains("score range -2.00 .. 4.00"));
-        assert!(svg.contains("positive-only") == false);
+        assert!(!svg.contains("positive-only"));
         assert!(svg.contains("stroke-dasharray=\"4 3\""));
         assert!(svg.contains(">0.0</text>"));
     }

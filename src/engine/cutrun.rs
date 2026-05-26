@@ -325,10 +325,11 @@ impl CutRunCatalog {
             entry.provider.as_ref(),
             entry.source_accession.as_ref(),
             entry.reference_url.as_ref(),
-        ] {
-            if let Some(value) = value {
-                values.push(value.clone());
-            }
+        ]
+        .into_iter()
+        .flatten()
+        {
+            values.push(value.clone());
         }
         values.extend(entry.supported_reference_genome_ids.clone());
         values
@@ -779,10 +780,9 @@ impl CutRunPrepareActivityTracker {
         let lock_path = cutrun_prepare_activity_lock_path(install_dir);
         if let Some(existing) =
             inspect_cutrun_prepare_activity_status_paths(&status_path, &lock_path)?
+            && existing.lifecycle_status == "running"
         {
-            if existing.lifecycle_status == "running" {
-                return Ok(CutRunPrepareActivityStart::Running);
-            }
+            return Ok(CutRunPrepareActivityStart::Running);
         }
         let now = cutrun_now_unix_ms();
         let tracker = Self {
@@ -813,10 +813,9 @@ impl CutRunPrepareActivityTracker {
             if let Some(existing) = inspect_cutrun_prepare_activity_status_paths(
                 &tracker.status_path,
                 &tracker.lock_path,
-            )? {
-                if existing.lifecycle_status == "running" {
-                    return Ok(CutRunPrepareActivityStart::Running);
-                }
+            )? && existing.lifecycle_status == "running"
+            {
+                return Ok(CutRunPrepareActivityStart::Running);
             }
             return Err(format!(
                 "Could not acquire a fresh CUT&RUN prepare-activity lock for '{}'",
@@ -1967,10 +1966,9 @@ impl GentleEngine {
         if let Some(stripped) = first
             .strip_suffix("/1")
             .or_else(|| first.strip_suffix("/2"))
+            && !stripped.is_empty()
         {
-            if !stripped.is_empty() {
-                return stripped.to_string();
-            }
+            return stripped.to_string();
         }
         if first.is_empty() {
             "unnamed_read".to_string()
@@ -2592,7 +2590,7 @@ impl GentleEngine {
                     identity_fraction,
                     seed_matches,
                 };
-                let replace = best.as_ref().map_or(true, |current| {
+                let replace = best.as_ref().is_none_or(|current| {
                     placement
                         .identity_fraction
                         .partial_cmp(&current.identity_fraction)
@@ -3158,40 +3156,39 @@ impl GentleEngine {
             if let Some(path) = checkpoint_path
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
+                && rows.len().is_multiple_of(checkpoint_every_reads)
             {
-                if rows.len() % checkpoint_every_reads == 0 {
-                    let snapshot = Self::build_cutrun_report_from_units(
-                        &report_id,
-                        seq_id,
-                        &resolved_input_r1_path,
-                        resolved_input_r2_path.clone(),
-                        source_dataset_status
-                            .as_ref()
-                            .map(|status| status.dataset_id.clone()),
-                        source_dataset_status
-                            .as_ref()
-                            .and_then(|status| status.target_factor.clone()),
-                        source_dataset_status
-                            .as_ref()
-                            .and_then(|status| status.species.clone()),
-                        resolved_input_format,
-                        resolved_read_layout,
-                        roi_flank_bp,
-                        deduplicate_fragments,
-                        seed_filter.clone(),
-                        align_config.clone(),
-                        &window,
-                        &rows,
-                        mean_read_length_bp,
-                        if mapped_read_count == 0 {
-                            0.0
-                        } else {
-                            mapped_read_bases as f64 / mapped_read_count as f64
-                        },
-                        &warnings,
-                    );
-                    Self::write_cutrun_report_snapshot(&snapshot, path)?;
-                }
+                let snapshot = Self::build_cutrun_report_from_units(
+                    &report_id,
+                    seq_id,
+                    &resolved_input_r1_path,
+                    resolved_input_r2_path.clone(),
+                    source_dataset_status
+                        .as_ref()
+                        .map(|status| status.dataset_id.clone()),
+                    source_dataset_status
+                        .as_ref()
+                        .and_then(|status| status.target_factor.clone()),
+                    source_dataset_status
+                        .as_ref()
+                        .and_then(|status| status.species.clone()),
+                    resolved_input_format,
+                    resolved_read_layout,
+                    roi_flank_bp,
+                    deduplicate_fragments,
+                    seed_filter.clone(),
+                    align_config.clone(),
+                    &window,
+                    &rows,
+                    mean_read_length_bp,
+                    if mapped_read_count == 0 {
+                        0.0
+                    } else {
+                        mapped_read_bases as f64 / mapped_read_count as f64
+                    },
+                    &warnings,
+                );
+                Self::write_cutrun_report_snapshot(&snapshot, path)?;
             }
         }
         let mean_mapped_read_length_bp = if mapped_read_count == 0 {

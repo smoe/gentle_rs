@@ -2017,19 +2017,19 @@ impl RenderDnaLinear {
             } else {
                 forward_y_bp + font_size + 1.0
             };
-            if let Some(selection) = &selection {
-                if selection.contains(bp) {
-                    let left = x1_projected.min(x2_projected);
-                    let right = x1_projected.max(x2_projected).max(left + 1.0);
-                    painter.rect_filled(
-                        Rect::from_min_max(
-                            Pos2::new(left, selection_min_y),
-                            Pos2::new(right, selection_max_y),
-                        ),
-                        0.0,
-                        Color32::from_gray(230),
-                    );
-                }
+            if let Some(selection) = &selection
+                && selection.contains(bp)
+            {
+                let left = x1_projected.min(x2_projected);
+                let right = x1_projected.max(x2_projected).max(left + 1.0);
+                painter.rect_filled(
+                    Rect::from_min_max(
+                        Pos2::new(left, selection_min_y),
+                        Pos2::new(right, selection_max_y),
+                    ),
+                    0.0,
+                    Color32::from_gray(230),
+                );
             }
             let forward_char = (*base as char).to_ascii_uppercase();
             painter.text(
@@ -2216,7 +2216,7 @@ impl RenderDnaLinear {
         let sine_amp = font_size * phase_scale.max(HELICAL_MIN_Y_PHASE_SCALE);
         let sine_component = phase_angle.sin() * sine_amp;
         let two_row_amp = font_size * (0.55 + 0.45 * helical_t.clamp(0.0, 1.0));
-        let two_row_component = if phase_index % 2 == 0 {
+        let two_row_component = if phase_index.is_multiple_of(2) {
             -two_row_amp
         } else {
             two_row_amp
@@ -3041,10 +3041,10 @@ impl RenderDnaLinear {
                 );
             }
 
-            if let Some(hovered) = &self.hover_enzyme {
-                if hovered.key == *key {
-                    painter.rect_filled(hovered.area, 1.0, Color32::LIGHT_YELLOW);
-                }
+            if let Some(hovered) = &self.hover_enzyme
+                && hovered.key == *key
+            {
+                painter.rect_filled(hovered.area, 1.0, Color32::LIGHT_YELLOW);
             }
             let tick_rect = Rect::from_min_max(
                 Pos2::new(top_x.min(bottom_x) - 3.0, y - 9.0),

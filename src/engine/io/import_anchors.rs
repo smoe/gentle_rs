@@ -40,10 +40,11 @@ impl GentleEngine {
                 current.clear();
             }
         }
-        if !current.is_empty() && out.len() < max_items {
-            if let Ok(value) = current.replace(',', "").parse::<usize>() {
-                out.push(value);
-            }
+        if !current.is_empty()
+            && out.len() < max_items
+            && let Ok(value) = current.replace(',', "").parse::<usize>()
+        {
+            out.push(value);
         }
         out
     }
@@ -160,7 +161,7 @@ impl GentleEngine {
         let (accession, start_1based, end_1based, definition, anchor_strand) =
             Self::parse_genbank_accession_region(path)?;
         let region_len = end_1based - start_1based + 1;
-        if dna.len() > 0 && dna.len() != region_len {
+        if !dna.is_empty() && dna.len() != region_len {
             return None;
         }
         let chromosome = Self::parse_chromosome_from_definition(&definition)
@@ -228,7 +229,7 @@ impl GentleEngine {
 
         // For GenBank/EMBL-like records, use SOURCE/mol_type metadata if present.
         for feature in dna.features() {
-            if feature.kind.to_string().to_ascii_uppercase() != "SOURCE" {
+            if !feature.kind.to_string().eq_ignore_ascii_case("SOURCE") {
                 continue;
             }
             for key in ["mol_type", "molecule_type"] {

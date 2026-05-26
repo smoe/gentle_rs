@@ -363,10 +363,9 @@ fn resolve_ladder_names(requested: &[String], min_kda: f32, max_kda: f32) -> Vec
                 .iter()
                 .find(|name| normalize_ladder_name(name).contains(&needle))
                 .cloned()
+                && !picked.iter().any(|n| n == &found)
             {
-                if !picked.iter().any(|n| n == &found) {
-                    picked.push(found);
-                }
+                picked.push(found);
             }
         }
         if !picked.is_empty() {

@@ -954,7 +954,7 @@ fn layout_local_protein_lane(
     let local_length_aa = contributions
         .last()
         .map(|segment| segment.local_aa_end)
-        .or_else(|| protein_lane.expected_length_aa)
+        .or(protein_lane.expected_length_aa)
         .or_else(|| {
             match (
                 protein_lane.reference_start_aa,

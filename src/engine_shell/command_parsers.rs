@@ -1074,10 +1074,10 @@ pub(super) fn parse_candidates_command(tokens: &[String]) -> Result<ShellCommand
                 ("min-quantile", min_quantile),
                 ("max-quantile", max_quantile),
             ] {
-                if let Some(q) = value {
-                    if !(0.0..=1.0).contains(&q) {
-                        return Err(format!("--{name} must be between 0 and 1"));
-                    }
+                if let Some(q) = value
+                    && !(0.0..=1.0).contains(&q)
+                {
+                    return Err(format!("--{name} must be between 0 and 1"));
                 }
             }
             if min.is_none() && max.is_none() && min_quantile.is_none() && max_quantile.is_none() {

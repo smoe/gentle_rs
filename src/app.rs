@@ -1432,6 +1432,7 @@ impl BackgroundJobRetrySnapshot {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
+#[derive(Default)]
 struct RetrySnapshotCleanupAuditEntry {
     audit_id: u64,
     action: String,
@@ -1444,24 +1445,6 @@ struct RetrySnapshotCleanupAuditEntry {
     filter_text: String,
     archive_path: Option<String>,
     summary: String,
-}
-
-impl Default for RetrySnapshotCleanupAuditEntry {
-    fn default() -> Self {
-        Self {
-            audit_id: 0,
-            action: String::new(),
-            performed_at_unix_ms: 0,
-            target_count: 0,
-            removed_count: 0,
-            retained_before: 0,
-            retained_after: 0,
-            filter_kind: String::new(),
-            filter_text: String::new(),
-            archive_path: None,
-            summary: String::new(),
-        }
-    }
 }
 
 impl RetrySnapshotCleanupAuditEntry {
@@ -2016,24 +1999,13 @@ struct LineageRow {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
+#[derive(Default)]
 struct PersistedLineageNodeGroup {
     group_id: String,
     label: String,
     representative_node_id: String,
     member_node_ids: Vec<String>,
     collapsed: bool,
-}
-
-impl Default for PersistedLineageNodeGroup {
-    fn default() -> Self {
-        Self {
-            group_id: String::new(),
-            label: String::new(),
-            representative_node_id: String::new(),
-            member_node_ids: vec![],
-            collapsed: false,
-        }
-    }
 }
 
 #[derive(Clone)]
@@ -2898,15 +2870,15 @@ impl GENtleApp {
 
     fn write_persisted_configuration_to_disk(&self) -> std::result::Result<(), String> {
         let path = Self::configuration_store_path();
-        if let Some(parent) = path.parent() {
-            if !parent.as_os_str().is_empty() {
-                fs::create_dir_all(parent).map_err(|e| {
-                    format!(
-                        "Could not create configuration directory '{}': {e}",
-                        parent.display()
-                    )
-                })?;
-            }
+        if let Some(parent) = path.parent()
+            && !parent.as_os_str().is_empty()
+        {
+            fs::create_dir_all(parent).map_err(|e| {
+                format!(
+                    "Could not create configuration directory '{}': {e}",
+                    parent.display()
+                )
+            })?;
         }
         let payload = PersistedConfiguration {
             schema_version: APP_CONFIGURATION_SCHEMA_VERSION,
@@ -2984,10 +2956,10 @@ impl GENtleApp {
             self.recent_project_paths.truncate(MAX_RECENT_PROJECTS);
         }
 
-        if self.recent_project_paths != old_paths {
-            if let Err(err) = self.write_persisted_configuration_to_disk() {
-                eprintln!("{err}");
-            }
+        if self.recent_project_paths != old_paths
+            && let Err(err) = self.write_persisted_configuration_to_disk()
+        {
+            eprintln!("{err}");
         }
     }
 
@@ -2999,10 +2971,10 @@ impl GENtleApp {
         let len_before = self.recent_project_paths.len();
         self.recent_project_paths
             .retain(|existing| existing != &normalized);
-        if self.recent_project_paths.len() != len_before {
-            if let Err(err) = self.write_persisted_configuration_to_disk() {
-                eprintln!("{err}");
-            }
+        if self.recent_project_paths.len() != len_before
+            && let Err(err) = self.write_persisted_configuration_to_disk()
+        {
+            eprintln!("{err}");
         }
     }
 
@@ -3244,12 +3216,12 @@ impl GENtleApp {
         if direct.exists() {
             return Some(direct);
         }
-        if let Ok(exe_path) = env::current_exe() {
-            if let Some(exe_dir) = exe_path.parent() {
-                let bundled = exe_dir.join("../Resources").join(path);
-                if bundled.exists() {
-                    return Some(bundled);
-                }
+        if let Ok(exe_path) = env::current_exe()
+            && let Some(exe_dir) = exe_path.parent()
+        {
+            let bundled = exe_dir.join("../Resources").join(path);
+            if bundled.exists() {
+                return Some(bundled);
             }
         }
         None
@@ -3360,14 +3332,12 @@ impl GENtleApp {
 
     fn generate_shell_help_markdown_for(interface: ShellHelpInterface) -> String {
         let interface_filter = interface.glossary_filter();
-        if let Some(runtime_path) = Self::resolve_runtime_doc_path("docs/glossary.json") {
-            if let Ok(raw) = fs::read_to_string(runtime_path) {
-                if let Ok(markdown) =
-                    render_shell_help_markdown_from_glossary_json(&raw, interface_filter)
-                {
-                    return markdown;
-                }
-            }
+        if let Some(runtime_path) = Self::resolve_runtime_doc_path("docs/glossary.json")
+            && let Ok(raw) = fs::read_to_string(runtime_path)
+            && let Ok(markdown) =
+                render_shell_help_markdown_from_glossary_json(&raw, interface_filter)
+        {
+            return markdown;
         }
         match render_shell_help_markdown(interface_filter) {
             Ok(markdown) => markdown,
@@ -5632,12 +5602,11 @@ Error: `{err}`"
         compact_lane_layout: bool,
     ) {
         if let Some(viewport_id) = self.find_open_sequence_viewport_id(seq_id) {
-            if compact_lane_layout {
-                if let Some(window) = self.windows.get(&viewport_id) {
-                    if let Ok(mut window) = window.write() {
-                        window.enable_compact_lane_layout();
-                    }
-                }
+            if compact_lane_layout
+                && let Some(window) = self.windows.get(&viewport_id)
+                && let Ok(mut window) = window.write()
+            {
+                window.enable_compact_lane_layout();
             }
             self.queue_focus_viewport(viewport_id);
             return;
@@ -5678,10 +5647,10 @@ Error: `{err}`"
             return;
         }
         if let Some(viewport_id) = self.find_open_sequence_viewport_id(seq_id) {
-            if let Some(window) = self.windows.get(&viewport_id) {
-                if let Ok(mut window) = window.write() {
-                    window.focus_dotplot_analysis(dotplot_id);
-                }
+            if let Some(window) = self.windows.get(&viewport_id)
+                && let Ok(mut window) = window.write()
+            {
+                window.focus_dotplot_analysis(dotplot_id);
             }
             self.queue_focus_viewport(viewport_id);
             return;
@@ -5714,10 +5683,10 @@ Error: `{err}`"
             return;
         }
         if let Some(viewport_id) = self.find_open_sequence_viewport_id(seq_id) {
-            if let Some(window) = self.windows.get(&viewport_id) {
-                if let Ok(mut window) = window.write() {
-                    window.focus_flexibility_track_analysis(track_id);
-                }
+            if let Some(window) = self.windows.get(&viewport_id)
+                && let Ok(mut window) = window.write()
+            {
+                window.focus_flexibility_track_analysis(track_id);
             }
             self.queue_focus_viewport(viewport_id);
             return;
@@ -5747,10 +5716,10 @@ Error: `{err}`"
     ) {
         if !report_id.trim().is_empty() {
             if let Some(viewport_id) = self.find_open_sequence_viewport_id(seq_id) {
-                if let Some(window) = self.windows.get(&viewport_id) {
-                    if let Ok(mut window) = window.write() {
-                        window.focus_sequencing_confirmation_report(report_id);
-                    }
+                if let Some(window) = self.windows.get(&viewport_id)
+                    && let Ok(mut window) = window.write()
+                {
+                    window.focus_sequencing_confirmation_report(report_id);
                 }
             } else if let Some(window) = self.find_pending_sequence_window_mut(seq_id) {
                 window.focus_sequencing_confirmation_report(report_id);
@@ -5781,11 +5750,10 @@ Error: `{err}`"
         seq_id: &str,
         report_id: &str,
     ) {
-        let transcript_filter = report_id
-            .trim()
-            .is_empty()
-            .then_some(None)
-            .unwrap_or_else(|| {
+        let transcript_filter = if report_id.trim().is_empty() {
+            None
+        } else {
+            {
                 self.engine
                     .read()
                     .unwrap()
@@ -5801,7 +5769,8 @@ Error: `{err}`"
                             None
                         }
                     })
-            });
+            }
+        };
         self.open_sequence_window_for_transcript_protein_expert(
             seq_id,
             transcript_filter.as_deref(),
@@ -5813,11 +5782,10 @@ Error: `{err}`"
         seq_id: &str,
         report_id: &str,
     ) {
-        let coding_seq_id = report_id
-            .trim()
-            .is_empty()
-            .then_some(None)
-            .unwrap_or_else(|| {
+        let coding_seq_id = if report_id.trim().is_empty() {
+            None
+        } else {
+            {
                 self.engine
                     .read()
                     .unwrap()
@@ -5830,7 +5798,8 @@ Error: `{err}`"
                             None
                         }
                     })
-            });
+            }
+        };
         if let Some(coding_seq_id) = coding_seq_id.as_deref() {
             self.open_sequence_window(coding_seq_id);
         } else {
@@ -5841,10 +5810,10 @@ Error: `{err}`"
     fn open_sequence_window_for_construct_reasoning_graph(&mut self, seq_id: &str, graph_id: &str) {
         if !graph_id.trim().is_empty() {
             if let Some(viewport_id) = self.find_open_sequence_viewport_id(seq_id) {
-                if let Some(window) = self.windows.get(&viewport_id) {
-                    if let Ok(mut window) = window.write() {
-                        window.focus_construct_reasoning_graph(graph_id);
-                    }
+                if let Some(window) = self.windows.get(&viewport_id)
+                    && let Ok(mut window) = window.write()
+                {
+                    window.focus_construct_reasoning_graph(graph_id);
                 }
             } else if let Some(window) = self.find_pending_sequence_window_mut(seq_id) {
                 window.focus_construct_reasoning_graph(graph_id);
@@ -5929,10 +5898,10 @@ Error: `{err}`"
     fn open_sequence_window_for_primer_design_report(&mut self, seq_id: &str, report_id: &str) {
         if !report_id.trim().is_empty() {
             if let Some(viewport_id) = self.find_open_sequence_viewport_id(seq_id) {
-                if let Some(window) = self.windows.get(&viewport_id) {
-                    if let Ok(mut window) = window.write() {
-                        window.focus_primer_design_report(report_id);
-                    }
+                if let Some(window) = self.windows.get(&viewport_id)
+                    && let Ok(mut window) = window.write()
+                {
+                    window.focus_primer_design_report(report_id);
                 }
             } else if let Some(window) = self.find_pending_sequence_window_mut(seq_id) {
                 window.focus_primer_design_report(report_id);
@@ -5964,10 +5933,10 @@ Error: `{err}`"
     fn open_sequence_window_for_qpcr_design_report(&mut self, seq_id: &str, report_id: &str) {
         if !report_id.trim().is_empty() {
             if let Some(viewport_id) = self.find_open_sequence_viewport_id(seq_id) {
-                if let Some(window) = self.windows.get(&viewport_id) {
-                    if let Ok(mut window) = window.write() {
-                        window.focus_qpcr_design_report(report_id);
-                    }
+                if let Some(window) = self.windows.get(&viewport_id)
+                    && let Ok(mut window) = window.write()
+                {
+                    window.focus_qpcr_design_report(report_id);
                 }
             } else if let Some(window) = self.find_pending_sequence_window_mut(seq_id) {
                 window.focus_qpcr_design_report(report_id);
@@ -6003,10 +5972,10 @@ Error: `{err}`"
     ) {
         if !report_id.trim().is_empty() {
             if let Some(viewport_id) = self.find_open_sequence_viewport_id(seq_id) {
-                if let Some(window) = self.windows.get(&viewport_id) {
-                    if let Ok(mut window) = window.write() {
-                        window.focus_restriction_cloning_handoff_report(report_id);
-                    }
+                if let Some(window) = self.windows.get(&viewport_id)
+                    && let Ok(mut window) = window.write()
+                {
+                    window.focus_restriction_cloning_handoff_report(report_id);
                 }
             } else if let Some(window) = self.find_pending_sequence_window_mut(seq_id) {
                 window.focus_restriction_cloning_handoff_report(report_id);
@@ -6038,10 +6007,10 @@ Error: `{err}`"
     fn open_sequence_window_for_rna_read_report(&mut self, seq_id: &str, report_id: &str) {
         if !report_id.trim().is_empty() {
             if let Some(viewport_id) = self.find_open_sequence_viewport_id(seq_id) {
-                if let Some(window) = self.windows.get(&viewport_id) {
-                    if let Ok(mut window) = window.write() {
-                        window.focus_rna_read_report(report_id);
-                    }
+                if let Some(window) = self.windows.get(&viewport_id)
+                    && let Ok(mut window) = window.write()
+                {
+                    window.focus_rna_read_report(report_id);
                 }
             } else if let Some(window) = self.find_pending_sequence_window_mut(seq_id) {
                 window.focus_rna_read_report(report_id);
@@ -6118,12 +6087,12 @@ Error: `{err}`"
         compact_lane_layout: bool,
     ) {
         if let Some(viewport_id) = self.find_open_sequence_viewport_id(representative_seq_id) {
-            if let Some(window) = self.windows.get(&viewport_id) {
-                if let Ok(mut window) = window.write() {
-                    window.set_pool_context(pool_seq_ids);
-                    if compact_lane_layout {
-                        window.enable_compact_lane_layout();
-                    }
+            if let Some(window) = self.windows.get(&viewport_id)
+                && let Ok(mut window) = window.write()
+            {
+                window.set_pool_context(pool_seq_ids);
+                if compact_lane_layout {
+                    window.enable_compact_lane_layout();
                 }
             }
             self.queue_focus_viewport(viewport_id);
@@ -7352,7 +7321,7 @@ Error: `{err}`"
 
     fn prompt_save_project(&mut self) {
         if let Some(path) = rfd::FileDialog::new()
-            .set_file_name(&self.default_project_save_file_name())
+            .set_file_name(self.default_project_save_file_name())
             .add_filter("GENtle project", &["json"])
             .save_file()
         {
@@ -7366,7 +7335,7 @@ Error: `{err}`"
 
     fn prompt_export_lineage_svg(&mut self) {
         let Some(path) = rfd::FileDialog::new()
-            .set_file_name(&self.default_lineage_svg_file_name())
+            .set_file_name(self.default_lineage_svg_file_name())
             .add_filter("SVG", &["svg"])
             .save_file()
         else {
@@ -7382,7 +7351,7 @@ Error: `{err}`"
 
     fn prompt_export_lab_assistant_report(&mut self) {
         let Some(mut path) = rfd::FileDialog::new()
-            .set_file_name(&self.default_lab_assistant_report_file_name())
+            .set_file_name(self.default_lab_assistant_report_file_name())
             .add_filter("Lab assistant report", LAB_ASSISTANT_REPORT_EXTENSIONS)
             .add_filter("OpenDocument Text", &["odt"])
             .add_filter("Word document", &["docx"])
@@ -8126,15 +8095,14 @@ Error: `{err}`"
                 .find(|seq_id| seq_id != &self.gibson_destination_seq_id)
                 .unwrap_or_default();
         }
-        if let Some((active_seq_id, Some((start, end)))) = active_context {
-            if active_seq_id == self.gibson_destination_seq_id
-                && self.gibson_opening_start_0based.trim().is_empty()
-                && self.gibson_opening_end_0based_exclusive.trim().is_empty()
-            {
-                self.gibson_opening_mode = GibsonUiOpeningMode::DefinedSite;
-                self.gibson_opening_start_0based = start.to_string();
-                self.gibson_opening_end_0based_exclusive = end.to_string();
-            }
+        if let Some((active_seq_id, Some((start, end)))) = active_context
+            && active_seq_id == self.gibson_destination_seq_id
+            && self.gibson_opening_start_0based.trim().is_empty()
+            && self.gibson_opening_end_0based_exclusive.trim().is_empty()
+        {
+            self.gibson_opening_mode = GibsonUiOpeningMode::DefinedSite;
+            self.gibson_opening_start_0based = start.to_string();
+            self.gibson_opening_end_0based_exclusive = end.to_string();
         }
         if self.gibson_output_id_hint.trim().is_empty() {
             self.refresh_gibson_output_id_hint_default();
@@ -8265,10 +8233,10 @@ Error: `{err}`"
 
     fn open_uniprot_dialog(&mut self) {
         let was_open = self.show_uniprot_dialog;
-        if self.uniprot_map_seq_id.trim().is_empty() {
-            if let Some(seq_id) = self.project_sequence_ids_for_blast().first() {
-                self.uniprot_map_seq_id = seq_id.clone();
-            }
+        if self.uniprot_map_seq_id.trim().is_empty()
+            && let Some(seq_id) = self.project_sequence_ids_for_blast().first()
+        {
+            self.uniprot_map_seq_id = seq_id.clone();
         }
         self.show_uniprot_dialog = true;
         self.mark_window_open_or_focus(Self::uniprot_viewport_id(), was_open);
@@ -12872,10 +12840,10 @@ Error: `{err}`"
             .clone()
             .or(gene.gene_id.clone())
             .unwrap_or_else(|| "unnamed_gene".to_string());
-        if let (Some(gene_name), Some(gene_id)) = (&gene.gene_name, &gene.gene_id) {
-            if gene_name != gene_id {
-                name = format!("{gene_name} ({gene_id})");
-            }
+        if let (Some(gene_name), Some(gene_id)) = (&gene.gene_name, &gene.gene_id)
+            && gene_name != gene_id
+        {
+            name = format!("{gene_name} ({gene_id})");
         }
         let strand = gene
             .strand
@@ -14202,12 +14170,11 @@ Error: `{err}`"
                                 &self.planning_helper_selected_id,
                             )
                         }) {
-                            if let Ok(cards) = helper_cards.as_ref() {
-                                if let Some(card) =
+                            if let Ok(cards) = helper_cards.as_ref()
+                                && let Some(card) =
                                     cards.iter().find(|card| card.helper_id == entry.genome_id)
-                                {
-                                    Self::render_helper_vector_card_panel(&mut columns[1], card);
-                                }
+                            {
+                                Self::render_helper_vector_card_panel(&mut columns[1], card);
                             }
                             Self::render_helper_catalog_entry_panel(
                                 &mut columns[1],
@@ -14356,16 +14323,14 @@ Error: `{err}`"
                                     ui.label(format!("resolved={resolved_at}"));
                                 }
                             });
-                            if let Some(message) = suggestion.message.as_deref() {
-                                if !message.trim().is_empty() {
+                            if let Some(message) = suggestion.message.as_deref()
+                                && !message.trim().is_empty() {
                                     ui.small(format!("message: {message}"));
                                 }
-                            }
-                            if let Some(reason) = suggestion.rejection_reason.as_deref() {
-                                if !reason.trim().is_empty() {
+                            if let Some(reason) = suggestion.rejection_reason.as_deref()
+                                && !reason.trim().is_empty() {
                                     ui.small(format!("rejection_reason: {reason}"));
                                 }
-                            }
                             let mut diff_json = Self::pretty_json_or_fallback(&suggestion.diff);
                             ui.add_enabled(
                                 false,
@@ -14576,7 +14541,7 @@ Error: `{err}`"
     }
 
     fn humanize_catalog_label(raw: &str) -> String {
-        let normalized = raw.replace('_', " ").replace('-', " ");
+        let normalized = raw.replace(['_', '-'], " ");
         let mut out_words = vec![];
         for word in normalized.split_whitespace() {
             let mut chars = word.chars();
@@ -14769,7 +14734,7 @@ Error: `{err}`"
         }
 
         if let Some(path) = rfd::FileDialog::new()
-            .set_file_name(&self.default_project_save_file_name())
+            .set_file_name(self.default_project_save_file_name())
             .add_filter("GENtle project", &["json"])
             .save_file()
         {
@@ -15049,24 +15014,21 @@ Error: `{err}`"
                 }
                 self.lineage_node_groups = workspace.node_groups;
             }
-        } else if let Some(serialized) = legacy_offsets_serialized {
-            if let Ok(raw) = serde_json::from_value::<HashMap<String, [f32; 2]>>(serialized) {
-                for (node_id, pair) in raw {
-                    if pair[0].is_finite() && pair[1].is_finite() {
-                        self.lineage_graph_node_offsets
-                            .insert(node_id, Vec2::new(pair[0], pair[1]));
-                    }
+        } else if let Some(serialized) = legacy_offsets_serialized
+            && let Ok(raw) = serde_json::from_value::<HashMap<String, [f32; 2]>>(serialized)
+        {
+            for (node_id, pair) in raw {
+                if pair[0].is_finite() && pair[1].is_finite() {
+                    self.lineage_graph_node_offsets
+                        .insert(node_id, Vec2::new(pair[0], pair[1]));
                 }
             }
         }
-        if self.lineage_node_groups.is_empty() {
-            if let Some(serialized) = legacy_groups_serialized {
-                if let Ok(groups) =
-                    serde_json::from_value::<Vec<PersistedLineageNodeGroup>>(serialized)
-                {
-                    self.lineage_node_groups = groups;
-                }
-            }
+        if self.lineage_node_groups.is_empty()
+            && let Some(serialized) = legacy_groups_serialized
+            && let Ok(groups) = serde_json::from_value::<Vec<PersistedLineageNodeGroup>>(serialized)
+        {
+            self.lineage_node_groups = groups;
         }
         self.lineage_graph_drag_origin = None;
         self.lineage_graph_offsets_synced_stamp = 0;
@@ -15160,31 +15122,31 @@ Error: `{err}`"
         let state = engine.state_mut();
         if workspace_is_default {
             state.metadata.remove(LINEAGE_GRAPH_WORKSPACE_METADATA_KEY);
-        } else if let Ok(value) = serde_json::to_value(&workspace) {
-            if state.metadata.get(LINEAGE_GRAPH_WORKSPACE_METADATA_KEY) != Some(&value) {
-                state
-                    .metadata
-                    .insert(LINEAGE_GRAPH_WORKSPACE_METADATA_KEY.to_string(), value);
-            }
+        } else if let Ok(value) = serde_json::to_value(&workspace)
+            && state.metadata.get(LINEAGE_GRAPH_WORKSPACE_METADATA_KEY) != Some(&value)
+        {
+            state
+                .metadata
+                .insert(LINEAGE_GRAPH_WORKSPACE_METADATA_KEY.to_string(), value);
         }
 
         if raw.is_empty() {
             state.metadata.remove(LINEAGE_NODE_OFFSETS_METADATA_KEY);
-        } else if let Ok(value) = serde_json::to_value(raw) {
-            if state.metadata.get(LINEAGE_NODE_OFFSETS_METADATA_KEY) != Some(&value) {
-                state
-                    .metadata
-                    .insert(LINEAGE_NODE_OFFSETS_METADATA_KEY.to_string(), value);
-            }
+        } else if let Ok(value) = serde_json::to_value(raw)
+            && state.metadata.get(LINEAGE_NODE_OFFSETS_METADATA_KEY) != Some(&value)
+        {
+            state
+                .metadata
+                .insert(LINEAGE_NODE_OFFSETS_METADATA_KEY.to_string(), value);
         }
         if self.lineage_node_groups.is_empty() {
             state.metadata.remove(LINEAGE_NODE_GROUPS_METADATA_KEY);
-        } else if let Ok(value) = serde_json::to_value(&self.lineage_node_groups) {
-            if state.metadata.get(LINEAGE_NODE_GROUPS_METADATA_KEY) != Some(&value) {
-                state
-                    .metadata
-                    .insert(LINEAGE_NODE_GROUPS_METADATA_KEY.to_string(), value);
-            }
+        } else if let Ok(value) = serde_json::to_value(&self.lineage_node_groups)
+            && state.metadata.get(LINEAGE_NODE_GROUPS_METADATA_KEY) != Some(&value)
+        {
+            state
+                .metadata
+                .insert(LINEAGE_NODE_GROUPS_METADATA_KEY.to_string(), value);
         }
     }
 
@@ -15241,10 +15203,10 @@ Error: `{err}`"
             {
                 self.queue_focus_viewport(ViewportId::ROOT);
             }
-            if let Some((label, hover_text)) = close_button {
-                if ui.button(label).on_hover_text(hover_text).clicked() {
-                    close_requested = true;
-                }
+            if let Some((label, hover_text)) = close_button
+                && ui.button(label).on_hover_text(hover_text).clicked()
+            {
+                close_requested = true;
             }
         });
         ui.separator();
@@ -15264,22 +15226,21 @@ Error: `{err}`"
         let active_window_key = self
             .active_window_menu_key
             .or_else(|| Some(Self::native_menu_key_for_viewport(ViewportId::ROOT)));
-        if self.last_native_window_entries != native_window_entries
-            || self.last_native_active_window_key != active_window_key
+        if (self.last_native_window_entries != native_window_entries
+            || self.last_native_active_window_key != active_window_key)
+            && !self.native_window_menu_sync_blocked_by_open_probe()
         {
-            if !self.native_window_menu_sync_blocked_by_open_probe() {
-                let sync_started = Instant::now();
-                about::sync_native_open_windows_menu(&native_window_entries, active_window_key);
-                let sync_elapsed_ms = sync_started.elapsed().as_millis();
-                if sync_elapsed_ms >= WINDOW_OPEN_SLOW_THRESHOLD_MS {
-                    self.app_status = format!(
-                        "Native windows menu sync took {sync_elapsed_ms} ms (entries={})",
-                        native_window_entries.len()
-                    );
-                }
-                self.last_native_window_entries = native_window_entries;
-                self.last_native_active_window_key = active_window_key;
+            let sync_started = Instant::now();
+            about::sync_native_open_windows_menu(&native_window_entries, active_window_key);
+            let sync_elapsed_ms = sync_started.elapsed().as_millis();
+            if sync_elapsed_ms >= WINDOW_OPEN_SLOW_THRESHOLD_MS {
+                self.app_status = format!(
+                    "Native windows menu sync took {sync_elapsed_ms} ms (entries={})",
+                    native_window_entries.len()
+                );
             }
+            self.last_native_window_entries = native_window_entries;
+            self.last_native_active_window_key = active_window_key;
         }
         let history_summary = self
             .engine
@@ -16534,10 +16495,10 @@ Error: `{err}`"
                             .get_dotplot_view(dotplot_id)
                             .ok()
                             .and_then(|view| view.reference_seq_id);
-                        if let Some(reference_seq_id) = reference_seq_id.as_ref() {
-                            if !reference_seq_id.eq_ignore_ascii_case(seq_id) {
-                                source_seq_ids.push(reference_seq_id.clone());
-                            }
+                        if let Some(reference_seq_id) = reference_seq_id.as_ref()
+                            && !reference_seq_id.eq_ignore_ascii_case(seq_id)
+                        {
+                            source_seq_ids.push(reference_seq_id.clone());
                         }
                         pending_svg_export_rows.push(PendingSvgExportRow {
                             source_seq_ids,
@@ -16617,16 +16578,15 @@ Error: `{err}`"
                                 }
                             }
                         }
-                        if let Some(arrangement_id) = arrangement_id {
-                            if let Some(arrangement) =
+                        if let Some(arrangement_id) = arrangement_id
+                            && let Some(arrangement) =
                                 state.container_state.arrangements.get(arrangement_id)
-                            {
-                                for container_id in &arrangement.lane_container_ids {
-                                    if let Some(container) =
-                                        state.container_state.containers.get(container_id)
-                                    {
-                                        source_seq_ids.extend(container.members.iter().cloned());
-                                    }
+                        {
+                            for container_id in &arrangement.lane_container_ids {
+                                if let Some(container) =
+                                    state.container_state.containers.get(container_id)
+                                {
+                                    source_seq_ids.extend(container.members.iter().cloned());
                                 }
                             }
                         }
@@ -16800,10 +16760,10 @@ Error: `{err}`"
                         match binding.kind.trim().to_ascii_lowercase().as_str() {
                             "sequence" => {
                                 for seq_id in &binding.values {
-                                    if let Some(node_id) = state.lineage.seq_to_node.get(seq_id) {
-                                        if seen.insert(node_id.clone()) {
-                                            node_ids.push(node_id.clone());
-                                        }
+                                    if let Some(node_id) = state.lineage.seq_to_node.get(seq_id)
+                                        && seen.insert(node_id.clone())
+                                    {
+                                        node_ids.push(node_id.clone());
                                     }
                                 }
                             }
@@ -16816,10 +16776,9 @@ Error: `{err}`"
                                     };
                                     for seq_id in &container.members {
                                         if let Some(node_id) = state.lineage.seq_to_node.get(seq_id)
+                                            && seen.insert(node_id.clone())
                                         {
-                                            if seen.insert(node_id.clone()) {
-                                                node_ids.push(node_id.clone());
-                                            }
+                                            node_ids.push(node_id.clone());
                                         }
                                     }
                                 }
@@ -16952,10 +16911,10 @@ Error: `{err}`"
                         .and_then(|(_, _, reference_seq_id)| reference_seq_id.clone())
                 });
                 let mut parents = vec![query_seq_id.clone()];
-                if let Some(reference_seq_id) = reference_seq_id.as_ref() {
-                    if !reference_seq_id.eq_ignore_ascii_case(&query_seq_id) {
-                        parents.push(reference_seq_id.clone());
-                    }
+                if let Some(reference_seq_id) = reference_seq_id.as_ref()
+                    && !reference_seq_id.eq_ignore_ascii_case(&query_seq_id)
+                {
+                    parents.push(reference_seq_id.clone());
                 }
                 out.push(LineageRow {
                     kind: LineageNodeKind::Analysis,
@@ -17000,7 +16959,7 @@ Error: `{err}`"
                 });
                 let mut seen_sources: HashSet<String> = HashSet::new();
                 let source_seq_ids = std::iter::once(query_seq_id)
-                    .chain(reference_seq_id.into_iter())
+                    .chain(reference_seq_id)
                     .collect::<Vec<_>>();
                 for source_seq_id in source_seq_ids {
                     let Some(source_node_id) = state.lineage.seq_to_node.get(&source_seq_id) else {
@@ -17663,10 +17622,10 @@ Error: `{err}`"
                         .and_then(|(_, _, baseline_seq_id)| baseline_seq_id.clone())
                 });
                 let mut parents = vec![expected_seq_id.clone()];
-                if let Some(baseline_seq_id) = baseline_seq_id.as_ref() {
-                    if !baseline_seq_id.eq_ignore_ascii_case(&expected_seq_id) {
-                        parents.push(baseline_seq_id.clone());
-                    }
+                if let Some(baseline_seq_id) = baseline_seq_id.as_ref()
+                    && !baseline_seq_id.eq_ignore_ascii_case(&expected_seq_id)
+                {
+                    parents.push(baseline_seq_id.clone());
                 }
                 out.push(LineageRow {
                     kind: LineageNodeKind::Analysis,
@@ -17711,7 +17670,7 @@ Error: `{err}`"
                 });
                 let mut seen_sources: HashSet<String> = HashSet::new();
                 for source_seq_id in std::iter::once(expected_seq_id)
-                    .chain(baseline_seq_id.into_iter())
+                    .chain(baseline_seq_id)
                     .collect::<Vec<_>>()
                 {
                     let Some(source_node_id) = state.lineage.seq_to_node.get(&source_seq_id) else {
@@ -17955,12 +17914,12 @@ Error: `{err}`"
             topo_order.push(node_id.clone());
             if let Some(children) = children_by_node.get(&node_id) {
                 for child_id in children {
-                    if let Some(indegree) = indegree_by_node.get_mut(child_id) {
-                        if *indegree > 0 {
-                            *indegree -= 1;
-                            if *indegree == 0 {
-                                ready.push(child_id.clone());
-                            }
+                    if let Some(indegree) = indegree_by_node.get_mut(child_id)
+                        && *indegree > 0
+                    {
+                        *indegree -= 1;
+                        if *indegree == 0 {
+                            ready.push(child_id.clone());
                         }
                     }
                 }
@@ -18589,10 +18548,11 @@ Error: `{err}`"
                 let group = node_to_group_id
                     .get(&row.node_id)
                     .and_then(|group_id| group_by_id.get(group_id));
-                if let Some(group) = group {
-                    if group.collapsed && row.node_id != group.representative_node_id {
-                        return None;
-                    }
+                if let Some(group) = group
+                    && group.collapsed
+                    && row.node_id != group.representative_node_id
+                {
+                    return None;
                 }
                 Some(row.clone())
             })
@@ -18602,10 +18562,10 @@ Error: `{err}`"
             let group = node_to_group_id
                 .get(node_id)
                 .and_then(|group_id| group_by_id.get(group_id));
-            if let Some(group) = group {
-                if group.collapsed {
-                    return group.representative_node_id.clone();
-                }
+            if let Some(group) = group
+                && group.collapsed
+            {
+                return group.representative_node_id.clone();
             }
             node_id.to_string()
         };
@@ -20022,15 +19982,10 @@ Error: `{err}`"
         self.configuration_window_backdrops_dirty = true;
     }
 
-    fn window_backdrop_row_mut<'a>(
-        settings: &'a mut WindowBackdropSettings,
+    fn window_backdrop_row_mut(
+        settings: &mut WindowBackdropSettings,
         row_index: usize,
-    ) -> (
-        WindowBackdropKind,
-        &'static str,
-        &'a mut [u8; 3],
-        &'a mut String,
-    ) {
+    ) -> (WindowBackdropKind, &'static str, &mut [u8; 3], &mut String) {
         match row_index {
             0 => (
                 WindowBackdropKind::Main,
@@ -20179,8 +20134,7 @@ Error: `{err}`"
                             .small_button(crate::i18n::tr("button.browse"))
                             .on_hover_text("Pick an image file for this window backdrop")
                             .clicked()
-                        {
-                            if let Some(path) = rfd::FileDialog::new()
+                            && let Some(path) = rfd::FileDialog::new()
                                 .add_filter("Images", &["png", "jpg", "jpeg", "gif", "bmp", "webp"])
                                 .pick_file()
                             {
@@ -20188,7 +20142,6 @@ Error: `{err}`"
                                 *changed = true;
                                 path_status_cache.clear();
                             }
-                        }
                         if ui
                             .add_enabled(
                                 !value.trim().is_empty(),
@@ -21109,21 +21062,18 @@ Error: `{err}`"
                     .button("Save")
                     .on_hover_text("Save current project, then continue")
                     .clicked()
+                    && self.save_current_project()
+                    && let Some(action) = self.pending_project_action.take()
                 {
-                    if self.save_current_project() {
-                        if let Some(action) = self.pending_project_action.take() {
-                            self.execute_project_action(action);
-                        }
-                    }
+                    self.execute_project_action(action);
                 }
                 if ui
                     .button("Don't Save")
                     .on_hover_text("Continue without saving current project changes")
                     .clicked()
+                    && let Some(action) = self.pending_project_action.take()
                 {
-                    if let Some(action) = self.pending_project_action.take() {
-                        self.execute_project_action(action);
-                    }
+                    self.execute_project_action(action);
                 }
                 if ui
                     .button("Cancel")
@@ -21205,11 +21155,9 @@ Error: `{err}`"
                     search_response.request_focus();
                     self.command_palette_focus_query = false;
                 }
-                if ui.input(|i| i.key_pressed(Key::ArrowDown)) {
-                    if !entries.is_empty() {
-                        self.command_palette_selected =
-                            (self.command_palette_selected + 1) % entries.len();
-                    }
+                if ui.input(|i| i.key_pressed(Key::ArrowDown)) && !entries.is_empty() {
+                    self.command_palette_selected =
+                        (self.command_palette_selected + 1) % entries.len();
                 }
                 if ui.input(|i| i.key_pressed(Key::ArrowUp)) && !entries.is_empty() {
                     if self.command_palette_selected == 0 {
@@ -21290,11 +21238,9 @@ Error: `{err}`"
                     search_response.request_focus();
                     self.command_palette_focus_query = false;
                 }
-                if ui.input(|i| i.key_pressed(Key::ArrowDown)) {
-                    if !entries.is_empty() {
-                        self.command_palette_selected =
-                            (self.command_palette_selected + 1) % entries.len();
-                    }
+                if ui.input(|i| i.key_pressed(Key::ArrowDown)) && !entries.is_empty() {
+                    self.command_palette_selected =
+                        (self.command_palette_selected + 1) % entries.len();
                 }
                 if ui.input(|i| i.key_pressed(Key::ArrowUp)) && !entries.is_empty() {
                     if self.command_palette_selected == 0 {

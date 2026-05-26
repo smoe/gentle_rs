@@ -11,9 +11,10 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub(crate) enum UiLanguage {
     #[serde(rename = "system")]
+    #[default]
     System,
     #[serde(rename = "en-GB")]
     EnGb,
@@ -31,12 +32,6 @@ pub(crate) enum UiLanguage {
     JaJp,
     #[serde(rename = "la")]
     La,
-}
-
-impl Default for UiLanguage {
-    fn default() -> Self {
-        Self::System
-    }
 }
 
 impl UiLanguage {
@@ -101,17 +96,9 @@ impl UiLanguage {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub(crate) struct I18n {
     language: UiLanguage,
-}
-
-impl Default for I18n {
-    fn default() -> Self {
-        Self {
-            language: UiLanguage::default(),
-        }
-    }
 }
 
 impl I18n {

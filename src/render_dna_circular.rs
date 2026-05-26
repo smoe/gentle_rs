@@ -477,21 +477,21 @@ impl RenderDnaCircular {
             .features()
             .get(fp.feature_number)
             .cloned();
-        if let Some(feature) = feature {
-            if let Ok((from, to)) = feature.location.find_bounds() {
-                let text = format!("{}: {}-{}", &fp.label, from, to);
-                let font = FontId {
-                    size: 12.0,
-                    family: FontFamily::Monospace,
-                };
-                painter.text(
-                    self.area.left_bottom(),
-                    Align2::LEFT_BOTTOM,
-                    text,
-                    font.to_owned(),
-                    Color32::DARK_GRAY,
-                );
-            }
+        if let Some(feature) = feature
+            && let Ok((from, to)) = feature.location.find_bounds()
+        {
+            let text = format!("{}: {}-{}", &fp.label, from, to);
+            let font = FontId {
+                size: 12.0,
+                family: FontFamily::Monospace,
+            };
+            painter.text(
+                self.area.left_bottom(),
+                Align2::LEFT_BOTTOM,
+                text,
+                font.to_owned(),
+                Color32::DARK_GRAY,
+            );
         }
     }
 
@@ -1641,10 +1641,10 @@ impl RenderDnaCircular {
             } else {
                 Align2::LEFT_CENTER
             };
-            if let Some(he) = &self.hover_enzyme {
-                if he.key == restriction_enzyme_key {
-                    painter.rect_filled(he.area, 0.0, Color32::LIGHT_YELLOW);
-                }
+            if let Some(he) = &self.hover_enzyme
+                && he.key == restriction_enzyme_key
+            {
+                painter.rect_filled(he.area, 0.0, Color32::LIGHT_YELLOW);
             }
             if selected_here {
                 painter.line_segment([p1, p2], Stroke::new(2.0, Color32::BLACK));

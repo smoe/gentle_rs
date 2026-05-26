@@ -524,7 +524,7 @@ impl GentleEngine {
             .get(sequence.len().saturating_sub(3)..sequence.len())
             .map(|stop| matches!(stop, b"TAA" | b"TAG" | b"TGA"))
             .unwrap_or(false);
-        let multiple_of_three = sequence.len() % 3 == 0;
+        let multiple_of_three = sequence.len().is_multiple_of(3);
         let checksum = format!("{:x}", Sha1::digest(record.sequence.as_bytes()));
         let mut forbidden_motif_hits = Vec::new();
         for motif in forbidden_motifs {
@@ -647,23 +647,22 @@ impl GentleEngine {
         {
             reasons.push(format!("class_not_allowed({})", record.reporter_class));
         }
-        if let Some(max_len) = constraints.max_coding_length_bp {
-            if entry.annotation.length_bp > max_len {
-                reasons.push(format!(
-                    "sequence_too_long({}>{})",
-                    entry.annotation.length_bp, max_len
-                ));
-            }
+        if let Some(max_len) = constraints.max_coding_length_bp
+            && entry.annotation.length_bp > max_len
+        {
+            reasons.push(format!(
+                "sequence_too_long({}>{})",
+                entry.annotation.length_bp, max_len
+            ));
         }
-        if let Some(color) = constraints.desired_color.as_deref() {
-            if !record
+        if let Some(color) = constraints.desired_color.as_deref()
+            && !record
                 .colors
                 .iter()
                 .any(|candidate| Self::normalize_reporter_token(candidate) == color)
-                && Self::normalize_reporter_token(&record.spectral.color) != color
-            {
-                reasons.push(format!("color_mismatch({})", record.colors.join(",")));
-            }
+            && Self::normalize_reporter_token(&record.spectral.color) != color
+        {
+            reasons.push(format!("color_mismatch({})", record.colors.join(",")));
         }
         if constraints.substrate_allowed == Some(false) && record.substrate_required {
             reasons.push("substrate_required_but_not_allowed".to_string());
@@ -1014,25 +1013,25 @@ impl GentleEngine {
             note: "Creates the alternate-allele promoter insert for the macro template."
                 .to_string(),
         });
-        if backbone.status == ReporterBackboneResolutionStatus::RequiresManualLoad {
-            if let Some(load_path) = backbone.load_path.as_deref() {
-                commands.push(ReporterConstructHandoffCommand {
-                    label: "Load reporter backbone".to_string(),
-                    command_kind: "op".to_string(),
-                    command: format!(
-                        "op {}",
-                        serde_json::json!({
-                            "LoadFile": {
-                                "path": load_path,
-                                "as_id": backbone.seq_id,
-                            }
-                        })
-                    ),
-                    mutating: true,
-                    note: "Loads the promoterless luciferase reporter backbone into project state."
-                        .to_string(),
-                });
-            }
+        if backbone.status == ReporterBackboneResolutionStatus::RequiresManualLoad
+            && let Some(load_path) = backbone.load_path.as_deref()
+        {
+            commands.push(ReporterConstructHandoffCommand {
+                label: "Load reporter backbone".to_string(),
+                command_kind: "op".to_string(),
+                command: format!(
+                    "op {}",
+                    serde_json::json!({
+                        "LoadFile": {
+                            "path": load_path,
+                            "as_id": backbone.seq_id,
+                        }
+                    })
+                ),
+                mutating: true,
+                note: "Loads the promoterless luciferase reporter backbone into project state."
+                    .to_string(),
+            });
         }
         commands.push(ReporterConstructHandoffCommand {
             label: "Import reporter macro templates".to_string(),

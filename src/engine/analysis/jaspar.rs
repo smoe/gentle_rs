@@ -566,10 +566,10 @@ impl GentleEngine {
                     consensus_iupac: motif_definition.consensus_iupac,
                     motif_length_bp: motif_definition.matrix_counts.len(),
                 });
-                if let Some(limit) = limit {
-                    if rows.len() >= limit {
-                        break;
-                    }
+                if let Some(limit) = limit
+                    && rows.len() >= limit
+                {
+                    break;
                 }
             }
             return Ok((registry_entry_count, requested_motifs, rows));

@@ -546,9 +546,9 @@ pub fn suggest_gibson_destination_openings(
     Ok(suggestions)
 }
 
-fn unique_forward_sites<'a>(
-    dna: &'a crate::dna_sequence::DNAsequence,
-) -> HashMap<String, &'a RestrictionEnzymeSite> {
+fn unique_forward_sites(
+    dna: &crate::dna_sequence::DNAsequence,
+) -> HashMap<String, &RestrictionEnzymeSite> {
     let mut counts: HashMap<String, usize> = HashMap::new();
     let mut first_sites: HashMap<String, &RestrictionEnzymeSite> = HashMap::new();
     for site in dna
@@ -788,10 +788,10 @@ fn extract_rebase_enzyme_names_from_text(
     let mut out = vec![];
     let mut seen = HashSet::new();
     let mut push_candidate = |candidate: String| {
-        if let Some(name) = canonicalize_rebase_enzyme_name(&candidate, lookup) {
-            if seen.insert(name.clone()) {
-                out.push(name);
-            }
+        if let Some(name) = canonicalize_rebase_enzyme_name(&candidate, lookup)
+            && seen.insert(name.clone())
+        {
+            out.push(name);
         }
     };
     for idx in 0..tokens.len() {
@@ -826,7 +826,7 @@ fn feature_first_nonempty_qualifier(
     keys: &[&str],
 ) -> Option<String> {
     for key in keys {
-        for value in feature.qualifier_values(*key) {
+        for value in feature.qualifier_values(key) {
             let normalized = value.split_whitespace().collect::<Vec<_>>().join(" ");
             let normalized = normalized.trim().to_string();
             if !normalized.is_empty() {
@@ -845,18 +845,18 @@ fn suggestion_feature_context(
     seq_len: usize,
 ) -> String {
     let mut parts = vec![];
-    if in_mcs_context {
-        if let Some(hint) = mcs_hints.iter().find(|hint| {
+    if in_mcs_context
+        && let Some(hint) = mcs_hints.iter().find(|hint| {
             hint.candidate_enzymes
                 .iter()
                 .any(|name| name == &site.enzyme.name)
-        }) {
-            parts.push(format!(
-                "MCS {}..{}",
-                hint.start_0based + 1,
-                hint.end_0based_exclusive
-            ));
-        }
+        })
+    {
+        parts.push(format!(
+            "MCS {}..{}",
+            hint.start_0based + 1,
+            hint.end_0based_exclusive
+        ));
     }
 
     let mut overlapping_genes = vec![];
@@ -1889,13 +1889,13 @@ fn join_projected_feature_fragments(
     right: Location,
     is_reverse_feature: bool,
 ) -> Location {
-    if is_reverse_feature {
-        if let (Some(left_inner), Some(right_inner)) = (
+    if is_reverse_feature
+        && let (Some(left_inner), Some(right_inner)) = (
             unwrap_single_complement(left.clone()),
             unwrap_single_complement(right.clone()),
-        ) {
-            return Location::Complement(Box::new(Location::Join(vec![right_inner, left_inner])));
-        }
+        )
+    {
+        return Location::Complement(Box::new(Location::Join(vec![right_inner, left_inner])));
     }
     Location::Join(vec![left, right])
 }
@@ -2318,22 +2318,20 @@ fn preview_multi_insert_gibson_assembly_plan(
 
     if let (Some(left_overlap), Some(right_overlap)) =
         (resolved_overlaps.first(), resolved_overlaps.last())
+        && plan.validation_policy.require_distinct_terminal_junctions
     {
-        if plan.validation_policy.require_distinct_terminal_junctions {
-            let right_overlap_rc =
-                GentleEngine::reverse_complement(&right_overlap.overlap_sequence);
-            if left_overlap
+        let right_overlap_rc = GentleEngine::reverse_complement(&right_overlap.overlap_sequence);
+        if left_overlap
+            .overlap_sequence
+            .eq_ignore_ascii_case(&right_overlap.overlap_sequence)
+            || left_overlap
                 .overlap_sequence
-                .eq_ignore_ascii_case(&right_overlap.overlap_sequence)
-                || left_overlap
-                    .overlap_sequence
-                    .eq_ignore_ascii_case(&right_overlap_rc)
-            {
-                preview.errors.push(format!(
+                .eq_ignore_ascii_case(&right_overlap_rc)
+        {
+            preview.errors.push(format!(
                     "Terminal overlap regions are not distinct enough for a destination-first Gibson plan (left='{}', right='{}')",
                     left_overlap.overlap_sequence, right_overlap.overlap_sequence
                 ));
-            }
         }
     }
 
@@ -3949,9 +3947,7 @@ fn build_cartoon_bindings(
             ProtocolCartoonTemplateEventBinding {
                 event_id: "anneal".to_string(),
                 title: Some("Anneal".to_string()),
-                caption: Some(format!(
-                    "Both junctions anneal simultaneously: the left homology pairs on one side of the insert and the right homology pairs on the other, while short single-stranded gaps remain to be filled."
-                )),
+                caption: Some("Both junctions anneal simultaneously: the left homology pairs on one side of the insert and the right homology pairs on the other, while short single-stranded gaps remain to be filled.".to_string()),
                 action: None,
             },
             ProtocolCartoonTemplateEventBinding {

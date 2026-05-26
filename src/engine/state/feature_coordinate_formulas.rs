@@ -30,7 +30,7 @@ fn feature_formula_label_values(feature: &gb_io::seq::Feature) -> Vec<String> {
         "standard_name",
         "note",
     ] {
-        for value in feature.qualifier_values(key.into()) {
+        for value in feature.qualifier_values(key) {
             let value = value.trim();
             if !value.is_empty() {
                 labels.push(value.to_string());
@@ -241,7 +241,7 @@ fn parse_feature_formula_coordinate_expression_on_sequence(
         offset += sign * delta;
     }
 
-    if dna.len() == 0 {
+    if dna.is_empty() {
         return Err(format!("Invalid {field_name}: active sequence is empty"));
     }
 
