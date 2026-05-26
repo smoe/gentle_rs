@@ -1803,11 +1803,8 @@ mod tests {
         });
         egui::CentralPanel::default().show(&ctx, |ui| {
             let rect = egui::Rect::from_min_size(ui.min_rect().min, egui::Vec2::ZERO);
-            let mut child = ui.new_child(
-                egui::UiBuilder::new()
-                    .max_rect(rect)
-                    .layout(*ui.layout()),
-            );
+            let mut child =
+                ui.new_child(egui::UiBuilder::new().max_rect(rect).layout(*ui.layout()));
             let response = make_render_dna().ui(&mut child);
 
             assert!(response.rect.width() <= 1.0);

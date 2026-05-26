@@ -11039,43 +11039,39 @@ fn refresh_blast_async_job_record(record: &mut BlastAsyncJobRecord) {
         refresh_blast_async_orphaned_non_terminal_record(record);
         return;
     };
-    loop {
-        match receiver.try_recv() {
-            Ok(BlastAsyncWorkerMessage::Done(result)) => {
-                record.status.done_queries = 1;
-                record.status.total_queries = 1;
-                record.status.finished_at_unix_ms = Some(shell_now_unix_ms());
-                match result {
-                    Ok(report) => {
-                        record.status.state = "completed".to_string();
-                        record.status.error = None;
-                        record.status.result_available = true;
-                        record.report = Some(report);
-                    }
-                    Err(err) => {
-                        record.status.state = if record.cancel_requested.load(Ordering::Relaxed) {
-                            "cancelled".to_string()
-                        } else {
-                            "failed".to_string()
-                        };
-                        record.status.error = Some(err);
-                        record.status.result_available = false;
-                        record.report = None;
-                    }
+    match receiver.try_recv() {
+        Ok(BlastAsyncWorkerMessage::Done(result)) => {
+            record.status.done_queries = 1;
+            record.status.total_queries = 1;
+            record.status.finished_at_unix_ms = Some(shell_now_unix_ms());
+            match result {
+                Ok(report) => {
+                    record.status.state = "completed".to_string();
+                    record.status.error = None;
+                    record.status.result_available = true;
+                    record.report = Some(report);
                 }
-                record.receiver = None;
-                break;
+                Err(err) => {
+                    record.status.state = if record.cancel_requested.load(Ordering::Relaxed) {
+                        "cancelled".to_string()
+                    } else {
+                        "failed".to_string()
+                    };
+                    record.status.error = Some(err);
+                    record.status.result_available = false;
+                    record.report = None;
+                }
             }
-            Err(mpsc::TryRecvError::Empty) => break,
-            Err(mpsc::TryRecvError::Disconnected) => {
-                record.status.state = "failed".to_string();
-                record.status.finished_at_unix_ms = Some(shell_now_unix_ms());
-                record.status.error = Some("BLAST async worker disconnected".to_string());
-                record.status.result_available = false;
-                record.report = None;
-                record.receiver = None;
-                break;
-            }
+            record.receiver = None;
+        }
+        Err(mpsc::TryRecvError::Empty) => {}
+        Err(mpsc::TryRecvError::Disconnected) => {
+            record.status.state = "failed".to_string();
+            record.status.finished_at_unix_ms = Some(shell_now_unix_ms());
+            record.status.error = Some("BLAST async worker disconnected".to_string());
+            record.status.result_available = false;
+            record.report = None;
+            record.receiver = None;
         }
     }
 }

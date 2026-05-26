@@ -1366,7 +1366,7 @@ mod tests {
 
     #[test]
     #[cfg(feature = "snapshot-tests")]
-    #[ignore]
+    #[ignore = "regenerates pool-gel SVG snapshot; run manually"]
     fn write_pool_gel_snapshot() {
         let members = vec![
             GelSampleMember {

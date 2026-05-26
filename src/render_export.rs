@@ -3622,7 +3622,7 @@ mod tests {
 
     #[test]
     #[cfg(feature = "snapshot-tests")]
-    #[ignore]
+    #[ignore = "regenerates SVG snapshot fixtures; run manually"]
     fn write_snapshots() {
         let mut dna_linear = DNAsequence::from_sequence(&"ATGC".repeat(80)).unwrap();
         dna_linear.update_computed_features();
