@@ -46,6 +46,21 @@ Session-local operation history:
 - Undo/redo history is intentionally session-local and is not persisted into
   `.gentle.json` project files.
 
+microRNA target-site scan:
+
+- `gentle_cli mirna explain-seed hsa-miR-96-5p`
+  - resolves the mature sequence from the built-in seed catalog and reports
+    canonical target motifs such as `8mer`, `7mer-m8`, `7mer-A1`, and `6mer`.
+- `gentle_cli mirna catalog-show hsa-miR-96-5p`
+  - shows the catalog-backed identifiers (`MIMAT0000095`, NCBI Gene `407053`)
+    and source notes.
+- `gentle_cli --state PROJECT.json mirna scan-target hsa-miR-96-5p TP73 --regions 3utr,exon,intron,boundary --seed-classes 8mer,7mer-m8,7mer-A1,6mer --boundary-flank-bp 25 --format json`
+  - scans annotated transcript partitions in the loaded TP73 sequence/project,
+    returning `gentle.mirna_target_scan.v1` JSON.
+  - reports exact seed candidates as sequence evidence only; orthologous rat
+    Tp73 PMID 37099528 context is tagged separately from direct human
+    validation.
+
 Structured workflow examples:
 
 - canonical source files: `docs/examples/workflows/*.json`

@@ -2312,6 +2312,32 @@ Microarray track projection notes:
   `genomic_*` and `chromosome/start_1based/end_1based` record the displayed
   anchor-build interval.
 
+microRNA target-site scan notes:
+
+- `gentle.mirna_target_scan.v1` reports exact canonical microRNA seed-site
+  candidates over annotated transcript partitions. It is sequence evidence,
+  not automatic biological validation.
+- The shared shell commands are:
+  - `mirna explain-seed MIRNA [--mature-sequence SEQ] [--format json]`
+  - `mirna catalog-show MIRNA`
+  - `mirna scan-target MIRNA TARGET [--mature-sequence SEQ] [--transcript-filter TEXT] [--regions CSV] [--seed-classes CSV] [--boundary-flank-bp N] [--species-note TEXT] [--evidence-note TEXT] [--format json]`
+- Built-in v1 catalog coverage includes `hsa-miR-96-5p` / `MIMAT0000095` /
+  NCBI Gene `407053`. Direct mature sequence input is also accepted.
+- Canonical target motifs are derived from the mature sequence:
+  `8mer`, `7mer-m8`, `7mer-A1`, and `6mer`. For `hsa-miR-96-5p`, the table
+  includes `GTGCCAAA`, `GTGCCAA`, `TGCCAAA`, and `TGCCAA`.
+- Region aliases expand deterministically:
+  `3utr`, `exon`, `intron`, and `boundary` become 3-prime UTR,
+  coding/noncoding exons, introns, and both splice-boundary directions.
+- Reports include grouped hits with transcript id, parent feature, sequence
+  local 0-based half-open coordinates, 1-based display coordinates, strand,
+  matched sequence, +/-20 bp region context, `evidence_tags`, notes, and
+  summary counts for every requested region/seed-class pair.
+- The `orthologous_experimental_context` tag can record rat Tp73 PMID 37099528
+  context for the hsa-miR-96-5p / TP73 example. GENtle does not emit
+  `directly_validated_human_site` unless direct human validation is supplied by
+  a future evidence source.
+
 Catalog-backed reference/helper discovery notes:
 
 - shared shell/CLI discovery commands `genomes list` and `helpers list` accept

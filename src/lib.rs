@@ -86,6 +86,8 @@ pub mod main_area_dna;
 pub mod mcp_server;
 /// Methylation-site detection and state helpers.
 pub mod methylation_sites;
+/// microRNA seed-site scanning reports over annotated sequence records.
+pub mod mirna;
 /// NCBI sequence XML (`GBSet/GBSeq`, `INSDSet/INSDSeq`) parsing helpers.
 pub mod ncbi_genbank_xml;
 /// Open-reading-frame detection logic.

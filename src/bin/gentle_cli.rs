@@ -526,6 +526,7 @@ const SHELL_FORWARDED_COMMANDS: &[&str] = &[
     "racks",
     "guides",
     "features",
+    "mirna",
     "primers",
     "dotplot",
     "transcripts",
@@ -2194,6 +2195,39 @@ mod tests {
             Some(ShellCommand::UniprotFetch { query, entry_id }) => {
                 assert_eq!(query, "P04637");
                 assert_eq!(entry_id.as_deref(), Some("tp53_human"));
+            }
+            other => panic!("unexpected parsed shell command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_forwarded_shell_command_routes_mirna_scan_target() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "mirna".to_string(),
+            "scan-target".to_string(),
+            "hsa-miR-96-5p".to_string(),
+            "TP73".to_string(),
+            "--regions".to_string(),
+            "3utr,exon,intron,boundary".to_string(),
+            "--seed-classes".to_string(),
+            "8mer,7mer-m8,7mer-A1,6mer".to_string(),
+            "--format".to_string(),
+            "json".to_string(),
+        ];
+        let parsed = parse_forwarded_shell_command(&args, 1).expect("parse forwarded");
+        match parsed.expect("mirna should be shell-forwarded") {
+            ShellCommand::MirnaScanTarget {
+                mirna,
+                target,
+                regions,
+                seed_classes,
+                ..
+            } => {
+                assert_eq!(mirna, "hsa-miR-96-5p");
+                assert_eq!(target, "TP73");
+                assert!(regions.len() >= 6);
+                assert_eq!(seed_classes.len(), 4);
             }
             other => panic!("unexpected parsed shell command: {other:?}"),
         }

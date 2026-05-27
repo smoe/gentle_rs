@@ -2950,6 +2950,18 @@ The `Help` menu now includes:
 - Array feature context menus include copying the array value table and
   focusing matching probesets across all contrast lanes.
 
+## microRNA Target Scan
+
+- The shared Shell panel exposes `mirna explain-seed`, `mirna catalog-show`,
+  and `mirna scan-target` for deterministic candidate seed-site inspection.
+- `mirna scan-target` returns `gentle.mirna_target_scan.v1` JSON grouped by
+  region class, transcript id, and seed class. Results are sequence evidence:
+  the report warns when a match is prediction-only and keeps orthologous context
+  such as rat Tp73 PMID 37099528 separate from direct human validation.
+- A future feature-inspection panel should wrap the same shared command with a
+  query box, region/seed-class toggles, grouped results, and optional overlay
+  track colors for 3-prime UTR, exon, intron, and boundary hits.
+
 Help content loading behavior:
 
 - opening Help reuses already-loaded markdown/glossary payloads for faster
