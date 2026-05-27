@@ -675,7 +675,7 @@ impl GENtleApp {
             .id_salt("lineage_main_scroll")
             .auto_shrink([false, false])
             .scroll_source(egui::containers::scroll_area::ScrollSource {
-                drag: egui::containers::scroll_area::DragScroll::Never,
+                drag: false,
                 ..Default::default()
             })
             .show(ui, |ui| {
@@ -1023,7 +1023,7 @@ impl GENtleApp {
                         .auto_shrink([false, false])
                         .scroll_offset(graph_scroll_offset)
                         .scroll_source(egui::containers::scroll_area::ScrollSource {
-                            drag: egui::containers::scroll_area::DragScroll::Never,
+                            drag: false,
                             ..Default::default()
                         })
                         .max_height(ui.available_height())

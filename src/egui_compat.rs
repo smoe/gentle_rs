@@ -10,11 +10,20 @@ use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::ptr::NonNull;
 
+#[derive(Clone, Debug)]
+struct HostedWindowStatus {
+    message: String,
+    until_frame: u64,
+}
+
 thread_local! {
     static CURRENT_ROOT_UI: Cell<Option<NonNull<egui::Ui>>> = const { Cell::new(None) };
     static HOSTED_WINDOW_STALE_REPAINT_REQUESTS: RefCell<HashSet<egui::Id>> = RefCell::new(HashSet::new());
     static HOSTED_WINDOW_FRAME_DRAG_IDS: RefCell<HashMap<egui::Id, egui::Id>> = RefCell::new(HashMap::new());
     static HOSTED_WINDOW_LAYERS: RefCell<HashMap<egui::LayerId, egui::Id>> = RefCell::new(HashMap::new());
+    static HOSTED_WINDOW_TITLES: RefCell<HashMap<egui::Id, String>> = RefCell::new(HashMap::new());
+    static HOSTED_WINDOW_FORCED_POSITIONS: RefCell<HashMap<egui::Id, egui::Pos2>> = RefCell::new(HashMap::new());
+    static HOSTED_WINDOW_STATUS: RefCell<Option<HostedWindowStatus>> = const { RefCell::new(None) };
     static HOSTED_WINDOW_FRAME_DRAG_OWNER: Cell<Option<egui::Id>> = const { Cell::new(None) };
 }
 
@@ -253,6 +262,20 @@ pub(crate) fn hosted_window_title_layer_visible(ctx: &egui::Context, title: &str
     ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer))
 }
 
+pub(crate) fn hosted_window_status_message(ctx: &egui::Context) -> Option<String> {
+    let frame = ctx.cumulative_frame_nr();
+    HOSTED_WINDOW_STATUS.with(|status| {
+        let mut status = status.borrow_mut();
+        if let Some(current) = status.as_ref() {
+            if current.until_frame >= frame {
+                return Some(current.message.clone());
+            }
+        }
+        *status = None;
+        None
+    })
+}
+
 #[cfg(test)]
 pub(crate) fn show_legacy_layer_for_tests(
     ctx: &egui::Context,
@@ -353,8 +376,11 @@ pub(crate) fn show_hosted_window<R>(
     let frame_drag_owner = hosted_window_frame_drag_owner(ctx);
     let blocked_by_other_hosted_window_drag =
         frame_drag_owner.is_some_and(|owner| owner != spec.stable_id);
-    let use_area_drag_for_title_move = hosted_window_title_area_drag_active(ctx, spec);
+    update_hosted_window_interaction_status(ctx, spec, frame_drag_owner);
     let constrain_rect = hosted_window_safe_rect(ctx);
+    if hosted_window_title_area_drag_active(ctx, spec) {
+        apply_hosted_window_title_drag_delta(ctx, spec, constrain_rect);
+    }
     let max_size = hosted_window_max_inner_size(constrain_rect, spec.min_size, spec.drag_margin);
     let stale_extra_visible = spec
         .legacy_layer_ids
@@ -366,6 +392,11 @@ pub(crate) fn show_hosted_window<R>(
         if should_request_hosted_window_stale_repaint(spec) {
             ctx.request_repaint();
         }
+        set_hosted_window_status(
+            ctx,
+            format!("Window: cleaning stale hosted layer for '{}'", spec.title),
+            4,
+        );
     }
     let default_size = egui::vec2(
         spec.default_size.x.clamp(spec.min_size.x, max_size.x),
@@ -373,6 +404,7 @@ pub(crate) fn show_hosted_window<R>(
     );
     let default_pos =
         clamp_hosted_window_default_pos(spec.initial_pos, constrain_rect, default_size);
+    let forced_pos = hosted_window_forced_pos(ctx, spec, constrain_rect, default_size);
     let mut window = egui::Window::new(spec.title.clone())
         .id(spec.stable_id)
         .open(open)
@@ -382,9 +414,10 @@ pub(crate) fn show_hosted_window<R>(
         .default_size(default_size)
         .min_size(spec.min_size)
         .max_size(max_size)
-        .constrain_to(constrain_rect);
-    if use_area_drag_for_title_move {
-        window = window.drag_area(egui::WindowDrag::Anywhere);
+        .constrain_to(constrain_rect)
+        .movable(false);
+    if let Some(pos) = forced_pos {
+        window = window.fixed_pos(pos);
     }
     if blocked_by_other_hosted_window_drag {
         window = window.interactable(false);
@@ -411,6 +444,11 @@ fn should_request_hosted_window_stale_repaint(spec: &HostedWindowSpec) -> bool {
 }
 
 fn register_hosted_window_frame_drag_ids(spec: &HostedWindowSpec) {
+    HOSTED_WINDOW_TITLES.with(|registry| {
+        registry
+            .borrow_mut()
+            .insert(spec.stable_id, spec.title.to_string());
+    });
     HOSTED_WINDOW_FRAME_DRAG_IDS.with(|registry| {
         let mut registry = registry.borrow_mut();
         for id in hosted_window_frame_drag_ids(spec) {
@@ -425,12 +463,49 @@ fn register_hosted_window_frame_drag_ids(spec: &HostedWindowSpec) {
     });
 }
 
+fn update_hosted_window_interaction_status(
+    ctx: &egui::Context,
+    spec: &HostedWindowSpec,
+    frame_drag_owner: Option<egui::Id>,
+) {
+    if let Some(owner) = frame_drag_owner {
+        let title = hosted_window_title(owner).unwrap_or_else(|| spec.title.to_string());
+        set_hosted_window_status(
+            ctx,
+            format!("Window: adjusting '{title}' (other hosted windows locked)"),
+            6,
+        );
+    } else if spec.foreground {
+        set_hosted_window_status(ctx, format!("Window: focusing '{}'", spec.title), 3);
+    }
+}
+
+fn hosted_window_title(id: egui::Id) -> Option<String> {
+    HOSTED_WINDOW_TITLES.with(|registry| registry.borrow().get(&id).cloned())
+}
+
+fn set_hosted_window_status(ctx: &egui::Context, message: String, grace_frames: u64) {
+    let until_frame = ctx.cumulative_frame_nr().saturating_add(grace_frames);
+    HOSTED_WINDOW_STATUS.with(|status| {
+        *status.borrow_mut() = Some(HostedWindowStatus {
+            message,
+            until_frame,
+        });
+    });
+    ctx.request_repaint();
+}
+
 fn hosted_window_frame_drag_owner(ctx: &egui::Context) -> Option<egui::Id> {
     if !ctx.input(|input| input.pointer.primary_down()) {
         HOSTED_WINDOW_FRAME_DRAG_OWNER.set(None);
         return None;
     }
     if let Some(owner) = HOSTED_WINDOW_FRAME_DRAG_OWNER.with(Cell::get) {
+        return Some(owner);
+    }
+    let owner = hosted_window_press_origin_owner(ctx);
+    if let Some(owner) = owner {
+        HOSTED_WINDOW_FRAME_DRAG_OWNER.set(Some(owner));
         return Some(owner);
     }
     if let Some(dragged_id) = ctx.dragged_id() {
@@ -441,11 +516,7 @@ fn hosted_window_frame_drag_owner(ctx: &egui::Context) -> Option<egui::Id> {
             return Some(owner);
         }
     }
-    let owner = hosted_window_press_origin_owner(ctx);
-    if let Some(owner) = owner {
-        HOSTED_WINDOW_FRAME_DRAG_OWNER.set(Some(owner));
-    }
-    owner
+    None
 }
 
 fn hosted_window_press_origin_owner(ctx: &egui::Context) -> Option<egui::Id> {
@@ -474,12 +545,15 @@ fn hosted_window_press_origin_owner(ctx: &egui::Context) -> Option<egui::Id> {
 }
 
 fn hosted_window_capture_rect(ctx: &egui::Context, rect: egui::Rect) -> egui::Rect {
-    let grab_radius = ctx.global_style().interaction.resize_grab_radius_side;
+    let interaction = &ctx.global_style().interaction;
+    let grab_radius = interaction
+        .resize_grab_radius_side
+        .max(interaction.resize_grab_radius_corner);
     rect.expand(grab_radius.max(0.0))
 }
 
 fn hosted_window_title_area_drag_active(ctx: &egui::Context, spec: &HostedWindowSpec) -> bool {
-    if ctx.dragged_id() != Some(spec.stable_id.with("move")) {
+    if !ctx.input(|input| input.pointer.primary_down()) {
         return false;
     }
     let Some(origin) = ctx.input(|input| input.pointer.press_origin()) else {
@@ -493,10 +567,66 @@ fn hosted_window_title_area_drag_active(ctx: &egui::Context, spec: &HostedWindow
     let title_height =
         (style.spacing.interact_size.y + 2.0 * style.spacing.item_spacing.y).clamp(24.0, 44.0);
     let title_rect = egui::Rect::from_min_max(
-        egui::pos2(rect.left() + grab_radius, rect.top() + grab_radius),
+        egui::pos2(rect.left() + grab_radius, rect.top()),
         egui::pos2(rect.right() - grab_radius, rect.top() + title_height),
     );
     title_rect.contains(origin)
+}
+
+fn hosted_window_forced_pos(
+    ctx: &egui::Context,
+    spec: &HostedWindowSpec,
+    constrain_rect: egui::Rect,
+    default_size: egui::Vec2,
+) -> Option<egui::Pos2> {
+    HOSTED_WINDOW_FORCED_POSITIONS.with(|positions| {
+        let mut positions = positions.borrow_mut();
+        let pos = positions.get(&spec.stable_id).copied()?;
+        let size = ctx
+            .memory(|memory| memory.area_rect(spec.stable_id))
+            .map(|rect| rect.size())
+            .unwrap_or(default_size);
+        let clamped =
+            clamp_hosted_window_drag_pos(egui::Rect::from_min_size(pos, size), constrain_rect);
+        positions.insert(spec.stable_id, clamped);
+        Some(clamped)
+    })
+}
+
+fn apply_hosted_window_title_drag_delta(
+    ctx: &egui::Context,
+    spec: &HostedWindowSpec,
+    constrain_rect: egui::Rect,
+) {
+    let delta = ctx.input(|input| input.pointer.delta());
+    if delta == egui::Vec2::ZERO {
+        return;
+    }
+    let current_rect = ctx.memory(|memory| memory.area_rect(spec.stable_id));
+    HOSTED_WINDOW_FORCED_POSITIONS.with(|positions| {
+        let mut positions = positions.borrow_mut();
+        let Some(rect) = current_rect.or_else(|| {
+            positions
+                .get(&spec.stable_id)
+                .map(|pos| egui::Rect::from_min_size(*pos, spec.default_size))
+        }) else {
+            return;
+        };
+        let moved_rect = rect.translate(delta);
+        positions.insert(
+            spec.stable_id,
+            clamp_hosted_window_drag_pos(moved_rect, constrain_rect),
+        );
+    });
+}
+
+fn clamp_hosted_window_drag_pos(rect: egui::Rect, constrain_rect: egui::Rect) -> egui::Pos2 {
+    let max_x = (constrain_rect.right() - rect.width()).max(constrain_rect.left());
+    let max_y = (constrain_rect.bottom() - rect.height()).max(constrain_rect.top());
+    egui::pos2(
+        rect.min.x.clamp(constrain_rect.left(), max_x),
+        rect.min.y.clamp(constrain_rect.top(), max_y),
+    )
 }
 
 fn hosted_window_frame_drag_ids(spec: &HostedWindowSpec) -> Vec<egui::Id> {
@@ -600,10 +730,10 @@ mod tests {
         clamp_hosted_window_default_pos, clamp_hosted_window_default_size,
         hosted_window_frame_drag_ids, hosted_window_frame_drag_owner, hosted_window_max_inner_size,
         hosted_window_press_origin_owner, hosted_window_safe_rect_for_rect,
-        register_hosted_window_frame_drag_ids, should_request_hosted_window_stale_repaint,
-        show_hosted_window, show_modal_window, HostedWindowSpec, ModalWindowSpec,
-        HOSTED_WINDOW_SAFE_INSET_BOTTOM_PX, HOSTED_WINDOW_SAFE_INSET_TOP_PX,
-        HOSTED_WINDOW_SAFE_INSET_X_PX,
+        hosted_window_status_message, register_hosted_window_frame_drag_ids,
+        should_request_hosted_window_stale_repaint, show_hosted_window, show_modal_window,
+        HostedWindowSpec, ModalWindowSpec, HOSTED_WINDOW_SAFE_INSET_BOTTOM_PX,
+        HOSTED_WINDOW_SAFE_INSET_TOP_PX, HOSTED_WINDOW_SAFE_INSET_X_PX,
     };
     use eframe::egui::{self, pos2, vec2, Rect};
 
@@ -879,6 +1009,100 @@ mod tests {
         });
 
         assert_eq!(hosted_window_press_origin_owner(&ctx), Some(upper_id));
+        let _ = ctx.end_pass();
+    }
+
+    #[test]
+    fn hosted_window_press_origin_owner_beats_misrouted_lower_dragged_id() {
+        let ctx = egui::Context::default();
+        let lower_id = egui::Id::new("hosted_press_origin_misroute_lower");
+        let upper_id = egui::Id::new("hosted_press_origin_misroute_upper");
+        let lower_spec =
+            HostedWindowSpec::new("Lower", lower_id, vec2(320.0, 240.0), vec2(160.0, 120.0))
+                .initial_pos(Some(pos2(40.0, 40.0)));
+        let upper_spec =
+            HostedWindowSpec::new("Upper", upper_id, vec2(320.0, 240.0), vec2(160.0, 120.0))
+                .initial_pos(Some(pos2(120.0, 90.0)));
+        let mut lower_open = true;
+        let mut upper_open = true;
+
+        ctx.begin_pass(egui::RawInput::default());
+        show_hosted_window(&ctx, &lower_spec, &mut lower_open, |ui| {
+            ui.label("lower");
+        });
+        show_hosted_window(&ctx, &upper_spec, &mut upper_open, |ui| {
+            ui.label("upper");
+        });
+        let upper_rect = ctx
+            .memory(|mem| mem.area_rect(upper_id))
+            .expect("upper hosted window should be visible");
+        let _ = ctx.end_pass();
+
+        let edge_origin = pos2(upper_rect.right() + 2.0, upper_rect.center().y);
+        let lower_edge_drag_id = hosted_window_frame_drag_ids(&lower_spec)
+            .into_iter()
+            .find(|id| {
+                *id == egui::Id::new(egui::LayerId::new(egui::Order::Middle, lower_id))
+                    .with("edge_drag")
+                    .with("right")
+            })
+            .expect("lower right edge drag id");
+        ctx.begin_pass(egui::RawInput {
+            events: vec![egui::Event::PointerButton {
+                pos: edge_origin,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: egui::Modifiers::default(),
+            }],
+            ..Default::default()
+        });
+        ctx.set_dragged_id(lower_edge_drag_id);
+
+        assert_eq!(hosted_window_frame_drag_owner(&ctx), Some(upper_id));
+        let _ = ctx.end_pass();
+    }
+
+    #[test]
+    fn show_hosted_window_reports_active_frame_drag_status() {
+        let ctx = egui::Context::default();
+        let stable_id = egui::Id::new("hosted_window_status_drag");
+        let spec = HostedWindowSpec::new(
+            "Status Drag",
+            stable_id,
+            vec2(320.0, 240.0),
+            vec2(160.0, 120.0),
+        )
+        .initial_pos(Some(pos2(80.0, 80.0)));
+        let mut open = true;
+
+        ctx.begin_pass(egui::RawInput::default());
+        show_hosted_window(&ctx, &spec, &mut open, |ui| {
+            ui.label("content");
+        });
+        let rect = ctx
+            .memory(|mem| mem.area_rect(stable_id))
+            .expect("hosted window should be visible");
+        let _ = ctx.end_pass();
+
+        let origin = pos2(rect.right() + 2.0, rect.center().y);
+        ctx.begin_pass(egui::RawInput {
+            events: vec![egui::Event::PointerButton {
+                pos: origin,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: egui::Modifiers::default(),
+            }],
+            ..Default::default()
+        });
+        show_hosted_window(&ctx, &spec, &mut open, |ui| {
+            ui.label("content");
+        });
+
+        let status = hosted_window_status_message(&ctx).expect("hosted window status");
+        assert!(
+            status.contains("Status Drag") && status.contains("other hosted windows locked"),
+            "status={status}"
+        );
         let _ = ctx.end_pass();
     }
 

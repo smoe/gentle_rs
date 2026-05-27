@@ -19764,13 +19764,21 @@ Error: `{err}`"
                     );
                     ui.separator();
                     if project_dirty {
-                        ui.label("Status: unsaved changes");
+                        ui.label(Self::project_footer_status_text(ui.ctx(), "unsaved changes"));
                     } else {
-                        ui.label("Status: saved");
+                        ui.label(Self::project_footer_status_text(ui.ctx(), "saved"));
                     }
                 },
             );
         });
+    }
+
+    fn project_footer_status_text(ctx: &egui::Context, project_status: &str) -> String {
+        if let Some(window_status) = crate::egui_compat::hosted_window_status_message(ctx) {
+            format!("Status: {project_status} | {window_status}")
+        } else {
+            format!("Status: {project_status}")
+        }
     }
 
     fn render_hosted_main_workspace_window(&mut self, ctx: &egui::Context, project_dirty: bool) {
@@ -22219,6 +22227,12 @@ Error: `{err}`"
                     if !self.app_status.trim().is_empty() {
                         ui.separator();
                         ui.small(self.app_status.clone());
+                    }
+                    if let Some(window_status) =
+                        crate::egui_compat::hosted_window_status_message(ctx)
+                    {
+                        ui.separator();
+                        ui.small(window_status);
                     }
                 });
             },

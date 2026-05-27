@@ -92,6 +92,12 @@ macOS auxiliary-window stability note:
   `src/egui_compat.rs` `HostedWindowSpec` / `show_hosted_window` wrapper. The
   wrapper owns stable egui ids, safe-area clamping, foreground-on-focus ordering,
   viewport-builder defaults, and cleanup of stale title-derived layers.
+- In hosted mode, the project and root status bars may append short
+  hosted-window activity notes while a window is being focused, moved/resized,
+  or stale hosted layers are being cleaned up.
+- With egui/eframe `0.34.3`, the hosted-window wrapper keeps movement
+  restricted to GENtle's title-bar band and disables body-surface movement so
+  drags inside one hosted window do not pass through to sibling windows.
 - Hosted windows are kept inside a small safety inset from the root workspace
   edges so resizing/moving them does not immediately hit the physical screen
   border and trigger the macOS menu bar or Dock.
