@@ -20,6 +20,10 @@ Maintenance rule:
 
 ## 2026-05-27
 
+- Added the `codex_local_stdio` Agent Assistant provider and
+  `scripts/codex-agent-bridge`, allowing GENtle to route inner-agent requests
+  through a logged-in local Codex CLI/App account without requiring
+  `OPENAI_API_KEY`.
 - Hardened hosted egui window drag ownership during embedded-window resize/move
   interactions so lower hosted windows do not react to a drag that began on the
   active window frame.

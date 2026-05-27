@@ -235,6 +235,23 @@ The quick-start buttons configure the built-in native HTTP transports.
 
 ChatGPT or Codex subscriptions are not OpenAI API keys.
 
+### Codex Local
+
+1. Sign in to the local Codex app/CLI outside GENtle.
+2. Choose `Codex Local (uses Codex CLI login)` from the system dropdown.
+3. If GENtle cannot find Codex, set `CODEX_BIN` to the Codex executable path.
+   On macOS app installs this is often
+   `/Applications/Codex.app/Contents/Resources/codex`.
+4. Click `Test Setup`.
+
+This route does not use `OPENAI_API_KEY`. It invokes Codex locally through
+`scripts/codex-agent-bridge`, so usage counts against the user's Codex/ChatGPT
+plan limits. The bridge runs Codex from an empty temporary directory and passes
+only the explicit Agent Assistant request/state summary. `Test Setup` verifies
+the bridge executable; the first actual `Ask Agent` request verifies Codex
+login/quota because external stdio transports do not have a non-generating
+model-list probe.
+
 ### Claude
 
 1. Click `Use Claude API`.
@@ -425,6 +442,14 @@ plain text commands.
 
 - Use an OpenAI Platform API key.
 - A ChatGPT/Codex subscription is not enough.
+
+Codex Local cannot find Codex or says login is required:
+
+- Set `CODEX_BIN` to the Codex executable path, or add Codex to the GUI
+  process `PATH`.
+- Run the Codex app/CLI login flow outside GENtle.
+- If GENtle was launched from Finder/Spotlight on macOS, try launching from a
+  terminal so the process inherits the same PATH/keychain context.
 
 `auth_failed` for Claude:
 

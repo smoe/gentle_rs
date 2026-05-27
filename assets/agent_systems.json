@@ -28,6 +28,19 @@
       ]
     },
     {
+      "id": "codex_local_stdio",
+      "label": "Codex Local (uses Codex CLI login)",
+      "description": "Routes Agent Assistant requests through a locally installed Codex CLI/App login. No OPENAI_API_KEY is needed; usage counts against the user's Codex/ChatGPT plan limits.",
+      "transport": "external_json_stdio",
+      "command": [
+        "scripts/codex-agent-bridge"
+      ],
+      "env": {
+        "GENTLE_AGENT_MAX_RETRIES": "0",
+        "GENTLE_AGENT_READ_TIMEOUT_SECS": "300"
+      }
+    },
+    {
       "id": "openai_gpt5_native",
       "label": "OpenAI GPT-5 (native HTTP)",
       "description": "Direct OpenAI API integration without external bridge binary. Requires OPENAI_API_KEY in environment (or in this system's env map).",

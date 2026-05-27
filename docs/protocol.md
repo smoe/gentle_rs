@@ -3600,6 +3600,11 @@ Transport notes:
 
 - `builtin_echo`: offline/demo transport.
 - `external_json_stdio`: requires local bridge executable from `command[0]`.
+  The default catalog includes `codex_local_stdio`, which runs
+  `scripts/codex-agent-bridge` as one such bridge. That bridge delegates
+  authentication to the local Codex CLI/App login, runs Codex in a conservative
+  empty working directory, and emits strict `gentle.agent_response.v1` JSON for
+  the existing GENtle validator.
 - `native_openai`: built-in OpenAI HTTP adapter; requires `OPENAI_API_KEY`
   (environment or system-level `env` override in catalog entry).
 - `native_anthropic`: built-in Anthropic Claude HTTP adapter; requires
