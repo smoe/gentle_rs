@@ -386,6 +386,14 @@ pub(crate) fn show_hosted_window<R>(
         frame_drag_owner.is_some_and(|owner| owner != spec.stable_id);
     update_hosted_window_interaction_status(ctx, spec, frame_drag_owner);
     let constrain_rect = hosted_window_safe_rect(ctx);
+    if frame_drag_owner == Some(spec.stable_id) {
+        let order = if spec.foreground {
+            egui::Order::Foreground
+        } else {
+            egui::Order::Middle
+        };
+        ctx.move_to_top(egui::LayerId::new(order, spec.stable_id));
+    }
     if frame_drag_owner == Some(spec.stable_id) && hosted_window_title_drag_active(ctx, spec) {
         apply_hosted_window_title_drag_delta(ctx, spec, constrain_rect);
     }
@@ -512,7 +520,7 @@ fn hosted_window_frame_drag_owner(ctx: &egui::Context) -> Option<egui::Id> {
     if let Some(owner) = HOSTED_WINDOW_FRAME_DRAG_OWNER.with(Cell::get) {
         return Some(owner);
     }
-    let owner = hosted_window_press_origin_owner(ctx);
+    let owner = hosted_window_press_origin_frame_owner(ctx);
     if let Some(owner) = owner {
         HOSTED_WINDOW_FRAME_DRAG_OWNER.set(Some(owner));
         return Some(owner);
@@ -528,11 +536,27 @@ fn hosted_window_frame_drag_owner(ctx: &egui::Context) -> Option<egui::Id> {
     None
 }
 
-fn hosted_window_press_origin_owner(ctx: &egui::Context) -> Option<egui::Id> {
+fn hosted_window_press_origin_frame_owner(ctx: &egui::Context) -> Option<egui::Id> {
     let origin = ctx.input(|input| input.pointer.press_origin())?;
     ctx.memory(|memory| {
         let mut layer_ids = memory.layer_ids().collect::<Vec<_>>();
         layer_ids.reverse();
+        for layer_id in &layer_ids {
+            let owner =
+                HOSTED_WINDOW_LAYERS.with(|registry| registry.borrow().get(layer_id).copied());
+            let Some(owner) = owner else {
+                continue;
+            };
+            if !memory.areas().is_visible(layer_id) {
+                continue;
+            }
+            let Some(rect) = memory.area_rect(layer_id.id) else {
+                continue;
+            };
+            if hosted_window_resize_edge_capture_contains(ctx, rect, origin) {
+                return Some(owner);
+            }
+        }
         for layer_id in layer_ids {
             let owner =
                 HOSTED_WINDOW_LAYERS.with(|registry| registry.borrow().get(&layer_id).copied());
@@ -545,12 +569,20 @@ fn hosted_window_press_origin_owner(ctx: &egui::Context) -> Option<egui::Id> {
             let Some(rect) = memory.area_rect(layer_id.id) else {
                 continue;
             };
-            if hosted_window_capture_rect(ctx, rect).contains(origin) {
+            if hosted_window_title_rect(ctx, rect).contains(origin) {
                 return Some(owner);
             }
         }
         None
     })
+}
+
+fn hosted_window_resize_edge_capture_contains(
+    ctx: &egui::Context,
+    rect: egui::Rect,
+    origin: egui::Pos2,
+) -> bool {
+    hosted_window_capture_rect(ctx, rect).contains(origin) && !rect.contains(origin)
 }
 
 fn hosted_window_capture_rect(ctx: &egui::Context, rect: egui::Rect) -> egui::Rect {
@@ -581,15 +613,18 @@ fn hosted_window_press_origin_in_title_area(ctx: &egui::Context, spec: &HostedWi
     let Some(rect) = ctx.memory(|mem| mem.area_rect(spec.stable_id)) else {
         return false;
     };
+    hosted_window_title_rect(ctx, rect).contains(origin)
+}
+
+fn hosted_window_title_rect(ctx: &egui::Context, rect: egui::Rect) -> egui::Rect {
     let style = ctx.global_style();
     let grab_radius = style.interaction.resize_grab_radius_side.max(0.0);
     let title_height =
         (style.spacing.interact_size.y + 2.0 * style.spacing.item_spacing.y).clamp(24.0, 44.0);
-    let title_rect = egui::Rect::from_min_max(
+    egui::Rect::from_min_max(
         egui::pos2(rect.left() + grab_radius, rect.top()),
         egui::pos2(rect.right() - grab_radius, rect.top() + title_height),
-    );
-    title_rect.contains(origin)
+    )
 }
 
 fn hosted_window_forced_pos(
@@ -765,8 +800,9 @@ pub(crate) fn show_bottom_panel_inside<R>(
 mod tests {
     use super::{
         clamp_hosted_window_default_pos, clamp_hosted_window_default_size,
-        hosted_window_frame_drag_ids, hosted_window_frame_drag_owner, hosted_window_max_inner_size,
-        hosted_window_press_origin_owner, hosted_window_safe_rect_for_rect,
+        hosted_window_frame_drag_ids, hosted_window_frame_drag_owner,
+        hosted_window_max_inner_size, hosted_window_press_origin_frame_owner,
+        hosted_window_safe_rect_for_rect,
         hosted_window_status_message, register_hosted_window_frame_drag_ids,
         should_request_hosted_window_stale_repaint, show_hosted_window, show_modal_window,
         HostedWindowSpec, ModalWindowSpec, HOSTED_WINDOW_SAFE_INSET_BOTTOM_PX,
@@ -1023,7 +1059,7 @@ mod tests {
     }
 
     #[test]
-    fn hosted_window_press_origin_owner_uses_topmost_registered_window() {
+    fn hosted_window_press_origin_frame_owner_uses_topmost_registered_title() {
         let ctx = egui::Context::default();
         let lower_id = egui::Id::new("hosted_press_origin_lower_window");
         let upper_id = egui::Id::new("hosted_press_origin_upper_window");
@@ -1043,11 +1079,15 @@ mod tests {
         show_hosted_window(&ctx, &upper_spec, &mut upper_open, |ui| {
             ui.label("upper");
         });
+        let upper_rect = ctx
+            .memory(|mem| mem.area_rect(upper_id))
+            .expect("upper hosted window should be visible");
+        let title_origin = pos2(upper_rect.center().x, upper_rect.top() + 10.0);
         let _ = ctx.end_pass();
 
         ctx.begin_pass(egui::RawInput {
             events: vec![egui::Event::PointerButton {
-                pos: pos2(100.0, 100.0),
+                pos: title_origin,
                 button: egui::PointerButton::Primary,
                 pressed: true,
                 modifiers: egui::Modifiers::default(),
@@ -1055,12 +1095,12 @@ mod tests {
             ..Default::default()
         });
 
-        assert_eq!(hosted_window_press_origin_owner(&ctx), Some(upper_id));
+        assert_eq!(hosted_window_press_origin_frame_owner(&ctx), Some(upper_id));
         let _ = ctx.end_pass();
     }
 
     #[test]
-    fn hosted_window_press_origin_owner_beats_misrouted_lower_dragged_id() {
+    fn hosted_window_press_origin_frame_owner_beats_misrouted_lower_dragged_id() {
         let ctx = egui::Context::default();
         let lower_id = egui::Id::new("hosted_press_origin_misroute_lower");
         let upper_id = egui::Id::new("hosted_press_origin_misroute_upper");
@@ -1106,6 +1146,106 @@ mod tests {
         ctx.set_dragged_id(lower_edge_drag_id);
 
         assert_eq!(hosted_window_frame_drag_owner(&ctx), Some(upper_id));
+        let _ = ctx.end_pass();
+    }
+
+    #[test]
+    fn hosted_window_press_origin_frame_owner_prefers_resize_edge_over_higher_body() {
+        let ctx = egui::Context::default();
+        let upper_id = egui::Id::new("hosted_resize_edge_owner_upper");
+        let lower_id = egui::Id::new("hosted_resize_edge_owner_lower");
+        let upper_spec =
+            HostedWindowSpec::new("Upper", upper_id, vec2(320.0, 240.0), vec2(160.0, 120.0))
+                .initial_pos(Some(pos2(80.0, 80.0)));
+        let mut upper_open = true;
+        let mut lower_open = true;
+
+        ctx.begin_pass(egui::RawInput::default());
+        show_hosted_window(&ctx, &upper_spec, &mut upper_open, |ui| {
+            ui.label("upper");
+        });
+        let upper_rect = ctx
+            .memory(|mem| mem.area_rect(upper_id))
+            .expect("upper hosted window should be visible");
+        let _ = ctx.end_pass();
+
+        let lower_spec =
+            HostedWindowSpec::new("Lower", lower_id, vec2(320.0, 240.0), vec2(160.0, 120.0))
+                .initial_pos(Some(pos2(upper_rect.right() - 20.0, upper_rect.top())));
+        ctx.begin_pass(egui::RawInput::default());
+        show_hosted_window(&ctx, &upper_spec, &mut upper_open, |ui| {
+            ui.label("upper");
+        });
+        show_hosted_window(&ctx, &lower_spec, &mut lower_open, |ui| {
+            ui.label("lower");
+        });
+        let (upper_rect, lower_rect) = ctx.memory(|mem| {
+            (
+                mem.area_rect(upper_id).expect("upper area"),
+                mem.area_rect(lower_id).expect("lower area"),
+            )
+        });
+        let edge_origin = pos2(upper_rect.right() + 2.0, upper_rect.center().y);
+        assert!(
+            lower_rect.contains(edge_origin) && !upper_rect.contains(edge_origin),
+            "test setup should put the upper resize edge over the lower body: upper={upper_rect:?}, lower={lower_rect:?}, origin={edge_origin:?}"
+        );
+        let _ = ctx.end_pass();
+
+        ctx.begin_pass(egui::RawInput {
+            events: vec![egui::Event::PointerButton {
+                pos: edge_origin,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: egui::Modifiers::default(),
+            }],
+            ..Default::default()
+        });
+
+        assert_eq!(hosted_window_press_origin_frame_owner(&ctx), Some(upper_id));
+        let _ = ctx.end_pass();
+    }
+
+    #[test]
+    fn hosted_window_body_press_does_not_claim_frame_drag_owner() {
+        let ctx = egui::Context::default();
+        let stable_id = egui::Id::new("hosted_body_press_not_frame_drag");
+        let spec = HostedWindowSpec::new(
+            "Body Press",
+            stable_id,
+            vec2(320.0, 240.0),
+            vec2(160.0, 120.0),
+        )
+        .initial_pos(Some(pos2(80.0, 80.0)));
+        let mut open = true;
+
+        ctx.begin_pass(egui::RawInput::default());
+        show_hosted_window(&ctx, &spec, &mut open, |ui| {
+            ui.add_space(120.0);
+            ui.label("body content");
+        });
+        let rect = ctx
+            .memory(|mem| mem.area_rect(stable_id))
+            .expect("hosted window should be visible");
+        let body_origin = pos2(rect.center().x, rect.center().y + 40.0);
+        assert!(
+            rect.contains(body_origin),
+            "test setup should press in the hosted window body: rect={rect:?}, origin={body_origin:?}"
+        );
+        let _ = ctx.end_pass();
+
+        ctx.begin_pass(egui::RawInput {
+            events: vec![egui::Event::PointerButton {
+                pos: body_origin,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: egui::Modifiers::default(),
+            }],
+            ..Default::default()
+        });
+
+        assert_eq!(hosted_window_press_origin_frame_owner(&ctx), None);
+        assert_eq!(hosted_window_frame_drag_owner(&ctx), None);
         let _ = ctx.end_pass();
     }
 

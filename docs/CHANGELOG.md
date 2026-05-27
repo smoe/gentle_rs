@@ -12,6 +12,12 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-05-28
+
+- Tightened hosted egui window frame-drag ownership so resize-edge drags keep
+  priority over lower hosted-window body hits while ordinary hosted-window body
+  interactions such as DNA selection are no longer treated as frame drags.
+
 ## 2026-05-27
 
 - Hardened hosted egui window drag ownership during embedded-window resize/move
