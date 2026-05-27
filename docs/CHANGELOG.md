@@ -17,6 +17,9 @@ Maintenance rule:
 - Hardened hosted egui window drag ownership during embedded-window resize/move
   interactions so lower hosted windows do not react to a drag that began on the
   active window frame.
+- Switched the egui/eframe family from the temporary upstream git override to
+  the published `0.34.3` crates while preserving GENtle's hosted-window
+  title-bar movement and lower-window drag lockout in the compatibility wrapper.
 
 ## 2026-05-26
 

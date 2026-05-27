@@ -113,7 +113,7 @@ svg = { workspace = true }
 rayon = { workspace = true }
 anyhow = { workspace = true }
 arboard = "=3.6.1"
-eframe = { version = "0.34.2", features = [
+eframe = { version = "0.34.3", features = [
 	"accesskit",
 	"default_fonts",
 	"glow",
@@ -122,7 +122,7 @@ eframe = { version = "0.34.2", features = [
 	"x11",
 	"persistence",
 ] }
-egui_extras = { version = "0.34.2", features = ["all_loaders"] }
+egui_extras = { version = "0.34.3", features = ["all_loaders"] }
 egui_commonmark = { version = "0.22.0", default-features = false, features = ["pulldown_cmark", "load-images"] }
 image = { workspace = true, features = ["jpeg", "png"] }
 resvg = "0.45.1"
@@ -179,15 +179,5 @@ codegen-units = 16
 opt-level = 2
 
 [patch.crates-io]
-ecolor = { git = "https://github.com/emilk/egui", rev = "8d5a7b4557e4f1163a17debf940fc87b4f45c044" }
-eframe = { git = "https://github.com/emilk/egui", rev = "8d5a7b4557e4f1163a17debf940fc87b4f45c044" }
-egui = { git = "https://github.com/emilk/egui", rev = "8d5a7b4557e4f1163a17debf940fc87b4f45c044" }
-egui-wgpu = { git = "https://github.com/emilk/egui", rev = "8d5a7b4557e4f1163a17debf940fc87b4f45c044" }
-egui-winit = { git = "https://github.com/emilk/egui", rev = "8d5a7b4557e4f1163a17debf940fc87b4f45c044" }
 egui_commonmark = { path = "vendor/egui_commonmark" }
 egui_commonmark_backend = { path = "vendor/egui_commonmark_backend" }
-egui_extras = { git = "https://github.com/emilk/egui", rev = "8d5a7b4557e4f1163a17debf940fc87b4f45c044" }
-egui_glow = { git = "https://github.com/emilk/egui", rev = "8d5a7b4557e4f1163a17debf940fc87b4f45c044" }
-emath = { git = "https://github.com/emilk/egui", rev = "8d5a7b4557e4f1163a17debf940fc87b4f45c044" }
-epaint = { git = "https://github.com/emilk/egui", rev = "8d5a7b4557e4f1163a17debf940fc87b4f45c044" }
-epaint_default_fonts = { git = "https://github.com/emilk/egui", rev = "8d5a7b4557e4f1163a17debf940fc87b4f45c044" }

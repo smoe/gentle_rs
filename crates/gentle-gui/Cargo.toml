@@ -10,7 +10,7 @@ name = "gentle_gui"
 path = "src/lib.rs"
 
 [dependencies]
-egui = "0.34.2"
+egui = "0.34.3"
 serde = { workspace = true }
 
 [dev-dependencies]
