@@ -2626,6 +2626,42 @@
             "gui-shell",
             "cli-direct"
          ],
+         "path": "mirna explain-seed",
+         "summary": "Resolve a microRNA mature sequence and derive canonical reverse-complement seed-site motifs.",
+         "usage": "mirna explain-seed MIRNA [--mature-sequence SEQ] [--format json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "mirna catalog-show",
+         "summary": "Show a GENtle-backed microRNA catalog record, including identifiers and source notes.",
+         "usage": "mirna catalog-show MIRNA"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "mirna scan-target",
+         "summary": "Scan annotated transcript regions for exact canonical microRNA seed-site candidates.",
+         "usage": "mirna scan-target MIRNA TARGET [--mature-sequence SEQ] [--transcript-filter TEXT] [--regions CSV] [--seed-classes CSV] [--boundary-flank-bp N] [--species-note TEXT] [--evidence-note TEXT] [--format json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
          "path": "tracks tracked list",
          "summary": "List tracked genome-track subscriptions.",
          "usage": "tracks tracked list"

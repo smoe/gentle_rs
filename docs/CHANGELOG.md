@@ -30,6 +30,10 @@ Maintenance rule:
 - Switched the egui/eframe family from the temporary upstream git override to
   the published `0.34.3` crates while preserving GENtle's hosted-window
   title-bar movement and lower-window drag lockout in the compatibility wrapper.
+- Added the shared `mirna` target-site scan service with built-in
+  `hsa-miR-96-5p` seed catalog support, JSON schema
+  `gentle.mirna_target_scan.v1`, and CLI/shared-shell commands for seed
+  explanation, catalog inspection, and annotated target scanning.
 
 ## 2026-05-26
 

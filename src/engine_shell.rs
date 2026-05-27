@@ -100,6 +100,7 @@ use crate::{
         default_catalog_discovery_token, default_helper_semantics_vocabulary_discovery_label,
     },
     gibson_planning::{GIBSON_ASSEMBLY_PREVIEW_SCHEMA, GibsonAssemblyPlan},
+    mirna::{self, MirnaRegionClass, MirnaSeedClass, MirnaTargetScanRequest},
     protocol_cartoon::{ProtocolCartoonKind, protocol_cartoon_catalog_rows},
     publication_resources, resource_status, resource_sync, service_readiness,
     shell_docs::{
@@ -511,6 +512,24 @@ pub enum ShellCommand {
         seq_id: String,
         feature_id: usize,
         settings: AttractSplicingEvidenceSettings,
+    },
+    MirnaExplainSeed {
+        mirna: String,
+        mature_sequence: Option<String>,
+    },
+    MirnaCatalogShow {
+        mirna: String,
+    },
+    MirnaScanTarget {
+        mirna: String,
+        target: String,
+        mature_sequence: Option<String>,
+        transcript_filter: Option<String>,
+        regions: Vec<MirnaRegionClass>,
+        seed_classes: Vec<MirnaSeedClass>,
+        boundary_flank_bp: usize,
+        species_note: Option<String>,
+        evidence_notes: Vec<String>,
     },
     RenderFeatureExpertSvg {
         seq_id: String,
@@ -5550,6 +5569,15 @@ impl ShellCommand {
             ),
             Self::ScreenshotWindow { output } => {
                 format!("capture active GENtle window screenshot to '{output}'")
+            }
+            Self::MirnaExplainSeed { mirna, .. } => {
+                format!("explain canonical seed motifs for microRNA '{mirna}'")
+            }
+            Self::MirnaCatalogShow { mirna } => {
+                format!("show GENtle microRNA catalog record for '{mirna}'")
+            }
+            Self::MirnaScanTarget { mirna, target, .. } => {
+                format!("scan '{target}' for candidate target sites for microRNA '{mirna}'")
             }
             Self::RenderSvg {
                 seq_id,
@@ -18561,6 +18589,190 @@ fn parse_reporters_command(tokens: &[String]) -> Result<ShellCommand, String> {
     }
 }
 
+fn parse_mirna_region_list(raw: &str) -> Result<Vec<MirnaRegionClass>, String> {
+    let mut seen = BTreeSet::new();
+    let mut regions = vec![];
+    for token in raw
+        .split(',')
+        .map(str::trim)
+        .filter(|token| !token.is_empty())
+    {
+        for region in MirnaRegionClass::parse(token)? {
+            if seen.insert(region) {
+                regions.push(region);
+            }
+        }
+    }
+    if regions.is_empty() {
+        return Err("microRNA scan region list is empty".to_string());
+    }
+    Ok(regions)
+}
+
+fn parse_mirna_seed_class_list(raw: &str) -> Result<Vec<MirnaSeedClass>, String> {
+    let mut seen = BTreeSet::new();
+    let mut classes = vec![];
+    for token in raw
+        .split(',')
+        .map(str::trim)
+        .filter(|token| !token.is_empty())
+    {
+        let class = MirnaSeedClass::parse(token)?;
+        if seen.insert(class) {
+            classes.push(class);
+        }
+    }
+    if classes.is_empty() {
+        return Err("microRNA seed-class list is empty".to_string());
+    }
+    Ok(classes)
+}
+
+fn parse_mirna_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 3 {
+        return Err(
+            "mirna requires: explain-seed MIRNA | catalog-show MIRNA | scan-target MIRNA TARGET"
+                .to_string(),
+        );
+    }
+    match tokens[1].as_str() {
+        "explain-seed" => {
+            let mirna = tokens[2].clone();
+            let mut mature_sequence = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--mature-sequence" => {
+                        if idx + 1 >= tokens.len() {
+                            return Err("Missing value after --mature-sequence".to_string());
+                        }
+                        mature_sequence = Some(tokens[idx + 1].clone());
+                        idx += 2;
+                    }
+                    "--format" => {
+                        if idx + 1 >= tokens.len() {
+                            return Err("Missing value after --format".to_string());
+                        }
+                        if tokens[idx + 1].as_str() != "json" {
+                            return Err("mirna explain-seed currently supports --format json only"
+                                .to_string());
+                        }
+                        idx += 2;
+                    }
+                    other => return Err(format!("Unknown mirna explain-seed option '{other}'")),
+                }
+            }
+            Ok(ShellCommand::MirnaExplainSeed {
+                mirna,
+                mature_sequence,
+            })
+        }
+        "catalog-show" => {
+            if tokens.len() != 3 {
+                return Err("mirna catalog-show requires exactly MIRNA".to_string());
+            }
+            Ok(ShellCommand::MirnaCatalogShow {
+                mirna: tokens[2].clone(),
+            })
+        }
+        "scan-target" => {
+            if tokens.len() < 4 {
+                return Err("mirna scan-target requires MIRNA TARGET".to_string());
+            }
+            let mirna = tokens[2].clone();
+            let target = tokens[3].clone();
+            let mut mature_sequence = None;
+            let mut transcript_filter = None;
+            let mut regions = mirna::default_scan_regions();
+            let mut seed_classes = mirna::default_seed_classes();
+            let mut boundary_flank_bp = 25usize;
+            let mut species_note = None;
+            let mut evidence_notes = vec![];
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--mature-sequence" => {
+                        if idx + 1 >= tokens.len() {
+                            return Err("Missing value after --mature-sequence".to_string());
+                        }
+                        mature_sequence = Some(tokens[idx + 1].clone());
+                        idx += 2;
+                    }
+                    "--transcript-filter" => {
+                        if idx + 1 >= tokens.len() {
+                            return Err("Missing value after --transcript-filter".to_string());
+                        }
+                        transcript_filter = Some(tokens[idx + 1].clone());
+                        idx += 2;
+                    }
+                    "--regions" => {
+                        if idx + 1 >= tokens.len() {
+                            return Err("Missing value after --regions".to_string());
+                        }
+                        regions = parse_mirna_region_list(&tokens[idx + 1])?;
+                        idx += 2;
+                    }
+                    "--seed-classes" => {
+                        if idx + 1 >= tokens.len() {
+                            return Err("Missing value after --seed-classes".to_string());
+                        }
+                        seed_classes = parse_mirna_seed_class_list(&tokens[idx + 1])?;
+                        idx += 2;
+                    }
+                    "--boundary-flank-bp" => {
+                        if idx + 1 >= tokens.len() {
+                            return Err("Missing value after --boundary-flank-bp".to_string());
+                        }
+                        boundary_flank_bp = tokens[idx + 1]
+                            .parse::<usize>()
+                            .map_err(|_| "Invalid --boundary-flank-bp value".to_string())?;
+                        idx += 2;
+                    }
+                    "--species-note" => {
+                        if idx + 1 >= tokens.len() {
+                            return Err("Missing value after --species-note".to_string());
+                        }
+                        species_note = Some(tokens[idx + 1].clone());
+                        idx += 2;
+                    }
+                    "--evidence-note" => {
+                        if idx + 1 >= tokens.len() {
+                            return Err("Missing value after --evidence-note".to_string());
+                        }
+                        evidence_notes.push(tokens[idx + 1].clone());
+                        idx += 2;
+                    }
+                    "--format" => {
+                        if idx + 1 >= tokens.len() {
+                            return Err("Missing value after --format".to_string());
+                        }
+                        if tokens[idx + 1].as_str() != "json" {
+                            return Err("mirna scan-target currently supports --format json only"
+                                .to_string());
+                        }
+                        idx += 2;
+                    }
+                    other => return Err(format!("Unknown mirna scan-target option '{other}'")),
+                }
+            }
+            Ok(ShellCommand::MirnaScanTarget {
+                mirna,
+                target,
+                mature_sequence,
+                transcript_filter,
+                regions,
+                seed_classes,
+                boundary_flank_bp,
+                species_note,
+                evidence_notes,
+            })
+        }
+        other => Err(format!(
+            "Unknown mirna subcommand '{other}' (expected explain-seed, catalog-show, scan-target)"
+        )),
+    }
+}
+
 fn parse_sequence_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err("sequence requires a subcommand: create".to_string());
@@ -19133,6 +19345,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
             }
         }
         "sequence" | "sequences" => parse_sequence_command(tokens),
+        "mirna" | "mirnas" => parse_mirna_command(tokens),
         "screenshot-window" => {
             let _ = tokens;
             Err(SCREENSHOT_DISABLED_MESSAGE.to_string())
@@ -23349,6 +23562,110 @@ fn execute_help_command(
             })
         }
         _ => unreachable!("non-help command passed to help helper"),
+    }
+}
+
+fn resolve_mirna_target_sequence<'a>(
+    engine: &'a GentleEngine,
+    target: &str,
+) -> Result<(&'a DNAsequence, String, Option<String>), String> {
+    if let Some(sequence) = engine.state().sequences.get(target) {
+        return Ok((sequence, target.to_string(), None));
+    }
+    let normalized = target.to_ascii_lowercase();
+    let mut matches = vec![];
+    for (seq_id, sequence) in &engine.state().sequences {
+        let has_match = sequence.features().iter().any(|feature| {
+            feature
+                .qualifier_values("gene")
+                .any(|value| value.eq_ignore_ascii_case(target))
+                || feature
+                    .qualifier_values("transcript_id")
+                    .any(|value| value.to_ascii_lowercase().contains(&normalized))
+                || feature
+                    .qualifier_values("product")
+                    .any(|value| value.to_ascii_lowercase().contains(&normalized))
+        });
+        if has_match {
+            matches.push((seq_id.clone(), sequence));
+        }
+    }
+    match matches.len() {
+        0 => Err(format!(
+            "Could not resolve microRNA target '{target}' as a loaded sequence id or annotated gene/transcript"
+        )),
+        1 => {
+            let (seq_id, sequence) = matches.remove(0);
+            Ok((sequence, seq_id, Some(target.to_string())))
+        }
+        _ => {
+            let seq_ids = matches
+                .into_iter()
+                .map(|(seq_id, _)| seq_id)
+                .collect::<Vec<_>>()
+                .join(", ");
+            Err(format!(
+                "microRNA target '{target}' matched multiple loaded sequences ({seq_ids}); use a sequence id"
+            ))
+        }
+    }
+}
+
+fn execute_mirna_command(
+    engine: &mut GentleEngine,
+    command: &ShellCommand,
+) -> Result<ShellRunResult, String> {
+    match command {
+        ShellCommand::MirnaExplainSeed {
+            mirna,
+            mature_sequence,
+        } => Ok(ShellRunResult {
+            state_changed: false,
+            output: mirna::explain_seed_motifs(mirna, mature_sequence.as_deref())?,
+        }),
+        ShellCommand::MirnaCatalogShow { mirna } => {
+            let record = mirna::catalog_record(mirna)
+                .ok_or_else(|| format!("No GENtle microRNA catalog record for '{mirna}'"))?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(record).map_err(|error| error.to_string())?,
+            })
+        }
+        ShellCommand::MirnaScanTarget {
+            mirna,
+            target,
+            mature_sequence,
+            transcript_filter,
+            regions,
+            seed_classes,
+            boundary_flank_bp,
+            species_note,
+            evidence_notes,
+        } => {
+            let (sequence, sequence_id, target_filter) =
+                resolve_mirna_target_sequence(engine, target)?;
+            let request = MirnaTargetScanRequest {
+                mirna: mirna.clone(),
+                mature_sequence: mature_sequence.clone(),
+                regions: regions.clone(),
+                seed_classes: seed_classes.clone(),
+                boundary_flank_bp: *boundary_flank_bp,
+                transcript_filter: transcript_filter.clone(),
+                species_note: species_note.clone(),
+                evidence_notes: evidence_notes.clone(),
+            };
+            let report = mirna::scan_mirna_target_sequence(
+                sequence,
+                &sequence_id,
+                target_filter.as_deref(),
+                &request,
+            )?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(report).map_err(|error| error.to_string())?,
+            })
+        }
+        _ => unreachable!("non-mirna command passed to mirna helper"),
     }
 }
 
@@ -34571,6 +34888,9 @@ fn execute_shell_command_with_options_inner(
         ShellCommand::HistoryStatus | ShellCommand::HistoryUndo | ShellCommand::HistoryRedo => {
             execute_history_command(engine, command)?
         }
+        ShellCommand::MirnaExplainSeed { .. }
+        | ShellCommand::MirnaCatalogShow { .. }
+        | ShellCommand::MirnaScanTarget { .. } => execute_mirna_command(engine, command)?,
         ShellCommand::LoadProject { path } => {
             let state = ProjectState::load_from_path(path).map_err(|e| e.to_string())?;
             *engine = GentleEngine::from_state(state);

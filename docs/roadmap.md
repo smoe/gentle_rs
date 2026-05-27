@@ -202,6 +202,9 @@ wet-lab conclusions or unconfirmed mutations.
   is selected.
 - External-service provider/CRO integration once deterministic local contracts
   are stable enough to wrap.
+- GUI microRNA target-scan panel wrapping the shared `mirna scan-target`
+  service with query, region, seed-class, grouped-result, and optional overlay
+  controls.
 - Luebeck S1 vector-resource follow-up: resolve sequence/procurement URLs and
   redistribution clearance before bundling actual sequences for the metadata
   candidates.
