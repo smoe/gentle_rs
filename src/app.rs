@@ -73,6 +73,9 @@ mod clawbio_bridge;
 #[path = "app/clawbio_ui.rs"]
 mod clawbio_ui;
 
+#[path = "app/mirna_ui.rs"]
+mod mirna_ui;
+
 #[path = "app/agent_assistant_config.rs"]
 mod agent_assistant_config;
 
@@ -957,6 +960,7 @@ pub struct GENtleApp {
     command_palette_focus_query: bool,
     external_services_ui: ExternalServicesUiState,
     clawbio_panel: clawbio_ui::ClawBioPanelState,
+    mirna_panel: mirna_ui::MirnaTargetScanPanelState,
     show_jobs_panel: bool,
     history_ui: HistoryUiState,
     hover_status_name: String,
@@ -2590,6 +2594,7 @@ impl Default for GENtleApp {
             command_palette_focus_query: false,
             external_services_ui: ExternalServicesUiState::default(),
             clawbio_panel: clawbio_ui::ClawBioPanelState::default(),
+            mirna_panel: mirna_ui::MirnaTargetScanPanelState::default(),
             show_jobs_panel: false,
             history_ui: HistoryUiState::default(),
             hover_status_name: String::new(),
@@ -2817,6 +2822,17 @@ impl GENtleApp {
 
     fn hosted_clawbio_window_id() -> egui::Id {
         egui::Id::new(("hosted_clawbio_window", Self::clawbio_viewport_id()))
+    }
+
+    fn mirna_target_scan_viewport_id() -> ViewportId {
+        ViewportId::from_hash_of("GENtle microRNA Target Scan Viewport")
+    }
+
+    fn hosted_mirna_target_scan_window_id() -> egui::Id {
+        egui::Id::new((
+            "hosted_mirna_target_scan_window",
+            Self::mirna_target_scan_viewport_id(),
+        ))
     }
 
     fn history_viewport_id() -> ViewportId {
@@ -15888,6 +15904,16 @@ Error: `{err}`"
                     ui.close();
                 }
                 if ui
+                    .button("microRNA Target Scan...")
+                    .on_hover_text(
+                        "Scan transcript annotations for microRNA seed candidates and inspect graphical pairing evidence",
+                    )
+                    .clicked()
+                {
+                    self.open_mirna_target_scan_dialog();
+                    ui.close();
+                }
+                if ui
                     .button("Routine Assistant...")
                     .on_hover_text(
                         "Open staged routine-selection workflow (goal, compare, parameters, preflight, run, export)",
@@ -23880,6 +23906,7 @@ impl GENtleApp {
                 self.render_agent_assistant_dialog(ctx);
                 self.render_external_services_dialog(ctx);
                 self.render_clawbio_dialog(ctx);
+                self.render_mirna_target_scan_dialog(ctx);
                 self.render_configuration_dialog(ctx);
                 self.render_help_dialog(ctx);
                 self.render_about_dialog(ctx);

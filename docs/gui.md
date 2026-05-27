@@ -2954,13 +2954,22 @@ The `Help` menu now includes:
 
 - The shared Shell panel exposes `mirna explain-seed`, `mirna catalog-show`,
   and `mirna scan-target` for deterministic candidate seed-site inspection.
+- `Patterns -> microRNA Target Scan...` opens a graphical specialist window
+  over the same shared scan command. The panel provides query fields, region
+  toggles, seed-class toggles, boundary flank length, ortholog/evidence notes,
+  and optional pasted ortholog or candidate target snippets for side-by-side
+  motif comparison.
+- Selecting a candidate hit draws the mature microRNA seed, matched target
+  motif, pairing lines, local coordinate context, region class, and matched
+  sequence so CDS, intronic, UTR, and splice-boundary candidates can be
+  inspected visually rather than as raw JSON.
 - `mirna scan-target` returns `gentle.mirna_target_scan.v1` JSON grouped by
   region class, transcript id, and seed class. Results are sequence evidence:
   the report warns when a match is prediction-only and keeps orthologous context
   such as rat Tp73 PMID 37099528 separate from direct human validation.
-- A future feature-inspection panel should wrap the same shared command with a
-  query box, region/seed-class toggles, grouped results, and optional overlay
-  track colors for 3-prime UTR, exon, intron, and boundary hits.
+- Every selected hit shows transcript-context interpretation, including
+  possible alternative-splicing relevance for CDS, intronic, and splice-boundary
+  matches, not only canonical 3-prime UTR repression.
 
 Help content loading behavior:
 

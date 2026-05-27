@@ -2317,22 +2317,40 @@ microRNA target-site scan notes:
 - `gentle.mirna_target_scan.v1` reports exact canonical microRNA seed-site
   candidates over annotated transcript partitions. It is sequence evidence,
   not automatic biological validation.
+- `gentle.mirna_seed_explanation.v1` reports the resolved query microRNA and
+  canonical target motif table used by `mirna explain-seed`.
+- `gentle.mirna_catalog_record.v1` reports catalog-backed mature-sequence,
+  accession, alias, and source metadata used by `mirna catalog-show`.
 - The shared shell commands are:
   - `mirna explain-seed MIRNA [--mature-sequence SEQ] [--format json]`
   - `mirna catalog-show MIRNA`
   - `mirna scan-target MIRNA TARGET [--mature-sequence SEQ] [--transcript-filter TEXT] [--regions CSV] [--seed-classes CSV] [--boundary-flank-bp N] [--species-note TEXT] [--evidence-note TEXT] [--format json]`
 - Built-in v1 catalog coverage includes `hsa-miR-96-5p` / `MIMAT0000095` /
-  NCBI Gene `407053`. Direct mature sequence input is also accepted.
+  NCBI Gene `407053`. Direct mature sequence input is also accepted and, when
+  it exactly matches a built-in mature sequence, resolves back to that catalog
+  record.
 - Canonical target motifs are derived from the mature sequence:
   `8mer`, `7mer-m8`, `7mer-A1`, and `6mer`. For `hsa-miR-96-5p`, the table
   includes `GTGCCAAA`, `GTGCCAA`, `TGCCAAA`, and `TGCCAA`.
+- Seed-class counts are intentionally overlapping in v1: an exact 8mer site may
+  also appear as a 7mer or 6mer candidate when those classes are requested.
+  Reports preserve every requested exact-class match instead of collapsing to
+  only the most-specific class.
 - Region aliases expand deterministically:
   `3utr`, `exon`, `intron`, and `boundary` become 3-prime UTR,
   coding/noncoding exons, introns, and both splice-boundary directions.
+- Boundary scans use a 25 bp default flank on each side of the exon/intron
+  junction. This is a compact donor/acceptor neighborhood for first-pass
+  splicing-impact review; callers can override it with `--boundary-flank-bp`.
 - Reports include grouped hits with transcript id, parent feature, sequence
   local 0-based half-open coordinates, 1-based display coordinates, strand,
   matched sequence, +/-20 bp region context, `evidence_tags`, notes, and
   summary counts for every requested region/seed-class pair.
+- For reverse-strand transcripts, `matched_sequence` and
+  `region_context_sequence` are reported in transcript/mRNA orientation, while
+  local and genomic coordinate fields remain in the displayed sequence's
+  coordinate system. This keeps the biological pairing readable without hiding
+  where the hit lands in the forward-coordinate viewer.
 - The `orthologous_experimental_context` tag can record rat Tp73 PMID 37099528
   context for the hsa-miR-96-5p / TP73 example. GENtle does not emit
   `directly_validated_human_site` unless direct human validation is supplied by

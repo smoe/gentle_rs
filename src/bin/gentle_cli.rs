@@ -2234,6 +2234,48 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_forwarded_shell_command_routes_mirna_explain_seed() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "mirna".to_string(),
+            "explain-seed".to_string(),
+            "hsa-miR-96-5p".to_string(),
+            "--mature-sequence".to_string(),
+            "UUUGGCACUAGCACAUUUUUGCU".to_string(),
+            "--format".to_string(),
+            "json".to_string(),
+        ];
+        let parsed = parse_forwarded_shell_command(&args, 1).expect("parse forwarded");
+        match parsed.expect("mirna should be shell-forwarded") {
+            ShellCommand::MirnaExplainSeed {
+                mirna,
+                mature_sequence,
+            } => {
+                assert_eq!(mirna, "hsa-miR-96-5p");
+                assert_eq!(mature_sequence.as_deref(), Some("UUUGGCACUAGCACAUUUUUGCU"));
+            }
+            other => panic!("unexpected parsed shell command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_forwarded_shell_command_routes_mirna_catalog_show() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "mirna".to_string(),
+            "catalog-show".to_string(),
+            "hsa-miR-96-5p".to_string(),
+        ];
+        let parsed = parse_forwarded_shell_command(&args, 1).expect("parse forwarded");
+        match parsed.expect("mirna should be shell-forwarded") {
+            ShellCommand::MirnaCatalogShow { mirna } => {
+                assert_eq!(mirna, "hsa-miR-96-5p");
+            }
+            other => panic!("unexpected parsed shell command: {other:?}"),
+        }
+    }
+
+    #[test]
     fn test_parse_forwarded_shell_command_routes_ensembl_region_fetch() {
         let args = vec![
             "gentle_cli".to_string(),

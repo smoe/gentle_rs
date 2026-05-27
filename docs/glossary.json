@@ -2648,6 +2648,7 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
+            "gui-menu",
             "cli-direct"
          ],
          "path": "mirna scan-target",
