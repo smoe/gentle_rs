@@ -1,9 +1,8 @@
 //! Compatibility helpers for top-level egui panel entry points.
 //!
-//! `egui 0.34` prefers `show_inside(...)`, but the top-level panel allocation
-//! path still relies on crate-private internals in egui itself. GENtle
-//! therefore centralizes the remaining top-level `show(ctx, ...)` calls here so
-//! the rest of the codebase stays on the newer surface and builds warning-free.
+//! `egui 0.34` prefers `show_inside(...)` for panels. GENtle centralizes panel
+//! host plumbing here so call sites can render through either an explicit
+//! `&mut Ui` or the temporary root-Ui bridge used by hosted windows.
 
 use eframe::egui;
 use std::cell::{Cell, RefCell};
@@ -16,6 +15,14 @@ struct HostedWindowStatus {
     until_frame: u64,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct HostedWindowTitleDragAnchor {
+    owner: egui::Id,
+    pointer_origin: egui::Pos2,
+    window_origin: egui::Pos2,
+    window_size: egui::Vec2,
+}
+
 thread_local! {
     static CURRENT_ROOT_UI: Cell<Option<NonNull<egui::Ui>>> = const { Cell::new(None) };
     static HOSTED_WINDOW_STALE_REPAINT_REQUESTS: RefCell<HashSet<egui::Id>> = RefCell::new(HashSet::new());
@@ -25,6 +32,7 @@ thread_local! {
     static HOSTED_WINDOW_FORCED_POSITIONS: RefCell<HashMap<egui::Id, egui::Pos2>> = RefCell::new(HashMap::new());
     static HOSTED_WINDOW_STATUS: RefCell<Option<HostedWindowStatus>> = const { RefCell::new(None) };
     static HOSTED_WINDOW_FRAME_DRAG_OWNER: Cell<Option<egui::Id>> = const { Cell::new(None) };
+    static HOSTED_WINDOW_TITLE_DRAG_ANCHOR: Cell<Option<HostedWindowTitleDragAnchor>> = const { Cell::new(None) };
 }
 
 pub(crate) struct RootUiGuard {
@@ -378,7 +386,7 @@ pub(crate) fn show_hosted_window<R>(
         frame_drag_owner.is_some_and(|owner| owner != spec.stable_id);
     update_hosted_window_interaction_status(ctx, spec, frame_drag_owner);
     let constrain_rect = hosted_window_safe_rect(ctx);
-    if hosted_window_title_area_drag_active(ctx, spec) {
+    if frame_drag_owner == Some(spec.stable_id) && hosted_window_title_drag_active(ctx, spec) {
         apply_hosted_window_title_drag_delta(ctx, spec, constrain_rect);
     }
     let max_size = hosted_window_max_inner_size(constrain_rect, spec.min_size, spec.drag_margin);
@@ -498,6 +506,7 @@ fn set_hosted_window_status(ctx: &egui::Context, message: String, grace_frames: 
 fn hosted_window_frame_drag_owner(ctx: &egui::Context) -> Option<egui::Id> {
     if !ctx.input(|input| input.pointer.primary_down()) {
         HOSTED_WINDOW_FRAME_DRAG_OWNER.set(None);
+        HOSTED_WINDOW_TITLE_DRAG_ANCHOR.set(None);
         return None;
     }
     if let Some(owner) = HOSTED_WINDOW_FRAME_DRAG_OWNER.with(Cell::get) {
@@ -552,7 +561,17 @@ fn hosted_window_capture_rect(ctx: &egui::Context, rect: egui::Rect) -> egui::Re
     rect.expand(grab_radius.max(0.0))
 }
 
-fn hosted_window_title_area_drag_active(ctx: &egui::Context, spec: &HostedWindowSpec) -> bool {
+fn hosted_window_title_drag_active(ctx: &egui::Context, spec: &HostedWindowSpec) -> bool {
+    if HOSTED_WINDOW_TITLE_DRAG_ANCHOR
+        .with(Cell::get)
+        .is_some_and(|anchor| anchor.owner == spec.stable_id)
+    {
+        return true;
+    }
+    hosted_window_press_origin_in_title_area(ctx, spec)
+}
+
+fn hosted_window_press_origin_in_title_area(ctx: &egui::Context, spec: &HostedWindowSpec) -> bool {
     if !ctx.input(|input| input.pointer.primary_down()) {
         return false;
     }
@@ -598,21 +617,39 @@ fn apply_hosted_window_title_drag_delta(
     spec: &HostedWindowSpec,
     constrain_rect: egui::Rect,
 ) {
-    let delta = ctx.input(|input| input.pointer.delta());
-    if delta == egui::Vec2::ZERO {
+    let Some((pointer_origin, pointer_pos)) =
+        ctx.input(|input| Some((input.pointer.press_origin()?, input.pointer.interact_pos()?)))
+    else {
         return;
-    }
+    };
     let current_rect = ctx.memory(|memory| memory.area_rect(spec.stable_id));
-    HOSTED_WINDOW_FORCED_POSITIONS.with(|positions| {
-        let mut positions = positions.borrow_mut();
-        let Some(rect) = current_rect.or_else(|| {
+    let fallback_rect = || {
+        HOSTED_WINDOW_FORCED_POSITIONS.with(|positions| {
             positions
+                .borrow()
                 .get(&spec.stable_id)
                 .map(|pos| egui::Rect::from_min_size(*pos, spec.default_size))
-        }) else {
-            return;
+        })
+    };
+    let Some(rect) = current_rect.or_else(fallback_rect) else {
+        return;
+    };
+    HOSTED_WINDOW_FORCED_POSITIONS.with(|positions| {
+        let mut positions = positions.borrow_mut();
+        let anchor = match HOSTED_WINDOW_TITLE_DRAG_ANCHOR.with(Cell::get) {
+            Some(anchor) if anchor.owner == spec.stable_id => anchor,
+            _ => HostedWindowTitleDragAnchor {
+                owner: spec.stable_id,
+                pointer_origin,
+                window_origin: rect.min,
+                window_size: rect.size(),
+            },
         };
-        let moved_rect = rect.translate(delta);
+        HOSTED_WINDOW_TITLE_DRAG_ANCHOR.set(Some(anchor));
+        let moved_rect = egui::Rect::from_min_size(
+            anchor.window_origin + (pointer_pos - anchor.pointer_origin),
+            anchor.window_size,
+        );
         positions.insert(
             spec.stable_id,
             clamp_hosted_window_drag_pos(moved_rect, constrain_rect),
@@ -659,7 +696,7 @@ pub(crate) fn show_central_panel<R>(
     panel: egui::CentralPanel,
     add_contents: impl FnOnce(&mut egui::Ui) -> R,
 ) -> egui::InnerResponse<R> {
-    host.with_panel_ui(|ui| panel.show(ui, add_contents))
+    host.with_panel_ui(|ui| panel.show_inside(ui, add_contents))
 }
 
 #[cfg(test)]
@@ -687,7 +724,7 @@ pub(crate) fn show_central_panel_inside<R>(
     panel: egui::CentralPanel,
     add_contents: impl FnOnce(&mut egui::Ui) -> R,
 ) -> egui::InnerResponse<R> {
-    panel.show(ui, add_contents)
+    panel.show_inside(ui, add_contents)
 }
 
 pub(crate) fn show_top_panel<R>(
@@ -696,7 +733,7 @@ pub(crate) fn show_top_panel<R>(
     panel: egui::Panel,
     add_contents: impl FnOnce(&mut egui::Ui) -> R,
 ) -> egui::InnerResponse<R> {
-    host.with_panel_ui(|ui| panel.show(ui, add_contents))
+    host.with_panel_ui(|ui| panel.show_inside(ui, add_contents))
 }
 
 pub(crate) fn show_top_panel_inside<R>(
@@ -704,7 +741,7 @@ pub(crate) fn show_top_panel_inside<R>(
     panel: egui::Panel,
     add_contents: impl FnOnce(&mut egui::Ui) -> R,
 ) -> egui::InnerResponse<R> {
-    panel.show(ui, add_contents)
+    panel.show_inside(ui, add_contents)
 }
 
 pub(crate) fn show_bottom_panel<R>(
@@ -713,7 +750,7 @@ pub(crate) fn show_bottom_panel<R>(
     panel: egui::Panel,
     add_contents: impl FnOnce(&mut egui::Ui) -> R,
 ) -> egui::InnerResponse<R> {
-    host.with_panel_ui(|ui| panel.show(ui, add_contents))
+    host.with_panel_ui(|ui| panel.show_inside(ui, add_contents))
 }
 
 pub(crate) fn show_bottom_panel_inside<R>(
@@ -721,7 +758,7 @@ pub(crate) fn show_bottom_panel_inside<R>(
     panel: egui::Panel,
     add_contents: impl FnOnce(&mut egui::Ui) -> R,
 ) -> egui::InnerResponse<R> {
-    panel.show(ui, add_contents)
+    panel.show_inside(ui, add_contents)
 }
 
 #[cfg(test)]
@@ -745,6 +782,16 @@ mod tests {
         assert_eq!(safe.min.y, HOSTED_WINDOW_SAFE_INSET_TOP_PX);
         assert_eq!(safe.max.x, 1000.0 - HOSTED_WINDOW_SAFE_INSET_X_PX);
         assert_eq!(safe.max.y, 800.0 - HOSTED_WINDOW_SAFE_INSET_BOTTOM_PX);
+    }
+
+    #[test]
+    #[should_panic(expected = "show_central_panel(&Context) requires an active root Ui")]
+    fn show_central_panel_context_requires_active_root_ui() {
+        let ctx = egui::Context::default();
+
+        super::show_central_panel(&ctx, egui::CentralPanel::default(), |ui| {
+            ui.label("content");
+        });
     }
 
     #[test]
@@ -1356,6 +1403,142 @@ mod tests {
         show_hosted_window(&ctx, &spec, &mut open, |ui| {
             ui.label("content");
         });
+        let _ = ctx.end_pass();
+    }
+
+    #[test]
+    fn hosted_title_press_does_not_jump_from_prior_hover_delta() {
+        let ctx = egui::Context::default();
+        let stable_id = egui::Id::new("title_press_no_jump_window");
+        let spec =
+            HostedWindowSpec::new("No Jump", stable_id, vec2(360.0, 240.0), vec2(180.0, 120.0))
+                .initial_pos(Some(pos2(120.0, 100.0)));
+        let mut open = true;
+        let screen_rect = Rect::from_min_size(pos2(0.0, 0.0), vec2(1200.0, 800.0));
+
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(screen_rect),
+            events: vec![egui::Event::PointerMoved(pos2(760.0, 560.0))],
+            ..Default::default()
+        });
+        show_hosted_window(&ctx, &spec, &mut open, |ui| {
+            ui.label("content");
+        });
+        let initial_rect = ctx
+            .memory(|mem| mem.area_rect(stable_id))
+            .expect("hosted area should be visible");
+        let drag_start = pos2(initial_rect.center().x, initial_rect.top() + 10.0);
+        let _ = ctx.end_pass();
+
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(screen_rect),
+            events: vec![
+                egui::Event::PointerMoved(drag_start),
+                egui::Event::PointerButton {
+                    pos: drag_start,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::default(),
+                },
+            ],
+            ..Default::default()
+        });
+        show_hosted_window(&ctx, &spec, &mut open, |ui| {
+            ui.label("content");
+        });
+        let pressed_rect = ctx
+            .memory(|mem| mem.area_rect(stable_id))
+            .expect("hosted area should remain visible");
+
+        assert_eq!(
+            pressed_rect.min, initial_rect.min,
+            "press frame should not consume hover-to-press pointer delta as window movement: before={initial_rect:?}, after={pressed_rect:?}"
+        );
+        let _ = ctx.end_pass();
+    }
+
+    #[test]
+    fn overlapping_hosted_title_drag_moves_only_topmost_window() {
+        let ctx = egui::Context::default();
+        let lower_id = egui::Id::new("overlap_title_drag_lower");
+        let upper_id = egui::Id::new("overlap_title_drag_upper");
+        let lower_spec =
+            HostedWindowSpec::new("Lower", lower_id, vec2(360.0, 240.0), vec2(180.0, 120.0))
+                .initial_pos(Some(pos2(90.0, 90.0)));
+        let upper_spec =
+            HostedWindowSpec::new("Upper", upper_id, vec2(360.0, 240.0), vec2(180.0, 120.0))
+                .initial_pos(Some(pos2(90.0, 90.0)));
+        let mut lower_open = true;
+        let mut upper_open = true;
+        let screen_rect = Rect::from_min_size(pos2(0.0, 0.0), vec2(1200.0, 800.0));
+
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(screen_rect),
+            ..Default::default()
+        });
+        show_hosted_window(&ctx, &lower_spec, &mut lower_open, |ui| {
+            ui.label("lower");
+        });
+        show_hosted_window(&ctx, &upper_spec, &mut upper_open, |ui| {
+            ui.label("upper");
+        });
+        let (lower_initial, upper_initial) = ctx.memory(|mem| {
+            (
+                mem.area_rect(lower_id).expect("lower area"),
+                mem.area_rect(upper_id).expect("upper area"),
+            )
+        });
+        let drag_start = pos2(upper_initial.center().x, upper_initial.top() + 10.0);
+        let _ = ctx.end_pass();
+
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(screen_rect),
+            events: vec![
+                egui::Event::PointerMoved(drag_start),
+                egui::Event::PointerButton {
+                    pos: drag_start,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::default(),
+                },
+            ],
+            ..Default::default()
+        });
+        show_hosted_window(&ctx, &lower_spec, &mut lower_open, |ui| {
+            ui.label("lower");
+        });
+        show_hosted_window(&ctx, &upper_spec, &mut upper_open, |ui| {
+            ui.label("upper");
+        });
+        let _ = ctx.end_pass();
+
+        let drag_end = drag_start + vec2(96.0, 0.0);
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(screen_rect),
+            events: vec![egui::Event::PointerMoved(drag_end)],
+            ..Default::default()
+        });
+        show_hosted_window(&ctx, &lower_spec, &mut lower_open, |ui| {
+            ui.label("lower");
+        });
+        show_hosted_window(&ctx, &upper_spec, &mut upper_open, |ui| {
+            ui.label("upper");
+        });
+        let (lower_after, upper_after) = ctx.memory(|mem| {
+            (
+                mem.area_rect(lower_id).expect("lower area after drag"),
+                mem.area_rect(upper_id).expect("upper area after drag"),
+            )
+        });
+
+        assert_eq!(
+            lower_after.min, lower_initial.min,
+            "lower window moved during top-window title drag: before={lower_initial:?}, after={lower_after:?}"
+        );
+        assert!(
+            upper_after.min.x > upper_initial.min.x + 40.0,
+            "top window did not move with title drag: before={upper_initial:?}, after={upper_after:?}"
+        );
         let _ = ctx.end_pass();
     }
 
