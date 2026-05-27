@@ -2504,6 +2504,9 @@ Behavior:
   - otherwise it shows the default MCP state path, `.gentle_state.json`
 - the OpenAI quick-start path uses `OPENAI_API_KEY` and talks to the API
   directly; it does not reuse a ChatGPT/Codex chat session as authentication
+- the `Codex Local (uses Codex CLI login)` catalog entry is different: it calls
+  the local Codex CLI through `scripts/codex-agent-bridge`, reusing the user's
+  existing Codex CLI/App login instead of `OPENAI_API_KEY`
 - the Claude quick-start path uses `ANTHROPIC_API_KEY` and talks to the
   Anthropic API directly
 - the Mistral quick-start path uses `MISTRAL_API_KEY` and talks to the Mistral
@@ -2611,6 +2614,39 @@ OpenAI setup (explicit):
 export OPENAI_API_KEY=sk-...
 cargo run --bin gentle
 ```
+
+Codex Local setup (uses Codex CLI login, no API key):
+
+1. Install/sign in to Codex outside GENtle, for example with the Codex app/CLI
+   login flow. This may use a browser or device-code style confirmation.
+2. Ensure the bridge in this checkout is reachable. The default source-tree
+   catalog entry runs `scripts/codex-agent-bridge`, so source-checkout use works
+   when GENtle is launched from the repository root. If GENtle is launched as a
+   packaged `.app` or from another working directory, either add the repo
+   `scripts/` directory to `PATH` and set the catalog command to
+   `codex-agent-bridge`, or use an overlay catalog with the absolute bridge
+   path.
+3. If the Codex CLI itself is not on the GUI process `PATH`, set `CODEX_BIN` to
+   the executable path. Common macOS app installs expose
+   `/Applications/Codex.app/Contents/Resources/codex`.
+4. Choose `Codex Local (uses Codex CLI login)` from the Agent Assistant system
+   dropdown.
+5. Click `Test Setup`, then send a small prompt. `Test Setup` confirms the
+   bridge executable/runtime settings; because this is an external stdio
+   transport, Codex login/quota is confirmed by the first actual `Ask Agent`
+   request rather than a non-generating model-list probe.
+
+Notes:
+
+- Codex Local uses the user's Codex/ChatGPT plan limits, not OpenAI API billing.
+- The bridge runs Codex in an empty temporary directory by default so project
+  files are not implicitly sent as working-tree context; GENtle passes only the
+  explicit Agent Assistant prompt and state summary.
+- The bridge asks Codex for strict `gentle.agent_response.v1` JSON and then
+  validates it before GENtle sees the response.
+- If a Finder/Spotlight-launched macOS app cannot find Codex or cannot access
+  the same login/keychain context, launch GENtle from a terminal as a
+  workaround or set explicit `CODEX_BIN`/catalog paths.
 
 Claude setup (explicit):
 

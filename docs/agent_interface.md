@@ -513,8 +513,9 @@ Key properties:
   dedicated async job-handle/progress/cancel flow for agent-driven BLAST (and
   future primer-pair multi-BLAST selection) is planned
 - ChatGPT/Codex subscriptions do not authenticate the OpenAI API. Native OpenAI
-  API mode needs `OPENAI_API_KEY`; external MCP agents should connect through
-  `gentle_mcp` instead of making GENtle spend OpenAI API usage.
+  API mode needs `OPENAI_API_KEY`. The separate `Codex Local` catalog entry
+  delegates to the logged-in local Codex CLI through `scripts/codex-agent-bridge`
+  and uses Codex/ChatGPT plan limits instead of API billing.
 - Native Claude mode uses the Anthropic API directly and needs
   `ANTHROPIC_API_KEY`; Claude Code or Claude.ai subscription/login tokens do
   not authenticate direct Anthropic API calls.

@@ -1,0 +1,336 @@
+#!/usr/bin/env python3
+"""Bridge GENtle Agent Assistant requests through a logged-in Codex CLI.
+
+The bridge is intentionally small: GENtle owns the agent request/response
+schema, while the local Codex CLI owns authentication.  The bridge never reads
+Codex credential files.  It invokes `codex exec` in a conservative empty
+working directory and emits exactly one validated `gentle.agent_response.v1`
+JSON object on stdout.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+from typing import Any
+
+
+REQUEST_SCHEMA = "gentle.agent_request.v1"
+RESPONSE_SCHEMA = "gentle.agent_response.v1"
+ERROR_SCHEMA = "gentle.codex_agent_bridge_error.v1"
+
+COMMON_CODEX_PATHS = (
+    "/Applications/Codex.app/Contents/Resources/codex",
+    "~/.codex/bin/codex",
+    "~/.local/bin/codex",
+    "/opt/homebrew/bin/codex",
+    "/usr/local/bin/codex",
+)
+
+
+def bridge_error(code: str, message: str, **details: Any) -> int:
+    payload = {
+        "schema": ERROR_SCHEMA,
+        "code": code,
+        "message": message,
+    }
+    if details:
+        payload["details"] = details
+    print(json.dumps(payload, sort_keys=True), file=sys.stderr)
+    return 1
+
+
+def read_request() -> dict[str, Any]:
+    raw = sys.stdin.read()
+    if not raw.strip():
+        raise ValueError("stdin did not contain a GENtle agent request JSON object")
+    value = json.loads(raw)
+    if not isinstance(value, dict):
+        raise ValueError("GENtle agent request must be a JSON object")
+    if value.get("schema") != REQUEST_SCHEMA:
+        raise ValueError(f"expected schema {REQUEST_SCHEMA}, got {value.get('schema')!r}")
+    prompt = value.get("prompt")
+    if not isinstance(prompt, str) or not prompt.strip():
+        raise ValueError("GENtle agent request requires a non-empty prompt string")
+    return value
+
+
+def resolve_codex_bin() -> str:
+    explicit = os.environ.get("CODEX_BIN", "").strip()
+    candidates: list[str] = []
+    if explicit:
+        candidates.append(explicit)
+    which = shutil.which("codex")
+    if which:
+        candidates.append(which)
+    candidates.extend(os.path.expanduser(path) for path in COMMON_CODEX_PATHS)
+    for candidate in candidates:
+        if candidate and os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    raise FileNotFoundError(
+        "Could not find Codex CLI. Set CODEX_BIN or add codex to PATH. "
+        "Checked: " + ", ".join(dict.fromkeys(candidates or ["codex"]))
+    )
+
+
+def response_json_schema() -> dict[str, Any]:
+    return {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["schema", "assistant_message"],
+        "properties": {
+            "schema": {"const": RESPONSE_SCHEMA},
+            "assistant_message": {"type": "string"},
+            "questions": {"type": "array", "items": {"type": "string"}},
+            "suggested_commands": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["command"],
+                    "properties": {
+                        "title": {"type": "string"},
+                        "rationale": {"type": "string"},
+                        "command": {"type": "string"},
+                        "execution": {"enum": ["chat", "ask", "auto"]},
+                    },
+                },
+            },
+        },
+    }
+
+
+def render_codex_prompt(request: dict[str, Any]) -> str:
+    request_json = json.dumps(request, ensure_ascii=False, indent=2, sort_keys=True)
+    return f"""You are GENtle's inner Agent Assistant.
+
+Return exactly one JSON object matching schema {RESPONSE_SCHEMA}. Do not wrap it
+in Markdown fences. Do not include prose outside the JSON object.
+
+Allowed response shape:
+{{
+  "schema": "{RESPONSE_SCHEMA}",
+  "assistant_message": "short answer for the user",
+  "questions": ["optional follow-up question"],
+  "suggested_commands": [
+    {{
+      "title": "optional short label",
+      "rationale": "optional reason",
+      "command": "GENtle shared-shell command only",
+      "execution": "chat|ask|auto"
+    }}
+  ]
+}}
+
+Command boundary:
+- Suggest only GENtle shared-shell commands or GENtle-local slash aliases.
+- Do not suggest operating-system shell commands.
+- Do not suggest /grep, /find, /ls, /new, /example, or vague filesystem search.
+- Do not suggest agents ask, agents plan, agents execute-plan, MCP launches, or
+  nested agent execution.
+- Use execution="ask" for mutating or external/network commands.
+- Use execution="chat" when no command should be run.
+
+Use only the state summary included in the request. Do not infer hidden files
+from the Codex working directory.
+
+GENtle agent request:
+{request_json}
+"""
+
+
+def parse_positive_int_env(name: str, default: int) -> int:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        parsed = int(raw)
+    except ValueError:
+        return default
+    return parsed if parsed > 0 else default
+
+
+def codex_command(codex_bin: str, work_dir: str, schema_path: str, output_path: str) -> list[str]:
+    command = [
+        codex_bin,
+        "--ask-for-approval",
+        "never",
+        "exec",
+        "--sandbox",
+        "read-only",
+        "--cd",
+        work_dir,
+        "--skip-git-repo-check",
+        "--ephemeral",
+        "--ignore-rules",
+        "--ignore-user-config",
+        "--color",
+        "never",
+        "--output-schema",
+        schema_path,
+        "--output-last-message",
+        output_path,
+    ]
+    model = os.environ.get("CODEX_AGENT_MODEL") or os.environ.get("GENTLE_CODEX_MODEL")
+    if model and model.strip():
+        command.extend(["--model", model.strip()])
+    command.append("-")
+    return command
+
+
+def invoke_codex(codex_bin: str, prompt: str) -> tuple[str, str, int]:
+    timeout = parse_positive_int_env(
+        "CODEX_AGENT_TIMEOUT_SECS",
+        parse_positive_int_env("GENTLE_AGENT_READ_TIMEOUT_SECS", 300),
+    )
+    with tempfile.TemporaryDirectory(prefix="gentle-codex-agent-") as temp_dir:
+        schema_path = os.path.join(temp_dir, "response.schema.json")
+        output_path = os.path.join(temp_dir, "last_message.txt")
+        Path(schema_path).write_text(
+            json.dumps(response_json_schema(), sort_keys=True),
+            encoding="utf-8",
+        )
+        command = codex_command(codex_bin, temp_dir, schema_path, output_path)
+        completed = subprocess.run(
+            command,
+            input=prompt,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=timeout,
+            check=False,
+        )
+        output_text = ""
+        output_file = Path(output_path)
+        if output_file.exists():
+            output_text = output_file.read_text(encoding="utf-8", errors="replace")
+        if not output_text.strip():
+            output_text = completed.stdout
+        return output_text, completed.stderr, completed.returncode
+
+
+def extract_first_json_object(text: str) -> str:
+    start = text.find("{")
+    if start < 0:
+        raise ValueError("Codex output did not contain a JSON object")
+    depth = 0
+    in_string = False
+    escaped = False
+    for idx in range(start, len(text)):
+        char = text[idx]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : idx + 1]
+    raise ValueError("Codex output contained an unterminated JSON object")
+
+
+def extension_key(key: str) -> bool:
+    return key.startswith("x_") or key.startswith("x-")
+
+
+def validate_agent_response(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise ValueError("agent response must be a JSON object")
+    allowed_top = {"schema", "assistant_message", "questions", "suggested_commands"}
+    unknown = [key for key in value if key not in allowed_top and not extension_key(key)]
+    if unknown:
+        raise ValueError("agent response has unsupported fields: " + ", ".join(sorted(unknown)))
+    if value.get("schema") != RESPONSE_SCHEMA:
+        raise ValueError(f"agent response schema must be {RESPONSE_SCHEMA}")
+    assistant_message = value.get("assistant_message")
+    if not isinstance(assistant_message, str):
+        raise ValueError("agent response assistant_message must be a string")
+    questions = value.get("questions", [])
+    if not isinstance(questions, list) or not all(isinstance(item, str) for item in questions):
+        raise ValueError("agent response questions must be a string array")
+    commands = value.get("suggested_commands", [])
+    if not isinstance(commands, list):
+        raise ValueError("agent response suggested_commands must be an array")
+    allowed_command = {"title", "rationale", "command", "execution"}
+    for idx, item in enumerate(commands):
+        if not isinstance(item, dict):
+            raise ValueError(f"suggested_commands[{idx}] must be an object")
+        unknown_cmd = [key for key in item if key not in allowed_command and not extension_key(key)]
+        if unknown_cmd:
+            raise ValueError(
+                f"suggested_commands[{idx}] has unsupported fields: "
+                + ", ".join(sorted(unknown_cmd))
+            )
+        command = item.get("command")
+        if not isinstance(command, str) or not command.strip():
+            raise ValueError(f"suggested_commands[{idx}].command must be a non-empty string")
+        execution = item.get("execution", "ask")
+        if execution not in {"chat", "ask", "auto"}:
+            raise ValueError(f"suggested_commands[{idx}].execution must be chat, ask, or auto")
+        item["execution"] = execution
+    value["questions"] = questions
+    value["suggested_commands"] = commands
+    if not assistant_message.strip() and not questions and not commands:
+        raise ValueError("agent response must include message, questions, or commands")
+    return value
+
+
+def parse_codex_response(text: str) -> dict[str, Any]:
+    json_text = extract_first_json_object(text)
+    value = json.loads(json_text)
+    return validate_agent_response(value)
+
+
+def main() -> int:
+    try:
+        request = read_request()
+        codex_bin = resolve_codex_bin()
+        prompt = render_codex_prompt(request)
+        output_text, stderr_text, exit_code = invoke_codex(codex_bin, prompt)
+    except subprocess.TimeoutExpired as exc:
+        return bridge_error("codex_timeout", f"Codex CLI timed out after {exc.timeout}s")
+    except FileNotFoundError as exc:
+        return bridge_error("codex_missing", str(exc))
+    except (json.JSONDecodeError, ValueError) as exc:
+        return bridge_error("invalid_request", str(exc))
+    except OSError as exc:
+        return bridge_error("codex_spawn_failed", str(exc))
+
+    if exit_code != 0:
+        combined = (stderr_text or output_text).strip()
+        lower = combined.lower()
+        code = "codex_failed"
+        if "login" in lower or "sign in" in lower or "authenticate" in lower:
+            code = "codex_not_logged_in"
+        elif "quota" in lower or "rate limit" in lower or "too many requests" in lower:
+            code = "codex_quota_or_rate_limit"
+        elif "network" in lower or "connection" in lower or "dns" in lower:
+            code = "codex_network_error"
+        return bridge_error(code, combined or f"Codex CLI exited with status {exit_code}")
+
+    try:
+        response = parse_codex_response(output_text)
+    except (json.JSONDecodeError, ValueError) as exc:
+        preview = output_text.strip()[:1000]
+        return bridge_error("codex_output_invalid", str(exc), output_preview=preview)
+
+    print(json.dumps(response, ensure_ascii=False, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
