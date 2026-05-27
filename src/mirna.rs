@@ -105,6 +105,16 @@ impl MirnaRegionClass {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum MirnaEvidenceTag {
+    #[serde(rename = "exact_seed_candidate")]
+    ExactSeedCandidate,
+    #[serde(rename = "orthologous_experimental_context")]
+    OrthologousExperimentalContext,
+    #[serde(rename = "directly_validated_human_site")]
+    DirectlyValidatedHumanSite,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MirnaCatalogRecord {
     pub schema: String,
@@ -175,7 +185,7 @@ pub struct MirnaTargetHit {
     pub matched_sequence: String,
     pub seed_class: MirnaSeedClass,
     pub region_context_sequence: String,
-    pub evidence_tags: Vec<String>,
+    pub evidence_tags: Vec<MirnaEvidenceTag>,
     pub notes: Vec<String>,
 }
 
@@ -358,19 +368,43 @@ pub fn resolve_mirna_query(
     ))
 }
 
+fn mirna_query_warnings(mirna: &str, mature_sequence: Option<&str>) -> Vec<String> {
+    let Some(sequence) = mature_sequence else {
+        return vec![];
+    };
+    let Some(record) = catalog_record(mirna) else {
+        return vec![];
+    };
+    let Ok(provided) = normalize_mature_sequence(sequence) else {
+        return vec![];
+    };
+    let Ok(canonical) = normalize_mature_sequence(&record.mature_sequence) else {
+        return vec![];
+    };
+    if provided == canonical {
+        return vec![];
+    }
+    vec![format!(
+        "Mature sequence override for catalog microRNA '{}' does not match the built-in catalog sequence; GENtle uses the supplied mature sequence for motif derivation and keeps the catalog id only as query identity.",
+        record.id
+    )]
+}
+
 pub fn explain_seed_motifs(
     mirna: &str,
     mature_sequence: Option<&str>,
 ) -> Result<serde_json::Value, String> {
     let query = resolve_mirna_query(mirna, mature_sequence)?;
     let motifs = seed_motifs_for_query(&query, &default_seed_classes())?;
+    let warnings = mirna_query_warnings(mirna, mature_sequence);
     Ok(serde_json::json!({
         "schema": MIRNA_SEED_EXPLANATION_SCHEMA,
         "query_mirna_id": query.id,
         "mature_sequence": query.mature_sequence,
         "accession": query.accession,
         "source": query.source,
-        "seed_motif_table": motifs
+        "seed_motif_table": motifs,
+        "warnings": warnings
     }))
 }
 
@@ -386,6 +420,10 @@ pub fn scan_mirna_target_sequence(
     let mut warnings = vec![
         "Seed matches are reported as sequence evidence only; GENtle does not infer functional repression from a seed match alone.".to_string(),
     ];
+    warnings.extend(mirna_query_warnings(
+        &request.mirna,
+        request.mature_sequence.as_deref(),
+    ));
     let transcripts = transcript_partitions(sequence, target_gene_filter, request, &mut warnings);
     if transcripts.is_empty() {
         warnings.push(format!(
@@ -416,13 +454,13 @@ pub fn scan_mirna_target_sequence(
                     motif.target_motif.len(),
                     region.reverse,
                 );
-                let mut evidence_tags = vec!["exact_seed_candidate".to_string()];
+                let mut evidence_tags = vec![MirnaEvidenceTag::ExactSeedCandidate];
                 let mut notes = request.evidence_notes.clone();
                 if let Some(note) = &request.species_note {
                     notes.push(note.clone());
                 }
                 if let Some(note) = &evidence_context {
-                    evidence_tags.push("orthologous_experimental_context".to_string());
+                    evidence_tags.push(MirnaEvidenceTag::OrthologousExperimentalContext);
                     notes.push(note.clone());
                 }
                 notes.push(
@@ -1168,6 +1206,85 @@ mod tests {
     }
 
     #[test]
+    fn known_mirna_name_with_noncanonical_mature_sequence_reports_warning() {
+        let explanation = explain_seed_motifs("hsa-miR-96-5p", Some("AAAAAAAAAAAAAAAAAAAAAAAA"))
+            .expect("explain seed");
+        assert!(
+            explanation
+                .get("warnings")
+                .and_then(|value| value.as_array())
+                .into_iter()
+                .flatten()
+                .any(|warning| warning.as_str().is_some_and(
+                    |text| text.contains("does not match the built-in catalog sequence")
+                ))
+        );
+        let mut sequence =
+            DNAsequence::from_sequence("ATGAAACCCCTGCCAAATTT").expect("synthetic sequence");
+        sequence.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: gb_io::seq::Location::simple_range(0, 20),
+            qualifiers: vec![
+                ("gene".into(), Some("EGFR".to_string())),
+                ("transcript_id".into(), Some("EGFR_SYNTHETIC.1".to_string())),
+            ],
+        });
+        let mut request = MirnaTargetScanRequest::with_defaults("hsa-miR-96-5p");
+        request.mature_sequence = Some("AAAAAAAAAAAAAAAAAAAAAAAA".to_string());
+        request.regions = vec![MirnaRegionClass::WholeTranscript];
+        request.seed_classes = vec![MirnaSeedClass::SixMer];
+        let report =
+            scan_mirna_target_sequence(&sequence, "egfr_synthetic", Some("EGFR"), &request)
+                .expect("scan");
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("does not match the built-in catalog sequence"))
+        );
+    }
+
+    #[test]
+    fn reverse_strand_transcript_hits_keep_display_coordinates_and_oriented_match() {
+        let mut sequence = DNAsequence::from_sequence("AAAAAAAAAATTGGCACCCCCCCCCCCCCC")
+            .expect("synthetic sequence");
+        sequence.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: gb_io::seq::Location::Complement(Box::new(
+                gb_io::seq::Location::simple_range(0, 30),
+            )),
+            qualifiers: vec![
+                ("gene".into(), Some("REV".to_string())),
+                ("transcript_id".into(), Some("REV_SYNTHETIC.1".to_string())),
+            ],
+        });
+        let mut request = MirnaTargetScanRequest::with_defaults("hsa-miR-96-5p");
+        request.regions = vec![MirnaRegionClass::WholeTranscript];
+        request.seed_classes = vec![MirnaSeedClass::SixMer];
+        let report =
+            scan_mirna_target_sequence(&sequence, "reverse_synthetic", Some("REV"), &request)
+                .expect("scan");
+        let hits = report
+            .grouped_hits
+            .iter()
+            .flat_map(|group| group.hits.iter())
+            .collect::<Vec<_>>();
+        assert_eq!(hits.len(), 1, "expected one reverse-strand hit: {hits:?}");
+        let hit = hits[0];
+        assert_eq!(hit.strand, "-");
+        assert_eq!(hit.matched_sequence, "TGCCAA");
+        assert_eq!(hit.local_start_0based, 10);
+        assert_eq!(hit.local_end_0based_exclusive, 16);
+        assert_eq!(hit.genomic_start_1based, 11);
+        assert_eq!(hit.genomic_end_1based, 16);
+        assert_eq!(&sequence.forward_bytes()[10..16], b"TTGGCA");
+        assert_eq!(
+            hit.region_context_sequence,
+            "GGGGGGGGGGGGGGTGCCAATTTTTTTTTT"
+        );
+    }
+
+    #[test]
     fn tp73_refseq_scan_reports_3utr_mir_96_candidate_without_validation_claim() {
         let sequence = dna_sequence::load_from_file("test_files/tp73.ncbi.gb").expect("load TP73");
         let request = MirnaTargetScanRequest::with_defaults("hsa-miR-96-5p");
@@ -1216,7 +1333,7 @@ mod tests {
                 .iter()
                 .flat_map(|group| group.hits.iter())
                 .flat_map(|hit| hit.evidence_tags.iter())
-                .all(|tag| tag != "directly_validated_human_site")
+                .all(|tag| tag != &MirnaEvidenceTag::DirectlyValidatedHumanSite)
         );
         assert!(
             report
@@ -1226,7 +1343,7 @@ mod tests {
                 .any(|hit| hit
                     .evidence_tags
                     .iter()
-                    .any(|tag| tag == "orthologous_experimental_context")
+                    .any(|tag| tag == &MirnaEvidenceTag::OrthologousExperimentalContext)
                     && hit.notes.iter().any(|note| note.contains("PMID 37099528")))
         );
     }
