@@ -2346,6 +2346,10 @@ microRNA target-site scan notes:
   local 0-based half-open coordinates, 1-based display coordinates, strand,
   matched sequence, +/-20 bp region context, `evidence_tags`, notes, and
   summary counts for every requested region/seed-class pair.
+- `evidence_tags` are typed string values. The v1 set includes
+  `exact_seed_candidate`, `orthologous_experimental_context`, and the reserved
+  `directly_validated_human_site` tag, which GENtle does not emit unless a
+  future direct-human-validation source supplies it.
 - For reverse-strand transcripts, `matched_sequence` and
   `region_context_sequence` are reported in transcript/mRNA orientation, while
   local and genomic coordinate fields remain in the displayed sequence's

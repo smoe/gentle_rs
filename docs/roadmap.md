@@ -217,8 +217,6 @@ wet-lab conclusions or unconfirmed mutations.
 - Primer3 parity, virtual PCR/off-target filtering, multiplex tiling, LAMP, and
   allele-specific assay families.
 - GuideRNA off-target ranking and macro-template packaging.
-- microRNA scanner hardening: add a reverse-strand transcript regression fixture
-  before future edits to reverse-strand hit mapping.
 - Cross-tool parity synthesis for Serial Cloner, MacVector, and SnapGene.
 - Post-release hardening backlog that is not tied to the next release scope.
 - Weekly/monthly maintenance chore automation rollout from

@@ -37,6 +37,9 @@ Maintenance rule:
 - Added `Patterns -> microRNA Target Scan...` as a graphical GUI wrapper over
   the shared scan command, including seed-pairing drawings, region-specific
   splicing interpretation, and side-by-side ortholog/candidate snippet scans.
+- Hardened the microRNA scanner with typed evidence tags, a reverse-strand
+  coordinate regression, and warnings when a known catalog name is paired with a
+  non-canonical mature-sequence override.
 
 ## 2026-05-26
 
