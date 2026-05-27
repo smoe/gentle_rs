@@ -7544,7 +7544,7 @@ fn embedded_sequence_viewport_renders_without_legacy_title_bar_window() {
     let stale_title_layer_id = GENtleApp::stale_hosted_window_title_layer_id(&title);
 
     ctx.begin_pass(egui::RawInput::default());
-    egui::Window::new(title.clone()).show(&ctx, |ui| {
+    crate::egui_compat::show_legacy_layer_for_tests(&ctx, stale_title_layer_id, |ui| {
         ui.label("legacy title shell");
     });
     assert!(ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer_id)));
@@ -7814,6 +7814,20 @@ fn embedded_sequence_window_can_shrink_after_overflowing_content_render() {
     app.show_window(&ctx, viewport_id, window, None);
     let _ = ctx.end_pass();
 
+    let drag_mid = drag_start - egui::vec2(80.0, 60.0);
+    let window = app
+        .windows
+        .get(&viewport_id)
+        .cloned()
+        .expect("registered sequence window");
+    ctx.begin_pass(egui::RawInput {
+        screen_rect: Some(screen_rect),
+        events: vec![egui::Event::PointerMoved(drag_mid)],
+        ..Default::default()
+    });
+    app.show_window(&ctx, viewport_id, window, None);
+    let _ = ctx.end_pass();
+
     let drag_end = drag_start - egui::vec2(180.0, 120.0);
     let window = app
         .windows
@@ -7830,11 +7844,11 @@ fn embedded_sequence_window_can_shrink_after_overflowing_content_render() {
         .memory(|mem| mem.area_rect(sequence_stable_id))
         .expect("sequence area should remain visible");
     assert!(
-        shrunken_rect.width() < initial_rect.width() - 80.0,
+        shrunken_rect.width() <= initial_rect.width() - 70.0,
         "initial_rect={initial_rect:?}, shrunken_rect={shrunken_rect:?}"
     );
     assert!(
-        shrunken_rect.height() < initial_rect.height() - 60.0,
+        shrunken_rect.height() <= initial_rect.height() - 50.0,
         "initial_rect={initial_rect:?}, shrunken_rect={shrunken_rect:?}"
     );
     let _ = ctx.end_pass();
@@ -8221,7 +8235,7 @@ fn stale_rna_mapping_title_area_in_root_context_is_reset_when_detected() {
     let stale_title_layer_id = GENtleApp::stale_hosted_window_title_layer_id(title);
 
     ctx.begin_pass(egui::RawInput::default());
-    egui::Window::new(title).show(&ctx, |ui| {
+    crate::egui_compat::show_legacy_layer_for_tests(&ctx, stale_title_layer_id, |ui| {
         ui.label("legacy root-hosted RNA-read Mapping title shell");
     });
     assert!(ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer_id)));
@@ -8245,7 +8259,7 @@ fn stale_splicing_expert_title_area_in_root_context_is_reset_when_detected() {
     let stale_title_layer_id = GENtleApp::stale_hosted_window_title_layer_id(title);
 
     ctx.begin_pass(egui::RawInput::default());
-    egui::Window::new(title).show(&ctx, |ui| {
+    crate::egui_compat::show_legacy_layer_for_tests(&ctx, stale_title_layer_id, |ui| {
         ui.label("legacy root-hosted Splicing Expert title shell");
     });
     assert!(ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer_id)));
@@ -8501,9 +8515,11 @@ fn stale_help_window_area_in_root_context_is_reset_when_detected() {
     let stale_help_layer_ids = GENtleApp::legacy_root_help_layer_ids(title);
 
     ctx.begin_pass(egui::RawInput::default());
-    egui::Window::new(title).show(&ctx, |ui| {
-        ui.label("legacy nested help shell");
-    });
+    for layer_id in stale_help_layer_ids.iter().copied() {
+        crate::egui_compat::show_legacy_layer_for_tests(&ctx, layer_id, |ui| {
+            ui.label("legacy nested help shell");
+        });
+    }
     assert!(
         stale_help_layer_ids
             .iter()

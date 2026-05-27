@@ -6427,40 +6427,57 @@ fn feature_tree_ui_opens_group_and_subgroup_before_rendering_rows() {
         );
     }
 
+    // Advance test time so the first collapsing animation has a drawable body
+    // before the nested subgroup header is targeted.
     let rects = render_feature_tree_pass(
         &ctx,
         &mut area,
         egui::RawInput {
             screen_rect: Some(screen_rect),
+            time: Some(1.0),
             ..Default::default()
         },
     );
     let subgroup_center = center_of_rendered_text(&rects, "TP73 (2)")
         .expect("TP73 subgroup header should render after opening mRNA group");
+    let subgroup_toggle_center = subgroup_center - egui::vec2(20.0, 0.0);
     assert!(
         center_of_rendered_text(&rects, "TX1").is_none(),
         "transcript rows should stay hidden while the subgroup is collapsed: {rects:?}"
     );
 
-    for pressed in [true, false] {
-        render_feature_tree_pass(
-            &ctx,
-            &mut area,
-            egui::RawInput {
-                screen_rect: Some(screen_rect),
-                events: vec![
-                    egui::Event::PointerMoved(subgroup_center),
-                    egui::Event::PointerButton {
-                        pos: subgroup_center,
-                        button: egui::PointerButton::Primary,
-                        pressed,
-                        modifiers: egui::Modifiers::default(),
-                    },
-                ],
-                ..Default::default()
-            },
-        );
-    }
+    render_feature_tree_pass(
+        &ctx,
+        &mut area,
+        egui::RawInput {
+            screen_rect: Some(screen_rect),
+            events: vec![egui::Event::PointerMoved(subgroup_toggle_center)],
+            ..Default::default()
+        },
+    );
+    render_feature_tree_pass(
+        &ctx,
+        &mut area,
+        egui::RawInput {
+            screen_rect: Some(screen_rect),
+            events: vec![
+                egui::Event::PointerMoved(subgroup_toggle_center),
+                egui::Event::PointerButton {
+                    pos: subgroup_toggle_center,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::default(),
+                },
+                egui::Event::PointerButton {
+                    pos: subgroup_toggle_center,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::default(),
+                },
+            ],
+            ..Default::default()
+        },
+    );
 
     let rects = render_feature_tree_pass(
         &ctx,
@@ -7604,7 +7621,7 @@ fn rna_read_mapping_embedded_window_clears_legacy_title_bar_area() {
     let stale_title_layer_id = MainAreaDna::stale_auxiliary_window_title_layer_id(&title);
 
     ctx.begin_pass(egui::RawInput::default());
-    egui::Window::new(title.clone()).show(&ctx, |ui| {
+    crate::egui_compat::show_legacy_layer_for_tests(&ctx, stale_title_layer_id, |ui| {
         ui.label("legacy mapping title shell");
     });
     assert!(ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer_id)));

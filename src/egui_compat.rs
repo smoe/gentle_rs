@@ -6,11 +6,16 @@
 //! the rest of the codebase stays on the newer surface and builds warning-free.
 
 use eframe::egui;
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
+use std::collections::{HashMap, HashSet};
 use std::ptr::NonNull;
 
 thread_local! {
     static CURRENT_ROOT_UI: Cell<Option<NonNull<egui::Ui>>> = const { Cell::new(None) };
+    static HOSTED_WINDOW_STALE_REPAINT_REQUESTS: RefCell<HashSet<egui::Id>> = RefCell::new(HashSet::new());
+    static HOSTED_WINDOW_FRAME_DRAG_IDS: RefCell<HashMap<egui::Id, egui::Id>> = RefCell::new(HashMap::new());
+    static HOSTED_WINDOW_LAYERS: RefCell<HashMap<egui::LayerId, egui::Id>> = RefCell::new(HashMap::new());
+    static HOSTED_WINDOW_FRAME_DRAG_OWNER: Cell<Option<egui::Id>> = const { Cell::new(None) };
 }
 
 pub(crate) struct RootUiGuard {
@@ -248,6 +253,17 @@ pub(crate) fn hosted_window_title_layer_visible(ctx: &egui::Context, title: &str
     ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer))
 }
 
+#[cfg(test)]
+pub(crate) fn show_legacy_layer_for_tests(
+    ctx: &egui::Context,
+    layer_id: egui::LayerId,
+    add_contents: impl FnOnce(&mut egui::Ui),
+) {
+    egui::Area::new(layer_id.id)
+        .order(layer_id.order)
+        .show(ctx, add_contents);
+}
+
 pub(crate) fn viewport_builder_for_hosted_window(spec: &HostedWindowSpec) -> egui::ViewportBuilder {
     egui::ViewportBuilder::default()
         .with_title(spec.title.clone())
@@ -333,6 +349,11 @@ pub(crate) fn show_hosted_window<R>(
     add_contents: impl FnOnce(&mut egui::Ui) -> R,
 ) -> Option<egui::InnerResponse<Option<R>>> {
     let ctx = host.ctx();
+    register_hosted_window_frame_drag_ids(spec);
+    let frame_drag_owner = hosted_window_frame_drag_owner(ctx);
+    let blocked_by_other_hosted_window_drag =
+        frame_drag_owner.is_some_and(|owner| owner != spec.stable_id);
+    let use_area_drag_for_title_move = hosted_window_title_area_drag_active(ctx, spec);
     let constrain_rect = hosted_window_safe_rect(ctx);
     let max_size = hosted_window_max_inner_size(constrain_rect, spec.min_size, spec.drag_margin);
     let stale_extra_visible = spec
@@ -342,7 +363,9 @@ pub(crate) fn show_hosted_window<R>(
     let stale_title_visible = spec.cleanup_legacy_title_layer
         && hosted_window_title_layer_visible(ctx, spec.title.as_str());
     if stale_extra_visible || stale_title_visible {
-        ctx.request_repaint();
+        if should_request_hosted_window_stale_repaint(spec) {
+            ctx.request_repaint();
+        }
     }
     let default_size = egui::vec2(
         spec.default_size.x.clamp(spec.min_size.x, max_size.x),
@@ -360,10 +383,145 @@ pub(crate) fn show_hosted_window<R>(
         .min_size(spec.min_size)
         .max_size(max_size)
         .constrain_to(constrain_rect);
+    if use_area_drag_for_title_move {
+        window = window.drag_area(egui::WindowDrag::Anywhere);
+    }
+    if blocked_by_other_hosted_window_drag {
+        window = window.interactable(false);
+    }
     if spec.foreground {
         window = window.order(egui::Order::Foreground);
     }
-    window.show(ctx, add_contents)
+    window.show(ctx, |ui| {
+        if blocked_by_other_hosted_window_drag {
+            ui.add_enabled_ui(false, add_contents).inner
+        } else {
+            add_contents(ui)
+        }
+    })
+}
+
+fn should_request_hosted_window_stale_repaint(spec: &HostedWindowSpec) -> bool {
+    let stale_repaint_key = egui::Id::new((
+        "hosted_window_stale_layer_repaint_requested",
+        spec.stable_id,
+    ));
+    HOSTED_WINDOW_STALE_REPAINT_REQUESTS
+        .with(|requests| requests.borrow_mut().insert(stale_repaint_key))
+}
+
+fn register_hosted_window_frame_drag_ids(spec: &HostedWindowSpec) {
+    HOSTED_WINDOW_FRAME_DRAG_IDS.with(|registry| {
+        let mut registry = registry.borrow_mut();
+        for id in hosted_window_frame_drag_ids(spec) {
+            registry.insert(id, spec.stable_id);
+        }
+    });
+    HOSTED_WINDOW_LAYERS.with(|registry| {
+        let mut registry = registry.borrow_mut();
+        for order in [egui::Order::Middle, egui::Order::Foreground] {
+            registry.insert(egui::LayerId::new(order, spec.stable_id), spec.stable_id);
+        }
+    });
+}
+
+fn hosted_window_frame_drag_owner(ctx: &egui::Context) -> Option<egui::Id> {
+    if !ctx.input(|input| input.pointer.primary_down()) {
+        HOSTED_WINDOW_FRAME_DRAG_OWNER.set(None);
+        return None;
+    }
+    if let Some(owner) = HOSTED_WINDOW_FRAME_DRAG_OWNER.with(Cell::get) {
+        return Some(owner);
+    }
+    if let Some(dragged_id) = ctx.dragged_id() {
+        let owner = HOSTED_WINDOW_FRAME_DRAG_IDS
+            .with(|registry| registry.borrow().get(&dragged_id).copied());
+        if let Some(owner) = owner {
+            HOSTED_WINDOW_FRAME_DRAG_OWNER.set(Some(owner));
+            return Some(owner);
+        }
+    }
+    let owner = hosted_window_press_origin_owner(ctx);
+    if let Some(owner) = owner {
+        HOSTED_WINDOW_FRAME_DRAG_OWNER.set(Some(owner));
+    }
+    owner
+}
+
+fn hosted_window_press_origin_owner(ctx: &egui::Context) -> Option<egui::Id> {
+    let origin = ctx.input(|input| input.pointer.press_origin())?;
+    ctx.memory(|memory| {
+        let mut layer_ids = memory.layer_ids().collect::<Vec<_>>();
+        layer_ids.reverse();
+        for layer_id in layer_ids {
+            let owner =
+                HOSTED_WINDOW_LAYERS.with(|registry| registry.borrow().get(&layer_id).copied());
+            let Some(owner) = owner else {
+                continue;
+            };
+            if !memory.areas().is_visible(&layer_id) {
+                continue;
+            }
+            let Some(rect) = memory.area_rect(layer_id.id) else {
+                continue;
+            };
+            if hosted_window_capture_rect(ctx, rect).contains(origin) {
+                return Some(owner);
+            }
+        }
+        None
+    })
+}
+
+fn hosted_window_capture_rect(ctx: &egui::Context, rect: egui::Rect) -> egui::Rect {
+    let grab_radius = ctx.global_style().interaction.resize_grab_radius_side;
+    rect.expand(grab_radius.max(0.0))
+}
+
+fn hosted_window_title_area_drag_active(ctx: &egui::Context, spec: &HostedWindowSpec) -> bool {
+    if ctx.dragged_id() != Some(spec.stable_id.with("move")) {
+        return false;
+    }
+    let Some(origin) = ctx.input(|input| input.pointer.press_origin()) else {
+        return false;
+    };
+    let Some(rect) = ctx.memory(|mem| mem.area_rect(spec.stable_id)) else {
+        return false;
+    };
+    let style = ctx.global_style();
+    let grab_radius = style.interaction.resize_grab_radius_side.max(0.0);
+    let title_height =
+        (style.spacing.interact_size.y + 2.0 * style.spacing.item_spacing.y).clamp(24.0, 44.0);
+    let title_rect = egui::Rect::from_min_max(
+        egui::pos2(rect.left() + grab_radius, rect.top() + grab_radius),
+        egui::pos2(rect.right() - grab_radius, rect.top() + title_height),
+    );
+    title_rect.contains(origin)
+}
+
+fn hosted_window_frame_drag_ids(spec: &HostedWindowSpec) -> Vec<egui::Id> {
+    let mut ids = vec![
+        spec.stable_id.with("move"),
+        spec.stable_id.with("__title_click"),
+    ];
+    for order in [egui::Order::Middle, egui::Order::Foreground] {
+        let edge_drag_id =
+            egui::Id::new(egui::LayerId::new(order, spec.stable_id)).with("edge_drag");
+        ids.push(edge_drag_id);
+        for edge in [
+            "left",
+            "right",
+            "top",
+            "bottom",
+            "right_bottom",
+            "right_top",
+            "left_bottom",
+            "left_top",
+        ] {
+            ids.push(edge_drag_id.with(edge));
+        }
+    }
+    ids
 }
 
 pub(crate) fn show_central_panel<R>(
@@ -439,13 +597,15 @@ pub(crate) fn show_bottom_panel_inside<R>(
 #[cfg(test)]
 mod tests {
     use super::{
-        HOSTED_WINDOW_SAFE_INSET_BOTTOM_PX, HOSTED_WINDOW_SAFE_INSET_TOP_PX,
-        HOSTED_WINDOW_SAFE_INSET_X_PX, HostedWindowSpec, ModalWindowSpec,
         clamp_hosted_window_default_pos, clamp_hosted_window_default_size,
-        hosted_window_max_inner_size, hosted_window_safe_rect_for_rect, show_hosted_window,
-        show_modal_window,
+        hosted_window_frame_drag_ids, hosted_window_frame_drag_owner, hosted_window_max_inner_size,
+        hosted_window_press_origin_owner, hosted_window_safe_rect_for_rect,
+        register_hosted_window_frame_drag_ids, should_request_hosted_window_stale_repaint,
+        show_hosted_window, show_modal_window, HostedWindowSpec, ModalWindowSpec,
+        HOSTED_WINDOW_SAFE_INSET_BOTTOM_PX, HOSTED_WINDOW_SAFE_INSET_TOP_PX,
+        HOSTED_WINDOW_SAFE_INSET_X_PX,
     };
-    use eframe::egui::{self, Rect, pos2, vec2};
+    use eframe::egui::{self, pos2, vec2, Rect};
 
     #[test]
     fn hosted_window_safe_rect_applies_expected_inset() {
@@ -556,7 +716,7 @@ mod tests {
         let mut sibling_open = true;
 
         ctx.begin_pass(egui::RawInput::default());
-        egui::Window::new("Legacy Cleanup").show(&ctx, |ui| {
+        super::show_legacy_layer_for_tests(&ctx, stale_title_layer, |ui| {
             ui.label("legacy shell");
         });
         assert!(ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer)));
@@ -627,6 +787,99 @@ mod tests {
         assert_eq!(sibling_after, sibling_before);
         let _ = ctx.end_pass();
         assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_extra_layer)));
+    }
+
+    #[test]
+    fn show_hosted_window_stale_layer_repaint_request_is_one_shot() {
+        let stable_id = egui::Id::new("stale_repaint_once_stable_id");
+        let stale_extra_id = egui::Id::new("stale_repaint_once_legacy_layer");
+        let stale_extra_layer = egui::LayerId::new(egui::Order::Middle, stale_extra_id);
+        let spec = HostedWindowSpec::new(
+            "Stale Repaint Once",
+            stable_id,
+            vec2(300.0, 220.0),
+            vec2(160.0, 120.0),
+        )
+        .legacy_layer_id(stale_extra_layer);
+
+        assert!(should_request_hosted_window_stale_repaint(&spec));
+        assert!(!should_request_hosted_window_stale_repaint(&spec));
+    }
+
+    #[test]
+    fn hosted_window_frame_drag_owner_tracks_registered_resize_edge() {
+        let ctx = egui::Context::default();
+        let owner_id = egui::Id::new("hosted_frame_drag_owner_window");
+        let owner_spec =
+            HostedWindowSpec::new("Owner", owner_id, vec2(300.0, 220.0), vec2(160.0, 120.0));
+        register_hosted_window_frame_drag_ids(&owner_spec);
+        let edge_drag_id = hosted_window_frame_drag_ids(&owner_spec)
+            .into_iter()
+            .find(|id| *id != owner_id.with("move") && *id != owner_id.with("__title_click"))
+            .expect("edge drag id");
+
+        ctx.begin_pass(egui::RawInput {
+            events: vec![egui::Event::PointerButton {
+                pos: pos2(10.0, 10.0),
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: egui::Modifiers::default(),
+            }],
+            ..Default::default()
+        });
+        ctx.set_dragged_id(edge_drag_id);
+
+        assert_eq!(hosted_window_frame_drag_owner(&ctx), Some(owner_id));
+        let _ = ctx.end_pass();
+
+        ctx.begin_pass(egui::RawInput {
+            events: vec![egui::Event::PointerButton {
+                pos: pos2(10.0, 10.0),
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: egui::Modifiers::default(),
+            }],
+            ..Default::default()
+        });
+        assert_eq!(hosted_window_frame_drag_owner(&ctx), None);
+        let _ = ctx.end_pass();
+    }
+
+    #[test]
+    fn hosted_window_press_origin_owner_uses_topmost_registered_window() {
+        let ctx = egui::Context::default();
+        let lower_id = egui::Id::new("hosted_press_origin_lower_window");
+        let upper_id = egui::Id::new("hosted_press_origin_upper_window");
+        let lower_spec =
+            HostedWindowSpec::new("Lower", lower_id, vec2(320.0, 240.0), vec2(160.0, 120.0))
+                .initial_pos(Some(pos2(40.0, 40.0)));
+        let upper_spec =
+            HostedWindowSpec::new("Upper", upper_id, vec2(320.0, 240.0), vec2(160.0, 120.0))
+                .initial_pos(Some(pos2(90.0, 90.0)));
+        let mut lower_open = true;
+        let mut upper_open = true;
+
+        ctx.begin_pass(egui::RawInput::default());
+        show_hosted_window(&ctx, &lower_spec, &mut lower_open, |ui| {
+            ui.label("lower");
+        });
+        show_hosted_window(&ctx, &upper_spec, &mut upper_open, |ui| {
+            ui.label("upper");
+        });
+        let _ = ctx.end_pass();
+
+        ctx.begin_pass(egui::RawInput {
+            events: vec![egui::Event::PointerButton {
+                pos: pos2(100.0, 100.0),
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: egui::Modifiers::default(),
+            }],
+            ..Default::default()
+        });
+
+        assert_eq!(hosted_window_press_origin_owner(&ctx), Some(upper_id));
+        let _ = ctx.end_pass();
     }
 
     #[test]
@@ -816,7 +1069,7 @@ mod tests {
         let initial_rect = ctx
             .memory(|mem| mem.area_rect(stable_id))
             .expect("hosted area should be visible");
-        let drag_start = pos2(initial_rect.center().x, initial_rect.top() + 18.0);
+        let drag_start = pos2(initial_rect.center().x, initial_rect.top() + 10.0);
         let _ = ctx.end_pass();
 
         ctx.begin_pass(egui::RawInput {
@@ -837,7 +1090,18 @@ mod tests {
         });
         let _ = ctx.end_pass();
 
-        let drag_end = drag_start + vec2(80.0, 0.0);
+        let drag_mid = drag_start + vec2(40.0, 0.0);
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(screen_rect),
+            events: vec![egui::Event::PointerMoved(drag_mid)],
+            ..Default::default()
+        });
+        show_hosted_window(&ctx, &spec, &mut open, |ui| {
+            ui.label("content");
+        });
+        let _ = ctx.end_pass();
+
+        let drag_end = drag_start + vec2(100.0, 0.0);
         ctx.begin_pass(egui::RawInput {
             screen_rect: Some(screen_rect),
             events: vec![egui::Event::PointerMoved(drag_end)],

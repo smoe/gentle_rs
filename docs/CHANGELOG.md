@@ -12,6 +12,12 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-05-27
+
+- Hardened hosted egui window drag ownership during embedded-window resize/move
+  interactions so lower hosted windows do not react to a drag that began on the
+  active window frame.
+
 ## 2026-05-26
 
 - Refreshed `Cargo.lock` after a pre-release `cargo update` and verified the

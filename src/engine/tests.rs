@@ -7820,13 +7820,18 @@ fn test_fetch_ensembl_gene_live_tp53_skips_without_internet() {
     }
 
     let mut engine = GentleEngine::new();
-    let result = engine
-        .apply(Operation::FetchEnsemblGene {
-            query: "TP53".to_string(),
-            species: Some("homo_sapiens".to_string()),
-            entry_id: Some("tp53_live".to_string()),
-        })
-        .expect("fetch live Ensembl TP53 gene");
+    let result = match engine.apply(Operation::FetchEnsemblGene {
+        query: "TP53".to_string(),
+        species: Some("homo_sapiens".to_string()),
+        entry_id: Some("tp53_live".to_string()),
+    }) {
+        Ok(result) => result,
+        Err(err) if err.code == ErrorCode::Io => {
+            eprintln!("Skipping live Ensembl gene fetch test after request failure: {err:?}");
+            return;
+        }
+        Err(err) => panic!("fetch live Ensembl TP53 gene: {err:?}"),
+    };
 
     assert!(
         result
