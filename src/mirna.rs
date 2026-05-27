@@ -286,6 +286,7 @@ pub fn catalog_record(query: &str) -> Option<MirnaCatalogRecord> {
 }
 
 fn catalog_record_for_mature_sequence(normalized_dna_sequence: &str) -> Option<MirnaCatalogRecord> {
+    // The v1 catalog has one built-in entry; iterate catalog rows here when it grows.
     let record = catalog_record("hsa-miR-96-5p")?;
     let record_sequence = normalize_mature_sequence(&record.mature_sequence).ok()?;
     (record_sequence == normalized_dna_sequence).then_some(record)
