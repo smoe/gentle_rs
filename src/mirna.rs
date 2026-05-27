@@ -285,12 +285,35 @@ pub fn catalog_record(query: &str) -> Option<MirnaCatalogRecord> {
     }
 }
 
+fn catalog_record_for_mature_sequence(normalized_dna_sequence: &str) -> Option<MirnaCatalogRecord> {
+    let record = catalog_record("hsa-miR-96-5p")?;
+    let record_sequence = normalize_mature_sequence(&record.mature_sequence).ok()?;
+    (record_sequence == normalized_dna_sequence).then_some(record)
+}
+
 pub fn resolve_mirna_query(
     mirna: &str,
     mature_sequence: Option<&str>,
 ) -> Result<MirnaQueryRecord, String> {
     if let Some(sequence) = mature_sequence {
         let normalized = normalize_mature_sequence(sequence)?;
+        if let Some(record) = catalog_record(mirna)
+            .filter(|record| {
+                normalize_mature_sequence(&record.mature_sequence)
+                    .ok()
+                    .as_deref()
+                    == Some(normalized.as_str())
+            })
+            .or_else(|| catalog_record_for_mature_sequence(&normalized))
+        {
+            return Ok(MirnaQueryRecord {
+                id: record.id,
+                mature_sequence: normalized,
+                accession: record.accession,
+                source: format!("direct_sequence_input; matched {}", record.source),
+                aliases: record.aliases,
+            });
+        }
         return Ok(MirnaQueryRecord {
             id: mirna.trim().to_string(),
             mature_sequence: normalized,
@@ -302,9 +325,19 @@ pub fn resolve_mirna_query(
         });
     }
     if looks_like_sequence(mirna) {
+        let normalized = normalize_mature_sequence(mirna)?;
+        if let Some(record) = catalog_record_for_mature_sequence(&normalized) {
+            return Ok(MirnaQueryRecord {
+                id: record.id,
+                mature_sequence: normalized,
+                accession: record.accession,
+                source: format!("direct_sequence_input; matched {}", record.source),
+                aliases: record.aliases,
+            });
+        }
         return Ok(MirnaQueryRecord {
             id: "direct_microRNA_sequence".to_string(),
-            mature_sequence: normalize_mature_sequence(mirna)?,
+            mature_sequence: normalized,
             accession: None,
             source: "direct_sequence_input".to_string(),
             aliases: vec![],
@@ -392,7 +425,7 @@ pub fn scan_mirna_target_sequence(
                     notes.push(note.clone());
                 }
                 notes.push(
-                    "No direct human TP73 validation is asserted by this report.".to_string(),
+                    "No direct experimental validation is asserted by this report; results are sequence-evidence candidates only.".to_string(),
                 );
                 let context = oriented_context_sequence(
                     sequence,
@@ -1071,6 +1104,66 @@ mod tests {
         assert_eq!(by_class[&MirnaSeedClass::SevenMerM8], "GTGCCAA");
         assert_eq!(by_class[&MirnaSeedClass::SevenMerA1], "TGCCAAA");
         assert_eq!(by_class[&MirnaSeedClass::SixMer], "TGCCAA");
+    }
+
+    #[test]
+    fn direct_mature_sequence_resolves_matching_catalog_record() {
+        let query = resolve_mirna_query("custom-label", Some("UUUGGCACUAGCACAUUUUUGCU"))
+            .expect("catalog match");
+        assert_eq!(query.id, "hsa-miR-96-5p");
+        assert_eq!(query.accession.as_deref(), Some("MIMAT0000095"));
+        let raw_query = resolve_mirna_query("UUUGGCACUAGCACAUUUUUGCU", None).expect("raw match");
+        assert_eq!(raw_query.id, "hsa-miR-96-5p");
+    }
+
+    #[test]
+    fn helper_outputs_emit_declared_schemas() {
+        let explanation = explain_seed_motifs("hsa-miR-96-5p", None).expect("explain seed");
+        assert_eq!(
+            explanation.get("schema").and_then(|value| value.as_str()),
+            Some(MIRNA_SEED_EXPLANATION_SCHEMA)
+        );
+        let record = catalog_record("hsa-miR-96-5p").expect("catalog record");
+        assert_eq!(record.schema, MIRNA_CATALOG_RECORD_SCHEMA);
+    }
+
+    #[test]
+    fn generic_target_scan_notes_do_not_leak_tp73_wording() {
+        let mut sequence =
+            DNAsequence::from_sequence("ATGAAACCCCTGCCAAATTT").expect("synthetic sequence");
+        sequence.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: gb_io::seq::Location::simple_range(0, 20),
+            qualifiers: vec![
+                ("gene".into(), Some("EGFR".to_string())),
+                ("transcript_id".into(), Some("EGFR_SYNTHETIC.1".to_string())),
+            ],
+        });
+        sequence.features_mut().push(gb_io::seq::Feature {
+            kind: "CDS".into(),
+            location: gb_io::seq::Location::simple_range(0, 9),
+            qualifiers: vec![("gene".into(), Some("EGFR".to_string()))],
+        });
+        let request = MirnaTargetScanRequest::with_defaults("hsa-miR-96-5p");
+        let report =
+            scan_mirna_target_sequence(&sequence, "egfr_synthetic", Some("EGFR"), &request)
+                .expect("scan");
+        let notes = report
+            .grouped_hits
+            .iter()
+            .flat_map(|group| group.hits.iter())
+            .flat_map(|hit| hit.notes.iter())
+            .cloned()
+            .collect::<Vec<_>>();
+        assert!(
+            notes
+                .iter()
+                .any(|note| note.contains("No direct experimental validation"))
+        );
+        assert!(
+            notes.iter().all(|note| !note.contains("TP73")),
+            "generic target notes must not mention TP73: {notes:?}"
+        );
     }
 
     #[test]

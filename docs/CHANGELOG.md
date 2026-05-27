@@ -34,6 +34,9 @@ Maintenance rule:
   `hsa-miR-96-5p` seed catalog support, JSON schema
   `gentle.mirna_target_scan.v1`, and CLI/shared-shell commands for seed
   explanation, catalog inspection, and annotated target scanning.
+- Added `Patterns -> microRNA Target Scan...` as a graphical GUI wrapper over
+  the shared scan command, including seed-pairing drawings, region-specific
+  splicing interpretation, and side-by-side ortholog/candidate snippet scans.
 
 ## 2026-05-26
 
