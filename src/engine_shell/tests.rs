@@ -3128,7 +3128,7 @@ fn execute_arrange_set_ladders_updates_existing_arrangement() {
 #[test]
 fn parse_racks_create_from_arrangement_command() {
     let cmd = parse_shell_line(
-        "racks create-from-arrangement arr-x --rack-id rack-x --name Bench --profile plate_96",
+        "racks create-from-arrangement arr-x --rack-id rack-x --name Bench --profile plate_6",
     )
     .expect("parse command");
     match cmd {
@@ -3141,7 +3141,26 @@ fn parse_racks_create_from_arrangement_command() {
             assert_eq!(arrangement_id, "arr-x".to_string());
             assert_eq!(rack_id, Some("rack-x".to_string()));
             assert_eq!(name, Some("Bench".to_string()));
-            assert_eq!(profile, Some(RackProfileKind::Plate96));
+            assert_eq!(profile, Some(RackProfileKind::Plate6));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_racks_create_from_arrangement_accepts_cell_culture_plate_aliases() {
+    let cmd =
+        parse_shell_line("racks simulation-json rack-1 plate.json --template cell_culture_plate")
+            .expect("parse command");
+    match cmd {
+        ShellCommand::RacksSimulationJson {
+            rack_id,
+            output,
+            template,
+        } => {
+            assert_eq!(rack_id, "rack-1".to_string());
+            assert_eq!(output, "plate.json".to_string());
+            assert_eq!(template, RackPhysicalTemplateKind::CellCulturePlate);
         }
         other => panic!("unexpected command: {other:?}"),
     }
