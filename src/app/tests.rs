@@ -4929,6 +4929,17 @@ fn command_palette_includes_sequencing_confirmation_entry() {
 }
 
 #[test]
+fn command_palette_includes_mirna_target_scan_entry() {
+    let app = GENtleApp::default();
+    let entries = app.collect_command_palette_entries();
+    assert!(
+        entries
+            .iter()
+            .any(|entry| entry.title == "microRNA Target Scan")
+    );
+}
+
+#[test]
 fn command_palette_includes_shared_ui_intent_entries() {
     let app = GENtleApp::default();
     let entries = app.collect_command_palette_entries();
@@ -5179,6 +5190,18 @@ fn execute_command_palette_action_opens_gibson_dialog() {
     app.execute_command_palette_action(&egui::Context::default(), CommandPaletteAction::OpenGibson);
 
     assert!(app.show_gibson_dialog);
+}
+
+#[test]
+fn execute_command_palette_action_opens_mirna_target_scan_dialog() {
+    let mut app = GENtleApp::default();
+
+    app.execute_command_palette_action(
+        &egui::Context::default(),
+        CommandPaletteAction::OpenMirnaTargetScan,
+    );
+
+    assert!(app.mirna_panel.show_panel);
 }
 
 #[test]

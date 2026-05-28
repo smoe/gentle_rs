@@ -135,6 +135,12 @@ const GUI_PROMINENT_GLOSSARY_ENTRIES: &[GuiProminentGlossaryEntry] = &[
         palette_title: "Sequencing Confirmation",
         ui_intent_target: Some(UiIntentTarget::SequencingConfirmation),
     },
+    GuiProminentGlossaryEntry {
+        glossary_path: "mirna scan-target",
+        menu_path: "Patterns > microRNA Target Scan...",
+        palette_title: "microRNA Target Scan",
+        ui_intent_target: None,
+    },
 ];
 
 pub fn gui_prominent_glossary_entries() -> &'static [GuiProminentGlossaryEntry] {
