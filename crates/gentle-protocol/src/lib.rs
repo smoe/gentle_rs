@@ -1203,8 +1203,23 @@ pub enum ArrangementMode {
 /// Built-in physical carrier shapes for rack/plate placement.
 pub enum RackProfileKind {
     #[default]
+    #[serde(
+        rename = "small_tube_4x6",
+        alias = "small_tube4x6",
+        alias = "SmallTube4x6"
+    )]
     SmallTube4x6,
+    #[serde(rename = "plate_6")]
+    Plate6,
+    #[serde(rename = "plate_12")]
+    Plate12,
+    #[serde(rename = "plate_24")]
+    Plate24,
+    #[serde(rename = "plate_48")]
+    Plate48,
+    #[serde(rename = "plate_96", alias = "plate96", alias = "Plate96")]
     Plate96,
+    #[serde(rename = "plate_384", alias = "plate384", alias = "Plate384")]
     Plate384,
     Custom,
 }
@@ -1213,6 +1228,10 @@ impl RackProfileKind {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::SmallTube4x6 => "small_tube_4x6",
+            Self::Plate6 => "plate_6",
+            Self::Plate12 => "plate_12",
+            Self::Plate24 => "plate_24",
+            Self::Plate48 => "plate_48",
             Self::Plate96 => "plate_96",
             Self::Plate384 => "plate_384",
             Self::Custom => "custom",
@@ -1222,6 +1241,10 @@ impl RackProfileKind {
     pub fn dimensions(self) -> (usize, usize) {
         match self {
             Self::SmallTube4x6 => (4, 6),
+            Self::Plate6 => (2, 3),
+            Self::Plate12 => (3, 4),
+            Self::Plate24 => (4, 6),
+            Self::Plate48 => (6, 8),
             Self::Plate96 => (8, 12),
             Self::Plate384 => (16, 24),
             Self::Custom => (0, 0),
@@ -1281,6 +1304,7 @@ pub enum RackPhysicalTemplateKind {
     #[default]
     StoragePcrTubeRack,
     PipettingPcrTubeRack,
+    CellCulturePlate,
 }
 
 impl RackPhysicalTemplateKind {
@@ -1288,6 +1312,7 @@ impl RackPhysicalTemplateKind {
         match self {
             Self::StoragePcrTubeRack => "storage_pcr_tube_rack",
             Self::PipettingPcrTubeRack => "pipetting_pcr_tube_rack",
+            Self::CellCulturePlate => "cell_culture_plate",
         }
     }
 }
@@ -1298,6 +1323,7 @@ impl RackPhysicalTemplateKind {
 pub enum RackPhysicalTemplateFamily {
     Storage,
     Pipetting,
+    CellCulture,
 }
 
 impl RackPhysicalTemplateFamily {
@@ -1305,6 +1331,7 @@ impl RackPhysicalTemplateFamily {
         match self {
             Self::Storage => "storage",
             Self::Pipetting => "pipetting",
+            Self::CellCulture => "cell_culture",
         }
     }
 }

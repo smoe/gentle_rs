@@ -188,14 +188,31 @@ impl GentleEngine {
 
     fn choose_smallest_rack_profile_for_slots(
         slot_count: usize,
+        prefer_plate: bool,
     ) -> Result<RackProfileKind, EngineError> {
-        for kind in [
-            RackProfileKind::SmallTube4x6,
-            RackProfileKind::Plate96,
-            RackProfileKind::Plate384,
-        ] {
+        let profile_order: &[RackProfileKind] = if prefer_plate {
+            &[
+                RackProfileKind::Plate6,
+                RackProfileKind::Plate12,
+                RackProfileKind::Plate24,
+                RackProfileKind::Plate48,
+                RackProfileKind::Plate96,
+                RackProfileKind::Plate384,
+            ]
+        } else {
+            &[
+                RackProfileKind::SmallTube4x6,
+                RackProfileKind::Plate6,
+                RackProfileKind::Plate12,
+                RackProfileKind::Plate24,
+                RackProfileKind::Plate48,
+                RackProfileKind::Plate96,
+                RackProfileKind::Plate384,
+            ]
+        };
+        for kind in profile_order {
             if slot_count <= kind.capacity() {
-                return Ok(kind);
+                return Ok(*kind);
             }
         }
         Err(EngineError {
@@ -761,7 +778,10 @@ impl GentleEngine {
                 }
                 profile
             }
-            None => Self::choose_smallest_rack_profile_for_slots(payload.len())?,
+            None => Self::choose_smallest_rack_profile_for_slots(
+                payload.len(),
+                arrangement.mode == ArrangementMode::Plate,
+            )?,
         };
         let rack_id = rack_id
             .map(|value| value.trim().to_string())
@@ -979,7 +999,7 @@ impl GentleEngine {
                         "Sample moves must target an occupied coordinate within arrangement block '{}'",
                         arrangement_id
                     ),
-                
+
                     cause_chain: vec![],})?;
             let block_positions = ordered
                 .iter()
@@ -1218,7 +1238,7 @@ impl GentleEngine {
                     "Multi-sample moves must target an occupied coordinate within arrangement block '{}'",
                     arrangement_id
                 ),
-            
+
                 cause_chain: vec![],})?;
         let block_positions = ordered
             .iter()
@@ -2276,6 +2296,35 @@ impl GentleEngine {
                 8.0,
                 1.2,
             ),
+            RackPhysicalTemplateKind::CellCulturePlate => {
+                let (pitch_x_mm, pitch_y_mm, opening_diameter_mm, edge_margin_mm) =
+                    match profile.kind {
+                        RackProfileKind::Plate6 => (39.1, 39.1, 34.8, 9.2),
+                        RackProfileKind::Plate12 => (26.0, 26.0, 22.1, 7.3),
+                        RackProfileKind::Plate24 => (19.3, 19.3, 15.6, 6.4),
+                        RackProfileKind::Plate48 => (13.0, 13.0, 11.0, 5.4),
+                        RackProfileKind::Plate96 => (9.0, 9.0, 6.9, 4.6),
+                        RackProfileKind::Plate384 => (4.5, 4.5, 3.6, 3.2),
+                        RackProfileKind::SmallTube4x6 | RackProfileKind::Custom => {
+                            (18.0, 18.0, 14.0, 5.0)
+                        }
+                    };
+                (
+                    RackPhysicalTemplateFamily::CellCulture,
+                    pitch_x_mm,
+                    pitch_y_mm,
+                    opening_diameter_mm,
+                    0.8,
+                    1.0,
+                    1.0,
+                    4.0,
+                    edge_margin_mm,
+                    2.0,
+                    4.0,
+                    8.0,
+                    0.8,
+                )
+            }
         };
         let overall_width_mm = if profile.columns == 0 {
             0.0
@@ -2292,10 +2341,16 @@ impl GentleEngine {
                 + opening_diameter_mm
                 + profile.rows.saturating_sub(1) as f32 * pitch_y_mm
         };
+        let container_format = match family {
+            RackPhysicalTemplateFamily::Storage | RackPhysicalTemplateFamily::Pipetting => {
+                "pcr_tube_0_2ml"
+            }
+            RackPhysicalTemplateFamily::CellCulture => "cell_culture_plate_well",
+        };
         RackPhysicalTemplateSpec {
             kind: template,
             family,
-            container_format: "pcr_tube_0_2ml".to_string(),
+            container_format: container_format.to_string(),
             rows: profile.rows,
             columns: profile.columns,
             pitch_x_mm,
@@ -2587,6 +2642,9 @@ impl GentleEngine {
                 RackPhysicalTemplateFamily::Pipetting => (
                     "#e7f6f2", "#b8dfd5", "#8ecaba", "#0f766e", "#f8fafc", "#115e59",
                 ),
+                RackPhysicalTemplateFamily::CellCulture => (
+                    "#fff7ed", "#fed7aa", "#fdba74", "#ea580c", "#fff7ed", "#9a3412",
+                ),
             };
         let skew_x = 0.48;
         let skew_y = 0.32;
@@ -2746,6 +2804,7 @@ impl GentleEngine {
         let cap_height = match spec.family {
             RackPhysicalTemplateFamily::Storage => 3.0,
             RackPhysicalTemplateFamily::Pipetting => 4.0,
+            RackPhysicalTemplateFamily::CellCulture => 1.6,
         };
         for row in 0..spec.rows {
             for column in 0..spec.columns {

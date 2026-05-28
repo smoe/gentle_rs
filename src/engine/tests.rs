@@ -14651,7 +14651,7 @@ fn create_arrangement_serial_auto_creates_default_rack_small_tube() {
 }
 
 #[test]
-fn create_rack_profile_selection_picks_96_then_384() {
+fn create_rack_profile_selection_picks_smallest_culture_plate_then_384() {
     let mut state = ProjectState::default();
     for idx in 0..100usize {
         let seq_id = format!("seq_{idx}");
@@ -14673,11 +14673,11 @@ fn create_rack_profile_selection_picks_96_then_384() {
         );
     }
     state.container_state.arrangements.insert(
-        "arr-96".to_string(),
+        "arr-48".to_string(),
         Arrangement {
-            arrangement_id: "arr-96".to_string(),
+            arrangement_id: "arr-48".to_string(),
             mode: ArrangementMode::Serial,
-            name: Some("Needs 96".to_string()),
+            name: Some("Needs 48".to_string()),
             lane_container_ids: (1..=25).map(|idx| format!("container-{idx}")).collect(),
             ladders: vec![],
             lane_role_labels: (1..=25).map(|idx| format!("lane_{idx}")).collect(),
@@ -14701,30 +14701,30 @@ fn create_rack_profile_selection_picks_96_then_384() {
         },
     );
     let mut engine = GentleEngine::from_state(state);
-    let rack_96 = engine
+    let rack_48 = engine
         .apply(Operation::CreateRackFromArrangement {
-            arrangement_id: "arr-96".to_string(),
-            rack_id: Some("rack-96".to_string()),
+            arrangement_id: "arr-48".to_string(),
+            rack_id: Some("rack-48".to_string()),
             name: None,
             profile: None,
         })
-        .expect("create rack 96");
+        .expect("create rack 48");
     assert!(
-        rack_96
+        rack_48
             .messages
             .iter()
-            .any(|message| message.contains("rack-96"))
+            .any(|message| message.contains("rack-48"))
     );
     assert_eq!(
         engine
             .state()
             .container_state
             .racks
-            .get("rack-96")
-            .expect("rack 96")
+            .get("rack-48")
+            .expect("rack 48")
             .profile
             .kind,
-        RackProfileKind::Plate96
+        RackProfileKind::Plate48
     );
     engine
         .apply(Operation::CreateRackFromArrangement {
@@ -14744,6 +14744,68 @@ fn create_rack_profile_selection_picks_96_then_384() {
             .profile
             .kind,
         RackProfileKind::Plate384
+    );
+}
+
+#[test]
+fn create_rack_profile_selection_picks_six_well_for_short_plate_arrangement() {
+    let mut state = ProjectState::default();
+    for idx in 0..6usize {
+        let seq_id = format!("seq_{idx}");
+        let container_id = format!("container-{}", idx + 1);
+        state
+            .sequences
+            .insert(seq_id.clone(), seq(&"ATGC".repeat(30 + idx)));
+        state.container_state.containers.insert(
+            container_id.clone(),
+            Container {
+                container_id: container_id.clone(),
+                kind: ContainerKind::Singleton,
+                name: Some(container_id.clone()),
+                members: vec![seq_id],
+                declared_contents_exclusive: true,
+                created_by_op: None,
+                created_at_unix_ms: 0,
+            },
+        );
+    }
+    state.container_state.arrangements.insert(
+        "arr-6".to_string(),
+        Arrangement {
+            arrangement_id: "arr-6".to_string(),
+            mode: ArrangementMode::Plate,
+            name: Some("Six well layout".to_string()),
+            lane_container_ids: (1..=6).map(|idx| format!("container-{idx}")).collect(),
+            ladders: vec![],
+            lane_role_labels: (1..=6).map(|idx| format!("well_{idx}")).collect(),
+            default_rack_id: None,
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .apply(Operation::CreateRackFromArrangement {
+            arrangement_id: "arr-6".to_string(),
+            rack_id: Some("rack-6".to_string()),
+            name: None,
+            profile: None,
+        })
+        .expect("create rack 6");
+    let rack = engine
+        .state()
+        .container_state
+        .racks
+        .get("rack-6")
+        .expect("rack 6");
+    assert_eq!(rack.profile.kind, RackProfileKind::Plate6);
+    assert_eq!(rack.profile.rows, 2);
+    assert_eq!(rack.profile.columns, 3);
+    assert_eq!(
+        rack.placements
+            .last()
+            .map(|entry| entry.coordinate.as_str()),
+        Some("B3")
     );
 }
 
@@ -15709,6 +15771,85 @@ fn export_rack_carrier_labels_and_simulation_json_include_template_and_arrangeme
             .map(|v| v > 0.0),
         Some(true)
     );
+}
+
+#[test]
+fn export_six_well_cell_culture_plate_simulation_uses_plate_geometry() {
+    let mut state = ProjectState::default();
+    for idx in 0..6usize {
+        let seq_id = format!("sample_{}", idx + 1);
+        let container_id = format!("container-{}", idx + 1);
+        state
+            .sequences
+            .insert(seq_id.clone(), seq(&"ACGT".repeat(10 + idx)));
+        state.container_state.containers.insert(
+            container_id.clone(),
+            Container {
+                container_id: container_id.clone(),
+                kind: ContainerKind::Singleton,
+                name: Some(format!("Sample {}", idx + 1)),
+                members: vec![seq_id],
+                declared_contents_exclusive: true,
+                created_by_op: None,
+                created_at_unix_ms: 0,
+            },
+        );
+    }
+    state.container_state.arrangements.insert(
+        "arr-plate".to_string(),
+        Arrangement {
+            arrangement_id: "arr-plate".to_string(),
+            mode: ArrangementMode::Plate,
+            name: Some("Six-well culture plate".to_string()),
+            lane_container_ids: (1..=6).map(|idx| format!("container-{idx}")).collect(),
+            ladders: vec![],
+            lane_role_labels: ["A1", "A2", "A3", "B1", "B2", "B3"]
+                .iter()
+                .map(|value| (*value).to_string())
+                .collect(),
+            default_rack_id: None,
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .apply(Operation::CreateRackFromArrangement {
+            arrangement_id: "arr-plate".to_string(),
+            rack_id: Some("rack-plate".to_string()),
+            name: Some("Six-well plate".to_string()),
+            profile: None,
+        })
+        .expect("create plate rack");
+    let temp = tempdir().expect("tempdir");
+    let simulation_path = temp.path().join("plate.simulation.json");
+    engine
+        .apply(Operation::ExportRackSimulationJson {
+            rack_id: "rack-plate".to_string(),
+            path: simulation_path.display().to_string(),
+            template: RackPhysicalTemplateKind::CellCulturePlate,
+        })
+        .expect("simulation export");
+    let simulation_text = fs::read_to_string(&simulation_path).expect("read simulation json");
+    let simulation_json: serde_json::Value =
+        serde_json::from_str(&simulation_text).expect("parse simulation json");
+    assert_eq!(
+        simulation_json["rack"]["profile"]["kind"].as_str(),
+        Some("plate_6")
+    );
+    assert_eq!(
+        simulation_json["physical_template"]["kind"].as_str(),
+        Some("cell_culture_plate")
+    );
+    assert_eq!(
+        simulation_json["physical_template"]["container_format"].as_str(),
+        Some("cell_culture_plate_well")
+    );
+    let opening_diameter = simulation_json["physical_template"]["opening_diameter_mm"]
+        .as_f64()
+        .expect("opening diameter");
+    assert!((opening_diameter - 34.8).abs() < 0.001);
+    assert_eq!(simulation_json["slots"].as_array().map(Vec::len), Some(6));
 }
 
 #[test]

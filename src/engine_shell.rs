@@ -12069,10 +12069,20 @@ fn parse_guide_plate_format(value: &str) -> Result<GuideOligoPlateFormat, String
 fn parse_rack_profile_kind(value: &str) -> Result<RackProfileKind, String> {
     match value.trim().to_ascii_lowercase().as_str() {
         "small_tube_4x6" | "tube" | "rack" | "4x6" | "tube4x6" => Ok(RackProfileKind::SmallTube4x6),
+        "plate_6" | "6" | "plate6" | "p6" | "6well" | "6_well" => Ok(RackProfileKind::Plate6),
+        "plate_12" | "12" | "plate12" | "p12" | "12well" | "12_well" => {
+            Ok(RackProfileKind::Plate12)
+        }
+        "plate_24" | "24" | "plate24" | "p24" | "24well" | "24_well" => {
+            Ok(RackProfileKind::Plate24)
+        }
+        "plate_48" | "48" | "plate48" | "p48" | "48well" | "48_well" => {
+            Ok(RackProfileKind::Plate48)
+        }
         "plate_96" | "96" | "plate96" | "p96" => Ok(RackProfileKind::Plate96),
         "plate_384" | "384" | "plate384" | "p384" => Ok(RackProfileKind::Plate384),
         other => Err(format!(
-            "Unsupported rack profile '{other}' (expected small_tube_4x6|plate_96|plate_384)"
+            "Unsupported rack profile '{other}' (expected small_tube_4x6|plate_6|plate_12|plate_24|plate_48|plate_96|plate_384)"
         )),
     }
 }
@@ -12137,8 +12147,11 @@ fn parse_rack_physical_template_kind(value: &str) -> Result<RackPhysicalTemplate
         "pipetting_pcr_tube_rack" | "pipetting" | "pipetting_tube" | "pipetting_pcr" => {
             Ok(RackPhysicalTemplateKind::PipettingPcrTubeRack)
         }
+        "cell_culture_plate" | "culture_plate" | "cell_culture" | "plate" => {
+            Ok(RackPhysicalTemplateKind::CellCulturePlate)
+        }
         other => Err(format!(
-            "Unsupported rack physical template '{other}' (expected storage_pcr_tube_rack|pipetting_pcr_tube_rack)"
+            "Unsupported rack physical template '{other}' (expected storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate)"
         )),
     }
 }

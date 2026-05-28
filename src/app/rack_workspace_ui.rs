@@ -590,6 +590,10 @@ impl GENtleApp {
     pub(super) fn rack_profile_label(kind: RackProfileKind) -> &'static str {
         match kind {
             RackProfileKind::SmallTube4x6 => "Small tube rack (4 x 6)",
+            RackProfileKind::Plate6 => "Cell culture plate 6-well",
+            RackProfileKind::Plate12 => "Cell culture plate 12-well",
+            RackProfileKind::Plate24 => "Cell culture plate 24-well",
+            RackProfileKind::Plate48 => "Cell culture plate 48-well",
             RackProfileKind::Plate96 => "Plate 96",
             RackProfileKind::Plate384 => "Plate 384",
             RackProfileKind::Custom => "Custom",
@@ -623,6 +627,7 @@ impl GENtleApp {
         match template {
             RackPhysicalTemplateKind::StoragePcrTubeRack => "Storage PCR tube rack",
             RackPhysicalTemplateKind::PipettingPcrTubeRack => "Pipetting PCR tube rack",
+            RackPhysicalTemplateKind::CellCulturePlate => "Cell culture plate",
         }
     }
 
@@ -2053,6 +2058,10 @@ impl GENtleApp {
                 .show_ui(ui, |ui| {
                     for profile in [
                         RackProfileKind::SmallTube4x6,
+                        RackProfileKind::Plate6,
+                        RackProfileKind::Plate12,
+                        RackProfileKind::Plate24,
+                        RackProfileKind::Plate48,
                         RackProfileKind::Plate96,
                         RackProfileKind::Plate384,
                         RackProfileKind::Custom,
@@ -2985,6 +2994,7 @@ impl GENtleApp {
                     for template in [
                         RackPhysicalTemplateKind::StoragePcrTubeRack,
                         RackPhysicalTemplateKind::PipettingPcrTubeRack,
+                        RackPhysicalTemplateKind::CellCulturePlate,
                     ] {
                         ui.selectable_value(
                             &mut self.rack_physical_template_kind,
