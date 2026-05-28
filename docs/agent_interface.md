@@ -298,6 +298,9 @@ an agent has selected a deterministic operation.
 - `macros template-put`
 - `macros template-run`
 - `macros template-show`
+- `mirna catalog-show`
+- `mirna explain-seed`
+- `mirna scan-target`
 - `panels import-isoform`
 - `panels inspect-isoform`
 - `panels render-isoform-svg`
