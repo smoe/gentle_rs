@@ -264,6 +264,8 @@ fn sample_value_for_usage_token(flag: &str, token: &str) -> String {
         "--speed-profile" => "human".to_string(),
         "--state-mode" => "none".to_string(),
         "--status" => "pending".to_string(),
+        "--regions" => "3utr,exon".to_string(),
+        "--seed-classes" => "8mer,7mer-A1".to_string(),
         "--strand" => "any".to_string(),
         "--strand-relation" => "any".to_string(),
         "--target-gene" | "--target-gene-id" | "--gene" => "TP73".to_string(),
