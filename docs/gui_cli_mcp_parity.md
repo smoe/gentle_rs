@@ -17,8 +17,8 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 
 | Adapter | prominent | shell-only | gap |
 |---|---:|---:|---:|
-| GUI | 20 | 540 | 0 |
-| gentle_cli | 321 | 264 | 0 |
+| GUI | 21 | 542 | 0 |
+| gentle_cli | 324 | 264 | 0 |
 | MCP | 67 | 402 | 22 |
 | JS | 78 | 383 | 22 |
 | Lua | 77 | 384 | 22 |
@@ -227,7 +227,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | arrays project-microarray-track | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | mirna explain-seed | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: microRNA scan service is currently shared-shell only.<br>JS: microRNA scan service is currently shared-shell only.<br>Lua: microRNA scan service is currently shared-shell only.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | mirna catalog-show | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: microRNA scan service is currently shared-shell only.<br>JS: microRNA scan service is currently shared-shell only.<br>Lua: microRNA scan service is currently shared-shell only.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
-| mirna scan-target | glossary-command | prominent | prominent | n/a | n/a | n/a | n/a | GUI menu: `Patterns -> microRNA Target Scan...` wraps the shared scanner with graphical pairing and comparison views.<br>MCP: microRNA scan service is currently shared-shell only.<br>JS: microRNA scan service is currently shared-shell only.<br>Lua: microRNA scan service is currently shared-shell only.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| mirna scan-target | glossary-command | prominent | prominent | n/a | n/a | n/a | n/a | MCP: microRNA scan service is currently shared-shell only.<br>JS: microRNA scan service is currently shared-shell only.<br>Lua: microRNA scan service is currently shared-shell only.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | tracks tracked list | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation.<br>JS: Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation.<br>Lua: Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | tracks tracked add | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation.<br>JS: Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation.<br>Lua: Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | tracks tracked remove | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation.<br>JS: Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation.<br>Lua: Reference/helper maintenance is host-local shell workflow rather than a generic adapter operation.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
