@@ -2168,6 +2168,7 @@ enum CommandPaletteAction {
     OpenConfiguration,
     OpenExternalServices,
     OpenGibson,
+    OpenMirnaTargetScan,
     OpenPlanning,
     OpenRoutineAssistant,
     UiIntent(UiIntentTarget),
@@ -4971,6 +4972,12 @@ Error: `{err}`"
                 action: CommandPaletteAction::OpenGibson,
             },
             CommandPaletteEntry {
+                title: "microRNA Target Scan".to_string(),
+                detail: "Scan transcript annotations for microRNA seed candidates and inspect graphical pairing evidence".to_string(),
+                keywords: "mirna microRNA target scan seed pairing transcript utr exon intron splice".to_string(),
+                action: CommandPaletteAction::OpenMirnaTargetScan,
+            },
+            CommandPaletteEntry {
                 title: "Planning".to_string(),
                 detail: "Edit planning profiles/objectives and resolve suggestions".to_string(),
                 keywords: "planning profile objective suggestions sync meta-layer".to_string(),
@@ -5076,6 +5083,7 @@ Error: `{err}`"
             CommandPaletteAction::OpenConfiguration => self.open_configuration_dialog(),
             CommandPaletteAction::OpenExternalServices => self.open_external_services_dialog(),
             CommandPaletteAction::OpenGibson => self.open_gibson_dialog(),
+            CommandPaletteAction::OpenMirnaTargetScan => self.open_mirna_target_scan_dialog(),
             CommandPaletteAction::OpenPlanning => self.open_planning_dialog(),
             CommandPaletteAction::OpenRoutineAssistant => self.open_routine_assistant_dialog(),
             CommandPaletteAction::UiIntent(target) => {
