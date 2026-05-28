@@ -48,7 +48,7 @@ impl Default for MirnaTargetScanPanelState {
             include_6mer: true,
             boundary_flank_bp: "25".to_string(),
             species_note: String::new(),
-            evidence_note: "rat Tp73 PMID 37099528 orthologous experimental context".to_string(),
+            evidence_note: String::new(),
             comparison_sequences: String::new(),
             selected_hit_index: 0,
             status: String::new(),
@@ -747,6 +747,12 @@ mod tests {
 
     fn motif(seed_class: MirnaSeedClass, target_motif: &str) -> MirnaSeedMotif {
         motif_with_positions(seed_class, target_motif, "2..8")
+    }
+
+    #[test]
+    fn panel_default_does_not_prefill_gene_specific_evidence_note() {
+        let state = MirnaTargetScanPanelState::default();
+        assert!(state.evidence_note.is_empty());
     }
 
     #[test]
