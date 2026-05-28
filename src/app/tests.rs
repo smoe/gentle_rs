@@ -2426,12 +2426,14 @@ fn macos_prefers_immediate_sequence_viewports() {
 }
 
 #[test]
-fn macos_sequence_windows_ignore_native_close_requests() {
-    if cfg!(target_os = "macos") {
-        assert!(!GENtleApp::sequence_window_accepts_native_close_request());
-    } else {
-        assert!(GENtleApp::sequence_window_accepts_native_close_request());
-    }
+fn default_sequence_windows_accept_native_close_requests() {
+    let _lock = crate::genomes::genbank_env_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let _native_env_guard = EnvVarGuard::set(super::MACOS_NATIVE_CHILD_VIEWPORTS_ENV, "0");
+    let _hosted_env_guard = EnvVarGuard::set(super::MACOS_HOSTED_CHILD_VIEWPORTS_ENV, "0");
+
+    assert!(GENtleApp::sequence_window_accepts_native_close_request());
 }
 
 #[test]
@@ -7286,6 +7288,90 @@ fn macos_native_child_viewports_env_override_wins_over_hosted_mode() {
     GENtleApp::configure_platform_viewport_mode(&ctx);
 
     assert!(!ctx.embed_viewports());
+}
+
+fn raw_input_with_root_window_state(fullscreen: bool, maximized: bool) -> egui::RawInput {
+    let mut raw_input = egui::RawInput::default();
+    let root_viewport = raw_input
+        .viewports
+        .get_mut(&egui::ViewportId::ROOT)
+        .expect("root viewport exists in default egui raw input");
+    root_viewport.fullscreen = Some(fullscreen);
+    root_viewport.maximized = Some(maximized);
+    raw_input
+}
+
+#[test]
+fn root_viewport_fullscreen_or_maximized_tracks_root_viewport_state() {
+    let ctx = egui::Context::default();
+
+    ctx.begin_pass(raw_input_with_root_window_state(true, false));
+    assert!(GENtleApp::root_viewport_fullscreen_or_maximized(&ctx));
+    let _ = ctx.end_pass();
+
+    ctx.begin_pass(raw_input_with_root_window_state(false, true));
+    assert!(GENtleApp::root_viewport_fullscreen_or_maximized(&ctx));
+    let _ = ctx.end_pass();
+
+    ctx.begin_pass(raw_input_with_root_window_state(false, false));
+    assert!(!GENtleApp::root_viewport_fullscreen_or_maximized(&ctx));
+    let _ = ctx.end_pass();
+}
+
+#[test]
+fn pending_native_child_windows_wait_for_regular_macos_root_viewport() {
+    let _lock = crate::genomes::genbank_env_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let _native_env_guard = EnvVarGuard::set(super::MACOS_NATIVE_CHILD_VIEWPORTS_ENV, "0");
+    let _hosted_env_guard = EnvVarGuard::set(super::MACOS_HOSTED_CHILD_VIEWPORTS_ENV, "0");
+    let ctx = egui::Context::default();
+    let mut app = GENtleApp::default();
+    app.new_windows.push(Window::new_dna(
+        DNAsequence::from_sequence("ACGT").expect("sequence"),
+        "seq1".to_string(),
+        app.engine.clone(),
+    ));
+
+    ctx.begin_pass(raw_input_with_root_window_state(true, false));
+    app.open_pending_sequence_windows(&ctx);
+    let full_output = ctx.end_pass();
+
+    if cfg!(target_os = "macos") {
+        assert_eq!(app.new_windows.len(), 1);
+        assert!(app.windows.is_empty());
+        let root_output = full_output
+            .viewport_output
+            .get(&egui::ViewportId::ROOT)
+            .expect("root viewport output");
+        assert!(
+            root_output
+                .commands
+                .contains(&egui::ViewportCommand::Fullscreen(false))
+        );
+        assert!(
+            root_output
+                .commands
+                .contains(&egui::ViewportCommand::Maximized(false))
+        );
+    } else {
+        assert!(app.new_windows.is_empty());
+        assert_eq!(app.windows.len(), 1);
+    }
+}
+
+#[test]
+fn hosted_child_viewport_mode_does_not_defer_for_root_window_state() {
+    let _lock = crate::genomes::genbank_env_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let _native_env_guard = EnvVarGuard::set(super::MACOS_NATIVE_CHILD_VIEWPORTS_ENV, "0");
+    let _hosted_env_guard = EnvVarGuard::set(super::MACOS_HOSTED_CHILD_VIEWPORTS_ENV, "1");
+    let ctx = egui::Context::default();
+
+    ctx.begin_pass(raw_input_with_root_window_state(true, false));
+    assert!(!GENtleApp::should_defer_native_child_viewport_open_for_root_state(&ctx));
+    let _ = ctx.end_pass();
 }
 
 #[test]

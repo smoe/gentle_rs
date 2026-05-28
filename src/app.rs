@@ -16236,6 +16236,39 @@ Error: `{err}`"
         }
     }
 
+    fn root_viewport_fullscreen_or_maximized(ctx: &egui::Context) -> bool {
+        ctx.input(|input| {
+            let viewport = input.viewport();
+            viewport.fullscreen.unwrap_or(false) || viewport.maximized.unwrap_or(false)
+        })
+    }
+
+    fn should_defer_native_child_viewport_open_for_root_state(ctx: &egui::Context) -> bool {
+        cfg!(target_os = "macos")
+            && !Self::should_embed_child_viewports()
+            && Self::root_viewport_fullscreen_or_maximized(ctx)
+    }
+
+    fn request_root_regular_window_for_native_child_viewports(ctx: &egui::Context) {
+        ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(false));
+        ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(false));
+        ctx.request_repaint();
+    }
+
+    fn open_pending_sequence_windows(&mut self, ctx: &egui::Context) {
+        if self.new_windows.is_empty() {
+            return;
+        }
+        if Self::should_defer_native_child_viewport_open_for_root_state(ctx) {
+            Self::request_root_regular_window_for_native_child_viewports(ctx);
+            return;
+        }
+        let mut new_windows: Vec<Window> = self.new_windows.drain(..).collect();
+        for window in new_windows.drain(..) {
+            self.register_window(window);
+        }
+    }
+
     fn sequence_window_accepts_native_close_request() -> bool {
         !Self::should_embed_child_viewports()
     }
@@ -23951,10 +23984,7 @@ impl GENtleApp {
             }
 
             // Open new windows
-            let mut new_windows: Vec<Window> = self.new_windows.drain(..).collect();
-            for window in new_windows.drain(..) {
-                self.register_window(window);
-            }
+            self.open_pending_sequence_windows(ctx);
 
             // Close windows
             self.process_window_close_queue();

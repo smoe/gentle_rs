@@ -7,8 +7,11 @@ use std::sync::LazyLock;
 
 pub static APP_ICON: LazyLock<egui::Image<'static>> =
     LazyLock::new(|| egui::Image::new(egui::include_image!("../../../assets/icon.png")));
-pub static SPLASH_SCREEN: LazyLock<egui::Image<'static>> =
-    LazyLock::new(|| egui::Image::new(egui::include_image!("../../../icons/GENtle.png")));
+pub static SPLASH_SCREEN: LazyLock<egui::Image<'static>> = LazyLock::new(|| {
+    egui::Image::new(egui::include_image!(
+        "../../../assets/mascots/Mascot_transparent.png"
+    ))
+});
 pub static ICON_CIRCULAR_LINEAR: LazyLock<egui::Image<'static>> = LazyLock::new(|| {
     egui::Image::new(egui::include_image!(
         "../../../icons/display_circular_linear.png"

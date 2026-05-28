@@ -13,6 +13,15 @@ Break, external-context links, and agent/tool workflows should remain
 headless, deterministic, and usable through shared engine/shell routes without
 depending on image assets.
 
+## App-Ready Assets
+
+### `Mascot_transparent.png`
+
+- Intended use: startup splash-screen mascot.
+- Format: RGBA PNG with a real alpha channel.
+- Current status: wired into the egui splash screen via
+  `crates/gentle-gui/src/icons.rs`.
+
 ## Experiments
 
 `experiments/` contains generated visual studies and should not be treated as

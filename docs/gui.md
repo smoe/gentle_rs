@@ -76,6 +76,9 @@ macOS auxiliary-window stability note:
 - The root GENtle window intentionally does not restore persisted fullscreen or
   maximized state on macOS. Starting the root in macOS fullscreen can trigger
   unstable Split View/tab-like flicker when the next native child window opens.
+  If a sequence window is requested while the root is still fullscreen or
+  maximized, GENtle first asks macOS to return the root to a regular window and
+  opens the sequence window on a later frame.
 - The dedicated investigation pack for earlier native-viewport regressions
   lives under `investigations/egui_macos_windowing/` so manual matrices and
   upstream-report notes stay separate from the main GUI manual.

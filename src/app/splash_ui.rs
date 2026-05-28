@@ -76,12 +76,12 @@ impl GENtleApp {
                     .add(egui::Shape::line(points_b, egui::Stroke::new(2.0, reverse)));
 
                 ui.vertical_centered(|ui| {
-                    let top_space = (ui.available_height() - 330.0).max(28.0) * 0.45;
+                    let top_space = (ui.available_height() - 470.0).max(28.0) * 0.42;
                     ui.add_space(top_space);
                     ui.add(
                         SPLASH_SCREEN
                             .clone()
-                            .fit_to_exact_size(Vec2::new(112.0, 112.0)),
+                            .fit_to_exact_size(Vec2::new(280.0, 245.0)),
                     );
                     ui.add_space(14.0);
                     ui.heading("GENtle");
