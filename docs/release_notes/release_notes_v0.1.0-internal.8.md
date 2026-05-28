@@ -1,9 +1,10 @@
 # Release Notes / Changelog: `v0.1.0-internal.8` (draft)
 
-This draft internal release is the **agent-surface formalization** cut.
-Compared with `v0.1.0-internal.7`, this cut is materially narrower in new
-biology (the v7 backlog absorbed most of that), but materially deeper in the
-machinery that lets agents drive GENtle predictably:
+This draft internal release began as the **agent-surface formalization** cut
+and has grown into a broader interim stabilization release. Compared with
+`v0.1.0-internal.7`, this cut is materially deeper in the machinery that lets
+agents drive GENtle predictably, while also landing a small number of
+user-facing GUI and biology features:
 
 - The GUI in-root decomposition started in v7 is now complete: six topical
   module extractions out of `src/main_area_dna.rs` and `src/app.rs`, with
@@ -24,9 +25,22 @@ machinery that lets agents drive GENtle predictably:
   Codex flow.
 - Splicing-expert isoform overlay and reporter-construct handoff land as
   first-version biology features that exercise the new agent surface.
+- The ClawBio bridge now has a GUI panel, logged subprocess handoff, and local
+  agent-routing notes, and the Agent Assistant can also route through a logged
+  in local Codex CLI/App session.
+- A new shared microRNA target-site scanner lands with CLI/shared-shell routes,
+  a GUI specialist, built-in `hsa-miR-96-5p` seed support, and structured
+  scan reports.
+- The GUI gained simple sequence ingress (`File -> New Sequence...` and
+  `File -> New Sequence from Clipboard...`) for typed or pasted IUPAC DNA.
+- The macOS `egui` window stack moved to the published `0.34.3` crates and
+  received several hosted-window ownership fixes. The worst drag pass-through
+  bugs appear resolved, but complex overlapping hosted-window setups remain a
+  known limitation for this interim cut.
 
-219 commits in v7 was a long backlog cut. 61 commits in v8 is the
-consolidation cut where the agent-surface tooling becomes load-bearing.
+219 commits in v7 was a long backlog cut. The v8 draft now spans 150+ commits:
+still centered on making agent-surface tooling load-bearing, but no longer a
+purely narrow consolidation cut.
 
 ## Highlights
 
@@ -65,6 +79,17 @@ consolidation cut where the agent-surface tooling becomes load-bearing.
   audit's "should accept inline" bucket to the "inline-ok" bucket.
 - **TP73 genome-anchored evidence-viewer release proof** workflow lands as
   the deterministic release-acceptance path.
+- **ClawBio and local-agent bridge polish**: GUI ClawBio panel, local agent
+  handoff note, and a `codex_local_stdio` Agent Assistant provider.
+- **Simple sequence ingress**: create a project sequence by typing/pasting
+  IUPAC DNA, including a `New Sequence from Clipboard` path.
+- **macOS hosted-window stabilization on egui/eframe `0.34.3`**: frame-drag
+  ownership is centralized so lower hosted windows are less likely to react to
+  a drag that began on the active window frame, and DNA-map body drags are no
+  longer treated as hosted-window frame drags.
+- **microRNA target-site scanning V1**: shared scan service, JSON schema,
+  CLI/shared-shell commands, and a graphical `Patterns -> microRNA Target
+  Scan...` inspector.
 
 ## Notable Changes by Area
 
@@ -274,6 +299,58 @@ commit. All merge SHAs appended to `.git-blame-ignore-revs`.
 - **egui window management investigation** (`c36f93ba`) and **daily
   screen-found documentation drift fix** (`f62dbe49`).
 
+### 15) GUI Sequence Ingress, ClawBio, and Local Agents
+
+- `File -> New Sequence...` creates an ordinary project sequence from typed
+  or pasted IUPAC DNA through the shared `CreateSequenceFromText` path.
+- `File -> New Sequence from Clipboard...` mirrors the familiar "new from
+  clipboard" workflow for quick sequence inspection.
+- The GENtle-side ClawBio bridge now includes compact GUI context export,
+  cancellable subprocess transport, output-bundle parsing, a `Services ->
+  ClawBio...` panel, artifact/report links, and verbatim suggested-action
+  dispatch.
+- `integrations/clawbio/local_agent_handoff.md` documents the preferred
+  local-agent route: use GENtle through the known ClawBio runner and inspect
+  `result.json`, `report.md`, and generated artifacts rather than inventing a
+  second command surface.
+- Agent Assistant gained a `codex_local_stdio` provider plus
+  `scripts/codex-agent-bridge`, allowing inner-agent requests to route through
+  an already-authenticated local Codex CLI/App account without requiring an
+  `OPENAI_API_KEY`.
+
+### 16) macOS Hosted-Window Stabilization
+
+- The temporary upstream egui git override was replaced by the published
+  `egui`/`eframe` `0.34.3` family.
+- Hosted windows now use a centralized frame-drag owner in
+  `src/egui_compat.rs`, with registered egui title/resize ids, title-bar
+  movement anchoring, resize-edge ownership priority, and one-shot stale-layer
+  repaint handling.
+- DNA map selection was hardened so drags that originate on splitters or
+  hosted-window decorations do not become DNA selections after entering the
+  map canvas.
+- Ordinary hosted-window body interactions, including DNA-range selection, are
+  no longer treated as hosted-window frame drags.
+- Manual macOS testing indicates the most dramatic drag pass-through behavior
+  is improved, but four overlapping hosted windows (for example project, DNA,
+  Splicing Expert, and Promoter design) remain awkward and too slow for
+  comfortable GUI work. This release should therefore be treated as a
+  stability improvement, not as the final macOS hosted-window design.
+
+### 17) microRNA Target-Site Scan V1
+
+- Added a shared `mirna` target-site scan service with built-in
+  `hsa-miR-96-5p` seed catalog support and JSON schema
+  `gentle.mirna_target_scan.v1`.
+- Added CLI/shared-shell commands for seed explanation, catalog inspection,
+  and annotated target scanning.
+- Added `Patterns -> microRNA Target Scan...` as a graphical wrapper over the
+  shared scanner, with seed-pairing drawings, region-specific splicing
+  interpretation, and side-by-side ortholog/candidate snippet scans.
+- Scanner hardening includes typed evidence tags, reverse-strand coordinate
+  regression coverage, and warnings when a known catalog name is paired with a
+  non-canonical mature-sequence override.
+
 ## Release-Facing Known Limitations
 
 - The capability matrix shows `GUI: 0 prominent` across all rows because the
@@ -296,6 +373,17 @@ commit. All merge SHAs appended to `.git-blame-ignore-revs`.
   overlay, reporter construct handoff) is by-design narrower than the
   CLI/MCP surface. The curated skill set is intentional and tracked under
   the three-level parity policy.
+- macOS hosted/nested windows remain a compromise. The worst frame-drag
+  pass-through bugs have been reduced, but dense overlapping setups with
+  project, DNA, and multiple specialist windows are still not as responsive or
+  predictable as native OS windows. Post-v8 work should retest native child
+  viewports with `GENTLE_MACOS_NATIVE_CHILD_VIEWPORTS=1` on `egui`/`eframe`
+  `0.34.3` before adding more hosted-window heuristics.
+- A remaining hosted-mode layout issue has been observed where resizing one
+  hosted window can affect the relative height of the graphical DNA display in
+  another window. Treat this as a post-v8 layout-coupling diagnostic rather
+  than a release blocker for headless, CLI, MCP, ClawBio, or non-overlapping
+  GUI workflows.
 
 ## Install / Package Notes
 
@@ -325,6 +413,7 @@ cargo test -q "engine::tests::"
 cargo test -q --test capability_registry_parity
 cargo test -q --test adapter_error_contract
 cargo test -q --test mcp_capability_surface
+cargo test -q --lib egui_compat --no-fail-fast
 cargo run --bin gentle_examples_docs -- --check
 cargo run --bin gentle_examples_docs -- tutorial-check
 cargo run --release --bin gentle -- --version
@@ -348,6 +437,12 @@ manual smoke pass should also cover:
   registry projection
 - confirming `scripts/regenerate_parity_matrix.sh` is idempotent against
   the committed matrix file
+- on macOS, opening project + DNA + one specialist hosted window and checking
+  that dragging the specialist title/resize frame over the DNA map does not
+  create a DNA selection or raise the lower window
+- optionally starting with
+  `GENTLE_MACOS_NATIVE_CHILD_VIEWPORTS=1 cargo run --bin gentle` and recording
+  whether native child viewports are now a better post-v8 default candidate
 
 ## Post-Tag Direction
 
@@ -365,7 +460,11 @@ engine extraction. Natural post-tag continuations:
    `ComputeFlexibilityTrack`.
 4. Splicing-expert RNA-mapping deepening, driven by what the analysis work
    in flight surfaces.
-5. Cosmetic: `AGENTS.md` direct cross-link to `docs/agent_dev_loop.md`;
+5. macOS GUI diagnostics: test native child viewports first on `egui`/`eframe`
+   `0.34.3`; if hosted mode must remain, separately diagnose DNA layout
+   coupling, remaining window-raise confusion, and DNA render latency rather
+   than continuing broad event-routing heuristics.
+6. Cosmetic: `AGENTS.md` direct cross-link to `docs/agent_dev_loop.md`;
    optional `docs/INDEX.md` if the `docs/` tree (now 40+ files) starts to
    feel hard to navigate.
 
@@ -385,6 +484,7 @@ Local release-prep checks expected on the tag date:
 - `cargo test -q --test capability_registry_parity`: _pending_
 - `cargo test -q --test adapter_error_contract`: _pending_
 - `cargo test -q --test mcp_capability_surface`: _pending_
+- `cargo test -q --lib egui_compat --no-fail-fast`: _pending_
 - `cargo build --release --features script-interfaces`: _pending_
   - run with `CARGO_TARGET_DIR=/tmp/gentle_release_smoke`
   - run with `CARGO_INCREMENTAL=0`
