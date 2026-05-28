@@ -158,6 +158,10 @@ fn print_help() {
     println!("{}", help_text());
 }
 
+fn persist_root_window_state() -> bool {
+    !cfg!(target_os = "macos")
+}
+
 fn main() -> eframe::Result<()> {
     install_panic_logging();
     configure_macos_process_name();
@@ -181,12 +185,15 @@ fn main() -> eframe::Result<()> {
     }
     let mut viewport = egui::ViewportBuilder::default()
         .with_inner_size([800.0, 600.0])
-        .with_min_inner_size([300.0, 220.0]);
+        .with_min_inner_size([300.0, 220.0])
+        .with_fullscreen(false)
+        .with_maximized(false);
     if let Some(icon) = load_icon("assets/icon.png") {
         viewport = viewport.with_icon(icon);
     }
     let options = NativeOptions {
         viewport,
+        persist_window: persist_root_window_state(),
         ..Default::default()
     };
 
@@ -203,7 +210,9 @@ fn main() -> eframe::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{help_text, load_icon, resolve_runtime_asset_path_from};
+    use super::{
+        help_text, load_icon, persist_root_window_state, resolve_runtime_asset_path_from,
+    };
     use std::path::Path;
 
     #[test]
@@ -250,6 +259,11 @@ mod tests {
             repo_icon.display()
         );
         assert!(load_icon("assets/icon.png").is_some());
+    }
+
+    #[test]
+    fn root_window_state_persistence_matches_platform_policy() {
+        assert_eq!(persist_root_window_state(), !cfg!(target_os = "macos"));
     }
 
     #[test]

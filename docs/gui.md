@@ -70,24 +70,29 @@ Screenshot capture policy:
 
 macOS auxiliary-window stability note:
 
-- On macOS, GENtle currently forces child viewports into embedded windows
-  instead of separate native OS windows.
-- This is a deliberate stability workaround for current `egui/eframe` native
-  viewport resize/maximize regressions reproduced locally with
-  `cargo run --bin gentle_egui_window_repro`.
-- The dedicated investigation pack for that repro lives under
-  `investigations/egui_macos_windowing/` so manual matrices and upstream-report
-  notes stay separate from the main GUI manual.
-- If you want to try native child windows again on macOS, start GENtle with
-  `GENTLE_MACOS_NATIVE_CHILD_VIEWPORTS=1 cargo run --bin gentle`.
-- The main/root GENtle window remains native, but it now acts as a neutral
-  workspace host instead of directly being the project biology UI.
+- On macOS, GENtle defaults to native OS child viewports with `egui/eframe`
+  `0.34.3` because manual testing showed substantially smoother window
+  movement, resizing, and DNA-map interaction than the hosted/nested fallback.
+- The root GENtle window intentionally does not restore persisted fullscreen or
+  maximized state on macOS. Starting the root in macOS fullscreen can trigger
+  unstable Split View/tab-like flicker when the next native child window opens.
+- The dedicated investigation pack for earlier native-viewport regressions
+  lives under `investigations/egui_macos_windowing/` so manual matrices and
+  upstream-report notes stay separate from the main GUI manual.
+- If native child windows regress, start GENtle with
+  `GENTLE_MACOS_HOSTED_CHILD_VIEWPORTS=1 cargo run --bin gentle` to force the
+  hosted/nested fallback. If both macOS window-mode environment variables are
+  set, `GENTLE_MACOS_NATIVE_CHILD_VIEWPORTS=1` wins and keeps native child
+  viewports active.
+- In hosted fallback mode, the main/root GENtle window remains native, but it
+  acts as a neutral workspace host instead of directly being the project
+  biology UI.
 - What used to be the privileged main/project surface is now the first hosted
   internal window inside that root workspace, and sequence/help/configuration
-  plus other auxiliary workspaces are hosted as sibling internal windows on
-  macOS until the upstream viewport lifecycle bug is understood or fixed.
-- The project/lineage surface should therefore open as one draggable/resizable
-  hosted peer window again, rather than filling the root host as if maximized.
+  plus other auxiliary workspaces are hosted as sibling internal windows.
+- In that fallback, the project/lineage surface should therefore open as one
+  draggable/resizable hosted peer window again, rather than filling the root
+  host as if maximized.
 - Hosted and specialist working windows are expected to route through the shared
   `src/egui_compat.rs` `HostedWindowSpec` / `show_hosted_window` wrapper. The
   wrapper owns stable egui ids, safe-area clamping, foreground-on-focus ordering,
@@ -166,10 +171,12 @@ macOS auxiliary-window stability note:
   wrapper owns stable egui ids, foreground ordering, centered placement, and
   safe-area clamping for prompt-sized shells.
 
-Manual GUI stability checklist for macOS hosted mode:
+Manual GUI stability checklist for macOS window modes:
 
-- Start with default macOS hosted mode; do not set
-  `GENTLE_MACOS_NATIVE_CHILD_VIEWPORTS=1`.
+- Start with default macOS native child viewports. Keep the root GENtle window
+  out of macOS fullscreen before opening the first project/DNA child window.
+- For the hosted fallback checklist, start with
+  `GENTLE_MACOS_HOSTED_CHILD_VIEWPORTS=1 cargo run --bin gentle`.
 - Resize the root window down to a small usable viewport and verify project,
   sequence, Help, Configuration, Background Jobs, and specialist windows keep
   reachable title bars and resize handles.

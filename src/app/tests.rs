@@ -7249,8 +7249,24 @@ fn configure_platform_viewport_mode_sets_expected_embed_flag() {
         .lock()
         .unwrap_or_else(|e| e.into_inner());
     let ctx = egui::Context::default();
-    ctx.set_embed_viewports(false);
+    ctx.set_embed_viewports(true);
     let _env_guard = EnvVarGuard::set(super::MACOS_NATIVE_CHILD_VIEWPORTS_ENV, "0");
+    let _hosted_env_guard = EnvVarGuard::set(super::MACOS_HOSTED_CHILD_VIEWPORTS_ENV, "0");
+
+    GENtleApp::configure_platform_viewport_mode(&ctx);
+
+    assert!(!ctx.embed_viewports());
+}
+
+#[test]
+fn macos_hosted_child_viewports_env_override_enables_embed_mode() {
+    let _lock = crate::genomes::genbank_env_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let ctx = egui::Context::default();
+    ctx.set_embed_viewports(false);
+    let _native_env_guard = EnvVarGuard::set(super::MACOS_NATIVE_CHILD_VIEWPORTS_ENV, "0");
+    let _hosted_env_guard = EnvVarGuard::set(super::MACOS_HOSTED_CHILD_VIEWPORTS_ENV, "1");
 
     GENtleApp::configure_platform_viewport_mode(&ctx);
 
@@ -7258,17 +7274,43 @@ fn configure_platform_viewport_mode_sets_expected_embed_flag() {
 }
 
 #[test]
-fn macos_native_child_viewports_env_override_disables_embed_mode() {
+fn macos_native_child_viewports_env_override_wins_over_hosted_mode() {
     let _lock = crate::genomes::genbank_env_lock()
         .lock()
         .unwrap_or_else(|e| e.into_inner());
     let ctx = egui::Context::default();
     ctx.set_embed_viewports(true);
     let _env_guard = EnvVarGuard::set(super::MACOS_NATIVE_CHILD_VIEWPORTS_ENV, "1");
+    let _hosted_env_guard = EnvVarGuard::set(super::MACOS_HOSTED_CHILD_VIEWPORTS_ENV, "1");
 
     GENtleApp::configure_platform_viewport_mode(&ctx);
 
     assert!(!ctx.embed_viewports());
+}
+
+#[test]
+fn native_child_viewport_mode_accepts_native_window_close_request() {
+    let _lock = crate::genomes::genbank_env_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let _native_env_guard = EnvVarGuard::set(super::MACOS_NATIVE_CHILD_VIEWPORTS_ENV, "0");
+    let _hosted_env_guard = EnvVarGuard::set(super::MACOS_HOSTED_CHILD_VIEWPORTS_ENV, "0");
+
+    assert!(GENtleApp::sequence_window_accepts_native_close_request());
+}
+
+#[test]
+fn hosted_child_viewport_mode_keeps_explicit_close_handling() {
+    let _lock = crate::genomes::genbank_env_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let _native_env_guard = EnvVarGuard::set(super::MACOS_NATIVE_CHILD_VIEWPORTS_ENV, "0");
+    let _hosted_env_guard = EnvVarGuard::set(super::MACOS_HOSTED_CHILD_VIEWPORTS_ENV, "1");
+
+    assert_eq!(
+        GENtleApp::sequence_window_accepts_native_close_request(),
+        !cfg!(target_os = "macos")
+    );
 }
 
 #[test]

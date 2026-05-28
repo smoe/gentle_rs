@@ -284,6 +284,7 @@ const WINDOW_OPEN_SLOW_THRESHOLD_MS: u128 = 400;
 const EMBEDDED_SEQUENCE_WINDOW_DRAG_MARGIN_X_PX: f32 = 32.0;
 const EMBEDDED_SEQUENCE_WINDOW_DRAG_MARGIN_Y_PX: f32 = 32.0;
 const HELP_MARKDOWN_REFLOW_DELTA_PX: f32 = 8.0;
+const MACOS_HOSTED_CHILD_VIEWPORTS_ENV: &str = "GENTLE_MACOS_HOSTED_CHILD_VIEWPORTS";
 const MACOS_NATIVE_CHILD_VIEWPORTS_ENV: &str = "GENTLE_MACOS_NATIVE_CHILD_VIEWPORTS";
 static NATIVE_HELP_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
 static NATIVE_HELP_OPEN_REQUESTED_AT_MS: AtomicU64 = AtomicU64::new(0);
@@ -16190,9 +16191,8 @@ Error: `{err}`"
         cfg!(target_os = "macos")
     }
 
-    fn macos_native_child_viewports_override_enabled() -> bool {
-        env::var(MACOS_NATIVE_CHILD_VIEWPORTS_ENV)
-            .ok()
+    fn env_flag_value_enabled(value: Option<&str>) -> bool {
+        value
             .map(|value| {
                 matches!(
                     value.trim().to_ascii_lowercase().as_str(),
@@ -16202,8 +16202,28 @@ Error: `{err}`"
             .unwrap_or(false)
     }
 
+    fn macos_native_child_viewports_override_enabled() -> bool {
+        Self::env_flag_value_enabled(env::var(MACOS_NATIVE_CHILD_VIEWPORTS_ENV).ok().as_deref())
+    }
+
+    fn macos_hosted_child_viewports_override_enabled() -> bool {
+        Self::env_flag_value_enabled(env::var(MACOS_HOSTED_CHILD_VIEWPORTS_ENV).ok().as_deref())
+    }
+
+    fn should_embed_child_viewports_for_flags(
+        is_macos: bool,
+        native_override: bool,
+        hosted_override: bool,
+    ) -> bool {
+        is_macos && hosted_override && !native_override
+    }
+
     fn should_embed_child_viewports() -> bool {
-        cfg!(target_os = "macos") && !Self::macos_native_child_viewports_override_enabled()
+        Self::should_embed_child_viewports_for_flags(
+            cfg!(target_os = "macos"),
+            Self::macos_native_child_viewports_override_enabled(),
+            Self::macos_hosted_child_viewports_override_enabled(),
+        )
     }
 
     fn configure_platform_viewport_mode(ctx: &egui::Context) {
@@ -16217,7 +16237,7 @@ Error: `{err}`"
     }
 
     fn sequence_window_accepts_native_close_request() -> bool {
-        !cfg!(target_os = "macos")
+        !Self::should_embed_child_viewports()
     }
 
     fn sequence_viewport_class_has_embedded_shell(class: egui::ViewportClass) -> bool {

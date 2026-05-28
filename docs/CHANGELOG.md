@@ -14,6 +14,9 @@ Maintenance rule:
 
 ## 2026-05-28
 
+- Defaulted macOS back to native OS child viewports on `egui/eframe` `0.34.3`,
+  with `GENTLE_MACOS_HOSTED_CHILD_VIEWPORTS=1` left as the explicit hosted
+  fallback and root-window fullscreen restoration disabled on macOS.
 - Tightened hosted egui window frame-drag ownership so resize-edge drags keep
   priority over lower hosted-window body hits while ordinary hosted-window body
   interactions such as DNA selection are no longer treated as frame drags.
