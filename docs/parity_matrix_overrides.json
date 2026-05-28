@@ -2047,6 +2047,69 @@
     },
     {
       "source": "glossary_command",
+      "name": "mirna catalog-show",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "microRNA scan service is currently shared-shell only."
+    },
+    {
+      "source": "glossary_command",
+      "name": "mirna catalog-show",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "microRNA scan service is currently shared-shell only."
+    },
+    {
+      "source": "glossary_command",
+      "name": "mirna catalog-show",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "microRNA scan service is currently shared-shell only."
+    },
+    {
+      "source": "glossary_command",
+      "name": "mirna explain-seed",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "microRNA scan service is currently shared-shell only."
+    },
+    {
+      "source": "glossary_command",
+      "name": "mirna explain-seed",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "microRNA scan service is currently shared-shell only."
+    },
+    {
+      "source": "glossary_command",
+      "name": "mirna explain-seed",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "microRNA scan service is currently shared-shell only."
+    },
+    {
+      "source": "glossary_command",
+      "name": "mirna scan-target",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "microRNA scan service is currently shared-shell only."
+    },
+    {
+      "source": "glossary_command",
+      "name": "mirna scan-target",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "microRNA scan service is currently shared-shell only."
+    },
+    {
+      "source": "glossary_command",
+      "name": "mirna scan-target",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "microRNA scan service is currently shared-shell only."
+    },
+    {
+      "source": "glossary_command",
       "name": "op",
       "adapter": "js",
       "surfacing": "not_applicable",
