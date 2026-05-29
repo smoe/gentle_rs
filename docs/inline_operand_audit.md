@@ -109,7 +109,7 @@ or do not inspect caller-supplied sequence letters.
 | `ExportRnaLadders` | path, optional name filter | N/A | catalog export |
 | `ExportPool` | sequence ids, pool metadata, path | no | inherently-stateful sequence-pool export |
 | `ExportProcessRunBundle` | path, optional run id | N/A | inherently-stateful run export |
-| `ExportLabAssistantInstructions` | path, optional run id/title/audience | N/A | inherently-stateful run export |
+| `ExportLabAssistantInstructions` | path, optional run id/title/audience/format | N/A | inherently-stateful run export |
 | `PrepareGenome` | genome id, catalog/cache paths, timeout | N/A | external genome cache operation |
 | `ExtractGenomeRegion` | genome id, chromosome/range, output id, annotation options | N/A | external genome extraction into state |
 | `ExtractGenomeGene` | genome id, gene query, output id, annotation options | N/A | external genome extraction into state |
