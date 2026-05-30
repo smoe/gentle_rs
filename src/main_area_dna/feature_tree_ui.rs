@@ -1280,6 +1280,7 @@ impl MainAreaDna {
         &self,
         key: &FeatureTreeCacheKey,
     ) -> FeatureTreeComputedModel {
+        crate::gentle_gui_profile_scope!("FeatureTree::build_model");
         let filter_active = !key.feature_filter_text.is_empty();
         let mut filter_total_count = 0usize;
         let mut filter_matched_count = 0usize;
@@ -1647,6 +1648,7 @@ impl MainAreaDna {
     }
 
     pub(super) fn ensure_feature_tree_cache_current(&mut self, viewport: Option<(usize, usize)>) {
+        crate::gentle_gui_profile_scope!("FeatureTree::ensure_cache_current");
         let next_key = self.current_feature_tree_cache_key(viewport);
         let is_current = self
             .feature_tree_cache
@@ -1664,6 +1666,7 @@ impl MainAreaDna {
     }
 
     pub(super) fn render_features(&mut self, ui: &mut egui::Ui) {
+        crate::gentle_gui_profile_scope!("FeatureTree::render_features");
         ui.heading(
             self.dna
                 .read()

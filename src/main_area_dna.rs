@@ -3673,6 +3673,7 @@ impl MainAreaDna {
     /// background jobs, refresh engine-backed display state, and lay out the
     /// root panels before delegating into the specialized render helpers below.
     pub fn render(&mut self, ctx: &egui::Context) {
+        crate::gentle_gui_profile_scope!("MainAreaDna::render");
         self.prefill_container_ids();
         self.poll_tfbs_task(ctx);
         self.poll_primer_design_task(ctx);
@@ -3716,6 +3717,7 @@ impl MainAreaDna {
                 .exact_size(self.extended_top_panel_height_px);
         }
         crate::egui_compat::show_top_panel(ctx, top_panel_id, top_panel, |ui| {
+            crate::gentle_gui_profile_scope!("MainAreaDna::render.top_panel");
             paint_window_backdrop(ui, backdrop_kind, &backdrop_settings);
             self.render_top_panel(ui);
         });
@@ -3727,6 +3729,7 @@ impl MainAreaDna {
                 bottom_panel_id,
                 Self::sequence_bottom_panel(bottom_panel_id, full_height, sequence_panel_visible),
                 |ui| {
+                    crate::gentle_gui_profile_scope!("MainAreaDna::render.sequence_panel");
                     if sequence_panel_visible {
                         paint_window_backdrop(ui, backdrop_kind, &backdrop_settings);
                         self.render_sequence(ui);
@@ -3737,6 +3740,7 @@ impl MainAreaDna {
                 ctx,
                 egui::CentralPanel::default().frame(Frame::NONE),
                 |ui| {
+                    crate::gentle_gui_profile_scope!("MainAreaDna::render.map_panel");
                     paint_window_backdrop(ui, backdrop_kind, &backdrop_settings);
                     self.render_middle(ctx, ui);
                 },
@@ -3746,6 +3750,7 @@ impl MainAreaDna {
                 ctx,
                 egui::CentralPanel::default().frame(Frame::NONE),
                 |ui| {
+                    crate::gentle_gui_profile_scope!("MainAreaDna::render.sequence_only_panel");
                     paint_window_backdrop(ui, backdrop_kind, &backdrop_settings);
                     self.render_sequence(ui);
                 },
@@ -3768,6 +3773,7 @@ impl MainAreaDna {
         ui: &mut egui::Ui,
         render_auxiliary_windows: bool,
     ) {
+        crate::gentle_gui_profile_scope!("MainAreaDna::render_inside_with_auxiliary_windows");
         self.prefill_container_ids();
         self.poll_tfbs_task(ui.ctx());
         self.poll_primer_design_task(ui.ctx());
@@ -3811,6 +3817,7 @@ impl MainAreaDna {
                 .exact_size(self.extended_top_panel_height_px);
         }
         crate::egui_compat::show_top_panel_inside(ui, top_panel, |ui| {
+            crate::gentle_gui_profile_scope!("MainAreaDna::render_inside.top_panel");
             paint_window_backdrop(ui, backdrop_kind, &backdrop_settings);
             self.render_top_panel(ui);
         });
@@ -3821,6 +3828,7 @@ impl MainAreaDna {
                 ui,
                 Self::sequence_bottom_panel(bottom_panel_id, full_height, sequence_panel_visible),
                 |ui| {
+                    crate::gentle_gui_profile_scope!("MainAreaDna::render_inside.sequence_panel");
                     if sequence_panel_visible {
                         paint_window_backdrop(ui, backdrop_kind, &backdrop_settings);
                         self.render_sequence(ui);
@@ -3831,6 +3839,7 @@ impl MainAreaDna {
                 ui,
                 egui::CentralPanel::default().frame(Frame::NONE),
                 |ui| {
+                    crate::gentle_gui_profile_scope!("MainAreaDna::render_inside.map_panel");
                     let ctx = ui.ctx().clone();
                     paint_window_backdrop(ui, backdrop_kind, &backdrop_settings);
                     self.render_middle_with_auxiliary_windows(&ctx, ui, render_auxiliary_windows);
@@ -3841,6 +3850,7 @@ impl MainAreaDna {
                 ui,
                 egui::CentralPanel::default().frame(Frame::NONE),
                 |ui| {
+                    crate::gentle_gui_profile_scope!("MainAreaDna::render_inside.sequence_only_panel");
                     paint_window_backdrop(ui, backdrop_kind, &backdrop_settings);
                     self.render_sequence(ui);
                 },
@@ -7714,7 +7724,7 @@ impl MainAreaDna {
                     egui::pos2(split_rect.left(), split_y),
                     egui::pos2(split_rect.right(), split_y),
                 ],
-                egui::Stroke::new(1.0, split_color),
+                egui::Stroke::new(1.0_f32, split_color),
             );
             if split_response.double_clicked() {
                 self.extended_top_panel_height_px =
@@ -13434,14 +13444,14 @@ impl MainAreaDna {
 
             painter.line_segment(
                 [egui::pos2(left, baseline), egui::pos2(right, baseline)],
-                egui::Stroke::new(1.0, egui::Color32::from_gray(60)),
+                egui::Stroke::new(1.0_f32, egui::Color32::from_gray(60)),
             );
             for tick in [0.0_f32, 1.0, 2.0] {
                 let y = baseline - tick * scale;
                 painter.line_segment(
                     [egui::pos2(left - 4.0, y), egui::pos2(right, y)],
                     egui::Stroke::new(
-                        1.0,
+                        1.0_f32,
                         if tick == 0.0 {
                             egui::Color32::from_gray(70)
                         } else {
@@ -13519,7 +13529,7 @@ impl MainAreaDna {
             if match_points.len() >= 2 {
                 painter.add(egui::Shape::line(
                     match_points.clone(),
-                    egui::Stroke::new(1.8, egui::Color32::BLACK),
+                    egui::Stroke::new(1.8_f32, egui::Color32::BLACK),
                 ));
                 for p in match_points {
                     painter.circle_filled(p, 2.0, egui::Color32::BLACK);
@@ -13786,14 +13796,14 @@ impl MainAreaDna {
                     egui::pos2(rail_left, top_y - 8.0),
                     egui::pos2(rail_right, top_y - 8.0),
                 ],
-                egui::Stroke::new(1.4, egui::Color32::BLACK),
+                egui::Stroke::new(1.4_f32, egui::Color32::BLACK),
             );
             painter.line_segment(
                 [
                     egui::pos2(rail_left, bottom_y + 8.0),
                     egui::pos2(rail_right, bottom_y + 8.0),
                 ],
-                egui::Stroke::new(1.4, egui::Color32::BLACK),
+                egui::Stroke::new(1.4_f32, egui::Color32::BLACK),
             );
 
             for (idx, ch) in top.chars().enumerate() {
@@ -13824,7 +13834,7 @@ impl MainAreaDna {
                         egui::pos2(top_cut_x, top_y - 28.0),
                         egui::pos2(top_cut_x, bottom_y + 24.0),
                     ],
-                    egui::Stroke::new(2.0, cut_color),
+                    egui::Stroke::new(2.0_f32, cut_color),
                 );
             } else {
                 painter.line_segment(
@@ -13832,21 +13842,21 @@ impl MainAreaDna {
                         egui::pos2(top_cut_x, top_y - 28.0),
                         egui::pos2(top_cut_x, top_y - 4.0),
                     ],
-                    egui::Stroke::new(2.0, cut_color),
+                    egui::Stroke::new(2.0_f32, cut_color),
                 );
                 painter.line_segment(
                     [
                         egui::pos2(top_cut_x, top_y - 4.0),
                         egui::pos2(bottom_cut_x, bottom_y + 4.0),
                     ],
-                    egui::Stroke::new(2.0, cut_color),
+                    egui::Stroke::new(2.0_f32, cut_color),
                 );
                 painter.line_segment(
                     [
                         egui::pos2(bottom_cut_x, bottom_y + 4.0),
                         egui::pos2(bottom_cut_x, bottom_y + 24.0),
                     ],
-                    egui::Stroke::new(2.0, cut_color),
+                    egui::Stroke::new(2.0_f32, cut_color),
                 );
             }
             painter.text(
@@ -14345,7 +14355,7 @@ impl MainAreaDna {
                         egui::pos2(plot_left, axis_y),
                         egui::pos2(plot_right, axis_y),
                     ],
-                    egui::Stroke::new(1.2, egui::Color32::from_gray(50)),
+                    egui::Stroke::new(1.2_f32, egui::Color32::from_gray(50)),
                 );
                 painter.text(
                     egui::pos2(plot_left, axis_y - 5.0),
@@ -14380,7 +14390,10 @@ impl MainAreaDna {
                     }
                     painter.add(egui::Shape::line(
                         pts,
-                        egui::Stroke::new((0.9 + support * 0.45).clamp(0.9, 3.2), color),
+                        egui::Stroke::new(
+                            (0.9_f32 + support * 0.45_f32).clamp(0.9_f32, 3.2_f32),
+                            color,
+                        ),
                     ));
                     let show_support_label =
                         view.junctions.len() <= 48 || junction.support_transcript_count > 1;
@@ -14420,7 +14433,7 @@ impl MainAreaDna {
                     let color = Self::splicing_boundary_marker_color(marker);
                     painter.line_segment(
                         [egui::pos2(x, y), egui::pos2(x, y + dy)],
-                        egui::Stroke::new(1.3, color),
+                        egui::Stroke::new(1.3_f32, color),
                     );
                     painter.circle_filled(egui::pos2(x, y + dy), 2.2, color);
                     if view.boundaries.len() <= 16
@@ -14478,7 +14491,7 @@ impl MainAreaDna {
                         painter.line_segment(
                             [egui::pos2(x1, y), egui::pos2(x2, y)],
                             egui::Stroke::new(
-                                if is_selected_signal { 2.4 } else { 1.0 },
+                                if is_selected_signal { 2.4_f32 } else { 1.0_f32 },
                                 if is_selected_signal {
                                     egui::Color32::from_rgb(14, 116, 144)
                                 } else {
@@ -14541,9 +14554,9 @@ impl MainAreaDna {
                             1.5,
                             egui::Stroke::new(
                                 if transcript.has_target_feature {
-                                    1.4
+                                    1.4_f32
                                 } else {
-                                    0.8
+                                    0.8_f32
                                 },
                                 egui::Color32::from_rgb(120, 53, 15),
                             ),
@@ -21488,7 +21501,7 @@ impl MainAreaDna {
                     egui::pos2(gel_rect.left(), y),
                     egui::pos2(gel_rect.right(), y),
                 ],
-                egui::Stroke::new(1.0, egui::Color32::from_rgb(42, 46, 53)),
+                egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(42, 46, 53)),
             );
             painter.text(
                 egui::pos2(gel_rect.right() + 8.0, y),
@@ -21570,6 +21583,7 @@ impl MainAreaDna {
     }
 
     pub fn render_sequence(&mut self, ui: &mut egui::Ui) {
+        crate::gentle_gui_profile_scope!("MainAreaDna::render_sequence");
         let sequence_length_bp = self.dna.read().map(|dna| dna.len()).unwrap_or(0);
         let max_text_length_bp = self
             .dna_display
@@ -22394,6 +22408,7 @@ impl MainAreaDna {
         ui: &mut egui::Ui,
         render_auxiliary_windows: bool,
     ) {
+        crate::gentle_gui_profile_scope!("MainAreaDna::render_middle_with_auxiliary_windows");
         ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
             self.update_dna_map();
             let side_panel_height = {
@@ -22436,6 +22451,7 @@ impl MainAreaDna {
                 feature_tree_ui.set_max_width(tree_width);
                 feature_tree_ui.set_min_height(side_panel_height);
                 feature_tree_ui.vertical(|ui| {
+                    crate::gentle_gui_profile_scope!("MainAreaDna::feature_tree_panel");
                             if self.feature_tree_deferred_until_interaction {
                                 let feature_count = self
                                     .dna
@@ -22558,7 +22574,7 @@ impl MainAreaDna {
                                         egui::pos2(split_rect.left(), split_y),
                                         egui::pos2(split_rect.right(), split_y),
                                     ],
-                                    egui::Stroke::new(1.0, split_color),
+                                    egui::Stroke::new(1.0_f32, split_color),
                                 );
                                 if split_response.double_clicked() {
                                     self.feature_tree_split_fraction =
@@ -22616,7 +22632,7 @@ impl MainAreaDna {
                         egui::pos2(split_x, split_rect.top()),
                         egui::pos2(split_x, split_rect.bottom()),
                     ],
-                    egui::Stroke::new(1.0, split_color),
+                    egui::Stroke::new(1.0_f32, split_color),
                 );
                 if split_response.double_clicked() {
                     let reset_width = Self::clamp_feature_tree_panel_width(
@@ -22656,6 +22672,7 @@ impl MainAreaDna {
                 let dark_mode = ui.visuals().dark_mode;
                 let response = theme::canvas_frame(dark_mode)
                     .show(ui, |ui| {
+                        crate::gentle_gui_profile_scope!("MainAreaDna::dna_map_canvas");
                         if !self.is_circular() {
                             let slider_column_width =
                                 if ENABLE_LINEAR_VERTICAL_PAN { 30.0 } else { 0.0 };

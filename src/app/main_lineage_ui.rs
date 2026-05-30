@@ -1193,7 +1193,10 @@ impl GENtleApp {
                                 painter.rect_stroke(
                                     bounds,
                                     10.0 * graph_zoom,
-                                    egui::Stroke::new((1.4 * graph_zoom).clamp(1.0, 2.2), group_color),
+                                    egui::Stroke::new(
+                                        (1.4_f32 * graph_zoom).clamp(1.0_f32, 2.2_f32),
+                                        group_color,
+                                    ),
                                     egui::StrokeKind::Inside,
                                 );
                                 let mut label = group.label.clone();
@@ -3543,7 +3546,7 @@ impl GENtleApp {
                 egui::pos2(splitter_rect.left(), splitter_rect.center().y),
                 egui::pos2(splitter_rect.right(), splitter_rect.center().y),
             ],
-            egui::Stroke::new(1.2, splitter_color),
+            egui::Stroke::new(1.2_f32, splitter_color),
         );
         ui.painter().text(
             splitter_rect.center(),
@@ -3731,7 +3734,7 @@ impl GENtleApp {
                 egui::pos2(sub_split_rect.left(), sub_split_rect.center().y),
                 egui::pos2(sub_split_rect.right(), sub_split_rect.center().y),
             ],
-            egui::Stroke::new(1.2, sub_split_color),
+            egui::Stroke::new(1.2_f32, sub_split_color),
         );
         ui.painter().text(
             sub_split_rect.center(),

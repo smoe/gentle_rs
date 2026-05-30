@@ -189,7 +189,7 @@ impl RowRestrictionEnzymes {
                 visible_from,
                 visible_to,
                 y,
-                Stroke::new(1.0, label_color),
+                Stroke::new(1.0_f32, label_color),
             );
             if re.to() >= start && re.to() < end_exclusive {
                 let x = self.x_for_sequence_position(rect, seq_offset, re.to() as usize);
@@ -208,14 +208,14 @@ impl RowRestrictionEnzymes {
                 let x = self.x_for_sequence_position(rect, seq_offset, re.pos() as usize);
                 painter.line_segment(
                     [Pos2::new(x, y - self.line_height / 2.0), Pos2::new(x, y)],
-                    Stroke::new(1.0, cut_color),
+                    Stroke::new(1.0_f32, cut_color),
                 );
             }
             if re.mate_pos() >= start && re.mate_pos() < end_exclusive {
                 let x = self.x_for_sequence_position(rect, seq_offset, re.mate_pos() as usize);
                 painter.line_segment(
                     [Pos2::new(x, y + self.line_height / 2.0), Pos2::new(x, y)],
-                    Stroke::new(1.0, cut_color),
+                    Stroke::new(1.0_f32, cut_color),
                 );
             }
         }

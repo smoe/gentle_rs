@@ -9,6 +9,7 @@ use gentle::{
     },
     app,
     cli_support::{SingleProjectCliOptions, parse_single_project_cli_args},
+    gui_profiler,
 };
 use std::{
     backtrace::Backtrace,
@@ -149,8 +150,14 @@ Agent Assistant API environment:\n  \
 {ANTHROPIC_API_KEY_ENV}    Anthropic Console API key for native Claude transport\n  \
 {MISTRAL_API_KEY_ENV}      Mistral La Plateforme API key for native Mistral transport\n  \
 {AGENT_BASE_URL_ENV}  optional native/OpenAI-compatible base URL override\n  \
-{AGENT_MODEL_ENV}     optional model override\n\n  \
-ChatGPT, Claude.ai/Claude Code, and Le Chat subscription/login tokens are not API keys."
+{AGENT_MODEL_ENV}     optional model override\n\n\
+GUI diagnostics:\n  \
+{gui_profile_env}=1    enable Puffin GUI profiling when built with --features gui-profiler\n  \
+{gui_profile_addr_env}  optional profiler bind address (default {gui_profile_addr})\n\n  \
+ChatGPT, Claude.ai/Claude Code, and Le Chat subscription/login tokens are not API keys.",
+        gui_profile_env = gui_profiler::GUI_PROFILER_ENV,
+        gui_profile_addr_env = gui_profiler::GUI_PROFILER_ADDR_ENV,
+        gui_profile_addr = gui_profiler::DEFAULT_GUI_PROFILER_ADDR
     )
 }
 
@@ -164,6 +171,7 @@ fn persist_root_window_state() -> bool {
 
 fn main() -> eframe::Result<()> {
     install_panic_logging();
+    gui_profiler::init_from_env();
     configure_macos_process_name();
 
     let args: Vec<String> = env::args().skip(1).collect();
@@ -276,6 +284,8 @@ mod tests {
         assert!(help.contains(gentle::agent_bridge::OPENAI_API_KEY_ENV));
         assert!(help.contains(gentle::agent_bridge::ANTHROPIC_API_KEY_ENV));
         assert!(help.contains(gentle::agent_bridge::MISTRAL_API_KEY_ENV));
+        assert!(help.contains(gentle::gui_profiler::GUI_PROFILER_ENV));
+        assert!(help.contains(gentle::gui_profiler::GUI_PROFILER_ADDR_ENV));
         assert!(help.contains("subscription/login tokens are not API keys"));
     }
 }

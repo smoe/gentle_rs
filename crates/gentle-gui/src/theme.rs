@@ -89,7 +89,7 @@ pub fn canvas_stroke(dark_mode: bool) -> Color32 {
 pub fn canvas_frame(dark_mode: bool) -> Frame {
     Frame::NONE
         .fill(canvas_fill(dark_mode))
-        .stroke(Stroke::new(1.0, canvas_stroke(dark_mode)))
+        .stroke(Stroke::new(1.0_f32, canvas_stroke(dark_mode)))
         .inner_margin(Margin::same(CANVAS_INNER_MARGIN_PX))
 }
 

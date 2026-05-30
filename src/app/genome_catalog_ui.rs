@@ -379,7 +379,7 @@ impl GENtleApp {
                                 Pos2::new(rect.left(), y),
                                 Pos2::new(rect.left() + line_width, y),
                             ],
-                            egui::Stroke::new(2.0, egui::Color32::from_rgb(80, 130, 175)),
+                            egui::Stroke::new(2.0_f32, egui::Color32::from_rgb(80, 130, 175)),
                         );
                         response.on_hover_text(format!(
                             "{} bp ({:.2}% of longest)",

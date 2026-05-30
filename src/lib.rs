@@ -63,6 +63,8 @@ pub mod gene_groups;
 pub mod genomes;
 /// Gibson assembly planning contracts and deterministic preview derivation.
 pub mod gibson_planning;
+/// Optional GUI profiling hooks for evidence-based latency investigations.
+pub mod gui_profiler;
 /// Embedded GUI translation catalogs and runtime presentation-language state.
 #[path = "app/i18n.rs"]
 pub(crate) mod i18n;

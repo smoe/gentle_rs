@@ -2787,7 +2787,7 @@ impl MainAreaDna {
         painter.rect_stroke(
             plot_rect,
             4.0,
-            egui::Stroke::new(1.0, egui::Color32::from_rgb(203, 213, 225)),
+            egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(203, 213, 225)),
             egui::StrokeKind::Inside,
         );
         let baseline_y = plot_rect.bottom() - 10.0;
@@ -2796,7 +2796,7 @@ impl MainAreaDna {
                 egui::pos2(plot_rect.left(), baseline_y),
                 egui::pos2(plot_rect.right(), baseline_y),
             ],
-            egui::Stroke::new(1.0, egui::Color32::from_rgb(148, 163, 184)),
+            egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(148, 163, 184)),
         );
         if track.scored_window_count == 0 {
             painter.text(
@@ -2833,7 +2833,7 @@ impl MainAreaDna {
                     egui::pos2(x, plot_rect.top() + 4.0),
                     egui::pos2(x, baseline_y),
                 ],
-                egui::Stroke::new(1.0, *color),
+                egui::Stroke::new(1.0_f32, *color),
             );
             painter.text(
                 egui::pos2(x + 3.0, plot_rect.top() + 2.0),
@@ -2853,7 +2853,7 @@ impl MainAreaDna {
         if forward_points.len() > 1 {
             painter.add(egui::Shape::line(
                 forward_points,
-                egui::Stroke::new(1.8, egui::Color32::from_rgb(14, 116, 144)),
+                egui::Stroke::new(1.8_f32, egui::Color32::from_rgb(14, 116, 144)),
             ));
         }
         let reverse_points = track
@@ -2865,7 +2865,7 @@ impl MainAreaDna {
         if reverse_points.len() > 1 {
             painter.add(egui::Shape::line(
                 reverse_points,
-                egui::Stroke::new(1.6, egui::Color32::from_rgb(180, 83, 9)),
+                egui::Stroke::new(1.6_f32, egui::Color32::from_rgb(180, 83, 9)),
             ));
         }
         painter.text(
@@ -2912,7 +2912,7 @@ impl MainAreaDna {
         painter.rect_stroke(
             plot_rect,
             4.0,
-            egui::Stroke::new(1.0, egui::Color32::from_rgb(221, 214, 254)),
+            egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(221, 214, 254)),
             egui::StrokeKind::Inside,
         );
         let denom = report
@@ -2948,7 +2948,7 @@ impl MainAreaDna {
             painter.rect_stroke(
                 interval_rect,
                 2.0,
-                egui::Stroke::new(0.8, egui::Color32::from_rgb(91, 33, 182)),
+                egui::Stroke::new(0.8_f32, egui::Color32::from_rgb(91, 33, 182)),
                 egui::StrokeKind::Inside,
             );
         }

@@ -714,6 +714,13 @@ Feature tree grouping:
 - For debugging Promoter design launch stalls, launching GENtle with
   `GENTLE_TRACE_PROMOTER_DESIGN=1` emits coarse open/render stage tracing to
   the terminal and mirrors it into the sequence-window status line.
+- For GUI latency investigations, build with `--features gui-profiler` and
+  launch with `GENTLE_GUI_PROFILE=1 cargo run --features gui-profiler --bin
+  gentle`. GENtle starts a localhost Puffin stream on `127.0.0.1:8585` by
+  default; override it with `GENTLE_GUI_PROFILE_ADDR=127.0.0.1:PORT` and inspect
+  the frame spans with `puffin_viewer`. The profiling spans are coarse by
+  design and focus on app-frame, DNA-window shell, DNA-map, sequence-text, and
+  feature-tree costs.
 - The splicing expert window uses its own window-styling slot (`splicing`) so
   tint/image backdrop can be configured separately from DNA and pool windows.
 - The Agent Assistant window uses its own window-styling slot (`agent assistant`)

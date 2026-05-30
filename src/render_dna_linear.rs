@@ -623,11 +623,11 @@ impl RenderDnaLinear {
         evidence_class: EvidenceClass,
         editable_status: crate::engine::EditableStatus,
     ) -> Stroke {
-        let width = match evidence_class {
-            EvidenceClass::HardFact | EvidenceClass::UserOverride => 1.2,
-            EvidenceClass::ReliableAnnotation => 1.0,
-            EvidenceClass::ContextEvidence => 0.9,
-            EvidenceClass::SoftHypothesis => 0.8,
+        let width: f32 = match evidence_class {
+            EvidenceClass::HardFact | EvidenceClass::UserOverride => 1.2_f32,
+            EvidenceClass::ReliableAnnotation => 1.0_f32,
+            EvidenceClass::ContextEvidence => 0.9_f32,
+            EvidenceClass::SoftHypothesis => 0.8_f32,
         };
         match editable_status {
             crate::engine::EditableStatus::Draft => Stroke::new(
@@ -635,13 +635,13 @@ impl RenderDnaLinear {
                 Self::construct_reasoning_role_color(role).gamma_multiply(0.75),
             ),
             crate::engine::EditableStatus::Accepted => {
-                Stroke::new(width.max(1.4), Color32::from_rgb(22, 163, 74))
+                Stroke::new(width.max(1.4_f32), Color32::from_rgb(22, 163, 74))
             }
             crate::engine::EditableStatus::Rejected => {
-                Stroke::new(width.max(1.0), Color32::from_gray(116))
+                Stroke::new(width.max(1.0_f32), Color32::from_gray(116))
             }
             crate::engine::EditableStatus::Locked => {
-                Stroke::new(width.max(1.2), Color32::from_rgb(14, 116, 144))
+                Stroke::new(width.max(1.2_f32), Color32::from_rgb(14, 116, 144))
             }
         }
     }
@@ -745,9 +745,9 @@ impl RenderDnaLinear {
             let hovered =
                 self.hovered_reasoning_evidence_id.as_deref() == Some(span.evidence_id.as_str());
             let stroke = if selected {
-                Stroke::new(2.0, Color32::YELLOW)
+                Stroke::new(2.0_f32, Color32::YELLOW)
             } else if hovered {
-                Stroke::new(1.6, Color32::WHITE)
+                Stroke::new(1.6_f32, Color32::WHITE)
             } else {
                 Self::construct_reasoning_overlay_stroke(
                     span.role,
@@ -793,7 +793,7 @@ impl RenderDnaLinear {
     }
 
     fn mcs_badge_stroke(fill: Color32) -> Stroke {
-        Stroke::new(1.4, fill.gamma_multiply(0.85))
+        Stroke::new(1.4_f32, fill.gamma_multiply(0.85))
     }
 
     fn mcs_inline_badge_rect(label_rect: Rect, text_size: Vec2) -> Rect {
@@ -1829,7 +1829,7 @@ impl RenderDnaLinear {
             if draw_tick_marks {
                 painter.line_segment(
                     [Pos2::new(x, y - 4.0), Pos2::new(x, y + 4.0)],
-                    Stroke::new(1.0, Color32::DARK_GRAY),
+                    Stroke::new(1.0_f32, Color32::DARK_GRAY),
                 );
             }
             if !show_sequence_bases {
@@ -2535,7 +2535,7 @@ impl RenderDnaLinear {
             let x = self.bp_to_x(*site, viewport);
             painter.line_segment(
                 [Pos2::new(x, y - METHYLATION_TICK), Pos2::new(x, y - 1.0)],
-                Stroke::new(1.0, Color32::DARK_RED),
+                Stroke::new(1.0_f32, Color32::DARK_RED),
             );
         }
     }
@@ -2625,7 +2625,7 @@ impl RenderDnaLinear {
                                 Pos2::new(slash_x - 2.5, exon_rect.bottom() - 1.0),
                                 Pos2::new(slash_x + 2.5, exon_rect.top() + 1.0),
                             ],
-                            Stroke::new(1.0, cue_color),
+                            Stroke::new(1.0_f32, cue_color),
                         );
                     }
                 }
@@ -2640,7 +2640,7 @@ impl RenderDnaLinear {
                 for exon_rect in &feature.exon_rects {
                     painter.rect_filled(exon_rect.expand(2.0), 3.0, halo_fill);
                 }
-                let stroke = Stroke::new(1.1, feature.color.gamma_multiply(0.75));
+                let stroke = Stroke::new(1.1_f32, feature.color.gamma_multiply(0.75));
                 for exon_rect in &feature.exon_rects {
                     painter.rect_stroke(exon_rect.expand(0.5), 2.0, stroke, StrokeKind::Inside);
                 }
@@ -2682,25 +2682,25 @@ impl RenderDnaLinear {
                 painter.circle_stroke(
                     Pos2::new(x, feature.rect.center().y),
                     2.5,
-                    Stroke::new(1.5, feature.color),
+                    Stroke::new(1.5_f32, feature.color),
                 );
             }
             for connector in &feature.intron_connectors {
                 painter.line_segment(
                     [connector[0], connector[1]],
-                    Stroke::new(1.0, Color32::DARK_GRAY),
+                    Stroke::new(1.0_f32, Color32::DARK_GRAY),
                 );
                 painter.line_segment(
                     [connector[1], connector[2]],
-                    Stroke::new(1.0, Color32::DARK_GRAY),
+                    Stroke::new(1.0_f32, Color32::DARK_GRAY),
                 );
             }
 
             if selected || hovered {
                 let stroke = if selected {
-                    Stroke::new(2.0, Color32::YELLOW)
+                    Stroke::new(2.0_f32, Color32::YELLOW)
                 } else {
-                    Stroke::new(1.5, Color32::WHITE)
+                    Stroke::new(1.5_f32, Color32::WHITE)
                 };
                 for exon_rect in &feature.exon_rects {
                     painter.rect_stroke(exon_rect.expand(1.0), 2.0, stroke, StrokeKind::Inside);
@@ -2868,7 +2868,7 @@ impl RenderDnaLinear {
             painter.line_segment(
                 [connector_from, connector_to],
                 Stroke::new(
-                    if feature.is_mcs { 1.1 } else { 0.8 },
+                    if feature.is_mcs { 1.1_f32 } else { 0.8_f32 },
                     feature.color.gamma_multiply(0.75),
                 ),
             );
@@ -2887,7 +2887,7 @@ impl RenderDnaLinear {
                 if feature.is_mcs {
                     Self::mcs_badge_stroke(feature.color)
                 } else {
-                    Stroke::new(1.0, feature.color.gamma_multiply(0.75))
+                    Stroke::new(1.0_f32, feature.color.gamma_multiply(0.75))
                 },
                 StrokeKind::Inside,
             );
@@ -3019,7 +3019,7 @@ impl RenderDnaLinear {
             } else {
                 DnaDisplay::restriction_enzyme_geometry_color(key.cut_geometry())
             };
-            let stroke_width = if selected_here { 2.0 } else { 1.0 };
+            let stroke_width = if selected_here { 2.0_f32 } else { 1.0_f32 };
 
             if (top_x - bottom_x).abs() < 0.5 {
                 painter.line_segment(

@@ -12,6 +12,12 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-05-29
+
+- Added opt-in GUI frame profiling behind `--features gui-profiler` and
+  `GENTLE_GUI_PROFILE=1`, with coarse Puffin spans for app, DNA-window,
+  DNA-map, sequence-text, and feature-tree latency investigations.
+
 ## 2026-05-28
 
 - Switched the startup splash screen to the app-ready transparent mascot asset

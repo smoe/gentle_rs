@@ -244,6 +244,7 @@ impl WindowDna {
     /// This polls deferred load state, renders viewport-scoped controls, and
     /// then delegates the actual sequence-window layout to `MainAreaDna`.
     pub fn update(&mut self, ctx: &egui::Context) {
+        crate::gentle_gui_profile_scope!("WindowDna::update");
         self.poll_deferred_load();
         let result = catch_unwind(AssertUnwindSafe(|| {
             let open_help_f1 = egui::KeyboardShortcut::new(egui::Modifiers::NONE, egui::Key::F1);
@@ -314,6 +315,7 @@ impl WindowDna {
     }
 
     pub fn update_embedded(&mut self, ui: &mut egui::Ui) {
+        crate::gentle_gui_profile_scope!("WindowDna::update_embedded");
         self.poll_deferred_load();
         let result = catch_unwind(AssertUnwindSafe(|| {
             let open_help_f1 = egui::KeyboardShortcut::new(egui::Modifiers::NONE, egui::Key::F1);
@@ -387,6 +389,7 @@ impl WindowDna {
     }
 
     fn render_bounded_embedded_main_area(&mut self, ui: &mut egui::Ui) {
+        crate::gentle_gui_profile_scope!("WindowDna::render_bounded_embedded_main_area");
         let body_rect = ui.available_rect_before_wrap();
         let body_id = egui::Id::new(("window_dna_embedded_body", self.main_area.panel_scope_key()));
         // Do not allocate the child's expanded min_rect in the parent: the DNA

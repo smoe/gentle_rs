@@ -1371,7 +1371,7 @@ impl GENtleApp {
         egui::Frame::group(ui.style())
             .fill(ui.visuals().faint_bg_color)
             .stroke(egui::Stroke::new(
-                1.0,
+                1.0_f32,
                 ui.visuals().widgets.noninteractive.bg_stroke.color,
             ))
             .inner_margin(egui::Margin::symmetric(5, 2))
@@ -1456,7 +1456,7 @@ impl GENtleApp {
                             let color = Self::rack_color_for_arrangement(arrangement_id);
                             egui::Frame::group(ui.style())
                                 .fill(color.gamma_multiply(0.14))
-                                .stroke(egui::Stroke::new(1.0, color.gamma_multiply(0.85)))
+                                .stroke(egui::Stroke::new(1.0_f32, color.gamma_multiply(0.85)))
                                 .inner_margin(egui::Margin::symmetric(6, 3))
                                 .show(ui, |ui| {
                                     ui.small(
@@ -2622,7 +2622,7 @@ impl GENtleApp {
                                         response.rect.expand(1.5),
                                         6.0,
                                         egui::Stroke::new(
-                                            2.0,
+                                            2.0_f32,
                                             drag_highlight_color.unwrap_or(arrangement_color),
                                         ),
                                         egui::StrokeKind::Outside,
@@ -2632,7 +2632,7 @@ impl GENtleApp {
                                         response.rect.expand(1.0),
                                         6.0,
                                         egui::Stroke::new(
-                                            1.5,
+                                            1.5_f32,
                                             arrangement_color.gamma_multiply(0.85),
                                         ),
                                         egui::StrokeKind::Outside,
@@ -2655,7 +2655,7 @@ impl GENtleApp {
                                                 response.rect.expand(1.0),
                                                 6.0,
                                                 egui::Stroke::new(
-                                                    1.5,
+                                                    1.5_f32,
                                                     arrangement_color.gamma_multiply(0.35 + 0.45 * fade),
                                                 ),
                                                 egui::StrokeKind::Outside,
@@ -2786,7 +2786,7 @@ impl GENtleApp {
                                         response.rect.expand(1.5),
                                         6.0,
                                         egui::Stroke::new(
-                                            2.0,
+                                            2.0_f32,
                                             drag_highlight_color
                                                 .unwrap_or(ui.visuals().strong_text_color()),
                                         ),
@@ -2797,7 +2797,7 @@ impl GENtleApp {
                                         response.rect.expand(1.0),
                                         6.0,
                                         egui::Stroke::new(
-                                            1.5,
+                                            1.5_f32,
                                             drag_highlight_color
                                                 .unwrap_or(ui.visuals().strong_text_color())
                                                 .gamma_multiply(0.8),
@@ -2817,7 +2817,7 @@ impl GENtleApp {
                                                 response.rect.expand(1.0),
                                                 6.0,
                                                 egui::Stroke::new(
-                                                    1.2,
+                                                    1.2_f32,
                                                     drag_highlight_color
                                                         .unwrap_or(ui.visuals().strong_text_color())
                                                         .gamma_multiply(0.30 + 0.40 * fade),

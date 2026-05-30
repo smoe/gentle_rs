@@ -414,7 +414,7 @@ fn render_mirna_pairing_graphic(
     painter.rect_stroke(
         rect,
         6.0,
-        egui::Stroke::new(1.0, egui::Color32::from_gray(190)),
+        egui::Stroke::new(1.0_f32, egui::Color32::from_gray(190)),
         egui::StrokeKind::Outside,
     );
     let mature = report.mature_sequence.replace('T', "U");
@@ -447,7 +447,7 @@ fn render_mirna_pairing_graphic(
         painter.rect_stroke(
             cell,
             3.0,
-            egui::Stroke::new(1.0, egui::Color32::from_gray(170)),
+            egui::Stroke::new(1.0_f32, egui::Color32::from_gray(170)),
             egui::StrokeKind::Outside,
         );
         painter.text(
@@ -513,7 +513,7 @@ fn render_mirna_pairing_graphic(
                 Pos2::new(top_x, mirna_y + 28.0),
                 Pos2::new(bottom_x, target_y),
             ],
-            egui::Stroke::new(1.0, egui::Color32::from_gray(80)),
+            egui::Stroke::new(1.0_f32, egui::Color32::from_gray(80)),
         );
     }
     if let Some(target_col) = a1_anchor_index {
@@ -524,7 +524,7 @@ fn render_mirna_pairing_graphic(
                 Pos2::new(top_x, mirna_y + 28.0),
                 Pos2::new(bottom_x, target_y),
             ],
-            egui::Stroke::new(1.0, egui::Color32::from_gray(150)),
+            egui::Stroke::new(1.0_f32, egui::Color32::from_gray(150)),
         );
     }
     let context_text = format!("context: {}", hit.region_context_sequence);

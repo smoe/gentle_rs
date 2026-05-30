@@ -2424,7 +2424,7 @@ impl MainAreaDna {
         painter.rect_stroke(
             annotation_rect,
             2.0,
-            egui::Stroke::new(1.0, egui::Color32::from_rgb(203, 213, 225)),
+            egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(203, 213, 225)),
             egui::StrokeKind::Inside,
         );
         let reference_span_f32 = reference_span.max(1) as f32;
@@ -2460,7 +2460,7 @@ impl MainAreaDna {
                     + (lower_start as f32 / reference_span_f32) * annotation_rect.height();
                 painter.line_segment(
                     [egui::pos2(lane_x, y0), egui::pos2(lane_x, y1)],
-                    egui::Stroke::new(1.0, egui::Color32::from_rgb(187, 247, 208)),
+                    egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(187, 247, 208)),
                 );
             }
         }
@@ -2550,7 +2550,7 @@ impl MainAreaDna {
         painter.rect_stroke(
             canvas_rect,
             6.0,
-            egui::Stroke::new(1.0, egui::Color32::from_rgb(203, 213, 225)),
+            egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(203, 213, 225)),
             egui::StrokeKind::Inside,
         );
 
@@ -2574,7 +2574,7 @@ impl MainAreaDna {
         painter.rect_stroke(
             dotplot_rect,
             4.0,
-            egui::Stroke::new(1.0, egui::Color32::from_rgb(203, 213, 225)),
+            egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(203, 213, 225)),
             egui::StrokeKind::Inside,
         );
 
@@ -2587,14 +2587,14 @@ impl MainAreaDna {
                     egui::pos2(x, dotplot_rect.top()),
                     egui::pos2(x, dotplot_rect.bottom()),
                 ],
-                egui::Stroke::new(0.5, egui::Color32::from_rgb(241, 245, 249)),
+                egui::Stroke::new(0.5_f32, egui::Color32::from_rgb(241, 245, 249)),
             );
             painter.line_segment(
                 [
                     egui::pos2(dotplot_rect.left(), y),
                     egui::pos2(dotplot_rect.right(), y),
                 ],
-                egui::Stroke::new(0.5, egui::Color32::from_rgb(241, 245, 249)),
+                egui::Stroke::new(0.5_f32, egui::Color32::from_rgb(241, 245, 249)),
             );
         }
         if overlay_mode {
@@ -2794,7 +2794,8 @@ impl MainAreaDna {
                 {
                     let cell_w = dotplot_rect.width() / cols as f32;
                     let cell_h = dotplot_rect.height() / rows as f32;
-                    let stroke_width = (cell_w.min(cell_h) * 0.45).clamp(0.8, 2.0);
+                    let stroke_width =
+                        (cell_w.min(cell_h) * 0.45_f32).clamp(0.8_f32, 2.0_f32);
                     for ((x_cell, y_cell), color) in &visible_cells {
                         for dy in [-1, 0, 1] {
                             let neighbor = (*x_cell + 1, *y_cell + dy);
@@ -2975,14 +2976,14 @@ impl MainAreaDna {
                         egui::pos2(pointer_x, dotplot_rect.top()),
                         egui::pos2(pointer_x, dotplot_rect.bottom()),
                     ],
-                    egui::Stroke::new(1.0, egui::Color32::from_rgb(15, 23, 42)),
+                    egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(15, 23, 42)),
                 );
                 painter.line_segment(
                     [
                         egui::pos2(dotplot_rect.left(), pointer_y),
                         egui::pos2(dotplot_rect.right(), pointer_y),
                     ],
-                    egui::Stroke::new(1.0, egui::Color32::from_rgb(15, 23, 42)),
+                    egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(15, 23, 42)),
                 );
                 painter.circle_filled(
                     egui::pos2(pointer_x, pointer_y),
@@ -3082,7 +3083,7 @@ impl MainAreaDna {
                 painter.rect_stroke(
                     flex_rect,
                     4.0,
-                    egui::Stroke::new(1.0, egui::Color32::from_rgb(203, 213, 225)),
+                    egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(203, 213, 225)),
                     egui::StrokeKind::Inside,
                 );
                 let score_span = (track.max_score - track.min_score).abs().max(1e-12);
@@ -3106,7 +3107,7 @@ impl MainAreaDna {
                     let [left, right] = [segment[0], segment[1]];
                     painter.line_segment(
                         [left, right],
-                        egui::Stroke::new(1.5, egui::Color32::from_rgb(22, 101, 52)),
+                        egui::Stroke::new(1.5_f32, egui::Color32::from_rgb(22, 101, 52)),
                     );
                 }
             }
@@ -3196,7 +3197,7 @@ impl MainAreaDna {
         if !visible_cells.is_empty() && visible_cells.len() <= DOTPLOT_CONNECT_DIAGONALS_MAX_CELLS {
             let cell_w = dotplot_rect.width() / cols as f32;
             let cell_h = dotplot_rect.height() / rows as f32;
-            let stroke_width = (cell_w.min(cell_h) * 0.45).clamp(0.8, 2.0);
+            let stroke_width = (cell_w.min(cell_h) * 0.45_f32).clamp(0.8_f32, 2.0_f32);
             for ((x_cell, y_cell), color) in &visible_cells {
                 for dy in [-1, 0, 1] {
                     let neighbor = (*x_cell + 1, *y_cell + dy);
@@ -3373,14 +3374,20 @@ impl MainAreaDna {
                     egui::pos2(x, dotplot_rect.top()),
                     egui::pos2(x, dotplot_rect.bottom()),
                 ],
-                egui::Stroke::new(if is_locked { 1.6 } else { 1.1 }, crosshair_color),
+                egui::Stroke::new(
+                    if is_locked { 1.6_f32 } else { 1.1_f32 },
+                    crosshair_color,
+                ),
             );
             painter.line_segment(
                 [
                     egui::pos2(dotplot_rect.left(), y),
                     egui::pos2(dotplot_rect.right(), y),
                 ],
-                egui::Stroke::new(if is_locked { 1.6 } else { 1.1 }, crosshair_color),
+                egui::Stroke::new(
+                    if is_locked { 1.6_f32 } else { 1.1_f32 },
+                    crosshair_color,
+                ),
             );
             painter.circle_filled(
                 egui::pos2(x, y),
@@ -3424,7 +3431,7 @@ impl MainAreaDna {
             painter.rect_stroke(
                 flex_rect,
                 4.0,
-                egui::Stroke::new(1.0, egui::Color32::from_rgb(203, 213, 225)),
+                egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(203, 213, 225)),
                 egui::StrokeKind::Inside,
             );
             let score_span = (track.max_score - track.min_score).abs().max(1e-12);
@@ -3447,7 +3454,7 @@ impl MainAreaDna {
                 let [left, right] = [segment[0], segment[1]];
                 painter.line_segment(
                     [left, right],
-                    egui::Stroke::new(1.5, egui::Color32::from_rgb(22, 101, 52)),
+                    egui::Stroke::new(1.5_f32, egui::Color32::from_rgb(22, 101, 52)),
                 );
             }
             painter.text(
@@ -3487,7 +3494,7 @@ impl MainAreaDna {
         painter.rect_stroke(
             canvas_rect,
             6.0,
-            egui::Stroke::new(1.0, egui::Color32::from_rgb(203, 213, 225)),
+            egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(203, 213, 225)),
             egui::StrokeKind::Inside,
         );
 
@@ -3509,7 +3516,7 @@ impl MainAreaDna {
         painter.rect_stroke(
             plot_rect,
             4.0,
-            egui::Stroke::new(1.0, egui::Color32::from_rgb(203, 213, 225)),
+            egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(203, 213, 225)),
             egui::StrokeKind::Inside,
         );
         for tick_idx in 1..10 {
@@ -3521,14 +3528,14 @@ impl MainAreaDna {
                     egui::pos2(x, plot_rect.top()),
                     egui::pos2(x, plot_rect.bottom()),
                 ],
-                egui::Stroke::new(0.5, egui::Color32::from_rgb(241, 245, 249)),
+                egui::Stroke::new(0.5_f32, egui::Color32::from_rgb(241, 245, 249)),
             );
             painter.line_segment(
                 [
                     egui::pos2(plot_rect.left(), y),
                     egui::pos2(plot_rect.right(), y),
                 ],
-                egui::Stroke::new(0.5, egui::Color32::from_rgb(241, 245, 249)),
+                egui::Stroke::new(0.5_f32, egui::Color32::from_rgb(241, 245, 249)),
             );
         }
 
@@ -3589,7 +3596,7 @@ impl MainAreaDna {
                 painter.rect_stroke(
                     egui::Rect::from_min_max(egui::pos2(x0, y_top), egui::pos2(x1, y_bottom)),
                     0.5,
-                    egui::Stroke::new(0.9, egui::Color32::from_rgb(29, 78, 216)),
+                    egui::Stroke::new(0.9_f32, egui::Color32::from_rgb(29, 78, 216)),
                     egui::StrokeKind::Inside,
                 );
             }
@@ -3600,14 +3607,14 @@ impl MainAreaDna {
                 let y_max = y_from_ref(max_ref);
                 painter.line_segment(
                     [egui::pos2(x_center, y_min), egui::pos2(x_center, y_max)],
-                    egui::Stroke::new(0.9, egui::Color32::from_rgb(15, 23, 42)),
+                    egui::Stroke::new(0.9_f32, egui::Color32::from_rgb(15, 23, 42)),
                 );
             }
             if let Some(median) = bin.median_reference_0based {
                 let y_median = y_from_ref(median);
                 painter.line_segment(
                     [egui::pos2(x0, y_median), egui::pos2(x1, y_median)],
-                    egui::Stroke::new(1.2, egui::Color32::from_rgb(190, 24, 93)),
+                    egui::Stroke::new(1.2_f32, egui::Color32::from_rgb(190, 24, 93)),
                 );
             }
         }
@@ -3737,7 +3744,7 @@ impl MainAreaDna {
 
         egui::Frame::NONE
             .fill(egui::Color32::from_gray(249))
-            .stroke(egui::Stroke::new(1.0, egui::Color32::from_gray(206)))
+            .stroke(egui::Stroke::new(1.0_f32, egui::Color32::from_gray(206)))
             .show(ui, |ui| {
                 ui.set_width(panel_width);
                 ui.vertical(|ui| {
@@ -4179,7 +4186,7 @@ impl MainAreaDna {
 
         egui::Frame::NONE
             .fill(egui::Color32::from_gray(249))
-            .stroke(egui::Stroke::new(1.0, egui::Color32::from_gray(206)))
+            .stroke(egui::Stroke::new(1.0_f32, egui::Color32::from_gray(206)))
             .show(ui, |ui| {
                 ui.set_width(panel_width);
                 ui.vertical(|ui| {
@@ -5061,7 +5068,7 @@ impl MainAreaDna {
         self.last_linear_map_width_px = panel_width;
         egui::Frame::NONE
             .fill(egui::Color32::from_gray(249))
-            .stroke(egui::Stroke::new(1.0, egui::Color32::from_gray(206)))
+            .stroke(egui::Stroke::new(1.0_f32, egui::Color32::from_gray(206)))
             .show(ui, |ui| {
                 ui.set_width(panel_width);
                 ui.vertical(|ui| {

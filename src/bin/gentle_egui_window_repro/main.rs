@@ -129,7 +129,7 @@ impl ReproWindowState {
         painter.rect_stroke(
             rect,
             12.0,
-            Stroke::new(1.0, Color32::from_rgb(186, 180, 164)),
+            Stroke::new(1.0_f32, Color32::from_rgb(186, 180, 164)),
             egui::StrokeKind::Middle,
         );
 
@@ -145,11 +145,11 @@ impl ReproWindowState {
                 let end = Pos2::new(rect.right() - 18.0, y);
                 painter.line_segment(
                     [start, mid],
-                    Stroke::new(1.6, Color32::from_rgb(120, 127, 136)),
+                    Stroke::new(1.6_f32, Color32::from_rgb(120, 127, 136)),
                 );
                 painter.line_segment(
                     [mid, end],
-                    Stroke::new(1.6, Color32::from_rgb(120, 127, 136)),
+                    Stroke::new(1.6_f32, Color32::from_rgb(120, 127, 136)),
                 );
             }
 

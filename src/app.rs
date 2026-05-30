@@ -23864,7 +23864,9 @@ impl eframe::App for GENtleApp {
 
 impl GENtleApp {
     fn render_root_ui(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        crate::gui_profiler::begin_frame();
         let update_result = catch_unwind(AssertUnwindSafe(|| {
+            crate::gentle_gui_profile_scope!("GENtleApp::render_root_ui");
             Self::configure_platform_viewport_mode(ctx);
             if !self.update_has_run_before {
                 egui_extras::install_image_loaders(ctx);

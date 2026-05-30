@@ -335,7 +335,7 @@ impl GENtleApp {
         painter.rect_stroke(
             rect,
             4.0,
-            egui::Stroke::new(1.0, egui::Color32::from_gray(90)),
+            egui::Stroke::new(1.0_f32, egui::Color32::from_gray(90)),
             egui::StrokeKind::Inside,
         );
         painter.line_segment(
@@ -343,14 +343,14 @@ impl GENtleApp {
                 egui::pos2(left, baseline),
                 egui::pos2(rect.right() - 8.0, baseline),
             ],
-            egui::Stroke::new(1.0, egui::Color32::LIGHT_GRAY),
+            egui::Stroke::new(1.0_f32, egui::Color32::LIGHT_GRAY),
         );
         painter.line_segment(
             [
                 egui::pos2(left, baseline),
                 egui::pos2(left, rect.top() + 8.0),
             ],
-            egui::Stroke::new(1.0, egui::Color32::LIGHT_GRAY),
+            egui::Stroke::new(1.0_f32, egui::Color32::LIGHT_GRAY),
         );
         painter.text(
             egui::pos2(rect.left() + 10.0, baseline),
@@ -420,7 +420,7 @@ impl GENtleApp {
         painter.rect_stroke(
             rect,
             4.0,
-            egui::Stroke::new(1.0, egui::Color32::from_gray(90)),
+            egui::Stroke::new(1.0_f32, egui::Color32::from_gray(90)),
             egui::StrokeKind::Inside,
         );
         painter.line_segment(
@@ -428,14 +428,14 @@ impl GENtleApp {
                 egui::pos2(plot_rect.left(), plot_rect.bottom()),
                 egui::pos2(plot_rect.right(), plot_rect.bottom()),
             ],
-            egui::Stroke::new(1.0, egui::Color32::LIGHT_GRAY),
+            egui::Stroke::new(1.0_f32, egui::Color32::LIGHT_GRAY),
         );
         painter.line_segment(
             [
                 egui::pos2(plot_rect.left(), plot_rect.top()),
                 egui::pos2(plot_rect.left(), plot_rect.bottom()),
             ],
-            egui::Stroke::new(1.0, egui::Color32::LIGHT_GRAY),
+            egui::Stroke::new(1.0_f32, egui::Color32::LIGHT_GRAY),
         );
         if !panel.histogram_bins.is_empty() {
             let bar_width = plot_rect.width() / panel.histogram_bins.len() as f32;

@@ -312,6 +312,7 @@ impl RenderDna {
     }
 
     fn render(&self, ui: &mut egui::Ui, area: Rect) {
+        crate::gentle_gui_profile_scope!("RenderDna::render");
         let result = catch_unwind(AssertUnwindSafe(|| match self {
             RenderDna::Circular(renderer) => {
                 if let Ok(mut renderer) = renderer.write() {
@@ -1363,7 +1364,10 @@ impl RenderDna {
         } else {
             Color32::from_rgba_unmultiplied(20, 20, 20, 90)
         };
-        Some(Stroke::new(if adj_p <= 0.05 { 1.2 } else { 0.6 }, color))
+        Some(Stroke::new(
+            if adj_p <= 0.05 { 1.2_f32 } else { 0.6_f32 },
+            color,
+        ))
     }
 
     pub fn vcf_feature_passes_display_filter(

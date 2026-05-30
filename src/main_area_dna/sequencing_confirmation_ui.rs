@@ -803,7 +803,7 @@ impl MainAreaDna {
         painter.rect_stroke(
             rect,
             4.0,
-            egui::Stroke::new(1.0, egui::Color32::from_gray(110)),
+            egui::Stroke::new(1.0_f32, egui::Color32::from_gray(110)),
             egui::StrokeKind::Outside,
         );
         let mut max_y = 0u32;
@@ -845,7 +845,7 @@ impl MainAreaDna {
                 ));
             }
             if points.len() >= 2 {
-                painter.add(egui::Shape::line(points, egui::Stroke::new(1.5, color)));
+                painter.add(egui::Shape::line(points, egui::Stroke::new(1.5_f32, color)));
             }
         }
         let peak_count = trace.called_bases.len().min(trace.peak_locations.len());
@@ -862,7 +862,7 @@ impl MainAreaDna {
                     egui::pos2(x, rect.bottom() - 14.0),
                     egui::pos2(x, rect.bottom() - 6.0),
                 ],
-                egui::Stroke::new(1.0, egui::Color32::from_gray(120)),
+                egui::Stroke::new(1.0_f32, egui::Color32::from_gray(120)),
             );
             if peak_count <= 64 {
                 let base = trace.called_bases.as_bytes()[idx] as char;
@@ -894,7 +894,7 @@ impl MainAreaDna {
                         egui::pos2(x, rect.bottom() - 18.0),
                     ],
                     egui::Stroke::new(
-                        2.0,
+                        2.0_f32,
                         Self::sequencing_confirmation_variant_color(variant.classification),
                     ),
                 );
@@ -935,7 +935,7 @@ impl MainAreaDna {
                         egui::pos2(x, rect.top() + 4.0),
                         egui::pos2(x, rect.bottom() - 18.0),
                     ],
-                    egui::Stroke::new(2.0, egui::Color32::from_rgb(25, 118, 210)),
+                    egui::Stroke::new(2.0_f32, egui::Color32::from_rgb(25, 118, 210)),
                 );
             }
             if let Some(summary) = Self::sequencing_trace_selected_base_summary(trace, base_index) {
@@ -1996,7 +1996,7 @@ impl MainAreaDna {
             painter.rect_stroke(
                 rect,
                 3.0,
-                egui::Stroke::new(1.0, egui::Color32::from_gray(180)),
+                egui::Stroke::new(1.0_f32, egui::Color32::from_gray(180)),
                 egui::StrokeKind::Outside,
             );
             for target in &report.targets {
@@ -2020,7 +2020,7 @@ impl MainAreaDna {
                     painter.rect_stroke(
                         span_rect.expand(1.0),
                         2.0,
-                        egui::Stroke::new(1.5, egui::Color32::BLACK),
+                        egui::Stroke::new(1.5_f32, egui::Color32::BLACK),
                         egui::StrokeKind::Outside,
                     );
                 }
@@ -2055,7 +2055,7 @@ impl MainAreaDna {
             painter.rect_stroke(
                 rect,
                 3.0,
-                egui::Stroke::new(1.0, egui::Color32::from_gray(180)),
+                egui::Stroke::new(1.0_f32, egui::Color32::from_gray(180)),
                 egui::StrokeKind::Outside,
             );
             for (idx, read) in report.reads.iter().enumerate() {
@@ -2082,7 +2082,7 @@ impl MainAreaDna {
                     painter.rect_stroke(
                         bar_rect.expand(1.0),
                         1.0,
-                        egui::Stroke::new(1.0, egui::Color32::BLACK),
+                        egui::Stroke::new(1.0_f32, egui::Color32::BLACK),
                         egui::StrokeKind::Outside,
                     );
                 }
@@ -2124,7 +2124,7 @@ impl MainAreaDna {
             painter.rect_stroke(
                 rect,
                 3.0,
-                egui::Stroke::new(1.0, egui::Color32::from_gray(180)),
+                egui::Stroke::new(1.0_f32, egui::Color32::from_gray(180)),
                 egui::StrokeKind::Outside,
             );
             let uncovered_spans =
@@ -2146,7 +2146,7 @@ impl MainAreaDna {
                     painter.rect_stroke(
                         gap_rect.expand(1.0),
                         1.0,
-                        egui::Stroke::new(1.5, egui::Color32::BLACK),
+                        egui::Stroke::new(1.5_f32, egui::Color32::BLACK),
                         egui::StrokeKind::Outside,
                     );
                 }
@@ -2190,7 +2190,7 @@ impl MainAreaDna {
             painter.rect_stroke(
                 rect,
                 3.0,
-                egui::Stroke::new(1.0, egui::Color32::from_gray(180)),
+                egui::Stroke::new(1.0_f32, egui::Color32::from_gray(180)),
                 egui::StrokeKind::Outside,
             );
             for variant in &report.variants {
@@ -2208,7 +2208,7 @@ impl MainAreaDna {
                         egui::pos2(center, rect.bottom() - 4.0),
                     ],
                     egui::Stroke::new(
-                        if selected { 3.0 } else { 2.0 },
+                        if selected { 3.0_f32 } else { 2.0_f32 },
                         Self::sequencing_confirmation_variant_color(variant.classification),
                     ),
                 );
@@ -2258,7 +2258,7 @@ impl MainAreaDna {
             painter.rect_stroke(
                 rect,
                 3.0,
-                egui::Stroke::new(1.0, egui::Color32::from_gray(180)),
+                egui::Stroke::new(1.0_f32, egui::Color32::from_gray(180)),
                 egui::StrokeKind::Outside,
             );
             if let Some(read) =

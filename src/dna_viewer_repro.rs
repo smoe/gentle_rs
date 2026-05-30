@@ -436,7 +436,7 @@ fn fill_diagnostic_canvas(ui: &mut egui::Ui) {
     painter.rect_stroke(
         rect,
         8.0,
-        egui::Stroke::new(1.0, egui::Color32::from_rgb(148, 163, 184)),
+        egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(148, 163, 184)),
         egui::StrokeKind::Middle,
     );
     painter.text(

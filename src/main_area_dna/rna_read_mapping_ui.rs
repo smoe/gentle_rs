@@ -5360,7 +5360,7 @@ impl MainAreaDna {
         let desired = Vec2::new(ui.available_width().max(280.0), 150.0);
         let (rect, response) = ui.allocate_exact_size(desired, egui::Sense::hover());
         let painter = ui.painter_at(rect);
-        let border = egui::Stroke::new(1.0, egui::Color32::from_gray(120));
+        let border = egui::Stroke::new(1.0_f32, egui::Color32::from_gray(120));
         painter.rect_stroke(rect, 4.0, border, egui::StrokeKind::Inside);
 
         let mid_y = rect.center().y;
@@ -5369,7 +5369,7 @@ impl MainAreaDna {
                 egui::pos2(rect.left(), mid_y),
                 egui::pos2(rect.right(), mid_y),
             ],
-            egui::Stroke::new(1.0, egui::Color32::from_gray(120)),
+            egui::Stroke::new(1.0_f32, egui::Color32::from_gray(120)),
         );
 
         let max_count = progress
@@ -5515,7 +5515,7 @@ impl MainAreaDna {
                             egui::pos2(x, rect.top() + 2.0),
                             egui::pos2(x, rect.top() + 11.0),
                         ],
-                        egui::Stroke::new(1.0, egui::Color32::from_gray(140)),
+                        egui::Stroke::new(1.0_f32, egui::Color32::from_gray(140)),
                     );
                 }
             } else {
@@ -5539,7 +5539,7 @@ impl MainAreaDna {
                             egui::pos2(x0, rect.top() + 7.0),
                             egui::pos2(x1, rect.top() + 7.0),
                         ],
-                        egui::Stroke::new(2.0, egui::Color32::from_gray(140)),
+                        egui::Stroke::new(2.0_f32, egui::Color32::from_gray(140)),
                     );
                 }
             }
@@ -5691,7 +5691,7 @@ impl MainAreaDna {
                     let spike_tip = if strand_minus { y + 5.0 } else { y - 5.0 };
                     painter.line_segment(
                         [egui::pos2(x, y), egui::pos2(x, spike_tip)],
-                        egui::Stroke::new(1.2, selected_color),
+                        egui::Stroke::new(1.2_f32, selected_color),
                     );
                     painter.circle_filled(egui::pos2(x, y), 2.5, selected_color);
                 }
@@ -5942,7 +5942,7 @@ impl MainAreaDna {
         painter.rect_stroke(
             rect,
             4.0,
-            egui::Stroke::new(1.0, egui::Color32::from_gray(120)),
+            egui::Stroke::new(1.0_f32, egui::Color32::from_gray(120)),
             egui::StrokeKind::Inside,
         );
         let max_count = score_density_bins.iter().copied().max().unwrap_or(0);
@@ -6020,7 +6020,7 @@ impl MainAreaDna {
                 painter.rect_stroke(
                     bar.expand(1.2),
                     0.0,
-                    egui::Stroke::new(2.0, egui::Color32::from_rgb(8, 47, 73)),
+                    egui::Stroke::new(2.0_f32, egui::Color32::from_rgb(8, 47, 73)),
                     egui::StrokeKind::Inside,
                 );
             }
@@ -6050,7 +6050,7 @@ impl MainAreaDna {
                 egui::pos2(rect.left(), axis_bottom),
                 egui::pos2(rect.right(), axis_bottom),
             ],
-            egui::Stroke::new(1.0, egui::Color32::from_gray(120)),
+            egui::Stroke::new(1.0_f32, egui::Color32::from_gray(120)),
         );
         let threshold_x = rect.left() + rect.width() * min_seed_hit_fraction as f32;
         painter.line_segment(
@@ -6058,7 +6058,7 @@ impl MainAreaDna {
                 egui::pos2(threshold_x, plot_top),
                 egui::pos2(threshold_x, axis_bottom),
             ],
-            egui::Stroke::new(1.0, egui::Color32::from_rgb(220, 38, 38)),
+            egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(220, 38, 38)),
         );
         painter.text(
             egui::pos2(rect.left() + 4.0, rect.bottom() - 13.0),
@@ -6378,7 +6378,7 @@ impl MainAreaDna {
         painter.rect_stroke(
             rect,
             2.0,
-            egui::Stroke::new(1.0, egui::Color32::from_gray(130)),
+            egui::Stroke::new(1.0_f32, egui::Color32::from_gray(130)),
             egui::StrokeKind::Inside,
         );
         let axis_bottom = rect.bottom() - 1.5;
@@ -6482,7 +6482,7 @@ impl MainAreaDna {
         painter.rect_stroke(
             rect,
             2.0,
-            egui::Stroke::new(1.0, egui::Color32::from_gray(130)),
+            egui::Stroke::new(1.0_f32, egui::Color32::from_gray(130)),
             egui::StrokeKind::Inside,
         );
         let max_count = bin_counts.iter().copied().max().unwrap_or(1) as f32;
@@ -6715,7 +6715,7 @@ impl MainAreaDna {
         painter.rect_stroke(
             rect,
             2.0,
-            egui::Stroke::new(1.0, egui::Color32::from_gray(130)),
+            egui::Stroke::new(1.0_f32, egui::Color32::from_gray(130)),
             egui::StrokeKind::Inside,
         );
         let max_count = bins.iter().map(|(_, _, count)| *count).max().unwrap_or(1) as f32;

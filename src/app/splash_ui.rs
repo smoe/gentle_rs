@@ -57,7 +57,7 @@ impl GENtleApp {
                     let bottom = dna_y - phase.sin() * 18.0;
                     ui.painter().line_segment(
                         [egui::pos2(x, top), egui::pos2(x, bottom)],
-                        egui::Stroke::new(1.0, egui::Color32::from_gray(165)),
+                        egui::Stroke::new(1.0_f32, egui::Color32::from_gray(165)),
                     );
                 }
                 let mut points_a = Vec::new();
@@ -71,9 +71,9 @@ impl GENtleApp {
                     points_b.push(egui::pos2(x, dna_y - wave));
                 }
                 ui.painter()
-                    .add(egui::Shape::line(points_a, egui::Stroke::new(2.0, accent)));
+                    .add(egui::Shape::line(points_a, egui::Stroke::new(2.0_f32, accent)));
                 ui.painter()
-                    .add(egui::Shape::line(points_b, egui::Stroke::new(2.0, reverse)));
+                    .add(egui::Shape::line(points_b, egui::Stroke::new(2.0_f32, reverse)));
 
                 ui.vertical_centered(|ui| {
                     let top_space = (ui.available_height() - 470.0).max(28.0) * 0.42;
