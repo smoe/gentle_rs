@@ -1304,7 +1304,7 @@ pub enum RackPhysicalTemplateKind {
     #[default]
     StoragePcrTubeRack,
     PipettingPcrTubeRack,
-    #[serde(rename = "cell_culture_plate", alias = "cell_culture_6_well_plate")]
+    #[serde(rename = "cell_culture_plate")]
     CellCulturePlate,
 }
 

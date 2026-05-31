@@ -2,3 +2,7 @@
 # from source tarballs produced by `git archive`.
 docs/tutorial/generated export-ignore
 docs/tutorial/generated/** export-ignore
+
+# PDFs are generated/binary figure artifacts; do not run text whitespace checks
+# against their xref tables.
+*.pdf binary

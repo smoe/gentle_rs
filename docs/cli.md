@@ -1988,10 +1988,10 @@ Shared shell command:
     - `racks move-blocks RACK_ID --arrangement ARR_ID [--arrangement ARR_ID ...] --to B1`
     - `racks show RACK_ID`
     - `racks labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID] [--preset compact_cards|print_a4|wide_cards]`
-    - `racks fabrication-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_6_well_plate]`
-    - `racks isometric-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_6_well_plate]`
-    - `racks hero-svg RACK_ID OUTPUT.svg [--template cell_culture_6_well_plate]`
-    - `racks openscad RACK_ID OUTPUT.scad [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_6_well_plate]`
+    - `racks fabrication-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]`
+    - `racks isometric-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]`
+    - `racks hero-svg RACK_ID OUTPUT.svg [--template cell_culture_plate]`
+    - `racks openscad RACK_ID OUTPUT.scad [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]`
     - `racks set-profile RACK_ID small_tube_4x6|plate_6|plate_96|plate_384`
     - `racks set-custom-profile RACK_ID ROWS COLUMNS`
     - `ladders list [--molecule dna|rna] [--filter TEXT]`
@@ -3242,30 +3242,30 @@ Rendering export commands:
     - `compact_cards` (current compact two-column cards)
     - `print_a4` (denser print-oriented A4 sheet)
     - `wide_cards` (single-column wider cards)
-- `racks fabrication-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_6_well_plate]`
+- `racks fabrication-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]`
   - Calls engine operation `ExportRackFabricationSvg`.
   - Writes one top-view fabrication/planning SVG for the full saved rack.
   - Current built-in physical templates:
     - `storage_pcr_tube_rack`
     - `pipetting_pcr_tube_rack`
-    - `cell_culture_6_well_plate`
-- `racks isometric-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_6_well_plate]`
+    - `cell_culture_plate`
+- `racks isometric-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]`
   - Calls engine operation `ExportRackIsometricSvg`.
   - Writes one pseudo-3D/isometric SVG for the full saved rack.
   - Intended for presentation-ready rack review and README/documentation
     figures while still using the same saved rack/template state as the other
     physical exports.
-- `racks hero-svg RACK_ID OUTPUT.svg [--template cell_culture_6_well_plate]`
+- `racks hero-svg RACK_ID OUTPUT.svg [--template cell_culture_plate]`
   - Calls engine operation `ExportRackHeroSvg`.
   - Writes one README-facing top-down cell-culture plate SVG with a clipped
     upper-left orientation corner, row/column labels, empty circular wells,
     and saved-arrangement labels/rings when wells are occupied.
   - Uses the same saved rack/template state as the technical isometric,
     fabrication, simulation, and OpenSCAD exports.
-- `racks openscad RACK_ID OUTPUT.scad [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_6_well_plate]`
+- `racks openscad RACK_ID OUTPUT.scad [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]`
   - Calls engine operation `ExportRackOpenScad`.
   - Writes one parameterized OpenSCAD source file for the full saved rack.
-- `racks carrier-labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID] [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_6_well_plate] [--preset front_strip_and_cards|front_strip_only|module_cards_only]`
+- `racks carrier-labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID] [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate] [--preset front_strip_and_cards|front_strip_only|module_cards_only]`
   - Calls engine operation `ExportRackCarrierLabelsSvg`.
   - Writes one carrier-matched front-strip plus module-label SVG sheet for the
     full rack or one selected arrangement block on that rack.
@@ -3273,7 +3273,7 @@ Rendering export commands:
     - `front_strip_and_cards`
     - `front_strip_only`
     - `module_cards_only`
-- `racks simulation-json RACK_ID OUTPUT.json [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_6_well_plate]`
+- `racks simulation-json RACK_ID OUTPUT.json [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]`
   - Calls engine operation `ExportRackSimulationJson`.
   - Writes one machine-readable rack geometry/placement JSON export for
     downstream simulation adapters.
@@ -4118,16 +4118,16 @@ Host convenience commands:
 - `racks labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID] [--preset compact_cards|print_a4|wide_cards]`
   - Exports deterministic rack or arrangement-scoped label SVG through the
     same engine path as GUI `Labels SVG`.
-- `racks fabrication-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_6_well_plate]`
+- `racks fabrication-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]`
   - Exports one deterministic top-view fabrication/planning SVG through the
     same engine path as GUI `Fabrication SVG...`.
-- `racks isometric-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_6_well_plate]`
+- `racks isometric-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]`
   - Exports one deterministic pseudo-3D/isometric rack SVG through the same
     engine path as GUI `Isometric SVG...`.
-- `racks hero-svg RACK_ID OUTPUT.svg [--template cell_culture_6_well_plate]`
+- `racks hero-svg RACK_ID OUTPUT.svg [--template cell_culture_plate]`
   - Exports one README-facing top-down cell-culture plate SVG with labeled
     empty wells, saved-arrangement rings, and an upper-left orientation cut.
-- `racks openscad RACK_ID OUTPUT.scad [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_6_well_plate]`
+- `racks openscad RACK_ID OUTPUT.scad [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]`
   - Exports one deterministic parameterized OpenSCAD file through the same
     engine path as GUI `OpenSCAD...`.
 - `racks set-profile RACK_ID small_tube_4x6|plate_6|plate_96|plate_384`

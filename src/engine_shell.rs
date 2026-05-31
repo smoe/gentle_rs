@@ -12167,14 +12167,9 @@ fn parse_rack_physical_template_kind(value: &str) -> Result<RackPhysicalTemplate
         "cell_culture_plate"
         | "culture_plate"
         | "cell_culture"
-        | "plate"
-        | "cell_culture_6_well_plate"
-        | "cell_culture_6_well"
-        | "6_well_plate"
-        | "six_well_plate"
-        | "culture_6well" => Ok(RackPhysicalTemplateKind::CellCulturePlate),
+        | "plate" => Ok(RackPhysicalTemplateKind::CellCulturePlate),
         other => Err(format!(
-            "Unsupported rack physical template '{other}' (expected storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate|cell_culture_6_well_plate)"
+            "Unsupported rack physical template '{other}' (expected storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate)"
         )),
     }
 }

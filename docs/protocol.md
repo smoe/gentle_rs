@@ -4609,7 +4609,7 @@ Feature-distance geometry controls (candidate generation and distance scoring):
 - Current built-in physical templates:
   - `storage_pcr_tube_rack`
   - `pipetting_pcr_tube_rack`
-  - `cell_culture_6_well_plate`
+  - `cell_culture_plate`
 - The export consumes:
   - rack geometry (`rows`, `columns`, blocked coordinates)
   - saved rack occupancy and arrangement ids for visual planning markers
@@ -4637,7 +4637,7 @@ Feature-distance geometry controls (candidate generation and distance scoring):
 `ExportRackHeroSvg` semantics:
 
 - Writes one deterministic README-facing hero SVG for a saved rack.
-- Currently supports the `cell_culture_6_well_plate` physical template.
+- Currently supports the `cell_culture_plate` physical template.
 - Uses the same linked rack snapshot as the technical rack exports, but renders
   a presentation-specific top-down 6-well plate:
   - a plate outline with a clipped upper-left orientation corner

@@ -361,26 +361,26 @@ uses an empty top-down plate with the upper-left orientation corner clipped,
 matching common six-well plate drawings, while the well labels come from the
 saved arrangement itself.
 
-![GENtle 6-well cell-culture plate arrangement](docs/figures/cell_culture_6_well_plate_hero.svg)
+![GENtle 6-well cell-culture plate arrangement](docs/figures/cell_culture_plate_hero.svg)
 
 Regenerate the SVG and PDF copies with:
 
 ```sh
 cargo run --quiet --bin gentle_cli -- \
-  --state /tmp/gentle_cell_culture_6_well_plate.state.json \
-  workflow @docs/examples/workflows/cell_culture_6_well_plate.json
+  --state /tmp/gentle_cell_culture_plate.state.json \
+  workflow @docs/examples/workflows/cell_culture_plate.json
 
 cargo run --quiet --bin gentle_cli -- \
-  --state /tmp/gentle_cell_culture_6_well_plate.state.json \
+  --state /tmp/gentle_cell_culture_plate.state.json \
   racks hero-svg \
   cell-culture-6well \
-  docs/figures/cell_culture_6_well_plate_hero.svg \
-  --template cell_culture_6_well_plate
+  docs/figures/cell_culture_plate_hero.svg \
+  --template cell_culture_plate
 
 cargo run --quiet --bin gentle_cli -- \
   svg-pdf \
-  docs/figures/cell_culture_6_well_plate_hero.svg \
-  docs/figures/cell_culture_6_well_plate_hero.pdf \
+  docs/figures/cell_culture_plate_hero.svg \
+  docs/figures/cell_culture_plate_hero.pdf \
   --scale 2
 ```
 

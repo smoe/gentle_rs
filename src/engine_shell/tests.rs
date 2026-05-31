@@ -3369,7 +3369,7 @@ fn parse_racks_isometric_svg_command() {
 #[test]
 fn parse_racks_isometric_svg_accepts_cell_culture_template() {
     let cmd = parse_shell_line(
-        "racks isometric-svg rack-1 rack.iso.svg --template cell_culture_6_well_plate",
+        "racks isometric-svg rack-1 rack.iso.svg --template cell_culture_plate",
     )
     .expect("parse command");
     match cmd {

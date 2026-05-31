@@ -443,43 +443,43 @@ python3 docs/figures/render_serial_gel_hero.py \
   "100 bp ladder" insert vector product "1 kb ladder"
 ```
 
-`cell_culture_6_well_plate_isometric.svg` is a deterministic pseudo-3D export
+`cell_culture_plate_isometric.svg` is a deterministic pseudo-3D export
 of a six-well cell-culture layout using the shared rack/arrangement state and
-the `cell_culture_6_well_plate` physical template. Occupied wells are drawn as
+the `cell_culture_plate` physical template. Occupied wells are drawn as
 flat culture-well fills, not PCR tube caps.
 
-`cell_culture_6_well_plate_hero.svg` is the README-facing presentation variant
+`cell_culture_plate_hero.svg` is the README-facing presentation variant
 emitted directly by the rack hero renderer as a clean top-down plate diagram
 with an upper-left orientation cut, row/column labels, tight circular empty
 wells, and saved-arrangement labels/rings when wells are occupied.
-`cell_culture_6_well_plate_hero.pdf` is produced from that SVG with GENtle's
+`cell_culture_plate_hero.pdf` is produced from that SVG with GENtle's
 `svg-pdf` conversion route.
 
 Regenerate it from the repository root with:
 
 ```sh
 cargo run --quiet --bin gentle_cli -- \
-  --state /tmp/gentle_cell_culture_6_well_plate.state.json \
-  workflow @docs/examples/workflows/cell_culture_6_well_plate.json
+  --state /tmp/gentle_cell_culture_plate.state.json \
+  workflow @docs/examples/workflows/cell_culture_plate.json
 
 cargo run --quiet --bin gentle_cli -- \
-  --state /tmp/gentle_cell_culture_6_well_plate.state.json \
+  --state /tmp/gentle_cell_culture_plate.state.json \
   racks isometric-svg \
   cell-culture-6well \
-  docs/figures/cell_culture_6_well_plate_isometric.svg \
-  --template cell_culture_6_well_plate
+  docs/figures/cell_culture_plate_isometric.svg \
+  --template cell_culture_plate
 
 cargo run --quiet --bin gentle_cli -- \
-  --state /tmp/gentle_cell_culture_6_well_plate.state.json \
+  --state /tmp/gentle_cell_culture_plate.state.json \
   racks hero-svg \
   cell-culture-6well \
-  docs/figures/cell_culture_6_well_plate_hero.svg \
-  --template cell_culture_6_well_plate
+  docs/figures/cell_culture_plate_hero.svg \
+  --template cell_culture_plate
 
 cargo run --quiet --bin gentle_cli -- \
   svg-pdf \
-  docs/figures/cell_culture_6_well_plate_hero.svg \
-  docs/figures/cell_culture_6_well_plate_hero.pdf \
+  docs/figures/cell_culture_plate_hero.svg \
+  docs/figures/cell_culture_plate_hero.pdf \
   --scale 2
 ```
 

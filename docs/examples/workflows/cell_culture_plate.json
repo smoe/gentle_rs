@@ -1,6 +1,6 @@
 {
   "schema": "gentle.workflow_example.v1",
-  "id": "cell_culture_6_well_plate",
+  "id": "cell_culture_plate",
   "title": "Cell-culture 6-well plate arrangement",
   "summary": "Creates six simple condition containers, arranges them on a linked 6-well cell-culture plate, and leaves the saved rack ready for SVG/PDF export.",
   "test_mode": "always",
@@ -13,7 +13,7 @@
     "offline"
   ],
   "workflow": {
-    "run_id": "example_cell_culture_6_well_plate",
+    "run_id": "example_cell_culture_plate",
     "ops": [
       {
         "CreateSequenceFromText": {
