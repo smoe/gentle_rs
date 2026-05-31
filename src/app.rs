@@ -13715,8 +13715,7 @@ Error: `{err}`"
                         .id_salt("pcr_design_embedded_scroll")
                         .auto_shrink([false, false])
                         .show(ui, |ui| {
-                            close_requested =
-                                self.render_pcr_design_contents(ui, &viewport_ctx)
+                            close_requested = self.render_pcr_design_contents(ui, &viewport_ctx)
                         });
                 });
                 if close_requested {
@@ -13732,8 +13731,7 @@ Error: `{err}`"
                             .id_salt("pcr_design_viewport_scroll")
                             .auto_shrink([false, false])
                             .show(ui, |ui| {
-                                close_requested =
-                                    self.render_pcr_design_contents(ui, &viewport_ctx)
+                                close_requested = self.render_pcr_design_contents(ui, &viewport_ctx)
                             });
                     },
                 );
@@ -13862,8 +13860,8 @@ Error: `{err}`"
                         .id_salt("sequencing_confirmation_embedded_scroll")
                         .auto_shrink([false, false])
                         .show(ui, |ui| {
-                            close_requested = self
-                                .render_sequencing_confirmation_contents(ui, &viewport_ctx)
+                            close_requested =
+                                self.render_sequencing_confirmation_contents(ui, &viewport_ctx)
                         });
                 });
                 if close_requested {
@@ -13879,8 +13877,8 @@ Error: `{err}`"
                             .id_salt("sequencing_confirmation_viewport_scroll")
                             .auto_shrink([false, false])
                             .show(ui, |ui| {
-                                close_requested = self
-                                    .render_sequencing_confirmation_contents(ui, &viewport_ctx)
+                                close_requested =
+                                    self.render_sequencing_confirmation_contents(ui, &viewport_ctx)
                             });
                     },
                 );
@@ -19851,7 +19849,10 @@ Error: `{err}`"
                     );
                     ui.separator();
                     if project_dirty {
-                        ui.label(Self::project_footer_status_text(ui.ctx(), "unsaved changes"));
+                        ui.label(Self::project_footer_status_text(
+                            ui.ctx(),
+                            "unsaved changes",
+                        ));
                     } else {
                         ui.label(Self::project_footer_status_text(ui.ctx(), "saved"));
                     }
@@ -23524,6 +23525,16 @@ Error: `{err}`"
                 template,
             } => format!(
                 "Export rack isometric SVG: rack_id={}, template={}, path={}",
+                rack_id.trim(),
+                template.as_str(),
+                path
+            ),
+            Operation::ExportRackHeroSvg {
+                rack_id,
+                path,
+                template,
+            } => format!(
+                "Export rack hero SVG: rack_id={}, template={}, path={}",
                 rack_id.trim(),
                 template.as_str(),
                 path

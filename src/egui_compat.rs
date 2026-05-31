@@ -799,16 +799,15 @@ pub(crate) fn show_bottom_panel_inside<R>(
 #[cfg(test)]
 mod tests {
     use super::{
+        HOSTED_WINDOW_SAFE_INSET_BOTTOM_PX, HOSTED_WINDOW_SAFE_INSET_TOP_PX,
+        HOSTED_WINDOW_SAFE_INSET_X_PX, HostedWindowSpec, ModalWindowSpec,
         clamp_hosted_window_default_pos, clamp_hosted_window_default_size,
-        hosted_window_frame_drag_ids, hosted_window_frame_drag_owner,
-        hosted_window_max_inner_size, hosted_window_press_origin_frame_owner,
-        hosted_window_safe_rect_for_rect,
+        hosted_window_frame_drag_ids, hosted_window_frame_drag_owner, hosted_window_max_inner_size,
+        hosted_window_press_origin_frame_owner, hosted_window_safe_rect_for_rect,
         hosted_window_status_message, register_hosted_window_frame_drag_ids,
         should_request_hosted_window_stale_repaint, show_hosted_window, show_modal_window,
-        HostedWindowSpec, ModalWindowSpec, HOSTED_WINDOW_SAFE_INSET_BOTTOM_PX,
-        HOSTED_WINDOW_SAFE_INSET_TOP_PX, HOSTED_WINDOW_SAFE_INSET_X_PX,
     };
-    use eframe::egui::{self, pos2, vec2, Rect};
+    use eframe::egui::{self, Rect, pos2, vec2};
 
     #[test]
     fn hosted_window_safe_rect_applies_expected_inset() {

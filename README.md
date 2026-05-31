@@ -353,6 +353,37 @@ python3 docs/figures/render_serial_gel_hero.py \
 The corresponding GUI/CLI tutorial for this export lives in
 [`docs/tutorial/03-08_gibson_physical_rack_gui.md`](docs/tutorial/03-08_gibson_physical_rack_gui.md).
 
+The same rack/arrangement machinery also supports a six-well cell-culture
+plate profile. The wells render as culture wells rather than PCR tubes, so the
+export can be used for plate-level treatment layouts and README/protocol
+figures without changing the underlying arrangement semantics. The README hero
+uses an empty top-down plate with the upper-left orientation corner clipped,
+matching common six-well plate drawings, while the well labels come from the
+saved arrangement itself.
+
+![GENtle 6-well cell-culture plate arrangement](docs/figures/cell_culture_6_well_plate_hero.svg)
+
+Regenerate the SVG and PDF copies with:
+
+```sh
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/gentle_cell_culture_6_well_plate.state.json \
+  workflow @docs/examples/workflows/cell_culture_6_well_plate.json
+
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/gentle_cell_culture_6_well_plate.state.json \
+  racks hero-svg \
+  cell-culture-6well \
+  docs/figures/cell_culture_6_well_plate_hero.svg \
+  --template cell_culture_6_well_plate
+
+cargo run --quiet --bin gentle_cli -- \
+  svg-pdf \
+  docs/figures/cell_culture_6_well_plate_hero.svg \
+  docs/figures/cell_culture_6_well_plate_hero.pdf \
+  --scale 2
+```
+
 ### Overlap-Extension PCR Substitution Mechanism
 
 ![GENtle overlap-extension substitution PCR mechanism](docs/figures/pcr_overlap_extension_substitution_fig1_style.svg)

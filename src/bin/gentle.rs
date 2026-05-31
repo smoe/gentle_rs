@@ -218,9 +218,7 @@ fn main() -> eframe::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        help_text, load_icon, persist_root_window_state, resolve_runtime_asset_path_from,
-    };
+    use super::{help_text, load_icon, persist_root_window_state, resolve_runtime_asset_path_from};
     use std::path::Path;
 
     #[test]

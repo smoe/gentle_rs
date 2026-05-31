@@ -228,18 +228,7 @@ pub fn render_svg_file_to_png(
         ));
     }
 
-    let mut svg_text = std::fs::read_to_string(input_path)
-        .map_err(|e| format!("Could not read SVG '{}': {e}", input_path.display()))?;
-    if options.drop_dotplot_metadata {
-        svg_text = strip_dotplot_metadata_text(&svg_text);
-    }
-
-    let rendered = render_svg_text_to_png_bytes(
-        &svg_text,
-        canonical_parent(input_path),
-        options,
-        &format!("'{}'", input_path.display()),
-    )?;
+    let rendered = render_svg_file_to_png_bytes(input_path, options)?;
 
     std::fs::write(output_path, &rendered.bytes)
         .map_err(|e| format!("Could not write PNG '{}': {e}", output_path.display()))?;
@@ -253,6 +242,36 @@ pub fn render_svg_file_to_png(
         height: rendered.height,
         font_face_count: rendered.font_face_count,
     })
+}
+
+/// Rasterizes an SVG file into deterministic PNG bytes while preserving the
+/// source file's parent directory for relative resources.
+pub fn render_svg_file_to_png_bytes(
+    input_path: &Path,
+    options: SvgPngRenderOptions,
+) -> Result<SvgPngRenderBytes, String> {
+    if input_path.as_os_str().is_empty() {
+        return Err("svg-png requires INPUT.svg".to_string());
+    }
+    if !(options.scale.is_finite() && options.scale > 0.0) {
+        return Err(format!(
+            "svg-png requires a positive finite scale value, got {}",
+            options.scale
+        ));
+    }
+
+    let mut svg_text = std::fs::read_to_string(input_path)
+        .map_err(|e| format!("Could not read SVG '{}': {e}", input_path.display()))?;
+    if options.drop_dotplot_metadata {
+        svg_text = strip_dotplot_metadata_text(&svg_text);
+    }
+
+    render_svg_text_to_png_bytes(
+        &svg_text,
+        canonical_parent(input_path),
+        options,
+        &format!("'{}'", input_path.display()),
+    )
 }
 
 /// Rasterizes an SVG string into deterministic PNG bytes.

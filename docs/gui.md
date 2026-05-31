@@ -366,6 +366,10 @@ The project main window (lineage page) supports two views:
 - Rack placement is a linked physical layer on top of arrangements, not a replacement for them:
   - arrangements keep the semantic sample order
   - racks/plates keep the physical A1-slot placement
+- Built-in rack/plate profiles include small tube racks, six-well
+  cell-culture plates, 96-well plates, and 384-well plates. Physical-template
+  export includes PCR tube rack templates plus a cell-culture 6-well plate
+  template for SVG/PDF documentation assets.
 - Every new serial arrangement now gets one default draft rack automatically.
 - `Open Lanes` now opens a chooser menu rather than immediately opening every lane window:
   - choose one lane container, or `All`

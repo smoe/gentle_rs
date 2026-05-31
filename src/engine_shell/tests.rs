@@ -3167,6 +3167,19 @@ fn parse_racks_create_from_arrangement_accepts_cell_culture_plate_aliases() {
 }
 
 #[test]
+fn parse_racks_create_from_arrangement_accepts_six_well_profile() {
+    let cmd =
+        parse_shell_line("racks create-from-arrangement arr-x --rack-id rack-x --profile plate_6")
+            .expect("parse command");
+    match cmd {
+        ShellCommand::RacksCreateFromArrangement { profile, .. } => {
+            assert_eq!(profile, Some(RackProfileKind::Plate6));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_racks_move_command() {
     let cmd =
         parse_shell_line("racks move rack-1 --from A1 --to B2 --block").expect("parse command");
@@ -3348,6 +3361,37 @@ fn parse_racks_isometric_svg_command() {
             assert_eq!(rack_id, "rack-1".to_string());
             assert_eq!(output, "rack.iso.svg".to_string());
             assert_eq!(template, RackPhysicalTemplateKind::StoragePcrTubeRack);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_racks_isometric_svg_accepts_cell_culture_template() {
+    let cmd = parse_shell_line(
+        "racks isometric-svg rack-1 rack.iso.svg --template cell_culture_6_well_plate",
+    )
+    .expect("parse command");
+    match cmd {
+        ShellCommand::RacksIsometricSvg { template, .. } => {
+            assert_eq!(template, RackPhysicalTemplateKind::CellCulturePlate);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_racks_hero_svg_defaults_to_cell_culture_template() {
+    let cmd = parse_shell_line("racks hero-svg rack-1 rack.hero.svg").expect("parse command");
+    match cmd {
+        ShellCommand::RacksHeroSvg {
+            rack_id,
+            output,
+            template,
+        } => {
+            assert_eq!(rack_id, "rack-1".to_string());
+            assert_eq!(output, "rack.hero.svg".to_string());
+            assert_eq!(template, RackPhysicalTemplateKind::CellCulturePlate);
         }
         other => panic!("unexpected command: {other:?}"),
     }

@@ -2406,6 +2406,51 @@ impl GentleEngine {
         format!("{}…", trimmed.chars().take(keep).collect::<String>())
     }
 
+    fn rack_hero_placement_label(&self, entry: &RackPlacementEntry) -> String {
+        let fallback = entry.role_label.trim();
+        match entry.occupant.as_ref() {
+            Some(RackOccupant::Container { container_id }) => self
+                .state
+                .container_state
+                .containers
+                .get(container_id)
+                .and_then(|container| {
+                    container.members.first().and_then(|seq_id| {
+                        self.state
+                            .sequences
+                            .get(seq_id)
+                            .and_then(|dna| dna.name().as_ref())
+                    })
+                })
+                .or_else(|| {
+                    self.state
+                        .container_state
+                        .containers
+                        .get(container_id)
+                        .and_then(|container| container.name.as_ref())
+                })
+                .map(|name| name.trim())
+                .filter(|name| !name.is_empty() && *name != "Inline sequence")
+                .or_else(|| {
+                    if fallback.is_empty() {
+                        None
+                    } else {
+                        Some(fallback)
+                    }
+                })
+                .unwrap_or(container_id.trim())
+                .to_string(),
+            Some(RackOccupant::LadderReference { ladder_name }) => format!("ladder {ladder_name}"),
+            None => {
+                if fallback.is_empty() {
+                    "empty".to_string()
+                } else {
+                    fallback.to_string()
+                }
+            }
+        }
+    }
+
     fn export_rack_physical_svg_string(
         &self,
         rack: &Rack,
@@ -2598,6 +2643,198 @@ impl GentleEngine {
         Ok(svg)
     }
 
+    fn export_rack_hero_svg_string(
+        &self,
+        rack: &Rack,
+        spec: &RackPhysicalTemplateSpec,
+    ) -> Result<String, EngineError> {
+        if spec.family != RackPhysicalTemplateFamily::CellCulture {
+            return Err(EngineError {
+                code: ErrorCode::Unsupported,
+                message: format!(
+                    "Rack hero SVG currently supports cell-culture templates only, not '{}'",
+                    spec.kind.as_str()
+                ),
+                cause_chain: vec![],
+            });
+        }
+        let placements = self.sorted_rack_placements(rack)?;
+        let mut placements_by_coordinate = HashMap::new();
+        for (_, entry) in &placements {
+            placements_by_coordinate.insert(entry.coordinate.clone(), entry.clone());
+        }
+        let blocked = rack
+            .profile
+            .blocked_coordinates
+            .iter()
+            .cloned()
+            .collect::<HashSet<_>>();
+
+        let margin = 8.0;
+        let plate_x = margin;
+        let plate_y = margin + 6.0;
+        let svg_width = spec.overall_width_mm + margin * 2.0;
+        let svg_height = spec.overall_depth_mm + margin * 2.0 + 14.0;
+        let label_h = 7.0;
+        let label_y = plate_y + spec.overall_depth_mm + 2.0;
+        let plate_corner_radius = spec.corner_radius_mm.clamp(1.4, 2.2);
+        let orientation_cut = 6.0_f32.min(spec.overall_width_mm * 0.08);
+        let well_radius =
+            (spec.pitch_x_mm.min(spec.pitch_y_mm) * 0.5 - 0.8).max(spec.opening_diameter_mm * 0.5);
+        let inner_radius = well_radius * 0.77;
+        let rack_title = if rack.name.trim().is_empty() {
+            rack.rack_id.trim()
+        } else {
+            rack.name.trim()
+        };
+
+        let mut svg = format!(
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{:.1}mm\" height=\"{:.1}mm\" viewBox=\"0 0 {:.1} {:.1}\" data-rack-hero-template=\"{}\" data-rack-id=\"{}\" data-rack-front-top-clearance-mm=\"{:.1}\">",
+            svg_width,
+            svg_height,
+            svg_width,
+            svg_height,
+            spec.kind.as_str(),
+            Self::xml_escape(&rack.rack_id),
+            spec.front_top_clearance_mm
+        );
+        svg.push_str("<rect width=\"100%\" height=\"100%\" fill=\"#ffffff\"/>");
+        svg.push_str("<defs>");
+        svg.push_str("<filter id=\"hero-soft-shadow\" x=\"-8%\" y=\"-8%\" width=\"116%\" height=\"116%\"><feDropShadow dx=\"0\" dy=\"1.2\" stdDeviation=\"1.8\" flood-color=\"#334155\" flood-opacity=\"0.12\"/></filter>");
+        svg.push_str("<linearGradient id=\"hero-plate-fill\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"100%\"><stop offset=\"0%\" stop-color=\"#ffffff\"/><stop offset=\"100%\" stop-color=\"#eef3f8\"/></linearGradient>");
+        svg.push_str("<linearGradient id=\"hero-label-strip\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"0%\"><stop offset=\"0%\" stop-color=\"#f8fafc\"/><stop offset=\"100%\" stop-color=\"#e8eef5\"/></linearGradient>");
+        svg.push_str("<radialGradient id=\"hero-well-floor\" cx=\"50%\" cy=\"48%\" r=\"58%\"><stop offset=\"0%\" stop-color=\"#ffffff\"/><stop offset=\"100%\" stop-color=\"#e2e8f0\"/></radialGradient>");
+        svg.push_str("</defs>");
+        let plate_outline_path = format!(
+            "M {:.2} {:.2} L {:.2} {:.2} Q {:.2} {:.2} {:.2} {:.2} L {:.2} {:.2} Q {:.2} {:.2} {:.2} {:.2} L {:.2} {:.2} Q {:.2} {:.2} {:.2} {:.2} L {:.2} {:.2} Z",
+            plate_x + orientation_cut,
+            plate_y,
+            plate_x + spec.overall_width_mm - plate_corner_radius,
+            plate_y,
+            plate_x + spec.overall_width_mm,
+            plate_y,
+            plate_x + spec.overall_width_mm,
+            plate_y + plate_corner_radius,
+            plate_x + spec.overall_width_mm,
+            plate_y + spec.overall_depth_mm - plate_corner_radius,
+            plate_x + spec.overall_width_mm,
+            plate_y + spec.overall_depth_mm,
+            plate_x + spec.overall_width_mm - plate_corner_radius,
+            plate_y + spec.overall_depth_mm,
+            plate_x + plate_corner_radius,
+            plate_y + spec.overall_depth_mm,
+            plate_x,
+            plate_y + spec.overall_depth_mm,
+            plate_x,
+            plate_y + spec.overall_depth_mm - plate_corner_radius,
+            plate_x,
+            plate_y + orientation_cut
+        );
+        svg.push_str(&format!(
+            "<path data-rack-hero-plate-outline=\"1\" data-rack-hero-orientation-cut=\"upper_left\" d=\"{}\" fill=\"url(#hero-plate-fill)\" stroke=\"#64748b\" stroke-width=\"0.70\" filter=\"url(#hero-soft-shadow)\"/>",
+            plate_outline_path
+        ));
+        svg.push_str(&format!(
+            "<rect data-rack-hero-label-strip=\"1\" x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"1.6\" ry=\"1.6\" fill=\"url(#hero-label-strip)\" stroke=\"#cbd5e1\" stroke-width=\"0.24\"/>",
+            plate_x + 3.0,
+            label_y,
+            spec.overall_width_mm - 6.0,
+            label_h
+        ));
+        svg.push_str(&format!(
+            "<text x=\"{:.2}\" y=\"{:.2}\" font-family=\"monospace\" font-size=\"3.1\" font-weight=\"700\" fill=\"#475569\">{}</text>",
+            plate_x + 5.0,
+            label_y + 4.65,
+            Self::xml_escape(rack_title)
+        ));
+
+        for column in 0..spec.columns {
+            let (cx, _) = Self::rack_physical_hole_center_mm(spec, 0, column);
+            svg.push_str(&format!(
+                "<text data-rack-hero-column-label=\"1\" x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"3.0\" font-weight=\"700\" fill=\"#64748b\">{}</text>",
+                plate_x + cx,
+                plate_y - 2.0,
+                column + 1
+            ));
+        }
+
+        for row in 0..spec.rows {
+            let (_, cy) = Self::rack_physical_hole_center_mm(spec, row, 0);
+            svg.push_str(&format!(
+                "<text data-rack-hero-row-label=\"1\" x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" dominant-baseline=\"middle\" font-family=\"monospace\" font-size=\"3.0\" font-weight=\"700\" fill=\"#64748b\">{}</text>",
+                plate_x - 2.0,
+                plate_y + cy,
+                Self::rack_row_label_from_index(row)
+            ));
+            for column in 0..spec.columns {
+                let coordinate = Self::rack_coordinate_from_row_column(&rack.profile, row, column)?;
+                let (cx_mm, cy_mm) = Self::rack_physical_hole_center_mm(spec, row, column);
+                let x = plate_x + cx_mm;
+                let y = plate_y + cy_mm;
+                let blocked_slot = blocked.contains(&coordinate);
+                svg.push_str(&format!(
+                    "<circle data-rack-cell-culture-well=\"1\" data-rack-cell-culture-well-rim=\"1\" cx=\"{:.2}\" cy=\"{:.2}\" r=\"{:.2}\" fill=\"#ffffff\" stroke=\"#94a3b8\" stroke-width=\"0.50\"/>",
+                    x,
+                    y,
+                    well_radius
+                ));
+                svg.push_str(&format!(
+                    "<circle data-rack-cell-culture-well-floor=\"1\" cx=\"{:.2}\" cy=\"{:.2}\" r=\"{:.2}\" fill=\"url(#hero-well-floor)\" stroke=\"#cbd5e1\" stroke-width=\"0.28\"/>",
+                    x,
+                    y,
+                    inner_radius
+                ));
+                if blocked_slot {
+                    svg.push_str(&format!(
+                        "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"#94a3b8\" stroke-width=\"0.55\"/><line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"#94a3b8\" stroke-width=\"0.55\"/>",
+                        x - inner_radius * 0.55,
+                        y - inner_radius * 0.55,
+                        x + inner_radius * 0.55,
+                        y + inner_radius * 0.55,
+                        x - inner_radius * 0.55,
+                        y + inner_radius * 0.55,
+                        x + inner_radius * 0.55,
+                        y - inner_radius * 0.55
+                    ));
+                    continue;
+                }
+                if let Some(entry) = placements_by_coordinate.get(&coordinate) {
+                    let arrangement_color = "#0f766e";
+                    svg.push_str(&format!(
+                        "<circle data-rack-cell-culture-arrangement-ring=\"1\" data-rack-arrangement-id=\"{}\" cx=\"{:.2}\" cy=\"{:.2}\" r=\"{:.2}\" fill=\"none\" stroke=\"{}\" stroke-width=\"0.62\" stroke-opacity=\"0.78\"/>",
+                        Self::xml_escape(&entry.arrangement_id),
+                        x,
+                        y,
+                        inner_radius + 1.0,
+                        arrangement_color
+                    ));
+                    let label = self.rack_hero_placement_label(entry);
+                    let lines = Self::wrap_rack_label_text(&label, 12, 2);
+                    let line_count = lines.len().max(1) as f32;
+                    let first_y = y - (line_count - 1.0) * 1.55;
+                    for (idx, line) in lines.iter().enumerate() {
+                        svg.push_str(&format!(
+                            "<text data-rack-cell-culture-arrangement-label=\"1\" x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" dominant-baseline=\"middle\" font-family=\"monospace\" font-size=\"2.45\" font-weight=\"700\" fill=\"{}\">{}</text>",
+                            x,
+                            first_y + idx as f32 * 3.1,
+                            arrangement_color,
+                            Self::xml_escape(line)
+                        ));
+                    }
+                }
+                svg.push_str(&format!(
+                    "<text data-rack-cell-culture-coordinate-label=\"1\" x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" dominant-baseline=\"middle\" font-family=\"monospace\" font-size=\"2.6\" font-weight=\"700\" fill=\"#475569\" fill-opacity=\"0.82\">{}</text>",
+                    x,
+                    y + inner_radius * 0.76,
+                    Self::xml_escape(&coordinate)
+                ));
+            }
+        }
+
+        svg.push_str("</svg>");
+        Ok(svg)
+    }
+
     fn export_rack_isometric_svg_string(
         &self,
         rack: &Rack,
@@ -2614,6 +2851,12 @@ impl GentleEngine {
             .iter()
             .cloned()
             .collect::<HashSet<_>>();
+        let has_ladder_reference = placements.iter().any(|(_, entry)| {
+            matches!(
+                entry.occupant.as_ref(),
+                Some(RackOccupant::LadderReference { .. })
+            )
+        });
         let mut arrangement_legend = Vec::new();
         let mut seen_arrangements = HashSet::new();
         for (_, entry) in &placements {
@@ -2830,13 +3073,30 @@ impl GentleEngine {
                     ));
                     continue;
                 }
-                svg.push_str(&format!(
-                    "<ellipse cx=\"{:.2}\" cy=\"{:.2}\" rx=\"{:.2}\" ry=\"{:.2}\" fill=\"#ffffff\" stroke=\"#475569\" stroke-width=\"0.35\"/>",
-                    x,
-                    y,
-                    hole_rx,
-                    hole_ry
-                ));
+                if spec.family == RackPhysicalTemplateFamily::CellCulture {
+                    svg.push_str(&format!(
+                        "<ellipse data-rack-cell-culture-opening=\"1\" cx=\"{:.2}\" cy=\"{:.2}\" rx=\"{:.2}\" ry=\"{:.2}\" fill=\"#eef2f7\" stroke=\"#94a3b8\" stroke-width=\"0.36\"/>",
+                        x,
+                        y,
+                        hole_rx,
+                        hole_ry
+                    ));
+                    svg.push_str(&format!(
+                        "<ellipse data-rack-cell-culture-recess=\"1\" cx=\"{:.2}\" cy=\"{:.2}\" rx=\"{:.2}\" ry=\"{:.2}\" fill=\"#ffffff\" fill-opacity=\"0.82\" stroke=\"#cbd5e1\" stroke-width=\"0.24\"/>",
+                        x,
+                        y + hole_ry * 0.08,
+                        hole_rx * 0.82,
+                        hole_ry * 0.68
+                    ));
+                } else {
+                    svg.push_str(&format!(
+                        "<ellipse cx=\"{:.2}\" cy=\"{:.2}\" rx=\"{:.2}\" ry=\"{:.2}\" fill=\"#ffffff\" stroke=\"#475569\" stroke-width=\"0.35\"/>",
+                        x,
+                        y,
+                        hole_rx,
+                        hole_ry
+                    ));
+                }
                 if let Some(entry) = placements_by_coordinate.get(&coordinate) {
                     let (fill, top_fill, stroke) = match entry.occupant.as_ref() {
                         Some(RackOccupant::LadderReference { .. }) => {
@@ -2848,6 +3108,37 @@ impl GentleEngine {
                         }
                         None => continue,
                     };
+                    if spec.family == RackPhysicalTemplateFamily::CellCulture {
+                        let liquid_rx = hole_rx * 0.62;
+                        let liquid_ry = hole_ry * 0.46;
+                        svg.push_str(&format!(
+                            "<ellipse data-rack-cell-culture-well=\"1\" data-rack-cell-culture-medium=\"1\" cx=\"{:.2}\" cy=\"{:.2}\" rx=\"{:.2}\" ry=\"{:.2}\" fill=\"#f4b6c2\" fill-opacity=\"0.54\" stroke=\"{}\" stroke-opacity=\"0.36\" stroke-width=\"0.24\"/>",
+                            x,
+                            y + hole_ry * 0.08,
+                            liquid_rx,
+                            liquid_ry,
+                            stroke
+                        ));
+                        svg.push_str(&format!(
+                            "<circle data-rack-cell-culture-arrangement-marker=\"1\" cx=\"{:.2}\" cy=\"{:.2}\" r=\"{:.2}\" fill=\"{}\" fill-opacity=\"0.78\"/>",
+                            x + liquid_rx * 0.44,
+                            y - liquid_ry * 0.16,
+                            liquid_ry * 0.18,
+                            top_fill
+                        ));
+                        svg.push_str(&format!(
+                            "<path d=\"M {:.2} {:.2} C {:.2} {:.2}, {:.2} {:.2}, {:.2} {:.2}\" fill=\"none\" stroke=\"#ffffff\" stroke-opacity=\"0.42\" stroke-width=\"0.34\" stroke-linecap=\"round\"/>",
+                            x - liquid_rx * 0.58,
+                            y - liquid_ry * 0.08,
+                            x - liquid_rx * 0.18,
+                            y - liquid_ry * 0.54,
+                            x + liquid_rx * 0.18,
+                            y - liquid_ry * 0.54,
+                            x + liquid_rx * 0.56,
+                            y - liquid_ry * 0.10
+                        ));
+                        continue;
+                    }
                     let cap_rx = hole_rx * 0.84;
                     let cap_ry = hole_ry * 0.92;
                     let cap_top_y = y - cap_height;
@@ -2931,14 +3222,16 @@ impl GentleEngine {
                 ));
                 legend_y += 5.0;
             }
-            svg.push_str(&format!(
-                "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"4.0\" height=\"4.0\" rx=\"1.0\" ry=\"1.0\" fill=\"#f59e0b\"/><text x=\"{:.2}\" y=\"{:.2}\" font-family=\"monospace\" font-size=\"2.5\" fill=\"#334155\">ladder reference</text>",
-                legend_x,
-                legend_y - 3.0,
-                legend_x + 6.0,
-                legend_y
-            ));
-            legend_y += 5.0;
+            if has_ladder_reference {
+                svg.push_str(&format!(
+                    "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"4.0\" height=\"4.0\" rx=\"1.0\" ry=\"1.0\" fill=\"#f59e0b\"/><text x=\"{:.2}\" y=\"{:.2}\" font-family=\"monospace\" font-size=\"2.5\" fill=\"#334155\">ladder reference</text>",
+                    legend_x,
+                    legend_y - 3.0,
+                    legend_x + 6.0,
+                    legend_y
+                ));
+                legend_y += 5.0;
+            }
             if !blocked.is_empty() {
                 svg.push_str(&format!(
                     "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"4.0\" height=\"4.0\" rx=\"1.0\" ry=\"1.0\" fill=\"#e2e8f0\" stroke=\"#64748b\" stroke-width=\"0.25\"/><text x=\"{:.2}\" y=\"{:.2}\" font-family=\"monospace\" font-size=\"2.5\" fill=\"#334155\">blocked / reserved</text>",
@@ -3012,6 +3305,34 @@ impl GentleEngine {
         fs::write(path, svg).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write rack isometric SVG '{}': {e}", path),
+
+            cause_chain: vec![],
+        })?;
+        Ok(spec)
+    }
+
+    pub(super) fn export_rack_hero_svg(
+        &self,
+        rack_id: &str,
+        template: RackPhysicalTemplateKind,
+        path: &str,
+    ) -> Result<RackPhysicalTemplateSpec, EngineError> {
+        let rack = self
+            .state
+            .container_state
+            .racks
+            .get(rack_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Rack '{rack_id}' not found"),
+
+                cause_chain: vec![],
+            })?;
+        let spec = Self::rack_physical_template_spec(template, &rack.profile);
+        let svg = self.export_rack_hero_svg_string(rack, &spec)?;
+        fs::write(path, svg).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not write rack hero SVG '{}': {e}", path),
 
             cause_chain: vec![],
         })?;

@@ -1,0 +1,91 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "cell_culture_6_well_plate",
+  "title": "Cell-culture 6-well plate arrangement",
+  "summary": "Creates six simple condition containers, arranges them on a linked 6-well cell-culture plate, and leaves the saved rack ready for SVG/PDF export.",
+  "test_mode": "always",
+  "required_files": [],
+  "tags": [
+    "tutorial",
+    "rack",
+    "cell-culture",
+    "six-well",
+    "offline"
+  ],
+  "workflow": {
+    "run_id": "example_cell_culture_6_well_plate",
+    "ops": [
+      {
+        "CreateSequenceFromText": {
+          "sequence_text": "ACGTACGTACGT",
+          "output_id": "culture_control_a",
+          "name": "Control A",
+          "circular": false
+        }
+      },
+      {
+        "CreateSequenceFromText": {
+          "sequence_text": "ACGTACGTACGT",
+          "output_id": "culture_control_b",
+          "name": "Control B",
+          "circular": false
+        }
+      },
+      {
+        "CreateSequenceFromText": {
+          "sequence_text": "ACGTACGTACGT",
+          "output_id": "culture_tap73_a",
+          "name": "TAp73a A",
+          "circular": false
+        }
+      },
+      {
+        "CreateSequenceFromText": {
+          "sequence_text": "ACGTACGTACGT",
+          "output_id": "culture_tap73_b",
+          "name": "TAp73a B",
+          "circular": false
+        }
+      },
+      {
+        "CreateSequenceFromText": {
+          "sequence_text": "ACGTACGTACGT",
+          "output_id": "culture_delta_ex2_3_beta_a",
+          "name": "DeltaEx2/3b A",
+          "circular": false
+        }
+      },
+      {
+        "CreateSequenceFromText": {
+          "sequence_text": "ACGTACGTACGT",
+          "output_id": "culture_delta_ex2_3_beta_b",
+          "name": "DeltaEx2/3b B",
+          "circular": false
+        }
+      },
+      {
+        "CreateArrangementSerial": {
+          "container_ids": [
+            "container-1",
+            "container-3",
+            "container-5",
+            "container-2",
+            "container-4",
+            "container-6"
+          ],
+          "arrangement_id": "cell_culture_6_well_arrangement",
+          "name": "6-well cell-culture comparison",
+          "ladders": null
+        }
+      },
+      {
+        "CreateRackFromArrangement": {
+          "arrangement_id": "cell_culture_6_well_arrangement",
+          "rack_id": "cell-culture-6well",
+          "name": "TP73 6-well culture plate",
+          "profile": "plate_6"
+        }
+      }
+    ]
+  }
+}

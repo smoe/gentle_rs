@@ -2761,6 +2761,12 @@ pub enum Operation {
         #[serde(default)]
         template: RackPhysicalTemplateKind,
     },
+    ExportRackHeroSvg {
+        rack_id: String,
+        path: String,
+        #[serde(default)]
+        template: RackPhysicalTemplateKind,
+    },
     ExportRackOpenScad {
         rack_id: String,
         path: String,
@@ -7715,6 +7721,7 @@ impl GentleEngine {
                 | Operation::ExportRackLabelsSvg { .. }
                 | Operation::ExportRackFabricationSvg { .. }
                 | Operation::ExportRackIsometricSvg { .. }
+                | Operation::ExportRackHeroSvg { .. }
                 | Operation::ExportRackOpenScad { .. }
                 | Operation::ExportRackCarrierLabelsSvg { .. }
                 | Operation::ExportRackSimulationJson { .. }

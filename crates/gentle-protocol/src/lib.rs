@@ -1209,7 +1209,7 @@ pub enum RackProfileKind {
         alias = "SmallTube4x6"
     )]
     SmallTube4x6,
-    #[serde(rename = "plate_6")]
+    #[serde(rename = "plate_6", alias = "plate6", alias = "Plate6")]
     Plate6,
     #[serde(rename = "plate_12")]
     Plate12,
@@ -1304,6 +1304,7 @@ pub enum RackPhysicalTemplateKind {
     #[default]
     StoragePcrTubeRack,
     PipettingPcrTubeRack,
+    #[serde(rename = "cell_culture_plate", alias = "cell_culture_6_well_plate")]
     CellCulturePlate,
 }
 
@@ -4841,6 +4842,7 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "ExportRackLabelsSvg",
     "ExportRackFabricationSvg",
     "ExportRackIsometricSvg",
+    "ExportRackHeroSvg",
     "ExportRackOpenScad",
     "ExportRackCarrierLabelsSvg",
     "ExportRackSimulationJson",

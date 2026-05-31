@@ -1892,6 +1892,7 @@ Semantic interpretation:
 - `RackProfileKind`
   - built-in physical carriers:
     - `small_tube_4x6`
+    - `plate_6`
     - `plate_96`
     - `plate_384`
   - persisted custom snapshots use:
@@ -2107,6 +2108,7 @@ Current draft operations:
 - `ExportRackLabelsSvg { rack_id, path, arrangement_id?, preset }`
 - `ExportRackFabricationSvg { rack_id, path, template }`
 - `ExportRackIsometricSvg { rack_id, path, template }`
+- `ExportRackHeroSvg { rack_id, path, template }`
 - `ExportRackOpenScad { rack_id, path, template }`
 - `ExportRackCarrierLabelsSvg { rack_id, path, arrangement_id?, template, preset }`
 - `ExportRackSimulationJson { rack_id, path, template }`
@@ -3827,6 +3829,8 @@ ClawBio/OpenClaw integration scaffold schemas:
       SVG contains text but no fonts are available. Headless deployments can
       install system fonts or set `GENTLE_SVG_FONT_FILE` /
       `GENTLE_SVG_FONT_DIR`.
+    - `svg-pdf` uses the same rasterization path and embeds the rendered image
+      into a single-page PDF for documentation/handoff bundles.
   - mode-specific:
     - `skill-info`: reports ClawBio skill/catalog metadata without invoking
       `gentle_cli`
@@ -4446,6 +4450,8 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   - `small_tube_4x6`
   - `plate_96`
   - `plate_384`
+- `plate_6` is available for explicit cell-culture layouts, but it is not the
+  implicit default for small cloning/bench arrangements.
 - Placement is row-major and preserves arrangement order.
 - Ladder-bearing arrangements reserve left/right ladder-reference positions in
   the same contiguous block.
@@ -4582,6 +4588,7 @@ Feature-distance geometry controls (candidate generation and distance scoring):
 - Current built-in physical templates:
   - `storage_pcr_tube_rack`
   - `pipetting_pcr_tube_rack`
+  - `cell_culture_6_well_plate`
 - The export consumes:
   - rack geometry (`rows`, `columns`, blocked coordinates)
   - saved rack occupancy and arrangement ids for visual planning markers
@@ -4603,6 +4610,23 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   - README / documentation hero figures
   - bench-facing communication assets
   - presentation-ready rack review without leaving the shared engine path
+- For the cell-culture template, occupied wells render as flat culture-well
+  fills rather than PCR tubes.
+
+`ExportRackHeroSvg` semantics:
+
+- Writes one deterministic README-facing hero SVG for a saved rack.
+- Currently supports the `cell_culture_6_well_plate` physical template.
+- Uses the same linked rack snapshot as the technical rack exports, but renders
+  a presentation-specific top-down 6-well plate:
+  - a plate outline with a clipped upper-left orientation corner
+  - row and column labels
+  - tight circular empty-well rims and floors
+  - saved-arrangement labels and subtle rings for occupied wells
+  - a bottom caption strip
+- This route intentionally remains separate from `ExportRackOpenScad`; OpenSCAD
+  stays the CAD/printing source, while hero SVG stays dependency-free and
+  deterministic for documentation.
 
 `ExportRackOpenScad` semantics:
 

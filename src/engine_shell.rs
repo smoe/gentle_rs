@@ -802,6 +802,11 @@ pub enum ShellCommand {
         output: String,
         template: RackPhysicalTemplateKind,
     },
+    RacksHeroSvg {
+        rack_id: String,
+        output: String,
+        template: RackPhysicalTemplateKind,
+    },
     RacksOpenScad {
         rack_id: String,
         output: String,
@@ -6105,6 +6110,16 @@ impl ShellCommand {
                 template,
             } => format!(
                 "export rack isometric SVG for '{}' to '{}' (template={})",
+                rack_id.trim(),
+                output,
+                template.as_str()
+            ),
+            Self::RacksHeroSvg {
+                rack_id,
+                output,
+                template,
+            } => format!(
+                "export rack hero SVG for '{}' to '{}' (template={})",
                 rack_id.trim(),
                 output,
                 template.as_str()
@@ -12069,7 +12084,9 @@ fn parse_guide_plate_format(value: &str) -> Result<GuideOligoPlateFormat, String
 fn parse_rack_profile_kind(value: &str) -> Result<RackProfileKind, String> {
     match value.trim().to_ascii_lowercase().as_str() {
         "small_tube_4x6" | "tube" | "rack" | "4x6" | "tube4x6" => Ok(RackProfileKind::SmallTube4x6),
-        "plate_6" | "6" | "plate6" | "p6" | "6well" | "6_well" => Ok(RackProfileKind::Plate6),
+        "plate_6" | "6" | "plate6" | "p6" | "six_well" | "6well" | "6_well" => {
+            Ok(RackProfileKind::Plate6)
+        }
         "plate_12" | "12" | "plate12" | "p12" | "12well" | "12_well" => {
             Ok(RackProfileKind::Plate12)
         }
@@ -12147,11 +12164,17 @@ fn parse_rack_physical_template_kind(value: &str) -> Result<RackPhysicalTemplate
         "pipetting_pcr_tube_rack" | "pipetting" | "pipetting_tube" | "pipetting_pcr" => {
             Ok(RackPhysicalTemplateKind::PipettingPcrTubeRack)
         }
-        "cell_culture_plate" | "culture_plate" | "cell_culture" | "plate" => {
-            Ok(RackPhysicalTemplateKind::CellCulturePlate)
-        }
+        "cell_culture_plate"
+        | "culture_plate"
+        | "cell_culture"
+        | "plate"
+        | "cell_culture_6_well_plate"
+        | "cell_culture_6_well"
+        | "6_well_plate"
+        | "six_well_plate"
+        | "culture_6well" => Ok(RackPhysicalTemplateKind::CellCulturePlate),
         other => Err(format!(
-            "Unsupported rack physical template '{other}' (expected storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate)"
+            "Unsupported rack physical template '{other}' (expected storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate|cell_culture_6_well_plate)"
         )),
     }
 }
@@ -19931,14 +19954,14 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "racks" => {
             if tokens.len() < 2 {
                 return Err(
-                    "racks requires a subcommand: create-from-arrangement, place-arrangement, move, move-samples, move-blocks, show, labels-svg, fabrication-svg, openscad, carrier-labels-svg, simulation-json, set-profile, set-fill-direction, set-custom-profile, set-blocked".to_string(),
+                    "racks requires a subcommand: create-from-arrangement, place-arrangement, move, move-samples, move-blocks, show, labels-svg, fabrication-svg, isometric-svg, hero-svg, openscad, carrier-labels-svg, simulation-json, set-profile, set-fill-direction, set-custom-profile, set-blocked".to_string(),
                 );
             }
             match tokens[1].as_str() {
                 "create-from-arrangement" => {
                     if tokens.len() < 3 {
                         return Err(
-                            "racks create-from-arrangement requires ARR_ID [--rack-id ID] [--name TEXT] [--profile small_tube_4x6|plate_96|plate_384]".to_string(),
+                            "racks create-from-arrangement requires ARR_ID [--rack-id ID] [--name TEXT] [--profile small_tube_4x6|plate_6|plate_12|plate_24|plate_48|plate_96|plate_384]".to_string(),
                         );
                     }
                     let arrangement_id = tokens[2].trim().to_string();
@@ -20249,7 +20272,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 "fabrication-svg" => {
                     if tokens.len() < 4 {
                         return Err(
-                            "racks fabrication-svg requires RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]"
+                            "racks fabrication-svg requires RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]"
                                 .to_string(),
                         );
                     }
@@ -20292,7 +20315,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 "isometric-svg" => {
                     if tokens.len() < 4 {
                         return Err(
-                            "racks isometric-svg requires RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]"
+                            "racks isometric-svg requires RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]"
                                 .to_string(),
                         );
                     }
@@ -20330,10 +20353,49 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         template,
                     })
                 }
+                "hero-svg" => {
+                    if tokens.len() < 4 {
+                        return Err(
+                            "racks hero-svg requires RACK_ID OUTPUT.svg [--template cell_culture_plate]"
+                                .to_string(),
+                        );
+                    }
+                    let rack_id = tokens[2].trim().to_string();
+                    if rack_id.is_empty() {
+                        return Err("racks hero-svg requires a non-empty RACK_ID".to_string());
+                    }
+                    let output = tokens[3].trim().to_string();
+                    if output.is_empty() {
+                        return Err("racks hero-svg requires a non-empty OUTPUT.svg".to_string());
+                    }
+                    let mut template = RackPhysicalTemplateKind::CellCulturePlate;
+                    let mut idx = 4usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--template" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing value after --template".to_string());
+                                }
+                                template = parse_rack_physical_template_kind(&tokens[idx + 1])?;
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown argument '{other}' for racks hero-svg"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::RacksHeroSvg {
+                        rack_id,
+                        output,
+                        template,
+                    })
+                }
                 "openscad" => {
                     if tokens.len() < 4 {
                         return Err(
-                            "racks openscad requires RACK_ID OUTPUT.scad [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]"
+                            "racks openscad requires RACK_ID OUTPUT.scad [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]"
                                 .to_string(),
                         );
                     }
@@ -20372,7 +20434,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 "carrier-labels-svg" => {
                     if tokens.len() < 4 {
                         return Err(
-                            "racks carrier-labels-svg requires RACK_ID OUTPUT.svg [--arrangement ARR_ID] [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack] [--preset front_strip_and_cards|front_strip_only|module_cards_only]"
+                            "racks carrier-labels-svg requires RACK_ID OUTPUT.svg [--arrangement ARR_ID] [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate] [--preset front_strip_and_cards|front_strip_only|module_cards_only]"
                                 .to_string(),
                         );
                     }
@@ -20436,7 +20498,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 "simulation-json" => {
                     if tokens.len() < 4 {
                         return Err(
-                            "racks simulation-json requires RACK_ID OUTPUT.json [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]"
+                            "racks simulation-json requires RACK_ID OUTPUT.json [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]"
                                 .to_string(),
                         );
                     }
@@ -20588,7 +20650,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     })
                 }
                 other => Err(format!(
-                    "Unknown racks subcommand '{other}' (expected create-from-arrangement, place-arrangement, move, move-samples, move-blocks, show, labels-svg, fabrication-svg, openscad, carrier-labels-svg, simulation-json, set-profile, apply-template, set-fill-direction, set-custom-profile, set-blocked)"
+                    "Unknown racks subcommand '{other}' (expected create-from-arrangement, place-arrangement, move, move-samples, move-blocks, show, labels-svg, fabrication-svg, isometric-svg, hero-svg, openscad, carrier-labels-svg, simulation-json, set-profile, apply-template, set-fill-direction, set-custom-profile, set-blocked)"
                 )),
             }
         }
@@ -23416,6 +23478,7 @@ fn execute_shell_command_default(
             | ShellCommand::RacksLabelsSvg { .. }
             | ShellCommand::RacksFabricationSvg { .. }
             | ShellCommand::RacksIsometricSvg { .. }
+            | ShellCommand::RacksHeroSvg { .. }
             | ShellCommand::RacksOpenScad { .. }
             | ShellCommand::RacksCarrierLabelsSvg { .. }
             | ShellCommand::RacksSimulationJson { .. }
@@ -25389,6 +25452,22 @@ fn execute_rack_export_command(
             output: json!({
                 "result": engine
                     .apply(Operation::ExportRackIsometricSvg {
+                        rack_id: rack_id.clone(),
+                        path: output.clone(),
+                        template: *template,
+                    })
+                    .map_err(|e| e.to_string())?
+            }),
+        }),
+        ShellCommand::RacksHeroSvg {
+            rack_id,
+            output,
+            template,
+        } => Ok(ShellRunResult {
+            state_changed: false,
+            output: json!({
+                "result": engine
+                    .apply(Operation::ExportRackHeroSvg {
                         rack_id: rack_id.clone(),
                         path: output.clone(),
                         template: *template,
@@ -34434,6 +34513,7 @@ fn execute_shell_command_with_options_dispatch(
             | ShellCommand::RacksLabelsSvg { .. }
             | ShellCommand::RacksFabricationSvg { .. }
             | ShellCommand::RacksIsometricSvg { .. }
+            | ShellCommand::RacksHeroSvg { .. }
             | ShellCommand::RacksOpenScad { .. }
             | ShellCommand::RacksCarrierLabelsSvg { .. }
             | ShellCommand::RacksSimulationJson { .. }
@@ -35213,6 +35293,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::RacksLabelsSvg { .. }
         | ShellCommand::RacksFabricationSvg { .. }
         | ShellCommand::RacksIsometricSvg { .. }
+        | ShellCommand::RacksHeroSvg { .. }
         | ShellCommand::RacksOpenScad { .. }
         | ShellCommand::RacksCarrierLabelsSvg { .. }
         | ShellCommand::RacksSimulationJson { .. } => execute_rack_export_command(engine, command)?,

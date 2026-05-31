@@ -69,6 +69,10 @@ def main() -> int:
 
     tree = ET.parse(input_path)
     root = tree.getroot()
+    culture_mode = root.get("data-rack-isometric-template") in {
+        "cell_culture_plate",
+        "cell_culture_6_well_plate",
+    }
     children = list(root)
 
     background = None
@@ -133,6 +137,8 @@ def main() -> int:
                     pending_color = None
         for child in list(root)[legend_start:legend_end]:
             root.remove(child)
+    if culture_mode:
+        legend_items.clear()
 
     # Remove coordinate labels and front-strip status text. Keep only geometry.
     for child in list(root):
@@ -147,6 +153,13 @@ def main() -> int:
             or "occupied" in text
         ):
             root.remove(child)
+    if culture_mode:
+        for child in list(root):
+            if (
+                child.tag == qname("circle")
+                and child.get("data-rack-cell-culture-arrangement-marker") == "1"
+            ):
+                root.remove(child)
 
     # Geometry assumptions follow the deterministic export layout:
     # polygons[0..2] are top/front/side, rects[1] is the front strip.
@@ -267,6 +280,26 @@ def main() -> int:
         hole.set("stroke", mix("#475569", "#94a3b8", 0.45))
         hole.set("stroke-width", "0.28")
 
+    if culture_mode:
+        for ellipse in list(root):
+            if ellipse.tag != qname("ellipse"):
+                continue
+            if ellipse.get("data-rack-cell-culture-opening") == "1":
+                ellipse.set("fill", "#f8fafc")
+                ellipse.set("stroke", "#b6c4d4")
+                ellipse.set("stroke-width", "0.30")
+            elif ellipse.get("data-rack-cell-culture-recess") == "1":
+                ellipse.set("fill", "#ffffff")
+                ellipse.set("fill-opacity", "0.88")
+                ellipse.set("stroke", "#d8e0ea")
+                ellipse.set("stroke-width", "0.18")
+            elif ellipse.get("data-rack-cell-culture-medium") == "1":
+                ellipse.set("fill", "#f1b8c5")
+                ellipse.set("fill-opacity", "0.46")
+                ellipse.set("stroke", "#c68a9b")
+                ellipse.set("stroke-opacity", "0.28")
+                ellipse.set("stroke-width", "0.18")
+
     # Slightly deepen tube side walls and keep highlights.
     for rect in list(root):
         if rect.tag != qname("rect") or rect is strip_rect:
@@ -293,6 +326,15 @@ def main() -> int:
 
     for ellipse in list(root):
         if ellipse.tag != qname("ellipse"):
+            continue
+        if culture_mode and any(
+            ellipse.get(attr) == "1"
+            for attr in (
+                "data-rack-cell-culture-opening",
+                "data-rack-cell-culture-recess",
+                "data-rack-cell-culture-medium",
+            )
+        ):
             continue
         fill = ellipse.get("fill", "")
         if fill.startswith("#") and fill not in {"#ffffff", "#0f172a"}:
@@ -419,6 +461,15 @@ def main() -> int:
     max_y += margin
     width = max_x - min_x
     height = max_y - min_y
+    backing = ET.Element(qname("rect"), {
+        "data-rack-hero-background": "1",
+        "x": f"{min_x:.2f}",
+        "y": f"{min_y:.2f}",
+        "width": f"{width:.2f}",
+        "height": f"{height:.2f}",
+        "fill": "#ffffff",
+    })
+    root.insert(1, backing)
     root.set("viewBox", f"{min_x:.2f} {min_y:.2f} {width:.2f} {height:.2f}")
     root.set("width", f"{width:.1f}mm")
     root.set("height", f"{height:.1f}mm")

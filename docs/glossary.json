@@ -472,7 +472,7 @@
          ],
          "path": "racks create-from-arrangement",
          "summary": "Create one deterministic physical rack draft from a stored arrangement.",
-         "usage": "racks create-from-arrangement ARR_ID [--rack-id ID] [--name TEXT] [--profile small_tube_4x6|plate_96|plate_384]"
+         "usage": "racks create-from-arrangement ARR_ID [--rack-id ID] [--name TEXT] [--profile small_tube_4x6|plate_6|plate_96|plate_384]"
       },
       {
          "aliases": [],
@@ -568,7 +568,7 @@
          ],
          "path": "racks fabrication-svg",
          "summary": "Export one deterministic top-view fabrication/planning SVG for a saved rack.",
-         "usage": "racks fabrication-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]"
+         "usage": "racks fabrication-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_6_well_plate]"
       },
       {
          "aliases": [],
@@ -582,7 +582,21 @@
          ],
          "path": "racks isometric-svg",
          "summary": "Export one deterministic pseudo-3D/isometric SVG for a saved rack.",
-         "usage": "racks isometric-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]"
+         "usage": "racks isometric-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_6_well_plate]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportRackHeroSvg"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "racks hero-svg",
+         "summary": "Export one deterministic README-facing, arrangement-labelled cell-culture plate SVG for a saved rack.",
+         "usage": "racks hero-svg RACK_ID OUTPUT.svg [--template cell_culture_6_well_plate]"
       },
       {
          "aliases": [],
@@ -596,7 +610,7 @@
          ],
          "path": "racks openscad",
          "summary": "Export one deterministic parameterized OpenSCAD source file for a saved rack.",
-         "usage": "racks openscad RACK_ID OUTPUT.scad [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]"
+         "usage": "racks openscad RACK_ID OUTPUT.scad [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_6_well_plate]"
       },
       {
          "aliases": [],
@@ -610,7 +624,7 @@
          ],
          "path": "racks carrier-labels-svg",
          "summary": "Export one carrier-matched front-strip/module-label SVG sheet for a saved rack using shared carrier-label presets.",
-         "usage": "racks carrier-labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID] [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack] [--preset front_strip_and_cards|front_strip_only|module_cards_only]"
+         "usage": "racks carrier-labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID] [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_6_well_plate] [--preset front_strip_and_cards|front_strip_only|module_cards_only]"
       },
       {
          "aliases": [],
@@ -624,7 +638,7 @@
          ],
          "path": "racks simulation-json",
          "summary": "Export one machine-readable physical rack geometry/placement JSON for downstream simulation adapters.",
-         "usage": "racks simulation-json RACK_ID OUTPUT.json [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]"
+         "usage": "racks simulation-json RACK_ID OUTPUT.json [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_6_well_plate]"
       },
       {
          "aliases": [],
@@ -638,7 +652,7 @@
          ],
          "path": "racks set-profile",
          "summary": "Reflow one saved rack onto another built-in rack or plate profile.",
-         "usage": "racks set-profile RACK_ID small_tube_4x6|plate_96|plate_384"
+         "usage": "racks set-profile RACK_ID small_tube_4x6|plate_6|plate_96|plate_384"
       },
       {
          "aliases": [],

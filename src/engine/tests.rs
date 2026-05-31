@@ -15692,6 +15692,119 @@ fn export_rack_fabrication_isometric_svg_and_openscad_include_template_markers()
 }
 
 #[test]
+fn export_cell_culture_six_well_plate_uses_plate_geometry() {
+    let mut state = ProjectState::default();
+    for idx in 1..=6 {
+        let seq_id = format!("well_seq_{idx}");
+        state
+            .sequences
+            .insert(seq_id.clone(), seq(&"ACGT".repeat(8)));
+        state.container_state.containers.insert(
+            format!("container-{idx}"),
+            Container {
+                container_id: format!("container-{idx}"),
+                kind: ContainerKind::Singleton,
+                name: Some(format!("Culture condition {idx}")),
+                members: vec![seq_id],
+                declared_contents_exclusive: false,
+                created_by_op: None,
+                created_at_unix_ms: 0,
+            },
+        );
+    }
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .apply(Operation::CreateArrangementSerial {
+            container_ids: (1..=6).map(|idx| format!("container-{idx}")).collect(),
+            arrangement_id: Some("arr-six-well".to_string()),
+            name: Some("6-well culture layout".to_string()),
+            ladders: None,
+        })
+        .expect("create arrangement");
+    engine
+        .apply(Operation::CreateRackFromArrangement {
+            arrangement_id: "arr-six-well".to_string(),
+            rack_id: Some("rack-six-well".to_string()),
+            name: Some("Cell culture plate".to_string()),
+            profile: Some(RackProfileKind::Plate6),
+        })
+        .expect("create six-well rack");
+    let temp = tempdir().expect("tempdir");
+    let isometric_path = temp.path().join("six-well.iso.svg");
+    engine
+        .apply(Operation::ExportRackIsometricSvg {
+            rack_id: "rack-six-well".to_string(),
+            path: isometric_path.display().to_string(),
+            template: RackPhysicalTemplateKind::CellCulturePlate,
+        })
+        .expect("isometric export");
+    let svg = fs::read_to_string(&isometric_path).expect("read six-well svg");
+    assert!(svg.contains("data-rack-isometric-template=\"cell_culture_plate\""));
+    assert!(svg.contains("data-rack-cell-culture-opening=\"1\""));
+    assert!(svg.contains("data-rack-cell-culture-recess=\"1\""));
+    assert!(svg.contains("data-rack-cell-culture-well=\"1\""));
+    assert!(svg.contains("data-rack-cell-culture-medium=\"1\""));
+    assert!(!svg.contains("data-rack-tube-shell=\"1\""));
+
+    let hero_path = temp.path().join("six-well.hero.svg");
+    engine
+        .apply(Operation::ExportRackHeroSvg {
+            rack_id: "rack-six-well".to_string(),
+            path: hero_path.display().to_string(),
+            template: RackPhysicalTemplateKind::CellCulturePlate,
+        })
+        .expect("hero export");
+    let hero_svg = fs::read_to_string(&hero_path).expect("read six-well hero svg");
+    assert!(hero_svg.contains("data-rack-hero-template=\"cell_culture_plate\""));
+    assert!(hero_svg.contains("data-rack-hero-plate-outline=\"1\""));
+    assert!(hero_svg.contains("data-rack-hero-orientation-cut=\"upper_left\""));
+    assert!(hero_svg.contains("data-rack-hero-label-strip=\"1\""));
+    assert!(hero_svg.contains("data-rack-hero-column-label=\"1\""));
+    assert!(hero_svg.contains("data-rack-hero-row-label=\"1\""));
+    assert!(hero_svg.contains("data-rack-cell-culture-well-rim=\"1\""));
+    assert!(hero_svg.contains("data-rack-cell-culture-well-floor=\"1\""));
+    assert!(hero_svg.contains("data-rack-cell-culture-arrangement-ring=\"1\""));
+    assert!(hero_svg.contains("data-rack-cell-culture-arrangement-label=\"1\""));
+    assert!(hero_svg.contains("data-rack-cell-culture-coordinate-label=\"1\""));
+    assert!(!hero_svg.contains("data-rack-cell-culture-medium=\"1\""));
+    assert!(!hero_svg.contains("data-rack-tube-shell=\"1\""));
+
+    let simulation_path = temp.path().join("six-well.simulation.json");
+    engine
+        .apply(Operation::ExportRackSimulationJson {
+            rack_id: "rack-six-well".to_string(),
+            path: simulation_path.display().to_string(),
+            template: RackPhysicalTemplateKind::CellCulturePlate,
+        })
+        .expect("simulation export");
+    let simulation_text = fs::read_to_string(&simulation_path).expect("read simulation json");
+    let simulation: serde_json::Value =
+        serde_json::from_str(&simulation_text).expect("parse simulation json");
+    assert_eq!(
+        simulation["physical_template"]["kind"].as_str(),
+        Some("cell_culture_plate")
+    );
+    assert_eq!(
+        simulation["physical_template"]["family"].as_str(),
+        Some("cell_culture")
+    );
+    assert_eq!(
+        simulation["physical_template"]["container_format"].as_str(),
+        Some("cell_culture_plate_well")
+    );
+    assert_eq!(simulation["physical_template"]["rows"].as_u64(), Some(2));
+    assert_eq!(simulation["physical_template"]["columns"].as_u64(), Some(3));
+    assert!(
+        (simulation["physical_template"]["overall_width_mm"]
+            .as_f64()
+            .expect("overall width")
+            - 131.4)
+            .abs()
+            < 0.2
+    );
+}
+
+#[test]
 fn export_rack_carrier_labels_and_simulation_json_include_template_and_arrangements() {
     let mut state = ProjectState::default();
     state

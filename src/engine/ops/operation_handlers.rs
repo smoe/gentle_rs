@@ -15286,6 +15286,21 @@ impl GentleEngine {
                     spec.overall_depth_mm
                 ));
             }
+            Operation::ExportRackHeroSvg {
+                rack_id,
+                path,
+                template,
+            } => {
+                let spec = self.export_rack_hero_svg(&rack_id, template, &path)?;
+                result.messages.push(format!(
+                    "Wrote rack hero SVG for '{}' to '{}' using template '{}' ({:.1} x {:.1} mm)",
+                    rack_id.trim(),
+                    path,
+                    template.as_str(),
+                    spec.overall_width_mm,
+                    spec.overall_depth_mm
+                ));
+            }
             Operation::ExportRackOpenScad {
                 rack_id,
                 path,
@@ -16345,6 +16360,7 @@ impl GentleEngine {
                 | Operation::ExportRackLabelsSvg { .. }
                 | Operation::ExportRackFabricationSvg { .. }
                 | Operation::ExportRackIsometricSvg { .. }
+                | Operation::ExportRackHeroSvg { .. }
                 | Operation::ExportRackOpenScad { .. }
                 | Operation::ExportRackCarrierLabelsSvg { .. }
                 | Operation::ExportRackSimulationJson { .. }
@@ -17488,6 +17504,7 @@ impl GentleEngine {
                 | op @ Operation::ExportRackLabelsSvg { .. }
                 | op @ Operation::ExportRackFabricationSvg { .. }
                 | op @ Operation::ExportRackIsometricSvg { .. }
+                | op @ Operation::ExportRackHeroSvg { .. }
                 | op @ Operation::ExportRackOpenScad { .. }
                 | op @ Operation::ExportRackCarrierLabelsSvg { .. }
                 | op @ Operation::ExportRackSimulationJson { .. }

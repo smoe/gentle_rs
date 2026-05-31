@@ -17,11 +17,11 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 
 | Adapter | prominent | shell-only | gap |
 |---|---:|---:|---:|
-| GUI | 21 | 542 | 0 |
-| gentle_cli | 324 | 264 | 0 |
-| MCP | 67 | 402 | 22 |
-| JS | 78 | 383 | 22 |
-| Lua | 77 | 384 | 22 |
+| GUI | 21 | 544 | 0 |
+| gentle_cli | 325 | 265 | 0 |
+| MCP | 67 | 404 | 22 |
+| JS | 78 | 385 | 22 |
+| Lua | 77 | 386 | 22 |
 | ClawBio | 0 | 0 | 0 |
 
 ## Glossary Commands
@@ -71,6 +71,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | racks labels-svg | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | racks fabrication-svg | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | racks isometric-svg | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| racks hero-svg | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | racks openscad | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | racks carrier-labels-svg | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | racks simulation-json | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
@@ -498,6 +499,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | ExportRackLabelsSvg | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | ExportRackFabricationSvg | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | ExportRackIsometricSvg | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
+| ExportRackHeroSvg | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | ExportRackOpenScad | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | ExportRackCarrierLabelsSvg | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | ExportRackSimulationJson | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |

@@ -32,6 +32,9 @@ Maintenance rule:
 - Tightened hosted egui window frame-drag ownership so resize-edge drags keep
   priority over lower hosted-window body hits while ordinary hosted-window body
   interactions such as DNA selection are no longer treated as frame drags.
+- Added a six-well cell-culture plate rack profile/template, culture-well SVG
+  rendering, arrangement-labelled top-down `racks hero-svg`, `svg-pdf`
+  conversion, and README figure assets for plate-layout presentation.
 
 ## 2026-05-27
 

@@ -4,7 +4,7 @@
 //! small argument and output helpers reused by multiple binaries without making
 //! `gentle_cli`'s legacy direct-command surface the shared adapter API.
 
-use crate::{engine::ProjectState, svg_png::SvgPngRenderSummary};
+use crate::{engine::ProjectState, svg_pdf::SvgPdfRenderSummary, svg_png::SvgPngRenderSummary};
 use serde_json::{Value, json};
 use std::{fs, path::Path};
 
@@ -160,6 +160,24 @@ pub fn svg_png_summary_json(summary: &SvgPngRenderSummary) -> Value {
     })
 }
 
+/// Builds the standard machine-readable `svg-pdf` JSON summary used by CLI
+/// binaries that render an SVG into a one-page PDF.
+pub fn svg_pdf_summary_json(summary: &SvgPdfRenderSummary) -> Value {
+    json!({
+        "status": "ok",
+        "mode": "svg-pdf",
+        "input_path": &summary.input_path,
+        "output_path": &summary.output_path,
+        "scale": &summary.scale,
+        "drop_dotplot_metadata": summary.drop_dotplot_metadata,
+        "width": summary.width,
+        "height": summary.height,
+        "font_face_count": summary.font_face_count,
+        "page_width_pt": &summary.page_width_pt,
+        "page_height_pt": &summary.page_height_pt,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -242,5 +260,25 @@ mod tests {
         assert_eq!(value["mode"], "svg-png");
         assert_eq!(value["input_path"], "in.svg");
         assert_eq!(value["drop_dotplot_metadata"], true);
+    }
+
+    #[test]
+    fn svg_pdf_summary_json_keeps_shared_shape() {
+        let summary = SvgPdfRenderSummary {
+            input_path: "in.svg".to_string(),
+            output_path: "out.pdf".to_string(),
+            scale: "2".to_string(),
+            drop_dotplot_metadata: true,
+            width: 100,
+            height: 50,
+            font_face_count: 7,
+            page_width_pt: "75.00".to_string(),
+            page_height_pt: "37.50".to_string(),
+        };
+        let value = svg_pdf_summary_json(&summary);
+        assert_eq!(value["status"], "ok");
+        assert_eq!(value["mode"], "svg-pdf");
+        assert_eq!(value["output_path"], "out.pdf");
+        assert_eq!(value["page_width_pt"], "75.00");
     }
 }

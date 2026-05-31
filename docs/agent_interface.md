@@ -352,6 +352,7 @@ an agent has selected a deterministic operation.
 - `racks carrier-labels-svg`
 - `racks create-from-arrangement`
 - `racks fabrication-svg`
+- `racks hero-svg`
 - `racks isometric-svg`
 - `racks labels-svg`
 - `racks move`
