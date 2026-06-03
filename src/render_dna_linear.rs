@@ -11,7 +11,7 @@ use crate::{
     },
     exon_frame::ExonLengthFrameCue,
     feature_location::{collect_location_ranges_usize, feature_is_reverse},
-    gc_contents::GcContents,
+    gc_contents::{DEFAULT_SECTION_SIZE_BP, GcContents},
     iupac_code::IupacCode,
     linear_base_routing::{
         AUTO_HELICAL_MAX_DENSITY, AUTO_STANDARD_MAX_DENSITY, LinearBaseRoutingDecision,
@@ -25,7 +25,7 @@ use eframe::egui::{
     self, Align2, Color32, FontFamily, FontId, PointerState, Pos2, Rect, Stroke, StrokeKind, Vec2,
 };
 use gb_io::seq::Feature;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::BTreeSet;
 use std::sync::{Arc, RwLock};
 
 const BASELINE_STROKE: f32 = 2.0;
@@ -1859,15 +1859,34 @@ impl RenderDnaLinear {
         }
     }
 
-    fn draw_rotated_base_char(
+    fn sequence_base_galley_index(base: u8) -> usize {
+        match base.to_ascii_uppercase() {
+            b'A' => 0,
+            b'C' => 1,
+            b'G' => 2,
+            b'T' | b'U' => 3,
+            _ => 4,
+        }
+    }
+
+    fn draw_base_galley_center_top(
         painter: &egui::Painter,
         x_center: f32,
         y_top: f32,
-        base: char,
-        font: &FontId,
+        galley: Arc<egui::Galley>,
         color: Color32,
     ) {
-        let galley = painter.layout_no_wrap(base.to_string(), font.clone(), color);
+        let size = galley.size();
+        painter.galley(Pos2::new(x_center - size.x * 0.5, y_top), galley, color);
+    }
+
+    fn draw_rotated_base_galley(
+        painter: &egui::Painter,
+        x_center: f32,
+        y_top: f32,
+        galley: Arc<egui::Galley>,
+        color: Color32,
+    ) {
         let size = galley.size();
         // Rotate the full glyph box (not symbol substitution) to preserve font fidelity.
         let pivot = Pos2::new(x_center + size.x * 0.5, y_top + size.y);
@@ -1886,33 +1905,27 @@ impl RenderDnaLinear {
         }) else {
             return;
         };
-        let selection = self
-            .display
-            .read()
-            .ok()
-            .and_then(|display| display.selection());
         let (
+            selection,
             show_double_strand,
             helical_parallel_strands,
             reverse_strand_opacity,
             reverse_strand_upside_down,
+            helical_phase_offset_bp,
         ) = self
             .display
             .read()
             .map(|display| {
                 (
+                    display.selection(),
                     display.linear_show_double_strand_bases(),
                     display.linear_helical_parallel_strands(),
                     display.reverse_strand_visual_opacity(),
                     display.linear_reverse_strand_use_upside_down_letters(),
+                    display.linear_sequence_helical_phase_offset_bp(),
                 )
             })
-            .unwrap_or((true, true, 0.55, true));
-        let helical_phase_offset_bp = self
-            .display
-            .read()
-            .map(|display| display.linear_sequence_helical_phase_offset_bp())
-            .unwrap_or(0);
+            .unwrap_or((None, true, true, 0.55, true, 0));
         let use_condensed_helical =
             render_status.active_mode == SequenceBaseRenderMode::Condensed10Row;
         let helical_t = render_status.helical_projection_progress_from_density();
@@ -1931,6 +1944,13 @@ impl RenderDnaLinear {
             size: font_size,
             family: FontFamily::Monospace,
         };
+        let base_galleys = [
+            painter.layout_no_wrap("A".to_owned(), font.clone(), Color32::PLACEHOLDER),
+            painter.layout_no_wrap("C".to_owned(), font.clone(), Color32::PLACEHOLDER),
+            painter.layout_no_wrap("G".to_owned(), font.clone(), Color32::PLACEHOLDER),
+            painter.layout_no_wrap("T".to_owned(), font.clone(), Color32::PLACEHOLDER),
+            painter.layout_no_wrap("N".to_owned(), font.clone(), Color32::PLACEHOLDER),
+        ];
         let baseline = self.baseline_y();
         let strand_half_gap = if show_double_strand {
             CONDENSED_HELICAL_STRAND_GAP * 0.5
@@ -2031,34 +2051,35 @@ impl RenderDnaLinear {
                     Color32::from_gray(230),
                 );
             }
-            let forward_char = (*base as char).to_ascii_uppercase();
-            painter.text(
-                Pos2::new(x_center, forward_y_bp),
-                Align2::CENTER_TOP,
-                forward_char,
-                font.clone(),
-                Self::sequence_base_color(*base),
+            let forward_color = Self::sequence_base_color(*base);
+            let forward_galley = base_galleys[Self::sequence_base_galley_index(*base)].clone();
+            Self::draw_base_galley_center_top(
+                painter,
+                x_center,
+                forward_y_bp,
+                forward_galley,
+                forward_color,
             );
             if show_double_strand {
                 let complemented_byte = IupacCode::letter_complement(*base).to_ascii_uppercase();
-                let complemented = complemented_byte as char;
                 let reverse_color = Self::sequence_base_color(complemented_byte)
                     .gamma_multiply(reverse_strand_opacity.clamp(0.2, 1.0));
+                let reverse_galley =
+                    base_galleys[Self::sequence_base_galley_index(complemented_byte)].clone();
                 if reverse_strand_upside_down {
-                    Self::draw_rotated_base_char(
+                    Self::draw_rotated_base_galley(
                         painter,
                         x_center,
                         reverse_y_bp,
-                        complemented,
-                        &font,
+                        reverse_galley,
                         reverse_color,
                     );
                 } else {
-                    painter.text(
-                        Pos2::new(x_center, reverse_y_bp),
-                        Align2::CENTER_TOP,
-                        complemented,
-                        font.clone(),
+                    Self::draw_base_galley_center_top(
+                        painter,
+                        x_center,
+                        reverse_y_bp,
+                        reverse_galley,
                         reverse_color,
                     );
                 }
@@ -2349,15 +2370,16 @@ impl RenderDnaLinear {
         }
     }
 
-    fn orf_colors() -> HashMap<i32, Color32> {
-        let mut colors = HashMap::new();
-        colors.insert(-1, Color32::LIGHT_RED);
-        colors.insert(-2, Color32::LIGHT_GREEN);
-        colors.insert(-3, Color32::LIGHT_BLUE);
-        colors.insert(1, Color32::DARK_RED);
-        colors.insert(2, Color32::DARK_GREEN);
-        colors.insert(3, Color32::DARK_BLUE);
-        colors
+    fn orf_color(frame: i32) -> Option<Color32> {
+        match frame {
+            -1 => Some(Color32::LIGHT_RED),
+            -2 => Some(Color32::LIGHT_GREEN),
+            -3 => Some(Color32::LIGHT_BLUE),
+            1 => Some(Color32::DARK_RED),
+            2 => Some(Color32::DARK_GREEN),
+            3 => Some(Color32::DARK_BLUE),
+            _ => None,
+        }
     }
 
     fn draw_orf(
@@ -2446,15 +2468,12 @@ impl RenderDnaLinear {
         if !show_orfs {
             return;
         }
-        let colors = Self::orf_colors();
-        let orfs = self
-            .dna
-            .read()
-            .map(|dna| dna.open_reading_frames().clone())
-            .unwrap_or_default();
-        for orf in &orfs {
-            if let Some(color) = colors.get(&orf.frame()) {
-                self.draw_orf(painter, orf, *color, viewport);
+        let Ok(dna) = self.dna.read() else {
+            return;
+        };
+        for orf in dna.open_reading_frames() {
+            if let Some(color) = Self::orf_color(orf.frame()) {
+                self.draw_orf(painter, orf, color, viewport);
             }
         }
     }
@@ -2470,17 +2489,25 @@ impl RenderDnaLinear {
         }
         let y1 = self.baseline_y() - 4.0;
         let y2 = y1 + GC_STRIP_HEIGHT;
-        let gc_contents = self
-            .dna
-            .read()
-            .map(|dna| {
-                GcContents::new_from_sequence_with_bin_size(
-                    dna.forward_bytes(),
-                    gc_content_bin_size_bp,
-                )
-            })
-            .unwrap_or_default();
-        for region in gc_contents.regions() {
+        let Ok(dna) = self.dna.read() else {
+            return;
+        };
+        let computed_gc_contents;
+        let cached_gc_regions = dna.gc_content().regions();
+        let gc_regions = if Self::can_reuse_cached_gc_contents(
+            gc_content_bin_size_bp,
+            cached_gc_regions.is_empty(),
+            dna.is_empty(),
+        ) {
+            cached_gc_regions
+        } else {
+            computed_gc_contents = GcContents::new_from_sequence_with_bin_size(
+                dna.forward_bytes(),
+                gc_content_bin_size_bp,
+            );
+            computed_gc_contents.regions()
+        };
+        for region in gc_regions {
             let region_end_exclusive = region.to().saturating_add(1).min(self.sequence_length);
             let Some((draw_start, draw_end)) = Self::range_overlap(
                 region.from(),
@@ -2503,6 +2530,15 @@ impl RenderDnaLinear {
                 color,
             );
         }
+    }
+
+    fn can_reuse_cached_gc_contents(
+        gc_content_bin_size_bp: usize,
+        cached_regions_empty: bool,
+        sequence_empty: bool,
+    ) -> bool {
+        gc_content_bin_size_bp == DEFAULT_SECTION_SIZE_BP
+            && (!cached_regions_empty || sequence_empty)
     }
 
     fn draw_methylation_sites(
@@ -3180,6 +3216,44 @@ mod tests {
         let mut renderer = RenderDnaLinear::new(dna, display);
         renderer.area = Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1200.0, 600.0));
         renderer
+    }
+
+    #[test]
+    fn orf_color_uses_static_palette_without_allocation() {
+        assert_eq!(RenderDnaLinear::orf_color(-1), Some(Color32::LIGHT_RED));
+        assert_eq!(RenderDnaLinear::orf_color(-2), Some(Color32::LIGHT_GREEN));
+        assert_eq!(RenderDnaLinear::orf_color(-3), Some(Color32::LIGHT_BLUE));
+        assert_eq!(RenderDnaLinear::orf_color(1), Some(Color32::DARK_RED));
+        assert_eq!(RenderDnaLinear::orf_color(2), Some(Color32::DARK_GREEN));
+        assert_eq!(RenderDnaLinear::orf_color(3), Some(Color32::DARK_BLUE));
+        assert_eq!(RenderDnaLinear::orf_color(0), None);
+    }
+
+    #[test]
+    fn default_gc_bin_can_reuse_precomputed_sequence_gc_content() {
+        let mut dna = DNAsequence::from_sequence("AAAAGGGGTTTTCCCC").expect("valid DNA");
+        dna.update_computed_features();
+        let expected = GcContents::new_from_sequence_with_bin_size(
+            dna.forward_bytes(),
+            DEFAULT_SECTION_SIZE_BP,
+        );
+
+        assert_eq!(dna.gc_content().regions(), expected.regions());
+        assert!(RenderDnaLinear::can_reuse_cached_gc_contents(
+            DEFAULT_SECTION_SIZE_BP,
+            dna.gc_content().regions().is_empty(),
+            dna.is_empty(),
+        ));
+        assert!(!RenderDnaLinear::can_reuse_cached_gc_contents(
+            DEFAULT_SECTION_SIZE_BP + 1,
+            dna.gc_content().regions().is_empty(),
+            dna.is_empty(),
+        ));
+        assert!(!RenderDnaLinear::can_reuse_cached_gc_contents(
+            DEFAULT_SECTION_SIZE_BP,
+            true,
+            false,
+        ));
     }
 
     #[test]
