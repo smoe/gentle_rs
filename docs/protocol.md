@@ -3906,6 +3906,27 @@ ClawBio/OpenClaw integration scaffold schemas:
   - wrapper `agent-plan` / `agent-execute-plan` modes intentionally share the
     typed GENtle planner boundary instead of routing machine consumers through
     the chat-oriented `agents ask` UX
+  - wrapper-level action envelopes in `result.json.suggested_actions[]`,
+    `result.json.preferred_demo_actions[]`, and
+    `result.json.blocked_actions[].action` are self-describing enough for
+    ClawBio/OpenClaw to retain them across one chat session and execute a
+    user-confirmed follow-up without re-inferring the originating skill:
+    - required fields: `action_id`, `label`, `kind`, `skill_alias`, and
+      `requires_confirmation`
+    - optional fields: `rationale`, `timeout_secs`, `shell_line`,
+      `expected_artifacts`, `resource_key`, `lifecycle_status`, and
+      skill-opaque nested `request`
+    - `skill_alias` is currently `gentle-cloning` for this wrapper and is the
+      routing key a generic OpenClaw action-retention layer should use
+    - `action_id` is deterministic for a given producer/label within a release
+      and is suitable for selecting one action from the current result/session;
+      it is not a global permanent identifier unless a specific action kind
+      documents stronger stability
+    - confirmation invariant: when a nested action `request` carries
+      `confirm=true`, the wrapper-level envelope must also set
+      `requires_confirmation=true`; the inverse is not required because some
+      chat-level confirmations protect long-running, external, or setup-like
+      shell routes that do not need a nested GENtle `confirm` flag
 - service handoff payload: `gentle.service_handoff.v1`
   - produced by `services handoff [--scope NAME] [--output PATH]`
   - embeds the normal `gentle.service_readiness.v1` status as

@@ -3752,6 +3752,39 @@ def _merge_suggested_actions(
     return merged or None
 
 
+def _stamp_action_envelope(
+    actions: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]] | None:
+    if not actions:
+        return actions
+    for action in actions:
+        if not isinstance(action, dict):
+            continue
+        action.setdefault("skill_alias", SKILL_NAME)
+        request_payload = action.get("request")
+        if (
+            isinstance(request_payload, dict)
+            and request_payload.get("confirm") is True
+            and not action.get("requires_confirmation", False)
+        ):
+            action["requires_confirmation"] = True
+    return actions
+
+
+def _stamp_blocked_action_envelopes(
+    blocked_actions: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]] | None:
+    if not blocked_actions:
+        return blocked_actions
+    for blocked_action in blocked_actions:
+        if not isinstance(blocked_action, dict):
+            continue
+        action = blocked_action.get("action")
+        if isinstance(action, dict):
+            _stamp_action_envelope([action])
+    return blocked_actions
+
+
 def _normalize_ui_intent_catalog_row(row: Any) -> dict[str, Any] | None:
     if not isinstance(row, dict):
         return None
@@ -4617,6 +4650,10 @@ def main() -> int:
     commands_path = repro_dir / "commands.sh"
     env_path = repro_dir / "environment.yml"
     checksums_path = repro_dir / "checksums.sha256"
+
+    suggested_actions = _stamp_action_envelope(suggested_actions)
+    preferred_demo_actions = _stamp_action_envelope(preferred_demo_actions)
+    blocked_actions = _stamp_blocked_action_envelopes(blocked_actions)
 
     _write_report(
         path=report_path,

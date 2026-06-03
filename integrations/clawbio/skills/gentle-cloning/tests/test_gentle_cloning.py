@@ -14,6 +14,34 @@ def _skill_script() -> Path:
     return Path(__file__).resolve().parents[1] / "gentle_cloning.py"
 
 
+def _skill_module():
+    module_name = "gentle_cloning_skill"
+    spec = importlib.util.spec_from_file_location(
+        module_name,
+        _skill_script(),
+    )
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _with_skill_alias(actions: list[dict]) -> list[dict]:
+    return [dict(action, skill_alias="gentle-cloning") for action in actions]
+
+
+def _with_blocked_action_skill_alias(actions: list[dict]) -> list[dict]:
+    stamped = []
+    for blocked_action in actions:
+        action = dict(blocked_action)
+        nested_action = action.get("action")
+        if isinstance(nested_action, dict):
+            action["action"] = dict(nested_action, skill_alias="gentle-cloning")
+        stamped.append(action)
+    return stamped
+
+
 def _apptainer_script() -> Path:
     return Path(__file__).resolve().parents[1] / "gentle_apptainer_cli.sh"
 
@@ -131,6 +159,39 @@ def _fake_cli_with_svg_png(main_body: str) -> str:
     )
 
 
+def test_action_envelope_stamp_adds_skill_alias_and_confirm_invariant() -> None:
+    module = _skill_module()
+    actions = [
+        {
+            "action_id": "show_report",
+            "label": "Show report",
+            "kind": "show",
+            "requires_confirmation": False,
+        },
+        {
+            "action_id": "materialize_products",
+            "label": "Materialize products",
+            "kind": "materialize",
+            "request": {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "op",
+                "confirm": True,
+            },
+            "requires_confirmation": False,
+        },
+    ]
+
+    stamped = module._stamp_action_envelope(actions)
+
+    assert stamped is actions
+    assert [action["skill_alias"] for action in stamped] == [
+        "gentle-cloning",
+        "gentle-cloning",
+    ]
+    assert stamped[0]["requires_confirmation"] is False
+    assert stamped[1]["requires_confirmation"] is True
+
+
 def test_demo_writes_expected_artifacts(tmp_path: Path) -> None:
     output_dir = tmp_path / "demo_out"
     cmd = [
@@ -155,7 +216,7 @@ def test_demo_writes_expected_artifacts(tmp_path: Path) -> None:
         payload["request"]["shell_line"]
         == "protocol-cartoon render-svg gibson.two_fragment artifacts/gibson.two_fragment.protocol.svg"
     )
-    assert payload["suggested_actions"] == [
+    assert payload["suggested_actions"] == _with_skill_alias([
         {
             "action_id": "learn_gentle_capabilities",
             "label": "Learn GENtle capabilities",
@@ -171,12 +232,46 @@ def test_demo_writes_expected_artifacts(tmp_path: Path) -> None:
             "rationale": "The demo intentionally starts with one graphical export. Run `capabilities` next to inspect the broader deterministic GENtle CLI and engine surface.",
             "requires_confirmation": False,
         }
-    ]
+    ])
     assert (output_dir / "report.md").exists()
     assert (output_dir / "result.json").exists()
     assert (output_dir / "reproducibility" / "commands.sh").exists()
     assert (output_dir / "reproducibility" / "environment.yml").exists()
     assert (output_dir / "reproducibility" / "checksums.sha256").exists()
+
+
+def test_demo_followup_action_is_routeable_by_skill_alias(tmp_path: Path) -> None:
+    output_dir = tmp_path / "demo_out"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--demo",
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            "true",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+    result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    action = next(
+        action
+        for action in result["suggested_actions"]
+        if action["action_id"] == "learn_gentle_capabilities"
+    )
+    assert action["skill_alias"] == "gentle-cloning"
+    assert action["requires_confirmation"] is False
+    assert action["request"] == {
+        "schema": "gentle.clawbio_skill_request.v1",
+        "mode": "shell",
+        "shell_line": "capabilities",
+        "timeout_secs": 180,
+    }
 
 
 def test_demo_promotes_graphical_artifact_and_capabilities_followup(
@@ -569,6 +664,10 @@ def test_capabilities_mode_surfaces_ui_intent_catalog_and_handoff_actions(
     assert [action["shell_line"] for action in result["suggested_actions"]] == [
         "ui open prepared-references",
         "ui open pcr-design",
+    ]
+    assert [action["skill_alias"] for action in result["suggested_actions"]] == [
+        "gentle-cloning",
+        "gentle-cloning",
     ]
     prepared_action = result["suggested_actions"][0]
     assert prepared_action["kind"] == "ui_intent"
@@ -1648,7 +1747,7 @@ def test_services_status_promotes_prepare_and_sync_suggested_actions(
 
     result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
     assert result["status"] == "ok"
-    assert result["suggested_actions"] == [
+    assert result["suggested_actions"] == _with_skill_alias([
         {
             "action_id": "prepare_human_grch38_ensembl_116",
             "label": "Prepare Human GRCh38 Ensembl 116",
@@ -1694,7 +1793,7 @@ def test_services_status_promotes_prepare_and_sync_suggested_actions(
             "rationale": "ATtRACT is known to GENtle, but no valid runtime snapshot is active yet.",
             "requires_confirmation": True,
         },
-    ]
+    ])
     report = (output_dir / "report.md").read_text(encoding="utf-8")
     assert "## Suggested Actions" in report
     assert 'Prepare Human GRCh38 Ensembl 116' in report
@@ -1751,7 +1850,7 @@ def test_services_status_running_suppresses_prepare_and_suggests_refresh(
     assert run.returncode == 0, run.stderr
 
     result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
-    assert result["suggested_actions"] == [
+    assert result["suggested_actions"] == _with_skill_alias([
         {
             "action_id": "re_check_services_status",
             "label": "Re-check services status",
@@ -1767,7 +1866,7 @@ def test_services_status_running_suppresses_prepare_and_suggests_refresh(
             "rationale": "A shared prepare action is already running, so refresh the combined readiness view instead of starting a duplicate long-running task.",
             "requires_confirmation": False,
         }
-    ]
+    ])
 
 
 def test_services_handoff_uses_engine_suggested_actions_and_artifacts(
@@ -1840,7 +1939,7 @@ def test_services_handoff_uses_engine_suggested_actions_and_artifacts(
         "artifacts/service_handoff.json"
     )
     assert result["artifact_summary"]["preferred_artifact_count"] == 1
-    assert result["suggested_actions"] == [
+    assert result["suggested_actions"] == _with_skill_alias([
         {
             "action_id": "prepare_human_grch38_ensembl_116",
             "label": "Prepare Human GRCh38 Ensembl 116",
@@ -1858,8 +1957,8 @@ def test_services_handoff_uses_engine_suggested_actions_and_artifacts(
             "resource_key": "reference_genome:Human GRCh38 Ensembl 116",
             "lifecycle_status": "missing",
         }
-    ]
-    assert result["preferred_demo_actions"] == [
+    ])
+    assert result["preferred_demo_actions"] == _with_skill_alias([
         {
             "action_id": "render_gibson_protocol_cartoon",
             "label": "Render Gibson protocol cartoon",
@@ -1877,8 +1976,8 @@ def test_services_handoff_uses_engine_suggested_actions_and_artifacts(
             "requires_confirmation": False,
             "expected_artifacts": ["artifacts/gibson.two_fragment.protocol.svg"],
         }
-    ]
-    assert result["blocked_actions"] == [
+    ])
+    assert result["blocked_actions"] == _with_blocked_action_skill_alias([
         {
             "blocked_reason": "requires_local_archive_path",
             "unblock_hint": "Download ATtRACT.zip first.",
@@ -1904,7 +2003,7 @@ def test_services_handoff_uses_engine_suggested_actions_and_artifacts(
             "download_url": "https://attract.cnic.es/attract/static/ATtRACT.zip",
             "local_path_hint": "/path/to/ATtRACT.zip",
         }
-    ]
+    ])
 
 
 def test_services_telegram_guide_promotes_section_actions(tmp_path: Path) -> None:
@@ -1962,7 +2061,7 @@ def test_services_telegram_guide_promotes_section_actions(tmp_path: Path) -> Non
         "GENtle can guide reproducible work from Telegram.",
         "If you have a gene of interest, tell me its symbol.",
     ]
-    assert result["suggested_actions"] == [
+    assert result["suggested_actions"] == _with_skill_alias([
         {
             "action_id": "promoter_and_tfbs",
             "label": "Promoter and TFBS",
@@ -1978,7 +2077,7 @@ def test_services_telegram_guide_promotes_section_actions(tmp_path: Path) -> Non
             "rationale": "Open the TFBS guide section.",
             "requires_confirmation": False,
         }
-    ]
+    ])
     report = (output_dir / "report.md").read_text(encoding="utf-8")
     assert "## Suggested Next Step" in report
     assert "services guide --channel telegram --section tfbs" in report
@@ -2029,7 +2128,7 @@ def test_genomes_status_promotes_prepare_command_as_suggested_action(tmp_path: P
     assert run.returncode == 0, run.stderr
 
     result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
-    assert result["suggested_actions"] == [
+    assert result["suggested_actions"] == _with_skill_alias([
         {
             "action_id": "prepare_human_grch38_ensembl_116",
             "label": "Prepare Human GRCh38 Ensembl 116",
@@ -2045,7 +2144,7 @@ def test_genomes_status_promotes_prepare_command_as_suggested_action(tmp_path: P
             "rationale": "Status inspection for 'Human GRCh38 Ensembl 116' already provided a ready-to-run prepare command.",
             "requires_confirmation": True,
         }
-    ]
+    ])
 
 
 def test_genomes_status_running_suggests_refresh_instead_of_prepare(tmp_path: Path) -> None:
@@ -2093,7 +2192,7 @@ def test_genomes_status_running_suggests_refresh_instead_of_prepare(tmp_path: Pa
     assert run.returncode == 0, run.stderr
 
     result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
-    assert result["suggested_actions"] == [
+    assert result["suggested_actions"] == _with_skill_alias([
         {
             "action_id": "re_check_human_grch38_ensembl_116_status",
             "label": "Re-check Human GRCh38 Ensembl 116 status",
@@ -2109,7 +2208,7 @@ def test_genomes_status_running_suggests_refresh_instead_of_prepare(tmp_path: Pa
             "rationale": "'Human GRCh38 Ensembl 116' is already being prepared, so the next useful step is to refresh its status rather than launch another prepare.",
             "requires_confirmation": False,
         }
-    ]
+    ])
 
 
 def test_cutrun_status_promotes_prepare_for_missing_dataset(tmp_path: Path) -> None:
@@ -2157,7 +2256,7 @@ def test_cutrun_status_promotes_prepare_for_missing_dataset(tmp_path: Path) -> N
     assert run.returncode == 0, run.stderr
 
     result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
-    assert result["suggested_actions"] == [
+    assert result["suggested_actions"] == _with_skill_alias([
         {
             "action_id": "prepare_cut_run_dataset_toy_ctcf",
             "label": "Prepare CUT&RUN dataset toy_ctcf",
@@ -2173,7 +2272,7 @@ def test_cutrun_status_promotes_prepare_for_missing_dataset(tmp_path: Path) -> N
             "rationale": "CUT&RUN dataset 'toy_ctcf' is not prepared locally and must be materialized before dataset-backed projection or read interpretation can reuse it.",
             "requires_confirmation": True,
         }
-    ]
+    ])
 
 
 def test_cutrun_status_running_suggests_refresh_instead_of_prepare(tmp_path: Path) -> None:
@@ -2221,7 +2320,7 @@ def test_cutrun_status_running_suggests_refresh_instead_of_prepare(tmp_path: Pat
     assert run.returncode == 0, run.stderr
 
     result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
-    assert result["suggested_actions"] == [
+    assert result["suggested_actions"] == _with_skill_alias([
         {
             "action_id": "re_check_cut_run_dataset_toy_ctcf_status",
             "label": "Re-check CUT&RUN dataset toy_ctcf status",
@@ -2237,7 +2336,7 @@ def test_cutrun_status_running_suggests_refresh_instead_of_prepare(tmp_path: Pat
             "rationale": "CUT&RUN dataset 'toy_ctcf' is already being prepared, so refresh its status instead of starting another parallel prepare.",
             "requires_confirmation": False,
         }
-    ]
+    ])
 
 
 def test_prepare_request_suggests_rechecking_services_status(tmp_path: Path) -> None:
@@ -2285,7 +2384,7 @@ def test_prepare_request_suggests_rechecking_services_status(tmp_path: Path) -> 
     assert run.returncode == 0, run.stderr
 
     result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
-    assert result["suggested_actions"] == [
+    assert result["suggested_actions"] == _with_skill_alias([
         {
             "action_id": "re_check_services_status",
             "label": "Re-check services status",
@@ -2301,7 +2400,7 @@ def test_prepare_request_suggests_rechecking_services_status(tmp_path: Path) -> 
             "rationale": "After a prepare or resource-sync step, refresh the combined readiness view to confirm the installation state.",
             "requires_confirmation": False,
         }
-    ]
+    ])
 
 
 def test_wrapper_builds_variant_storyboard_from_collected_svgs(tmp_path: Path) -> None:
@@ -2411,6 +2510,7 @@ def test_wrapper_builds_variant_storyboard_from_collected_svgs(tmp_path: Path) -
         "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_reporter_alternate.svg",
     ]
     assert continue_actions[0]["label"] == "Continue: show next figure"
+    assert continue_actions[0]["skill_alias"] == "gentle-cloning"
     assert continue_actions[0]["requires_confirmation"] is False
     assert "shell_line" not in continue_actions[0]
     assert continue_actions[0]["source_shell_line"] == (
