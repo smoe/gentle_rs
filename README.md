@@ -293,15 +293,17 @@ between overlapping alias names.
 
 ### Rack Placement, Gel Readout, and 3D Print Path
 
-| Linked physical carrier | README gel readout |
-| --- | --- |
-| ![GENtle Gibson rack hero](docs/figures/gibson_single_insert_rack_hero.svg) | ![GENtle Gibson arrangement gel](docs/figures/gibson_single_insert_arrangement_gel_hero.svg) |
+| Linked physical carrier | Top-down inspection | README gel readout |
+| --- | --- | --- |
+| ![GENtle Gibson rack hero](docs/figures/gibson_single_insert_rack_hero.svg) | ![GENtle Gibson top-down rack](docs/figures/gibson_single_insert_storage_rack_topdown.svg) | ![GENtle Gibson arrangement gel](docs/figures/gibson_single_insert_arrangement_gel_hero.svg) |
 
 The same single-insert Gibson state can now also be projected into one linked
 physical carrier and one linked analytical readout. The rack hero is not a
 screenshot: it is a README-focused SVG derived from the deterministic isometric
-rack export that the saved rack draft produces automatically. Its restored
-legend keeps the link back to the cloning experiment visible again:
+rack export that the saved rack draft produces automatically. The top-down
+companion is emitted directly from the same arrangement as a cleaner inspection
+view with coordinate axes, occupied-slot rings, and lane-role labels. Its
+restored legend keeps the link back to the cloning experiment visible again:
 `Gibson arrangement` plus `DNA ladder`.
 
 The gel companion is generated from the same saved Gibson state, but the README
@@ -338,6 +340,20 @@ python3 docs/figures/render_rack_isometric_hero.py \
 
 cargo run --quiet --bin gentle_cli -- \
   --state /tmp/gibson_rack_hero.state.json \
+  racks hero-svg \
+  rack-1 \
+  docs/figures/gibson_single_insert_storage_rack_topdown.svg \
+  --template storage_pcr_tube_rack
+
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/gibson_rack_hero.state.json \
+  racks hero-svg \
+  rack-1 \
+  docs/figures/gibson_single_insert_rack_topdown.svg \
+  --template pipetting_pcr_tube_rack
+
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/gibson_rack_hero.state.json \
   render-pool-gel-svg \
   - \
   docs/figures/gibson_single_insert_arrangement_gel.svg \
@@ -353,34 +369,34 @@ python3 docs/figures/render_serial_gel_hero.py \
 The corresponding GUI/CLI tutorial for this export lives in
 [`docs/tutorial/03-08_gibson_physical_rack_gui.md`](docs/tutorial/03-08_gibson_physical_rack_gui.md).
 
-The same rack/arrangement machinery also supports a six-well cell-culture
-plate profile. The wells render as culture wells rather than PCR tubes, so the
-export can be used for plate-level treatment layouts and README/protocol
-figures without changing the underlying arrangement semantics. The README hero
-uses an empty top-down plate with the upper-left orientation corner clipped,
-matching common six-well plate drawings, while the well labels come from the
-saved arrangement itself.
+The same `racks hero-svg` route supports storage racks, pipetting racks, and
+six-well cell-culture plates. For plates, the wells render as culture wells
+rather than PCR tubes, so the export can be used for plate-level treatment
+layouts and README/protocol figures without changing the underlying arrangement
+semantics. The README hero uses an empty top-down plate with the upper-left
+orientation corner clipped, matching common six-well plate drawings, while the
+well labels come from the saved arrangement itself.
 
-![GENtle 6-well cell-culture plate arrangement](docs/figures/cell_culture_6_well_plate_hero.svg)
+![GENtle 6-well cell-culture plate arrangement](docs/figures/cell_culture_plate_hero.svg)
 
 Regenerate the SVG and PDF copies with:
 
 ```sh
 cargo run --quiet --bin gentle_cli -- \
-  --state /tmp/gentle_cell_culture_6_well_plate.state.json \
-  workflow @docs/examples/workflows/cell_culture_6_well_plate.json
+  --state /tmp/gentle_cell_culture_plate.state.json \
+  workflow @docs/examples/workflows/cell_culture_plate.json
 
 cargo run --quiet --bin gentle_cli -- \
-  --state /tmp/gentle_cell_culture_6_well_plate.state.json \
+  --state /tmp/gentle_cell_culture_plate.state.json \
   racks hero-svg \
   cell-culture-6well \
-  docs/figures/cell_culture_6_well_plate_hero.svg \
-  --template cell_culture_6_well_plate
+  docs/figures/cell_culture_plate_hero.svg \
+  --template cell_culture_plate
 
 cargo run --quiet --bin gentle_cli -- \
   svg-pdf \
-  docs/figures/cell_culture_6_well_plate_hero.svg \
-  docs/figures/cell_culture_6_well_plate_hero.pdf \
+  docs/figures/cell_culture_plate_hero.svg \
+  docs/figures/cell_culture_plate_hero.pdf \
   --scale 2
 ```
 

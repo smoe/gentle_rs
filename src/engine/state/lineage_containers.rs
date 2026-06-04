@@ -2648,16 +2648,6 @@ impl GentleEngine {
         rack: &Rack,
         spec: &RackPhysicalTemplateSpec,
     ) -> Result<String, EngineError> {
-        if spec.family != RackPhysicalTemplateFamily::CellCulture {
-            return Err(EngineError {
-                code: ErrorCode::Unsupported,
-                message: format!(
-                    "Rack hero SVG currently supports cell-culture templates only, not '{}'",
-                    spec.kind.as_str()
-                ),
-                cause_chain: vec![],
-            });
-        }
         let placements = self.sorted_rack_placements(rack)?;
         let mut placements_by_coordinate = HashMap::new();
         for (_, entry) in &placements {
@@ -2679,14 +2669,46 @@ impl GentleEngine {
         let label_y = plate_y + spec.overall_depth_mm + 2.0;
         let plate_corner_radius = spec.corner_radius_mm.clamp(1.4, 2.2);
         let orientation_cut = 6.0_f32.min(spec.overall_width_mm * 0.08);
-        let well_radius =
-            (spec.pitch_x_mm.min(spec.pitch_y_mm) * 0.5 - 0.8).max(spec.opening_diameter_mm * 0.5);
-        let inner_radius = well_radius * 0.77;
+        let is_cell_culture = spec.family == RackPhysicalTemplateFamily::CellCulture;
+        let slot_radius = if is_cell_culture {
+            (spec.pitch_x_mm.min(spec.pitch_y_mm) * 0.5 - 0.8).max(spec.opening_diameter_mm * 0.5)
+        } else {
+            (spec.opening_diameter_mm * 0.5).min(spec.pitch_x_mm.min(spec.pitch_y_mm) * 0.45)
+        };
+        let inner_radius = if is_cell_culture {
+            slot_radius * 0.77
+        } else {
+            slot_radius * 0.62
+        };
+        let axis_label_font: f32 = if spec.columns > 16 || spec.rows > 12 {
+            1.8
+        } else if spec.columns > 12 || spec.rows > 8 {
+            2.3
+        } else {
+            3.0
+        };
+        let coordinate_font: f32 = if spec.columns > 16 || spec.rows > 12 {
+            1.3
+        } else if spec.columns > 12 || spec.rows > 8 {
+            1.8
+        } else {
+            2.6
+        };
+        let label_font: f32 = if spec.pitch_x_mm.min(spec.pitch_y_mm) < 8.0 {
+            1.25
+        } else if spec.pitch_x_mm.min(spec.pitch_y_mm) < 12.0 {
+            1.35
+        } else {
+            2.45
+        };
         let rack_title = if rack.name.trim().is_empty() {
             rack.rack_id.trim()
         } else {
             rack.name.trim()
         };
+        let rack_title_char_limit =
+            ((spec.overall_width_mm - 10.0) / 1.85).floor().max(12.0) as usize;
+        let rack_title = Self::truncate_rack_label_text(rack_title, rack_title_char_limit);
 
         let mut svg = format!(
             "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{:.1}mm\" height=\"{:.1}mm\" viewBox=\"0 0 {:.1} {:.1}\" data-rack-hero-template=\"{}\" data-rack-id=\"{}\" data-rack-front-top-clearance-mm=\"{:.1}\">",
@@ -2745,15 +2767,16 @@ impl GentleEngine {
             "<text x=\"{:.2}\" y=\"{:.2}\" font-family=\"monospace\" font-size=\"3.1\" font-weight=\"700\" fill=\"#475569\">{}</text>",
             plate_x + 5.0,
             label_y + 4.65,
-            Self::xml_escape(rack_title)
+            Self::xml_escape(&rack_title)
         ));
 
         for column in 0..spec.columns {
             let (cx, _) = Self::rack_physical_hole_center_mm(spec, 0, column);
             svg.push_str(&format!(
-                "<text data-rack-hero-column-label=\"1\" x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"3.0\" font-weight=\"700\" fill=\"#64748b\">{}</text>",
+                "<text data-rack-hero-column-label=\"1\" x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"{:.2}\" font-weight=\"700\" fill=\"#64748b\">{}</text>",
                 plate_x + cx,
                 plate_y - 2.0,
+                axis_label_font,
                 column + 1
             ));
         }
@@ -2761,9 +2784,10 @@ impl GentleEngine {
         for row in 0..spec.rows {
             let (_, cy) = Self::rack_physical_hole_center_mm(spec, row, 0);
             svg.push_str(&format!(
-                "<text data-rack-hero-row-label=\"1\" x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" dominant-baseline=\"middle\" font-family=\"monospace\" font-size=\"3.0\" font-weight=\"700\" fill=\"#64748b\">{}</text>",
+                "<text data-rack-hero-row-label=\"1\" x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" dominant-baseline=\"middle\" font-family=\"monospace\" font-size=\"{:.2}\" font-weight=\"700\" fill=\"#64748b\">{}</text>",
                 plate_x - 2.0,
                 plate_y + cy,
+                axis_label_font,
                 Self::rack_row_label_from_index(row)
             ));
             for column in 0..spec.columns {
@@ -2772,18 +2796,33 @@ impl GentleEngine {
                 let x = plate_x + cx_mm;
                 let y = plate_y + cy_mm;
                 let blocked_slot = blocked.contains(&coordinate);
-                svg.push_str(&format!(
-                    "<circle data-rack-cell-culture-well=\"1\" data-rack-cell-culture-well-rim=\"1\" cx=\"{:.2}\" cy=\"{:.2}\" r=\"{:.2}\" fill=\"#ffffff\" stroke=\"#94a3b8\" stroke-width=\"0.50\"/>",
-                    x,
-                    y,
-                    well_radius
-                ));
-                svg.push_str(&format!(
-                    "<circle data-rack-cell-culture-well-floor=\"1\" cx=\"{:.2}\" cy=\"{:.2}\" r=\"{:.2}\" fill=\"url(#hero-well-floor)\" stroke=\"#cbd5e1\" stroke-width=\"0.28\"/>",
-                    x,
-                    y,
-                    inner_radius
-                ));
+                if is_cell_culture {
+                    svg.push_str(&format!(
+                        "<circle data-rack-hero-slot=\"1\" data-rack-cell-culture-well=\"1\" data-rack-cell-culture-well-rim=\"1\" cx=\"{:.2}\" cy=\"{:.2}\" r=\"{:.2}\" fill=\"#ffffff\" stroke=\"#94a3b8\" stroke-width=\"0.50\"/>",
+                        x,
+                        y,
+                        slot_radius
+                    ));
+                    svg.push_str(&format!(
+                        "<circle data-rack-hero-slot-floor=\"1\" data-rack-cell-culture-well-floor=\"1\" cx=\"{:.2}\" cy=\"{:.2}\" r=\"{:.2}\" fill=\"url(#hero-well-floor)\" stroke=\"#cbd5e1\" stroke-width=\"0.28\"/>",
+                        x,
+                        y,
+                        inner_radius
+                    ));
+                } else {
+                    svg.push_str(&format!(
+                        "<circle data-rack-hero-slot=\"1\" data-rack-tube-top=\"1\" cx=\"{:.2}\" cy=\"{:.2}\" r=\"{:.2}\" fill=\"#f8fafc\" stroke=\"#64748b\" stroke-width=\"0.48\"/>",
+                        x,
+                        y,
+                        slot_radius
+                    ));
+                    svg.push_str(&format!(
+                        "<circle data-rack-hero-slot-floor=\"1\" data-rack-tube-cap=\"1\" cx=\"{:.2}\" cy=\"{:.2}\" r=\"{:.2}\" fill=\"url(#hero-well-floor)\" stroke=\"#cbd5e1\" stroke-width=\"0.24\"/>",
+                        x,
+                        y,
+                        inner_radius
+                    ));
+                }
                 if blocked_slot {
                     svg.push_str(&format!(
                         "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"#94a3b8\" stroke-width=\"0.55\"/><line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"#94a3b8\" stroke-width=\"0.55\"/>",
@@ -2798,36 +2837,72 @@ impl GentleEngine {
                     ));
                     continue;
                 }
+                let has_placement = placements_by_coordinate.contains_key(&coordinate);
                 if let Some(entry) = placements_by_coordinate.get(&coordinate) {
                     let arrangement_color = "#0f766e";
+                    let cell_culture_ring_attr = if is_cell_culture {
+                        " data-rack-cell-culture-arrangement-ring=\"1\""
+                    } else {
+                        ""
+                    };
                     svg.push_str(&format!(
-                        "<circle data-rack-cell-culture-arrangement-ring=\"1\" data-rack-arrangement-id=\"{}\" cx=\"{:.2}\" cy=\"{:.2}\" r=\"{:.2}\" fill=\"none\" stroke=\"{}\" stroke-width=\"0.62\" stroke-opacity=\"0.78\"/>",
+                        "<circle data-rack-hero-arrangement-ring=\"1\"{} data-rack-arrangement-id=\"{}\" cx=\"{:.2}\" cy=\"{:.2}\" r=\"{:.2}\" fill=\"none\" stroke=\"{}\" stroke-width=\"0.62\" stroke-opacity=\"0.78\"/>",
+                        cell_culture_ring_attr,
                         Self::xml_escape(&entry.arrangement_id),
                         x,
                         y,
-                        inner_radius + 1.0,
+                        (inner_radius + 1.0).min(slot_radius - 0.35),
                         arrangement_color
                     ));
-                    let label = self.rack_hero_placement_label(entry);
-                    let lines = Self::wrap_rack_label_text(&label, 12, 2);
+                    let label = if is_cell_culture {
+                        self.rack_hero_placement_label(entry)
+                    } else if entry.role_label.trim().is_empty() {
+                        self.rack_hero_placement_label(entry)
+                    } else {
+                        entry.role_label.trim().to_string()
+                    };
+                    let label = if is_cell_culture {
+                        label
+                    } else {
+                        label.replace(['_', '-'], " ")
+                    };
+                    let label_char_limit = if is_cell_culture { 12 } else { 7 };
+                    let lines = Self::wrap_rack_label_text(&label, label_char_limit, 2);
                     let line_count = lines.len().max(1) as f32;
-                    let first_y = y - (line_count - 1.0) * 1.55;
+                    let line_gap = (label_font + 0.65).max(1.8);
+                    let first_y = y - (line_count - 1.0) * line_gap * 0.5;
                     for (idx, line) in lines.iter().enumerate() {
+                        let cell_culture_label_attr = if is_cell_culture {
+                            " data-rack-cell-culture-arrangement-label=\"1\""
+                        } else {
+                            ""
+                        };
                         svg.push_str(&format!(
-                            "<text data-rack-cell-culture-arrangement-label=\"1\" x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" dominant-baseline=\"middle\" font-family=\"monospace\" font-size=\"2.45\" font-weight=\"700\" fill=\"{}\">{}</text>",
+                            "<text data-rack-hero-arrangement-label=\"1\"{} x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" dominant-baseline=\"middle\" font-family=\"monospace\" font-size=\"{:.2}\" font-weight=\"700\" fill=\"{}\">{}</text>",
+                            cell_culture_label_attr,
                             x,
-                            first_y + idx as f32 * 3.1,
+                            first_y + idx as f32 * line_gap,
+                            label_font,
                             arrangement_color,
                             Self::xml_escape(line)
                         ));
                     }
                 }
-                svg.push_str(&format!(
-                    "<text data-rack-cell-culture-coordinate-label=\"1\" x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" dominant-baseline=\"middle\" font-family=\"monospace\" font-size=\"2.6\" font-weight=\"700\" fill=\"#475569\" fill-opacity=\"0.82\">{}</text>",
-                    x,
-                    y + inner_radius * 0.76,
-                    Self::xml_escape(&coordinate)
-                ));
+                if is_cell_culture || !has_placement {
+                    let cell_culture_coordinate_attr = if is_cell_culture {
+                        " data-rack-cell-culture-coordinate-label=\"1\""
+                    } else {
+                        ""
+                    };
+                    svg.push_str(&format!(
+                        "<text data-rack-hero-coordinate-label=\"1\"{} x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" dominant-baseline=\"middle\" font-family=\"monospace\" font-size=\"{:.2}\" font-weight=\"700\" fill=\"#475569\" fill-opacity=\"0.82\">{}</text>",
+                        cell_culture_coordinate_attr,
+                        x,
+                        y + inner_radius * 0.76,
+                        coordinate_font,
+                        Self::xml_escape(&coordinate)
+                    ));
+                }
             }
         }
 

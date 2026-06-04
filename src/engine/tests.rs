@@ -15805,6 +15805,65 @@ fn export_cell_culture_six_well_plate_uses_plate_geometry() {
 }
 
 #[test]
+fn export_storage_rack_hero_svg_uses_generic_top_down_slots() {
+    let mut state = ProjectState::default();
+    for idx in 1..=2 {
+        let seq_id = format!("tube_seq_{idx}");
+        state
+            .sequences
+            .insert(seq_id.clone(), seq(&"ACGT".repeat(8)));
+        state.container_state.containers.insert(
+            format!("tube-container-{idx}"),
+            Container {
+                container_id: format!("tube-container-{idx}"),
+                kind: ContainerKind::Singleton,
+                name: Some(format!("Tube condition {idx}")),
+                members: vec![seq_id],
+                declared_contents_exclusive: false,
+                created_by_op: None,
+                created_at_unix_ms: 0,
+            },
+        );
+    }
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .apply(Operation::CreateArrangementSerial {
+            container_ids: (1..=2).map(|idx| format!("tube-container-{idx}")).collect(),
+            arrangement_id: Some("arr-storage".to_string()),
+            name: Some("Storage layout".to_string()),
+            ladders: None,
+        })
+        .expect("create arrangement");
+    engine
+        .apply(Operation::CreateRackFromArrangement {
+            arrangement_id: "arr-storage".to_string(),
+            rack_id: Some("rack-storage".to_string()),
+            name: Some("Storage tube rack".to_string()),
+            profile: Some(RackProfileKind::SmallTube4x6),
+        })
+        .expect("create storage rack");
+    let temp = tempdir().expect("tempdir");
+    let hero_path = temp.path().join("storage.hero.svg");
+    engine
+        .apply(Operation::ExportRackHeroSvg {
+            rack_id: "rack-storage".to_string(),
+            path: hero_path.display().to_string(),
+            template: RackPhysicalTemplateKind::StoragePcrTubeRack,
+        })
+        .expect("hero export");
+    let hero_svg = fs::read_to_string(&hero_path).expect("read storage hero svg");
+    assert!(hero_svg.contains("data-rack-hero-template=\"storage_pcr_tube_rack\""));
+    assert!(hero_svg.contains("data-rack-hero-slot=\"1\""));
+    assert!(hero_svg.contains("data-rack-tube-top=\"1\""));
+    assert!(hero_svg.contains("data-rack-tube-cap=\"1\""));
+    assert!(hero_svg.contains("data-rack-hero-arrangement-ring=\"1\""));
+    assert!(hero_svg.contains("data-rack-hero-arrangement-label=\"1\""));
+    assert!(hero_svg.contains("data-rack-hero-coordinate-label=\"1\""));
+    assert!(!hero_svg.contains("data-rack-cell-culture-well=\"1\""));
+    assert!(!hero_svg.contains("data-rack-cell-culture-arrangement-ring=\"1\""));
+}
+
+#[test]
 fn export_rack_carrier_labels_and_simulation_json_include_template_and_arrangements() {
     let mut state = ProjectState::default();
     state

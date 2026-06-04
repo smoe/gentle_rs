@@ -395,6 +395,13 @@ derived from that same technical isometric export. It keeps the real rack
 geometry and occupied positions, but removes most annotation and applies a
 softer, more natural visual treatment for top-level documentation.
 
+`gibson_single_insert_storage_rack_topdown.svg` and
+`gibson_single_insert_rack_topdown.svg` are direct top-down `racks hero-svg`
+exports from the same saved arrangement. The storage-rack version is the
+cleanest inspection view for README scanning; the pipetting-rack version keeps
+the physical dimensions of the wet-lab pipetting carrier. Both use coordinate
+axes, occupied-slot rings, and lane-role labels without hand editing.
+
 `gibson_single_insert_arrangement_gel.svg` is the matching README gel export
 for the same single-insert Gibson baseline. For presentation, it intentionally
 reorders the same saved samples as `insert -> vector -> product` so the insert
@@ -431,6 +438,20 @@ python3 docs/figures/render_rack_isometric_hero.py \
 
 cargo run --quiet --bin gentle_cli -- \
   --state /tmp/gibson_rack_hero.state.json \
+  racks hero-svg \
+  rack-1 \
+  docs/figures/gibson_single_insert_storage_rack_topdown.svg \
+  --template storage_pcr_tube_rack
+
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/gibson_rack_hero.state.json \
+  racks hero-svg \
+  rack-1 \
+  docs/figures/gibson_single_insert_rack_topdown.svg \
+  --template pipetting_pcr_tube_rack
+
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/gibson_rack_hero.state.json \
   render-pool-gel-svg \
   - \
   docs/figures/gibson_single_insert_arrangement_gel.svg \
@@ -443,43 +464,43 @@ python3 docs/figures/render_serial_gel_hero.py \
   "100 bp ladder" insert vector product "1 kb ladder"
 ```
 
-`cell_culture_6_well_plate_isometric.svg` is a deterministic pseudo-3D export
+`cell_culture_plate_isometric.svg` is a deterministic pseudo-3D export
 of a six-well cell-culture layout using the shared rack/arrangement state and
-the `cell_culture_6_well_plate` physical template. Occupied wells are drawn as
+the `cell_culture_plate` physical template. Occupied wells are drawn as
 flat culture-well fills, not PCR tube caps.
 
-`cell_culture_6_well_plate_hero.svg` is the README-facing presentation variant
+`cell_culture_plate_hero.svg` is the README-facing presentation variant
 emitted directly by the rack hero renderer as a clean top-down plate diagram
 with an upper-left orientation cut, row/column labels, tight circular empty
 wells, and saved-arrangement labels/rings when wells are occupied.
-`cell_culture_6_well_plate_hero.pdf` is produced from that SVG with GENtle's
+`cell_culture_plate_hero.pdf` is produced from that SVG with GENtle's
 `svg-pdf` conversion route.
 
 Regenerate it from the repository root with:
 
 ```sh
 cargo run --quiet --bin gentle_cli -- \
-  --state /tmp/gentle_cell_culture_6_well_plate.state.json \
-  workflow @docs/examples/workflows/cell_culture_6_well_plate.json
+  --state /tmp/gentle_cell_culture_plate.state.json \
+  workflow @docs/examples/workflows/cell_culture_plate.json
 
 cargo run --quiet --bin gentle_cli -- \
-  --state /tmp/gentle_cell_culture_6_well_plate.state.json \
+  --state /tmp/gentle_cell_culture_plate.state.json \
   racks isometric-svg \
   cell-culture-6well \
-  docs/figures/cell_culture_6_well_plate_isometric.svg \
-  --template cell_culture_6_well_plate
+  docs/figures/cell_culture_plate_isometric.svg \
+  --template cell_culture_plate
 
 cargo run --quiet --bin gentle_cli -- \
-  --state /tmp/gentle_cell_culture_6_well_plate.state.json \
+  --state /tmp/gentle_cell_culture_plate.state.json \
   racks hero-svg \
   cell-culture-6well \
-  docs/figures/cell_culture_6_well_plate_hero.svg \
-  --template cell_culture_6_well_plate
+  docs/figures/cell_culture_plate_hero.svg \
+  --template cell_culture_plate
 
 cargo run --quiet --bin gentle_cli -- \
   svg-pdf \
-  docs/figures/cell_culture_6_well_plate_hero.svg \
-  docs/figures/cell_culture_6_well_plate_hero.pdf \
+  docs/figures/cell_culture_plate_hero.svg \
+  docs/figures/cell_culture_plate_hero.pdf \
   --scale 2
 ```
 

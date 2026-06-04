@@ -71,7 +71,7 @@ def main() -> int:
     root = tree.getroot()
     culture_mode = root.get("data-rack-isometric-template") in {
         "cell_culture_plate",
-        "cell_culture_6_well_plate",
+        "cell_culture_plate",
     }
     children = list(root)
 
