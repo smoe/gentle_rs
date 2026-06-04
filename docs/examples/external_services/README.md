@@ -10,6 +10,12 @@ review.
 
 Current examples:
 
+- `geneart_cloned_gene_request.json`: synthetic cloned-gene/plasmid
+  construction quote handoff for GeneArt.
+- `geneart_protein_expression_request.json`: synthetic protein-expression
+  quote handoff for GeneArt, including a `return_spec` that asks for
+  amino-acid sequence, codon-targeted DNA, quote metadata, and a handoff
+  bundle.
 - `metabion_oligo_single_tube_request.json`: multi-line-item DNA oligo handoff
   for the Metabion single-tube oligo route.
 - `metabion_mblock_request.json`: one synthetic DNA fragment handoff for the
