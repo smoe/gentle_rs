@@ -402,6 +402,13 @@ cleanest inspection view for README scanning; the pipetting-rack version keeps
 the physical dimensions of the wet-lab pipetting carrier. Both use coordinate
 axes, occupied-slot rings, and lane-role labels without hand editing.
 
+`gibson_single_insert_storage_rack.scad` and
+`gibson_single_insert_pipetting_rack.scad` are the matching deterministic
+OpenSCAD model sources for those two physical templates. They intentionally
+remain source files, not pre-rendered STL meshes, so the dimensions can be
+reviewed and adjusted through OpenSCAD without adding a 3D rendering dependency
+to the documentation build.
+
 `gibson_single_insert_arrangement_gel.svg` is the matching README gel export
 for the same single-insert Gibson baseline. For presentation, it intentionally
 reorders the same saved samples as `insert -> vector -> product` so the insert
@@ -452,6 +459,20 @@ cargo run --quiet --bin gentle_cli -- \
 
 cargo run --quiet --bin gentle_cli -- \
   --state /tmp/gibson_rack_hero.state.json \
+  racks openscad \
+  rack-1 \
+  docs/figures/gibson_single_insert_storage_rack.scad \
+  --template storage_pcr_tube_rack
+
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/gibson_rack_hero.state.json \
+  racks openscad \
+  rack-1 \
+  docs/figures/gibson_single_insert_pipetting_rack.scad \
+  --template pipetting_pcr_tube_rack
+
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/gibson_rack_hero.state.json \
   render-pool-gel-svg \
   - \
   docs/figures/gibson_single_insert_arrangement_gel.svg \
@@ -475,6 +496,8 @@ with an upper-left orientation cut, row/column labels, tight circular empty
 wells, and saved-arrangement labels/rings when wells are occupied.
 `cell_culture_plate_hero.pdf` is produced from that SVG with GENtle's
 `svg-pdf` conversion route.
+`cell_culture_plate.scad` is the matching OpenSCAD source for the six-well
+plate profile.
 
 Regenerate it from the repository root with:
 
@@ -495,6 +518,13 @@ cargo run --quiet --bin gentle_cli -- \
   racks hero-svg \
   cell-culture-6well \
   docs/figures/cell_culture_plate_hero.svg \
+  --template cell_culture_plate
+
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/gentle_cell_culture_plate.state.json \
+  racks openscad \
+  cell-culture-6well \
+  docs/figures/cell_culture_plate.scad \
   --template cell_culture_plate
 
 cargo run --quiet --bin gentle_cli -- \
