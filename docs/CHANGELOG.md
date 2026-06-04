@@ -12,6 +12,12 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-06-04
+
+- Wired the ClawBio `gentle-cloning` skill toward the existing reporter
+  catalog, recommender, corpus export, and reporter construct handoff routes
+  so synthetic-biology follow-up quotes GENtle reports instead of improvising.
+
 ## 2026-05-29
 
 - Added opt-in GUI frame profiling behind `--features gui-profiler` and

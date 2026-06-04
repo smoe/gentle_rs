@@ -648,6 +648,9 @@ Recommended preparation order for common human-question answering:
    - `helpers status "Plasmid pUC19 (online)"`
    - `helpers prepare "Plasmid pUC19 (online)" --timeout-secs 1800`
    - `planning consult cloning --format json`
+   - for reporter/synthetic-biology follow-up:
+     - `reporters list --limit 10`
+     - `reporters recommend --class luciferase --limit 5`
 6. `resources status`
 
 For a generic "what is installed?" or "what databases do you know about?"
@@ -1061,16 +1064,27 @@ Current shared GENtle routes behind this capability:
 - `SummarizeVariantPromoterContext`
 - `SuggestPromoterReporterFragments`
 - `MaterializeVariantAllele`
-- shared reporter-preview workflow/macro paths
+- `ListReporterCatalog`
+- `RecommendReporters`
+- `ExportReporterCorpus`
+- `PlanReporterConstructHandoff`
+- `reporters list [--catalog PATH] [--filter TEXT] [--limit N] [--output FILE.json]`
+- `reporters recommend [--catalog PATH] [--assay NAME] [--chassis HOST] [--class CLASS] [--limit N] [--output FILE.json]`
+- `reporters export-corpus OUTPUT.json|OUTPUT.jsonl [--catalog PATH] [--format json|jsonl]`
 - `routines list|explain|compare ... --seq-id ...`
 - `planning profile|objective|suggestions ...`
 - `planning consult cloning --format json`
+- `macros template-import assets/cloning_patterns_catalog`
+- `macros template-run allele_paired_promoter_luciferase_reporter ... --validate-only`
 
 Expected outputs:
 
 - promoter-context report
 - reporter-fragment candidates
+- reporter catalog/recommendation reports with accepted/rejected candidates
 - paired allele inserts
+- read-only reporter construct handoff plan with macro-port readiness,
+  reporter-backbone resolution, warnings, and exact next commands
 - perturbation and readout candidate families
 - routine time/cost/local-fit planning evidence when available
 - deterministic cloning strategy/vector consultation reports when users ask
@@ -1078,6 +1092,39 @@ Expected outputs:
 - construct previews and handoff bundle artifacts
 - one best-first storyboard-style PNG when the wrapper collects multiple
   follow-up figures from the same run
+
+Reporter/synthetic-biology bridge pipeline:
+
+1. Start from sequence-grounded biology, not from a naked construct request.
+   Use `SummarizeVariantPromoterContext` and
+   `SuggestPromoterReporterFragments` when the user asks whether a variant or
+   promoter window can become a reporter assay.
+2. Inspect the local reporter substrate before choosing:
+   - shell route: `reporters list --limit 10`
+   - shell route: `reporters recommend --class luciferase --limit 5`
+   - corpus route for local retrieval/training prep:
+     `reporters export-corpus artifacts/reporter_corpus.jsonl --format jsonl`
+3. For promoter-luciferase V1, create the handoff through the engine operation
+   `PlanReporterConstructHandoff` rather than free-form prose. In a ClawBio
+   request this is `mode=op`, because the shared shell exposes the reporter
+   catalog/recommender routes while the direct `reporters plan-handoff ...`
+   helper is a `gentle_cli reporters ...` convenience route.
+4. Quote the handoff plan's typed fields:
+   - `status`
+   - `port_bindings[]`
+   - `backbone`
+   - `selected_reporter`
+   - `reporter_recommendation`
+   - `commands[]`
+   - `warnings[]`
+5. If the handoff plan names missing ports or unresolved backbone state, report
+   those gaps as questions. Do not invent marker, promoter, MCS, host, license,
+   or sequence-availability answers from helper-vector notes.
+6. If the handoff plan is ready, the next deterministic step is macro
+   validation, not automatic construct creation:
+   `macros template-run allele_paired_promoter_luciferase_reporter ... --validate-only`.
+   Use a mutating macro run only when the user explicitly asks for it and the
+   normal GENtle confirmation/transactional path applies.
 
 ## Core Capabilities
 
@@ -1150,6 +1197,12 @@ task:
      local setup path to choose, prefer `planning consult cloning --format json`
      and quote its `strategy_candidates`, `vector_candidates`, and
      `missing_questions` rather than improvising biological planning prose
+   - if the user asks for reporter selection, reporter catalog inspection,
+     promoter-reporter handoff, or local-AI reporter-corpus preparation, prefer
+     the reporter routes (`reporters list`, `reporters recommend`,
+     `reporters export-corpus`, or `PlanReporterConstructHandoff`) and quote
+     their structured report fields rather than inventing a synthetic-biology
+     design narrative
 3. **Resolve execution route**: choose `--gentle-cli`, then `GENTLE_CLI_CMD`
    (recommended for the included local-checkout launcher or Docker /
    Apptainer/Singularity-backed execution), then `gentle_cli` on `PATH`, then
