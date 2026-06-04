@@ -9618,6 +9618,119 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                 record_index,
             })
         }
+        "show-alignments" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "rna-reads show-alignments requires REPORT_ID (--gene GENE [--gene GENE ...] [--cohort all|accepted|fragment|complete|rejected] [--complete-rule near|strict|exact] | --record-indices i,j,k) [--limit N] [--output PATH]"
+                        .to_string(),
+                );
+            }
+            let report_id = tokens[2].trim().to_string();
+            if report_id.is_empty() {
+                return Err("rna-reads show-alignments REPORT_ID must not be empty".to_string());
+            }
+            let mut gene_ids = Vec::<String>::new();
+            let mut selected_record_indices = Vec::<usize>::new();
+            let mut complete_rule = RnaReadGeneSupportCompleteRule::Near;
+            let mut cohort_filter = RnaReadGeneSupportAuditCohortFilter::All;
+            let mut complete_rule_set = false;
+            let mut cohort_filter_set = false;
+            let mut limit: Option<usize> = None;
+            let mut output_path: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--gene" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--gene",
+                            "rna-reads show-alignments",
+                        )?;
+                        gene_ids.push(raw);
+                    }
+                    "--record-indices" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--record-indices",
+                            "rna-reads show-alignments",
+                        )?;
+                        selected_record_indices = parse_rna_read_record_indices(&raw)?;
+                    }
+                    "--complete-rule" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--complete-rule",
+                            "rna-reads show-alignments",
+                        )?;
+                        complete_rule = parse_rna_read_gene_support_complete_rule(&raw)?;
+                        complete_rule_set = true;
+                    }
+                    "--cohort" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--cohort",
+                            "rna-reads show-alignments",
+                        )?;
+                        cohort_filter = parse_rna_read_gene_support_audit_cohort_filter(&raw)?;
+                        cohort_filter_set = true;
+                    }
+                    "--limit" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--limit",
+                            "rna-reads show-alignments",
+                        )?;
+                        limit = Some(raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --limit value '{raw}' for rna-reads show-alignments: {e}"
+                            )
+                        })?);
+                    }
+                    "--output" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--output",
+                            "rna-reads show-alignments",
+                        )?;
+                        output_path = Some(raw);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for rna-reads show-alignments"
+                        ));
+                    }
+                }
+            }
+            if selected_record_indices.is_empty() && gene_ids.is_empty() {
+                return Err(
+                    "rna-reads show-alignments requires either --record-indices i,j,k or at least one --gene GENE"
+                        .to_string(),
+                );
+            }
+            if !selected_record_indices.is_empty()
+                && (!gene_ids.is_empty() || complete_rule_set || cohort_filter_set)
+            {
+                return Err(
+                    "rna-reads show-alignments --record-indices cannot be combined with --gene, --cohort, or --complete-rule"
+                        .to_string(),
+                );
+            }
+            Ok(ShellCommand::RnaReadsShowAlignments {
+                report_id,
+                gene_ids,
+                selected_record_indices,
+                complete_rule,
+                cohort_filter,
+                limit,
+                output_path,
+            })
+        }
         "summarize-gene-support" => {
             if tokens.len() < 3 {
                 return Err(
@@ -10747,7 +10860,7 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
             })
         }
         other => Err(format!(
-            "Unknown rna-reads subcommand '{other}' (expected preflight-isoforms, interpret, batch-map, align-report, list-reports, show-report, show-alignment, summarize-gene-support, inspect-gene-support, inspect-alignments, inspect-concatemers, build-transcript-index, materialize-hits, export-report, export-hits-fasta, export-sample-sheet, export-target-quality, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-alignment-dotplot-svg)"
+            "Unknown rna-reads subcommand '{other}' (expected preflight-isoforms, interpret, batch-map, align-report, list-reports, show-report, show-alignment, show-alignments, summarize-gene-support, inspect-gene-support, inspect-alignments, inspect-concatemers, build-transcript-index, materialize-hits, export-report, export-hits-fasta, export-sample-sheet, export-target-quality, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-alignment-dotplot-svg)"
         )),
     }
 }

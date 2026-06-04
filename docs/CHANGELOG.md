@@ -19,6 +19,9 @@ Maintenance rule:
 - Added the ClawBio `mode=intents` runtime descriptor surface, trigger-keyword
   generation/drift checks, and a provider-neutral default scope for
   `services handoff`.
+- Added `rna-reads show-alignments` for headless batch export of the same
+  per-read alignment display payload used by `rna-reads show-alignment` and the
+  GUI splicing-expert detail pane.
 
 ## 2026-05-10
 
