@@ -12164,10 +12164,9 @@ fn parse_rack_physical_template_kind(value: &str) -> Result<RackPhysicalTemplate
         "pipetting_pcr_tube_rack" | "pipetting" | "pipetting_tube" | "pipetting_pcr" => {
             Ok(RackPhysicalTemplateKind::PipettingPcrTubeRack)
         }
-        "cell_culture_plate"
-        | "culture_plate"
-        | "cell_culture"
-        | "plate" => Ok(RackPhysicalTemplateKind::CellCulturePlate),
+        "cell_culture_plate" | "culture_plate" | "cell_culture" | "plate" => {
+            Ok(RackPhysicalTemplateKind::CellCulturePlate)
+        }
         other => Err(format!(
             "Unsupported rack physical template '{other}' (expected storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate)"
         )),
@@ -20351,7 +20350,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 "hero-svg" => {
                     if tokens.len() < 4 {
                         return Err(
-                            "racks hero-svg requires RACK_ID OUTPUT.svg [--template cell_culture_plate]"
+                            "racks hero-svg requires RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]"
                                 .to_string(),
                         );
                     }

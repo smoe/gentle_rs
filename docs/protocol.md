@@ -4637,13 +4637,14 @@ Feature-distance geometry controls (candidate generation and distance scoring):
 `ExportRackHeroSvg` semantics:
 
 - Writes one deterministic README-facing hero SVG for a saved rack.
-- Currently supports the `cell_culture_plate` physical template.
+- Supports the built-in `storage_pcr_tube_rack`, `pipetting_pcr_tube_rack`,
+  and `cell_culture_plate` physical templates.
 - Uses the same linked rack snapshot as the technical rack exports, but renders
-  a presentation-specific top-down 6-well plate:
-  - a plate outline with a clipped upper-left orientation corner
+  a presentation-specific top-down rack/plate:
+  - a rack/plate outline with a clipped upper-left orientation corner
   - row and column labels
-  - tight circular empty-well rims and floors
-  - saved-arrangement labels and subtle rings for occupied wells
+  - tight circular empty-slot rims and floors/caps
+  - saved-arrangement labels and subtle rings for occupied slots
   - a bottom caption strip
 - This route intentionally remains separate from `ExportRackOpenScad`; OpenSCAD
   stays the CAD/printing source, while hero SVG stays dependency-free and

@@ -395,6 +395,13 @@ derived from that same technical isometric export. It keeps the real rack
 geometry and occupied positions, but removes most annotation and applies a
 softer, more natural visual treatment for top-level documentation.
 
+`gibson_single_insert_storage_rack_topdown.svg` and
+`gibson_single_insert_rack_topdown.svg` are direct top-down `racks hero-svg`
+exports from the same saved arrangement. The storage-rack version is the
+cleanest inspection view for README scanning; the pipetting-rack version keeps
+the physical dimensions of the wet-lab pipetting carrier. Both use coordinate
+axes, occupied-slot rings, and lane-role labels without hand editing.
+
 `gibson_single_insert_arrangement_gel.svg` is the matching README gel export
 for the same single-insert Gibson baseline. For presentation, it intentionally
 reorders the same saved samples as `insert -> vector -> product` so the insert
@@ -428,6 +435,20 @@ cargo run --quiet --bin gentle_cli -- \
 python3 docs/figures/render_rack_isometric_hero.py \
   docs/figures/gibson_single_insert_rack_isometric.svg \
   docs/figures/gibson_single_insert_rack_hero.svg
+
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/gibson_rack_hero.state.json \
+  racks hero-svg \
+  rack-1 \
+  docs/figures/gibson_single_insert_storage_rack_topdown.svg \
+  --template storage_pcr_tube_rack
+
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/gibson_rack_hero.state.json \
+  racks hero-svg \
+  rack-1 \
+  docs/figures/gibson_single_insert_rack_topdown.svg \
+  --template pipetting_pcr_tube_rack
 
 cargo run --quiet --bin gentle_cli -- \
   --state /tmp/gibson_rack_hero.state.json \

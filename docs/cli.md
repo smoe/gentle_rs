@@ -1990,7 +1990,7 @@ Shared shell command:
     - `racks labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID] [--preset compact_cards|print_a4|wide_cards]`
     - `racks fabrication-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]`
     - `racks isometric-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]`
-    - `racks hero-svg RACK_ID OUTPUT.svg [--template cell_culture_plate]`
+    - `racks hero-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]`
     - `racks openscad RACK_ID OUTPUT.scad [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]`
     - `racks set-profile RACK_ID small_tube_4x6|plate_6|plate_96|plate_384`
     - `racks set-custom-profile RACK_ID ROWS COLUMNS`
@@ -3255,11 +3255,11 @@ Rendering export commands:
   - Intended for presentation-ready rack review and README/documentation
     figures while still using the same saved rack/template state as the other
     physical exports.
-- `racks hero-svg RACK_ID OUTPUT.svg [--template cell_culture_plate]`
+- `racks hero-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]`
   - Calls engine operation `ExportRackHeroSvg`.
-  - Writes one README-facing top-down cell-culture plate SVG with a clipped
-    upper-left orientation corner, row/column labels, empty circular wells,
-    and saved-arrangement labels/rings when wells are occupied.
+  - Writes one README-facing top-down rack/plate SVG with a clipped upper-left
+    orientation corner, row/column labels, empty circular slots, and
+    saved-arrangement labels/rings when slots are occupied.
   - Uses the same saved rack/template state as the technical isometric,
     fabrication, simulation, and OpenSCAD exports.
 - `racks openscad RACK_ID OUTPUT.scad [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]`
@@ -4124,9 +4124,9 @@ Host convenience commands:
 - `racks isometric-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]`
   - Exports one deterministic pseudo-3D/isometric rack SVG through the same
     engine path as GUI `Isometric SVG...`.
-- `racks hero-svg RACK_ID OUTPUT.svg [--template cell_culture_plate]`
-  - Exports one README-facing top-down cell-culture plate SVG with labeled
-    empty wells, saved-arrangement rings, and an upper-left orientation cut.
+- `racks hero-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]`
+  - Exports one README-facing top-down rack/plate SVG with labeled
+    empty slots, saved-arrangement rings, and an upper-left orientation cut.
 - `racks openscad RACK_ID OUTPUT.scad [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]`
   - Exports one deterministic parameterized OpenSCAD file through the same
     engine path as GUI `OpenSCAD...`.

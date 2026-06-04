@@ -595,8 +595,8 @@
             "cli-direct"
          ],
          "path": "racks hero-svg",
-         "summary": "Export one deterministic README-facing, arrangement-labelled cell-culture plate SVG for a saved rack.",
-         "usage": "racks hero-svg RACK_ID OUTPUT.svg [--template cell_culture_plate]"
+         "summary": "Export one deterministic README-facing, arrangement-labelled top-down rack/plate SVG for a saved rack.",
+         "usage": "racks hero-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack|cell_culture_plate]"
       },
       {
          "aliases": [],
