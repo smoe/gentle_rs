@@ -7,9 +7,50 @@ on:
   pull_request:
     branches:
       - '**'
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Platform to run, or sampled for commit-derived selection'
+        required: false
+        type: choice
+        options:
+          - sampled
+          - macos
+          - linux
+          - windows
+        default: sampled
 
 jobs:
-  build:
+  select-platform:
+    name: Select CI platform
+    runs-on: ubuntu-latest
+    outputs:
+      platform: ${{ steps.pick.outputs.platform }}
+
+    steps:
+      - name: Pick platform
+        id: pick
+        shell: bash
+        env:
+          REQUESTED_PLATFORM: ${{ github.event_name == 'workflow_dispatch' && inputs.platform || 'sampled' }}
+        run: |
+          set -euo pipefail
+          platform="$REQUESTED_PLATFORM"
+          if [[ -z "$platform" || "$platform" == "sampled" ]]; then
+            selector=$((16#${GITHUB_SHA:0:8} % 3))
+            case "$selector" in
+              0) platform="macos" ;;
+              1) platform="linux" ;;
+              2) platform="windows" ;;
+            esac
+          fi
+          echo "Selected CI platform: $platform"
+          echo "platform=$platform" >> "$GITHUB_OUTPUT"
+
+  macos:
+    name: macOS
+    needs: select-platform
+    if: needs.select-platform.outputs.platform == 'macos'
     runs-on: macos-latest
 
     steps:
@@ -30,14 +71,6 @@ jobs:
           key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-registry-
-
-      - name: Cache Cargo build
-        uses: actions/cache@v4
-        with:
-          path: target
-          key: ${{ runner.os }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-build-
 
       - name: Cargo check
         run: cargo check -q
@@ -153,6 +186,9 @@ jobs:
           test -s "$CIRCULAR"
 
   linux:
+    name: Linux
+    needs: select-platform
+    if: needs.select-platform.outputs.platform == 'linux'
     runs-on: ubuntu-latest
 
     steps:
@@ -205,14 +241,6 @@ jobs:
           key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-registry-
-
-      - name: Cache Cargo build
-        uses: actions/cache@v4
-        with:
-          path: target
-          key: ${{ runner.os }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-build-
 
       - name: Cargo check
         run: cargo check -q
@@ -320,3 +348,192 @@ jobs:
 
           test -s "$LINEAR"
           test -s "$CIRCULAR"
+
+  windows:
+    name: Windows
+    needs: select-platform
+    if: needs.select-platform.outputs.platform == 'windows'
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-
+
+      - name: Cargo check
+        run: cargo check -q
+
+      - name: Cargo check (JavaScript adapter feature)
+        run: cargo check -q --features js-interface
+
+      - name: Cargo check (Lua adapter feature)
+        run: cargo check -q --features lua-interface
+
+      - name: Cargo check (script interface bundle)
+        run: cargo check -q --features script-interfaces
+
+      - name: Cargo check (all features)
+        run: cargo check --all-features -q
+
+      - name: Build Windows binaries
+        run: cargo build --features script-interfaces --bins
+
+      - name: DNA viewer repro binary smoke
+        run: |
+          $modes = cargo run -q --bin gentle_dna_viewer_repro -- --list-modes
+          if ([string]::IsNullOrWhiteSpace(($modes -join "`n"))) {
+            throw "gentle_dna_viewer_repro did not report any modes"
+          }
+          $modes
+
+      - name: Script adapter version smoke
+        run: |
+          cargo run --features js-interface --bin gentle_js -- --version
+          cargo run --features lua-interface --bin gentle_lua -- --version
+
+      - name: Examples and tutorial schema/drift checks
+        run: |
+          cargo run --bin gentle_examples_docs -- --check
+          cargo run --bin gentle_examples_docs -- tutorial-check
+
+      - name: Install Python test dependencies
+        run: |
+          @'
+          import importlib.util
+          import subprocess
+          import sys
+
+          if importlib.util.find_spec("pytest") is None:
+              subprocess.check_call([sys.executable, "-m", "pip", "install", "pytest"])
+          '@ | python -
+
+      - name: ClawBio skill parity checks
+        run: |
+          python scripts/generate_clawbio_trigger_keywords.py --check
+          python -m pytest integrations/clawbio/skills/gentle-cloning/tests/ -q
+
+      - name: Workflow example runtime tests
+        run: cargo test -q workflow_examples -- --test-threads=1
+
+      - name: Full test suite
+        run: cargo test -q
+
+      - name: Tutorial core CLI runtime smoke
+        run: |
+          cargo run --bin gentle_cli -- workflow '@docs/examples/workflows/load_branch_reverse_complement_pgex_fasta.json'
+          cargo run --bin gentle_cli -- workflow '@docs/examples/workflows/load_and_digest_pgex.json'
+          cargo run --bin gentle_cli -- workflow '@docs/examples/workflows/guides_filter_and_generate_oligos.json'
+          cargo run --bin gentle_cli -- workflow '@docs/examples/workflows/digest_ligation_extract_region_minimal.json'
+
+      - name: Internal preview reviewer smoke
+        run: |
+          $state = Join-Path $env:RUNNER_TEMP "gentle_preview_state.json"
+          Remove-Item -ErrorAction SilentlyContinue $state
+          cargo run --bin gentle_cli -- --state $state workflow '@docs/examples/workflows/load_branch_reverse_complement_pgex_fasta.json'
+          cargo run --bin gentle_cli -- --state $state workflow '@docs/examples/workflows/digest_ligation_extract_region_minimal.json'
+          cargo run --bin gentle_cli -- --state $state primers design '{"DesignPrimerPairs":{"template":"pgex_fasta","roi_start_0based":100,"roi_end_0based":300,"forward":{"min_length":18,"max_length":22,"location_0based":null,"start_0based":80,"end_0based":130,"min_tm_c":50.0,"max_tm_c":72.0,"min_gc_fraction":0.2,"max_gc_fraction":0.8,"max_anneal_hits":5},"reverse":{"min_length":18,"max_length":22,"location_0based":null,"start_0based":280,"end_0based":340,"min_tm_c":50.0,"max_tm_c":72.0,"min_gc_fraction":0.2,"max_gc_fraction":0.8,"max_anneal_hits":5},"min_amplicon_bp":120,"max_amplicon_bp":400,"max_pairs":5,"report_id":"preview_pgex_fast"}}' --backend internal
+          cargo run --bin gentle_cli -- --state $state primers show-report preview_pgex_fast
+
+      - name: Engine tests
+        run: cargo test -q "engine::tests::"
+
+      - name: Graphics adaptive-default regression tests
+        run: |
+          cargo test -q default_configuration_graphics_prefers_adaptive_linear_letters
+          cargo test -q apply_configuration_graphics_to_engine_state_keeps_adaptive_linear_defaults
+
+      - name: Glossary coverage guard
+        run: cargo test -q --bin gentle_cli test_shell_forwarded_commands_are_documented_in_glossary
+
+      - name: EMBL parser regression tests
+        run: |
+          cargo test -q test_toy_small_cross_format_sequence_parity
+          cargo test -q test_toy_multi_embl_parses_multiple_records
+          cargo test -q test_embl_wrapped_feature_location_is_parsed
+
+      - name: Genome catalog regression test
+        run: cargo test -q genomes::tests::test_repo_assets_genome_catalog_is_valid
+
+      - name: Render snapshot tests
+        run: cargo test -q render_export::tests::snapshot_
+
+      - name: Archive export-ignore guard
+        run: |
+          $archivePath = Join-Path $env:RUNNER_TEMP "gentle-src.tar"
+          git archive --format=tar HEAD --output=$archivePath
+          $hasGeneratedTutorials = tar -tf $archivePath |
+            Select-String -Pattern '^docs/tutorial/generated/' -Quiet
+          if ($hasGeneratedTutorials) {
+            throw "docs/tutorial/generated unexpectedly present in git archive output"
+          }
+
+      - name: CLI protocol smoke test
+        run: |
+          $state = Join-Path $env:RUNNER_TEMP "gentle_state.json"
+          $linear = Join-Path $env:RUNNER_TEMP "pgex.linear.svg"
+          $circular = Join-Path $env:RUNNER_TEMP "pgex.circular.svg"
+
+          cargo run --bin gentle_cli -- --state $state op '{"LoadFile":{"path":"test_files/pGEX_3X.fa","as_id":"pgex"}}'
+          cargo run --bin gentle_cli -- --state $state op '{"SetDisplayVisibility":{"target":"Features","visible":false}}'
+          cargo run --bin gentle_cli -- --state $state op '{"SetDisplayVisibility":{"target":"MethylationSites","visible":false}}'
+          cargo run --bin gentle_cli -- --state $state render-svg pgex linear $linear
+          cargo run --bin gentle_cli -- --state $state render-svg pgex circular $circular
+
+          if (!(Test-Path $linear) -or (Get-Item $linear).Length -eq 0) {
+            throw "Linear SVG was not written"
+          }
+          if (!(Test-Path $circular) -or (Get-Item $circular).Length -eq 0) {
+            throw "Circular SVG was not written"
+          }
+
+  ci-summary:
+    name: CI / selected platform
+    needs:
+      - select-platform
+      - macos
+      - linux
+      - windows
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check selected platform result
+        shell: bash
+        env:
+          PLATFORM: ${{ needs.select-platform.outputs.platform }}
+          MACOS_RESULT: ${{ needs.macos.result }}
+          LINUX_RESULT: ${{ needs.linux.result }}
+          WINDOWS_RESULT: ${{ needs.windows.result }}
+        run: |
+          set -euo pipefail
+          case "$PLATFORM" in
+            macos) result="$MACOS_RESULT" ;;
+            linux) result="$LINUX_RESULT" ;;
+            windows) result="$WINDOWS_RESULT" ;;
+            *)
+              echo "Unknown selected CI platform: $PLATFORM"
+              exit 1
+              ;;
+          esac
+          echo "Selected platform: $PLATFORM"
+          echo "Selected platform result: $result"
+          if [[ "$result" != "success" ]]; then
+            exit 1
+          fi

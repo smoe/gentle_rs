@@ -12,6 +12,15 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-06-05
+
+- Switched push/PR CI to one commit-sampled platform per run, with manual
+  platform override, a PowerShell-native Windows validation pass matching the
+  Unix test shape, clearer `macOS` naming, a single Linux runner when Linux is
+  selected, and no multi-GB `target` cache restores.
+- Limited the container-image workflow to release tags and manual dispatch so
+  ordinary pushes and PRs no longer build Docker CLI/GUI images.
+
 ## 2026-06-04
 
 - Wired the ClawBio `gentle-cloning` skill toward the existing reporter
