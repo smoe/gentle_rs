@@ -154,6 +154,12 @@ broad crate surgery that is not tied to the selected release story.
   [`inline_operand_audit.md`](inline_operand_audit.md): `RenderSequenceSvg`,
   `RenderRnaStructureSvg`, `RenderTfbsScoreTrackCorrelationSvg`,
   `ComputeDotplot`, then `ComputeFlexibilityTrack`.
+- Clariom D and splice-isoform evidence need an engine-owned interpretation
+  layer beyond the current prepared-track projection. Future work should map
+  array probe oligos/probesets to genome/transcript coordinates with explicit
+  build, liftover, multi-hit, and ambiguity provenance, then use those mapped
+  probe/exon/junction constraints to identify compatible splice isoforms and
+  rule out incompatible ones without hiding uncertain evidence.
 
 ## Phase D: Visualization And Workflow UX
 
@@ -164,6 +170,10 @@ fixtures, and scroll/zoom hardening when they fit the selected release story. Us
 work here improves inspection clarity, deterministic exports, contextual links
 to evidence records, and manual-smoke reliability; defer large visual redesigns
 unrelated to the next release aim.
+- Evidence-viewer follow-up: make Clariom D probe/probeset evidence and
+  splice-isoform constraints inspectable together, so a user can see which
+  oligos, exons, junctions, and mapped intervals support, constrain, or exclude
+  each transcript isoform.
 
 ## Phase E: Integration Polish And Deferred Policy Items
 
