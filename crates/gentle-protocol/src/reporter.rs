@@ -235,6 +235,7 @@ pub struct ReporterRejectedCandidate {
 pub struct ReporterRecommendationResult {
     pub schema: String,
     pub generated_at_unix_ms: u128,
+    pub biological_intent: String,
     pub catalog_path: String,
     pub constraints: ReporterConstraints,
     pub considered_candidate_count: usize,
@@ -366,6 +367,7 @@ pub struct ReporterConstructHandoffPlan {
     pub schema: String,
     pub generated_at_unix_ms: u128,
     pub status: String,
+    pub biological_intent: String,
     pub provenance: ReporterConstructHandoffProvenance,
     pub selected_fragment: ReporterConstructSelectedFragment,
     #[serde(default, skip_serializing_if = "Option::is_none")]

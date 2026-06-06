@@ -12490,11 +12490,76 @@ fn planning_tokens_overlap(left: &[String], right: &BTreeSet<String>) -> bool {
     })
 }
 
+fn normalize_planning_intent_token(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    let mut last_was_separator = false;
+    for ch in raw.trim().chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch.to_ascii_lowercase());
+            last_was_separator = false;
+        } else if !last_was_separator {
+            out.push('_');
+            last_was_separator = true;
+        }
+    }
+    let trimmed = out.trim_matches('_');
+    if trimmed.is_empty() {
+        "cloning_strategy_vector_selection".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn planning_intent_is_protein_expression_max_yield(token: &str) -> bool {
+    if token == "protein_expression_max_yield" {
+        return true;
+    }
+    let has_protein = token.contains("protein") || token.contains("polypeptide");
+    let has_production = token.contains("expression")
+        || token.contains("express")
+        || token.contains("yield")
+        || token.contains("amount")
+        || token.contains("production")
+        || token.contains("produce");
+    let has_maximum = token.contains("max")
+        || token.contains("maximal")
+        || token.contains("maximum")
+        || token.contains("highest")
+        || token.contains("high_yield");
+    has_protein && has_production && has_maximum
+}
+
+fn planning_consult_biological_intent(objective: &PlanningObjective) -> String {
+    if let Some(intent) = objective
+        .biological_intent
+        .as_deref()
+        .map(normalize_planning_intent_token)
+        .filter(|value| !value.is_empty())
+    {
+        if planning_intent_is_protein_expression_max_yield(&intent) {
+            return "protein_expression_max_yield".to_string();
+        }
+        return intent;
+    }
+    for value in objective
+        .required_capabilities
+        .iter()
+        .chain(objective.preferred_routine_families.iter())
+    {
+        let token = normalize_planning_intent_token(value);
+        if planning_intent_is_protein_expression_max_yield(&token) {
+            return "protein_expression_max_yield".to_string();
+        }
+    }
+    "cloning_strategy_vector_selection".to_string()
+}
+
 fn build_planning_cloning_consultation_text(report: &PlanningCloningConsultation) -> String {
     let mut lines = vec![
         "GENtle cloning planning consultation".to_string(),
         format!("Schema: {}", report.schema),
         format!("Profile scope: {}", report.profile_scope),
+        format!("Biological intent: {}", report.biological_intent),
     ];
     if let Some(seq_id) = report.seq_id.as_deref() {
         lines.push(format!("Sequence context: {seq_id}"));
@@ -12573,6 +12638,9 @@ fn execute_planning_consult_cloning(
         None => engine.planning_objective(),
     };
     let profile = engine.planning_effective_profile();
+    let biological_intent = planning_consult_biological_intent(&objective);
+    let protein_expression_max_yield =
+        planning_intent_is_protein_expression_max_yield(&biological_intent);
     let preference_context =
         GentleEngine::planning_objective_routine_preference_context(&objective);
     let routine_catalog = load_cloning_routine_catalog(DEFAULT_CLONING_ROUTINE_CATALOG_PATH)?;
@@ -12781,6 +12849,33 @@ fn execute_planning_consult_cloning(
     }
 
     let mut missing_questions = vec![];
+    if protein_expression_max_yield {
+        missing_questions.push(PlanningCloningMissingQuestion {
+            question_id: "protein_yield_metric".to_string(),
+            prompt: "Should GENtle optimize total expressed protein, soluble protein, active protein, purified protein, secreted protein, or membrane-localized protein?".to_string(),
+            reason: "Maximal protein amount is not one scalar objective; the desired yield metric changes host, vector, tag, induction, and purification choices.".to_string(),
+        });
+        missing_questions.push(PlanningCloningMissingQuestion {
+            question_id: "expression_chassis".to_string(),
+            prompt: "Which expression chassis is acceptable: bacterial, yeast, insect, mammalian, cell-free, or provider-managed expression?".to_string(),
+            reason: "Protein yield depends strongly on chassis compatibility, folding burden, post-translational requirements, and local/provider capabilities.".to_string(),
+        });
+        missing_questions.push(PlanningCloningMissingQuestion {
+            question_id: "protein_folding_requirements".to_string(),
+            prompt: "Does the protein require disulfides, glycosylation, cofactors, secretion, membrane insertion, low temperature, chaperones, or solubility tags?".to_string(),
+            reason: "GENtle should not rank a high-expression route as suitable when the product may be insoluble, inactive, or misprocessed.".to_string(),
+        });
+        missing_questions.push(PlanningCloningMissingQuestion {
+            question_id: "toxicity_and_induction_tolerance".to_string(),
+            prompt: "Is toxicity expected, and should expression be constitutive, inducible, tightly repressed before induction, or provider-optimized?".to_string(),
+            reason: "The strongest expression cassette can reduce final yield when the product slows growth, aggregates, or harms the host.".to_string(),
+        });
+        missing_questions.push(PlanningCloningMissingQuestion {
+            question_id: "scale_and_purification_endpoint".to_string(),
+            prompt: "What scale, tag, purity, buffer, and delivery endpoint define success for this protein-production request?".to_string(),
+            reason: "Construct planning should stay aligned with the downstream purification or service handoff rather than maximizing expression in isolation.".to_string(),
+        });
+    }
     if seq_id
         .as_deref()
         .map(str::trim)
@@ -12914,6 +13009,14 @@ fn execute_planning_consult_cloning(
             rationale: "Read the routine mechanism, inputs, and disambiguation questions for the top candidate.".to_string(),
         });
     }
+    if protein_expression_max_yield {
+        suggested_next_actions.push(PlanningCloningSuggestedNextAction {
+            action_id: "inspect_protein_expression_service_handoff".to_string(),
+            label: "Inspect protein-expression service handoff example".to_string(),
+            shell_line: "services project-preflight @docs/examples/external_services/geneart_protein_expression_request.json".to_string(),
+            rationale: "Compare local construct planning against the existing provider-neutral protein-expression request contract before choosing an execution route.".to_string(),
+        });
+    }
 
     let suggested_sync_payload = if objective.helper_profile_id.is_none() {
         vector_candidates.first().map(|top_vector| {
@@ -12939,6 +13042,7 @@ fn execute_planning_consult_cloning(
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(str::to_string),
+        biological_intent,
         objective_summary: json!({
             "objective_schema": PLANNING_OBJECTIVE_SCHEMA,
             "objective": objective,

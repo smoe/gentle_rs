@@ -2293,6 +2293,7 @@ impl Default for PlanningObjective {
     fn default() -> Self {
         Self {
             schema: PLANNING_OBJECTIVE_SCHEMA.to_string(),
+            biological_intent: None,
             weight_time: 1.0,
             weight_cost: 1.0,
             weight_local_fit: 1.0,
@@ -14016,6 +14017,8 @@ impl GentleEngine {
 
     fn normalize_planning_objective(mut objective: PlanningObjective) -> PlanningObjective {
         objective.schema = PLANNING_OBJECTIVE_SCHEMA.to_string();
+        objective.biological_intent =
+            Self::normalize_optional_planning_intent_text(objective.biological_intent.take());
         if !objective.weight_time.is_finite() || objective.weight_time < 0.0 {
             objective.weight_time = 0.0;
         }
@@ -15392,6 +15395,13 @@ impl GentleEngine {
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty())
             .map(|value| Self::normalize_id_token(&value))
+    }
+
+    fn normalize_optional_planning_intent_text(value: Option<String>) -> Option<String> {
+        value
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .map(|value| Self::normalize_routine_family_token(&value))
     }
 
     fn normalize_tag_like_text(values: &mut Vec<String>) {

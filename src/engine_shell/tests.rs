@@ -8381,6 +8381,57 @@ fn execute_planning_consult_cloning_honors_preferred_family_bonus() {
 }
 
 #[test]
+fn execute_planning_consult_cloning_recognizes_maximal_protein_intent() {
+    let mut engine = GentleEngine::default();
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PlanningConsultCloning {
+            seq_id: None,
+            objective_json: Some(
+                r#"{
+                  "schema":"gentle.planning_objective.v1",
+                  "biological_intent":"Give me the maximal amount of protein"
+                }"#
+                .to_string(),
+            ),
+            profile_scope: PlanningProfileScope::Effective,
+            output_format: "text".to_string(),
+        },
+    )
+    .expect("planning consult cloning with protein-expression intent");
+    assert!(!out.state_changed);
+    let report: crate::engine::PlanningCloningConsultation =
+        serde_json::from_value(out.output).expect("consultation report");
+    assert_eq!(report.biological_intent, "protein_expression_max_yield");
+    for question_id in [
+        "protein_yield_metric",
+        "expression_chassis",
+        "protein_folding_requirements",
+        "toxicity_and_induction_tolerance",
+        "scale_and_purification_endpoint",
+    ] {
+        assert!(
+            report
+                .missing_questions
+                .iter()
+                .any(|question| question.question_id == question_id),
+            "missing protein-expression question {question_id}"
+        );
+    }
+    assert!(report.suggested_next_actions.iter().any(|action| {
+        action.action_id == "inspect_protein_expression_service_handoff"
+            && action.shell_line.contains("geneart_protein_expression_request")
+    }));
+    assert!(
+        report
+            .text_report
+            .as_deref()
+            .unwrap_or_default()
+            .contains("Biological intent: protein_expression_max_yield")
+    );
+}
+
+#[test]
 fn execute_planning_consult_cloning_seq_id_is_traceability_only() {
     let mut engine = GentleEngine::default();
     let out = execute_shell_command(

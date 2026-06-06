@@ -2627,6 +2627,9 @@ Sequencing-trace evidence notes:
   - runs offline from the local catalog: hard constraints eliminate candidates
     first, then deterministic soft scores rank the remaining reporter records
   - rejected candidates remain in the report with machine-readable reasons
+  - includes `biological_intent` so agents can distinguish promoter-reporter,
+    luciferase, fusion, live, and endpoint reporter selection without parsing
+    prose
 - `ExportReporterCorpus { catalog_path?, path, format=json|jsonl }`
   - emits `gentle.reporter_corpus_export.v1`
   - writes the annotated, provenance-bearing reporter corpus for local
@@ -2636,6 +2639,9 @@ Sequencing-trace evidence notes:
   - emits `gentle.reporter_construct_handoff.v1`
   - consumes a saved `gentle.promoter_reporter_candidates.v1` JSON report
     rather than re-running promoter-fragment selection
+  - includes `biological_intent =
+    allele_paired_promoter_luciferase_reporter_handoff` for the V1 synthetic
+    biology bridge
   - V1 supports the exact macro template
     `allele_paired_promoter_luciferase_reporter` and defaults reporter
     recommendation to luciferase-class candidates
@@ -3430,6 +3436,10 @@ Adapter-equivalence guarantee for UI-intent tools:
   - consumes the effective planning profile, current or supplied planning
     objective, host-profile catalog, helper/vector catalog, and the existing
     routine-planning estimate logic
+  - `PlanningObjective.biological_intent` is optional; V1 recognizes
+    `protein_expression_max_yield` and phrase-like inputs such as "give me the
+    maximal amount of protein" as a read-only high-yield protein-expression
+    planning intent
   - ranks one best strategy candidate for each of the 11 catalogued routine
     families (`restriction`, `gibson`, `sequence`, `pcr`, `crispr`,
     `golden_gate`, `gateway`, `topo`, `ta_gc`, `infusion`,
@@ -3437,6 +3447,11 @@ Adapter-equivalence guarantee for UI-intent tools:
   - emits ranked `strategy_candidates[]`, `vector_candidates[]`,
     `missing_questions[]`, `local_constraints[]`, and
     `suggested_next_actions[]`
+  - for `protein_expression_max_yield`, the report keeps the same cloning
+    strategy/vector ranking path but adds explicit missing questions for total
+    versus soluble/active/purified/secreted yield, expression chassis,
+    folding/cofactor requirements, toxicity/induction tolerance, and
+    scale/purification endpoint
   - v1 deliberately ranks helper/vector candidates only from structured catalog
     fields and leaves marker, promoter/expression, and MCS/site constraints as
     explicit `missing_questions[]`
