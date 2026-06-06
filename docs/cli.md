@@ -2173,8 +2173,14 @@ Shared shell command:
     - `variant reporter-fragments SEQ_ID [--variant ID] [--gene-label LABEL] [--transcript-id ID] [--retain-downstream-from-tss-bp N] [--retain-upstream-beyond-variant-bp N] [--max-candidates N] [--path FILE.json]`
     - `reporters list [--catalog PATH] [--filter TEXT] [--limit N] [--output FILE.json]`
     - `reporters recommend [--catalog PATH] [--assay NAME] [--chassis HOST] [--live true|false] [--color COLOR] [--class CLASS] [--excitation-nm NM] [--emission-nm NM] [--fusion MODE] [--max-length-bp N] [--forbid-motif IUPAC] [--substrate-allowed true|false] [--limit N] [--output FILE.json]`
+      - recommendation JSON includes `biological_intent` so agent-facing
+        synthetic-biology flows can route promoter, luciferase, fusion, live,
+        and endpoint reporter requests without guessing from prose
     - `reporters export-corpus OUTPUT.json|OUTPUT.jsonl [--catalog PATH] [--format json|jsonl]`
     - `reporters plan-handoff CANDIDATE_SET.json [--candidate-id ID] [--catalog PATH] [--backbone-seq-id ID] [--backbone-path PATH] [--reference-fragment-seq-id ID] [--alternate-fragment-seq-id ID] [--output-prefix PREFIX] [--output FILE.json]`
+      - handoff JSON includes `biological_intent =
+        allele_paired_promoter_luciferase_reporter_handoff` for the V1
+        promoter-luciferase bridge
     - `variant materialize-allele SEQ_ID --allele reference|alternate [--variant ID] [--output-id ID]`
     - `primers design REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
     - `primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
@@ -4267,6 +4273,13 @@ Planning meta-layer commands (`gentle_cli planning ...` or `gentle_cli shell 'pl
   - Returns a read-only cloning strategy/vector consultation from the effective
     profile, current or supplied objective, host/helper catalogs, and existing
     routine estimate logic.
+  - `PlanningObjective.biological_intent` may be set to
+    `protein_expression_max_yield`; phrase-like values such as "give me the
+    maximal amount of protein" are normalized to the same intent.
+  - For `protein_expression_max_yield`, the consultation adds explicit
+    missing questions for total/soluble/active/purified/secreted yield,
+    expression chassis, folding/cofactor requirements, toxicity/induction, and
+    scale/purification endpoint before any construct route is accepted.
   - `strategy_candidates[]` are one best routine per the 11 catalogued routine
     families; reporter handoffs are not treated as peer strategy families.
   - `vector_candidates[]` use structured helper/vector catalog fields only;

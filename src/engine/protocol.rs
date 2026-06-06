@@ -6155,6 +6155,7 @@ pub struct PlanningProfile {
 /// Optimization weights and hard guardrails used by planning estimates.
 pub struct PlanningObjective {
     pub schema: String,
+    pub biological_intent: Option<String>,
     pub weight_time: f64,
     pub weight_cost: f64,
     pub weight_local_fit: f64,
@@ -6187,6 +6188,7 @@ pub struct PlanningCloningConsultation {
     pub schema: String,
     pub profile_scope: String,
     pub seq_id: Option<String>,
+    pub biological_intent: String,
     pub objective_summary: serde_json::Value,
     pub local_profile_summary: serde_json::Value,
     pub available_helper_vectors: Vec<PlanningCloningHelperVectorSummary>,

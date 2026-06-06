@@ -1074,6 +1074,7 @@ Current shared GENtle routes behind this capability:
 - `routines list|explain|compare ... --seq-id ...`
 - `planning profile|objective|suggestions ...`
 - `planning consult cloning --format json`
+- `planning consult cloning --objective '{"schema":"gentle.planning_objective.v1","biological_intent":"protein_expression_max_yield"}' --format json`
 - `macros template-import assets/cloning_patterns_catalog`
 - `macros template-run allele_paired_promoter_luciferase_reporter ... --validate-only`
 
@@ -1111,9 +1112,11 @@ Reporter/synthetic-biology bridge pipeline:
    helper is a `gentle_cli reporters ...` convenience route.
 4. Quote the handoff plan's typed fields:
    - `status`
+   - `biological_intent`
    - `port_bindings[]`
    - `backbone`
    - `selected_reporter`
+   - `reporter_recommendation.biological_intent`
    - `reporter_recommendation`
    - `commands[]`
    - `warnings[]`
@@ -1197,12 +1200,19 @@ task:
      local setup path to choose, prefer `planning consult cloning --format json`
      and quote its `strategy_candidates`, `vector_candidates`, and
      `missing_questions` rather than improvising biological planning prose
+   - if the user asks for the maximal amount/yield of protein, call
+     `planning consult cloning` with
+     `biological_intent=protein_expression_max_yield` and quote
+     `biological_intent`, `missing_questions`, `local_constraints`, and
+     `suggested_next_actions`; do not equate maximum yield with the strongest
+     promoter until the product metric, host, folding, toxicity, and
+     purification endpoint are explicit
    - if the user asks for reporter selection, reporter catalog inspection,
      promoter-reporter handoff, or local-AI reporter-corpus preparation, prefer
      the reporter routes (`reporters list`, `reporters recommend`,
      `reporters export-corpus`, or `PlanReporterConstructHandoff`) and quote
-     their structured report fields rather than inventing a synthetic-biology
-     design narrative
+     their structured report fields, including `biological_intent` when
+     present, rather than inventing a synthetic-biology design narrative
 3. **Resolve execution route**: choose `--gentle-cli`, then `GENTLE_CLI_CMD`
    (recommended for the included local-checkout launcher or Docker /
    Apptainer/Singularity-backed execution), then `gentle_cli` on `PATH`, then

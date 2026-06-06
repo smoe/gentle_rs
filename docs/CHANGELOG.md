@@ -12,6 +12,12 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-06-06
+
+- Added `protein_expression_max_yield` as a planning consultation
+  `biological_intent`, with explicit high-yield protein-expression questions
+  before any construct/vector route is accepted.
+
 ## 2026-06-05
 
 - Switched push/PR CI to one commit-sampled platform per run, with manual
@@ -20,6 +26,9 @@ Maintenance rule:
   selected, and no multi-GB `target` cache restores.
 - Limited the container-image workflow to release tags and manual dispatch so
   ordinary pushes and PRs no longer build Docker CLI/GUI images.
+- Added explicit `biological_intent` fields to reporter recommendation and
+  reporter construct handoff reports, and staged generated synthetic-biology
+  chef background assets for a future synthetic-biology window.
 
 ## 2026-06-04
 

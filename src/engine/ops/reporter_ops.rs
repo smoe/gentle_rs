@@ -32,6 +32,7 @@ impl GentleEngine {
         limit: Option<usize>,
     ) -> Result<ReporterRecommendationResult, EngineError> {
         let normalized_constraints = Self::normalize_reporter_constraints(constraints)?;
+        let biological_intent = Self::reporter_biological_intent(&normalized_constraints);
         let catalog_report = self
             .annotated_reporter_catalog(catalog_path, &normalized_constraints.forbidden_motifs)?;
         let mut accepted = Vec::new();
@@ -86,6 +87,7 @@ impl GentleEngine {
         Ok(ReporterRecommendationResult {
             schema: REPORTER_RECOMMENDATION_SCHEMA.to_string(),
             generated_at_unix_ms: Self::now_unix_ms(),
+            biological_intent,
             catalog_path: Self::effective_reporter_catalog_label(catalog_path),
             constraints: normalized_constraints,
             considered_candidate_count: accepted_candidate_count + rejected.len(),
@@ -175,7 +177,8 @@ impl GentleEngine {
                 cause_chain: vec![],
             })?;
 
-        let mut constraints = reporter_constraints.unwrap_or_default();
+        let mut constraints =
+            Self::normalize_reporter_constraints(reporter_constraints.unwrap_or_default())?;
         let luciferase_route_requested = if constraints.allowed_reporter_classes.is_empty() {
             constraints
                 .allowed_reporter_classes
@@ -190,6 +193,8 @@ impl GentleEngine {
         if constraints.intended_assay.is_none() {
             constraints.intended_assay = Some("promoter_activity".to_string());
         }
+        let biological_intent = "allele_paired_promoter_luciferase_reporter_handoff".to_string();
+        let reporter_biological_intent = Self::reporter_biological_intent(&constraints);
 
         let reporter_recommendation = if luciferase_route_requested {
             self.recommend_reporters(catalog_path, constraints.clone(), Some(1))?
@@ -197,6 +202,7 @@ impl GentleEngine {
             ReporterRecommendationResult {
                 schema: REPORTER_RECOMMENDATION_SCHEMA.to_string(),
                 generated_at_unix_ms: Self::now_unix_ms(),
+                biological_intent: reporter_biological_intent,
                 catalog_path: Self::effective_reporter_catalog_label(catalog_path),
                 constraints: constraints.clone(),
                 warnings: vec![
@@ -344,6 +350,7 @@ impl GentleEngine {
             schema: REPORTER_CONSTRUCT_HANDOFF_SCHEMA.to_string(),
             generated_at_unix_ms: Self::now_unix_ms(),
             status,
+            biological_intent,
             provenance: ReporterConstructHandoffProvenance {
                 candidate_set_path: candidate_set_path.to_string(),
                 candidate_set_schema: candidate_set.schema.clone(),
@@ -632,6 +639,36 @@ impl GentleEngine {
         }
         constraints.forbidden_motifs = motifs;
         Ok(constraints)
+    }
+
+    fn reporter_biological_intent(constraints: &ReporterConstraints) -> String {
+        let wants_luciferase = constraints
+            .allowed_reporter_classes
+            .iter()
+            .any(|class| class == "luciferase");
+        let assay = constraints.intended_assay.as_deref().unwrap_or_default();
+        let promoter_like = assay.contains("promoter") || assay.contains("regulatory");
+        if promoter_like && wants_luciferase {
+            return "promoter_luciferase_reporter_assay".to_string();
+        }
+        if promoter_like {
+            return "promoter_reporter_assay".to_string();
+        }
+        if let Some(fusion) = constraints.fusion_mode.as_deref()
+            && matches!(fusion, "fusion" | "n_terminal" | "c_terminal")
+        {
+            return "fusion_reporter_assay".to_string();
+        }
+        if constraints.live_assay == Some(true) {
+            return "live_reporter_assay".to_string();
+        }
+        if constraints.live_assay == Some(false) {
+            return "endpoint_reporter_assay".to_string();
+        }
+        if wants_luciferase {
+            return "luciferase_reporter_selection".to_string();
+        }
+        "reporter_selection".to_string()
     }
 
     fn reporter_hard_rejection_reasons(
@@ -1212,6 +1249,7 @@ mod tests {
         let result = engine
             .recommend_reporters(Some(&path), constraints, Some(5))
             .expect("recommend");
+        assert_eq!(result.biological_intent, "promoter_reporter_assay");
         assert_eq!(result.recommended_candidate_count, 1);
         assert_eq!(result.recommendations[0].reporter_id, "red");
         assert_eq!(result.rejected_candidate_count, 1);
@@ -1260,6 +1298,14 @@ mod tests {
             )
             .expect("plan reporter construct handoff");
         assert_eq!(plan.schema, REPORTER_CONSTRUCT_HANDOFF_SCHEMA);
+        assert_eq!(
+            plan.biological_intent,
+            "allele_paired_promoter_luciferase_reporter_handoff"
+        );
+        assert_eq!(
+            plan.reporter_recommendation.biological_intent,
+            "promoter_luciferase_reporter_assay"
+        );
         assert_eq!(
             plan.provenance.macro_template_id,
             REPORTER_CONSTRUCT_MACRO_TEMPLATE_ID
@@ -1396,5 +1442,18 @@ mod tests {
             .find(|binding| binding.port_id == "reporter_backbone_seq_id")
             .expect("backbone binding");
         assert_eq!(backbone.status, PortBindingStatus::Ready);
+    }
+
+    #[test]
+    fn reporter_biological_intent_fields_are_additive_for_old_json() {
+        let recommendation: ReporterRecommendationResult =
+            serde_json::from_str(r#"{"schema":"gentle.reporter_recommendation.v1"}"#)
+                .expect("decode old reporter recommendation");
+        assert_eq!(recommendation.biological_intent, "");
+
+        let handoff: ReporterConstructHandoffPlan =
+            serde_json::from_str(r#"{"schema":"gentle.reporter_construct_handoff.v1"}"#)
+                .expect("decode old reporter handoff");
+        assert_eq!(handoff.biological_intent, "");
     }
 }
