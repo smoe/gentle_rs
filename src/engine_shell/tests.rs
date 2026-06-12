@@ -20820,6 +20820,18 @@ fn execute_ui_intents_catalog_includes_target_details() {
             .map(|items| items.len()),
         Some(1)
     );
+    let pcr_arguments = pcr["arguments"]
+        .as_array()
+        .expect("pcr-design arguments array");
+    assert_eq!(pcr_arguments.len(), 1);
+    assert_eq!(pcr_arguments[0]["name"].as_str(), Some("genome_id"));
+    assert_eq!(pcr_arguments[0]["required"].as_bool(), Some(false));
+    assert!(
+        pcr_arguments[0]["detail"]
+            .as_str()
+            .is_some_and(|detail| !detail.trim().is_empty()),
+        "pcr-design genome_id argument should have a detail"
+    );
     let prepared = target_details
         .iter()
         .find(|row| row["target"].as_str() == Some("prepared-references"))
@@ -20831,6 +20843,31 @@ fn execute_ui_intents_catalog_includes_target_details() {
             .map(|items| items.len()),
         Some(7)
     );
+    let prepared_arguments = prepared["arguments"]
+        .as_array()
+        .expect("prepared-references arguments array");
+    assert_eq!(prepared_arguments.len(), 7);
+    let prepared_argument_names: Vec<&str> = prepared_arguments
+        .iter()
+        .map(|argument| argument["name"].as_str().expect("argument name"))
+        .collect();
+    assert_eq!(
+        prepared_argument_names,
+        vec![
+            "genome_id",
+            "helpers",
+            "catalog_path",
+            "cache_dir",
+            "filter",
+            "species",
+            "latest"
+        ]
+    );
+    assert!(prepared_arguments.iter().all(|argument| {
+        argument["detail"]
+            .as_str()
+            .is_some_and(|detail| !detail.trim().is_empty())
+    }));
 }
 
 #[test]

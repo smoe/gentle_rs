@@ -17828,18 +17828,15 @@ fn parse_ui_command(tokens: &[String]) -> Result<ShellCommand, String> {
             }
             Ok(ShellCommand::UiListIntents)
         }
-        "open" | "focus" => {
+        action_raw if UiIntentAction::parse(action_raw).is_some() => {
             if tokens.len() < 3 {
                 return Err(
                     "ui open|focus requires TARGET [--genome-id GENOME_ID] [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]"
                         .to_string(),
                 );
             }
-            let action = if tokens[1] == "open" {
-                UiIntentAction::Open
-            } else {
-                UiIntentAction::Focus
-            };
+            let action = UiIntentAction::parse(action_raw)
+                .expect("checked ui intent action before parsing target");
             let target = UiIntentTarget::parse(&tokens[2]).ok_or_else(|| {
                 let expected = UiIntentTarget::all()
                     .iter()
@@ -17848,6 +17845,17 @@ fn parse_ui_command(tokens: &[String]) -> Result<ShellCommand, String> {
                     .join(", ");
                 format!("Unknown ui target. Expected one of: {expected}")
             })?;
+            if !target
+                .actions()
+                .iter()
+                .any(|candidate| *candidate == action.as_str())
+            {
+                return Err(format!(
+                    "ui {} does not support target {}",
+                    action.as_str(),
+                    target.as_str()
+                ));
+            }
             let mut genome_id: Option<String> = None;
             let mut helper_mode = false;
             let mut catalog_path: Option<String> = None;
