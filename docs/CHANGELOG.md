@@ -17,7 +17,8 @@ Maintenance rule:
 - Added `arrays probe-regions` as a shared-shell, GUI-shell-visible
   Affymetrix CEL probe/probeset-region preflight, emitting
   `gentle.probe_region_plan.v1` with CEL, metadata, annotation/library,
-  platform, dependency, output, and cache-readiness checks.
+  platform, dependency, backend-candidate, metadata/contrast, output, and
+  cache-readiness checks.
 
 ## 2026-06-06
 

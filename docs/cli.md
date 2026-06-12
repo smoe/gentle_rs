@@ -5137,10 +5137,13 @@ Notes:
   array coordinate builds.
 - `arrays probe-regions` is currently a plan/preflight command for arbitrary
   Affymetrix CEL inspection. It emits `gentle.probe_region_plan.v1` JSON with
-  CEL file size/mtime cache keys, metadata and annotation-source checks,
-  platform/backend hints such as `Clariom_D_Human -> pd.clariom.d.human`, and
-  local `Rscript` / APT / R-package dependency status; it does not run CEL
-  summarization yet and never downloads or installs missing files/packages.
+  CEL file size/mtime cache keys, parsed TSV/CSV/SDRF-style metadata previews,
+  default condition contrasts, explicit output/cache path status, annotation
+  source checks, platform hints such as
+  `Clariom_D_Human -> pd.clariom.d.human`, backend-candidate readiness for
+  `r_oligo` and Affymetrix Power Tools, and local `Rscript` / APT / R-package
+  dependency status; it does not run CEL summarization yet and never downloads
+  or installs missing files/packages.
 - The built-in genome catalog includes both `Human GRCh38 Ensembl 116` and
   `Human GRCh37 Ensembl 87` (`hg19`/`GRCh37.p13` aliases), so direct native
   extraction can use either build when the corresponding cache has been

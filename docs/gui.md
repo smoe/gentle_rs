@@ -2976,9 +2976,9 @@ The `Help` menu now includes:
 - The shared GUI Shell and command reference expose
   `arrays probe-regions` as a read-only preflight for arbitrary CEL files or
   publication-resource datasets. The JSON plan reports CEL, metadata,
-  annotation/library, platform, local dependency, output, and cache-readiness
-  checks; chromosome-ordered intensity tables and plots remain a backend
-  follow-up.
+  condition-contrast, annotation/library, platform, backend-candidate, local
+  dependency, output, and cache-readiness checks; chromosome-ordered intensity
+  tables and plots remain a backend follow-up.
 
 ## microRNA Target Scan
 

@@ -6921,12 +6921,18 @@ fn execute_arrays_inspect_microarray_track_returns_manifest() {
 fn execute_arrays_probe_regions_returns_plan() {
     let temp = tempdir().expect("tempdir");
     let cel = temp.path().join("sample1.CEL");
+    let cel2 = temp.path().join("sample2.CEL");
     let metadata = temp.path().join("samples.tsv");
     let annotation_dir = temp.path().join("annotation");
     let output_dir = temp.path().join("out");
     let cache_dir = temp.path().join("cache");
     fs::write(&cel, "synthetic CEL placeholder\n").expect("write cel");
-    fs::write(&metadata, "file\tcondition\nsample1.CEL\tAdGFP\n").expect("write metadata");
+    fs::write(&cel2, "synthetic CEL placeholder 2\n").expect("write cel2");
+    fs::write(
+        &metadata,
+        "file\tcondition\tbatch\nsample1.CEL\tAdGFP\tblock1\nsample2.CEL\tTAp73\tblock1\n",
+    )
+    .expect("write metadata");
     fs::create_dir(&annotation_dir).expect("annotation dir");
     fs::create_dir(&output_dir).expect("output dir");
     fs::create_dir(&cache_dir).expect("cache dir");
@@ -6935,7 +6941,10 @@ fn execute_arrays_probe_regions_returns_plan() {
     let run = execute_shell_command(
         &mut engine,
         &ShellCommand::ArraysProbeRegions {
-            cel_paths: vec![cel.to_string_lossy().to_string()],
+            cel_paths: vec![
+                cel.to_string_lossy().to_string(),
+                cel2.to_string_lossy().to_string(),
+            ],
             dataset: None,
             metadata_path: Some(metadata.to_string_lossy().to_string()),
             genes: vec!["PATZ1".to_string()],
@@ -6946,7 +6955,7 @@ fn execute_arrays_probe_regions_returns_plan() {
             annotation_library_path: Some(annotation_dir.to_string_lossy().to_string()),
             condition_column: Some("condition".to_string()),
             sample_column: Some("file".to_string()),
-            block_column: None,
+            block_column: Some("batch".to_string()),
             paired_by_replicate_suffix: false,
             plot: true,
             normalization: "none".to_string(),
@@ -6981,6 +6990,34 @@ fn execute_arrays_probe_regions_returns_plan() {
     assert_eq!(run.output["plan"]["preflight_ok"].as_bool(), Some(true));
     assert_eq!(
         run.output["plan"]["cel_files"][0]["exists"].as_bool(),
+        Some(true)
+    );
+    assert_eq!(
+        run.output["plan"]["metadata_plan"]["status"].as_str(),
+        Some("parsed")
+    );
+    assert_eq!(
+        run.output["plan"]["metadata_plan"]["sample_count"].as_u64(),
+        Some(2)
+    );
+    assert_eq!(
+        run.output["plan"]["contrasts"][0]["contrast"].as_str(),
+        Some("TAp73-AdGFP")
+    );
+    assert_eq!(
+        run.output["plan"]["backend_candidates"][2]["backend"].as_str(),
+        Some("plan_only")
+    );
+    assert_eq!(
+        run.output["plan"]["backend_candidates"][2]["status"].as_str(),
+        Some("ready")
+    );
+    assert_eq!(
+        run.output["plan"]["output_dir_status"]["is_dir"].as_bool(),
+        Some(true)
+    );
+    assert_eq!(
+        run.output["plan"]["cache_dir_status"]["is_dir"].as_bool(),
         Some(true)
     );
 }

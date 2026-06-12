@@ -3911,6 +3911,58 @@ pub struct ProbeRegionDependencyCheck {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(default)]
+/// Per-condition sample count parsed from optional CEL sample metadata.
+pub struct ProbeRegionConditionSummary {
+    pub condition: String,
+    pub sample_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Metadata table preview used for sample grouping and default contrast planning.
+pub struct ProbeRegionMetadataPlan {
+    pub status: String,
+    pub delimiter: String,
+    pub columns: Vec<String>,
+    pub row_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sample_column: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub condition_column: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub block_column: Option<String>,
+    pub sample_count: usize,
+    pub conditions: Vec<ProbeRegionConditionSummary>,
+    pub warnings: Vec<String>,
+    pub errors: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Planned default comparison between two metadata-defined conditions.
+pub struct ProbeRegionContrastPlan {
+    pub contrast: String,
+    pub numerator_condition: String,
+    pub denominator_condition: String,
+    pub numerator_sample_count: usize,
+    pub denominator_sample_count: usize,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Candidate execution backend and the local inputs it still needs.
+pub struct ProbeRegionBackendCandidate {
+    pub backend: String,
+    pub status: String,
+    pub required_inputs: Vec<String>,
+    pub missing: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
 /// Stage-one preflight plan for a future Affymetrix probe-region execution.
 pub struct ProbeRegionPlan {
     pub schema: String,
@@ -3922,9 +3974,17 @@ pub struct ProbeRegionPlan {
     pub cel_files: Vec<ProbeRegionFileStatus>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metadata: Option<ProbeRegionFileStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metadata_plan: Option<ProbeRegionMetadataPlan>,
     pub annotation_source: ProbeRegionAnnotationSourcePlan,
     pub platform: ProbeRegionPlatformPlan,
     pub dependencies: Vec<ProbeRegionDependencyCheck>,
+    pub backend_candidates: Vec<ProbeRegionBackendCandidate>,
+    pub contrasts: Vec<ProbeRegionContrastPlan>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_dir_status: Option<ProbeRegionFileStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_dir_status: Option<ProbeRegionFileStatus>,
     pub planned_outputs: Vec<String>,
     pub cache_compatibility_keys: Vec<String>,
     pub warnings: Vec<String>,

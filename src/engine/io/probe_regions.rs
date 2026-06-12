@@ -82,6 +82,19 @@ impl GentleEngine {
                 errors.push(format!("Metadata path '{}' is not a file", metadata.path));
             }
         }
+        let metadata_plan = Self::probe_region_metadata_plan(&request, metadata.as_ref());
+        if let Some(plan) = &metadata_plan {
+            errors.extend(
+                plan.errors
+                    .iter()
+                    .map(|err| format!("Metadata preflight: {err}")),
+            );
+            warnings.extend(
+                plan.warnings
+                    .iter()
+                    .map(|warning| format!("Metadata preflight: {warning}")),
+            );
+        }
 
         let platform = Self::probe_region_platform_plan(request.platform.as_deref());
         if platform.requested.is_none() {
@@ -110,10 +123,15 @@ impl GentleEngine {
                 &["--version"],
             ),
         ];
+        let rscript_available = dependencies
+            .iter()
+            .any(|row| row.name == "Rscript" && row.status == "present");
+        dependencies.push(Self::probe_region_r_package_dependency(
+            "oligo",
+            normalization != "none",
+            rscript_available,
+        ));
         if let Some(package) = platform.bioconductor_package.as_deref() {
-            let rscript_available = dependencies
-                .iter()
-                .any(|row| row.name == "Rscript" && row.status == "present");
             dependencies.push(Self::probe_region_r_package_dependency(
                 package,
                 request.annotation_library_path.is_none(),
@@ -183,6 +201,14 @@ impl GentleEngine {
                 ));
             }
         }
+        let backend_candidates = Self::probe_region_backend_candidates(
+            &request,
+            &platform,
+            &annotation_source,
+            &dependencies,
+            normalization.as_str(),
+        );
+        let contrasts = Self::probe_region_contrast_plan(metadata_plan.as_ref());
 
         let planned_outputs = vec![
             "region_intensity_chrom_order.csv".to_string(),
@@ -226,9 +252,14 @@ impl GentleEngine {
             selectors,
             cel_files,
             metadata,
+            metadata_plan,
             annotation_source,
             platform,
             dependencies,
+            backend_candidates,
+            contrasts,
+            output_dir_status: output_status,
+            cache_dir_status: cache_status,
             planned_outputs,
             cache_compatibility_keys,
             warnings,
@@ -439,6 +470,371 @@ impl GentleEngine {
             "sqlite" | "db" => "sqlite_annotation",
             _ => "annotation_file",
         }
+    }
+
+    fn probe_region_metadata_plan(
+        request: &ProbeRegionRequest,
+        metadata: Option<&ProbeRegionFileStatus>,
+    ) -> Option<ProbeRegionMetadataPlan> {
+        let metadata = metadata?;
+        let delimiter_byte = Self::probe_region_metadata_delimiter(&metadata.path);
+        let delimiter = if delimiter_byte == b',' {
+            "comma"
+        } else {
+            "tab"
+        }
+        .to_string();
+        if !metadata.exists || !metadata.is_file {
+            return Some(ProbeRegionMetadataPlan {
+                status: "unavailable".to_string(),
+                delimiter,
+                errors: vec![format!(
+                    "Metadata path '{}' is not a readable file",
+                    metadata.path
+                )],
+                ..Default::default()
+            });
+        }
+
+        let mut reader = match csv::ReaderBuilder::new()
+            .delimiter(delimiter_byte)
+            .flexible(true)
+            .trim(csv::Trim::All)
+            .from_path(&metadata.path)
+        {
+            Ok(reader) => reader,
+            Err(e) => {
+                return Some(ProbeRegionMetadataPlan {
+                    status: "parse_error".to_string(),
+                    delimiter,
+                    errors: vec![format!(
+                        "Could not open metadata table '{}': {e}",
+                        metadata.path
+                    )],
+                    ..Default::default()
+                });
+            }
+        };
+
+        let headers = match reader.headers() {
+            Ok(headers) => headers.clone(),
+            Err(e) => {
+                return Some(ProbeRegionMetadataPlan {
+                    status: "parse_error".to_string(),
+                    delimiter,
+                    errors: vec![format!(
+                        "Could not read metadata header '{}': {e}",
+                        metadata.path
+                    )],
+                    ..Default::default()
+                });
+            }
+        };
+        let columns: Vec<String> = headers.iter().map(str::to_string).collect();
+        let sample_idx = Self::probe_region_metadata_column_index(
+            &columns,
+            request.sample_column.as_deref(),
+            &[
+                "file",
+                "cel",
+                "cel_file",
+                "cel file",
+                "array data file",
+                "sample",
+                "sample_name",
+                "source name",
+            ],
+        );
+        let condition_idx = Self::probe_region_metadata_column_index(
+            &columns,
+            request.condition_column.as_deref(),
+            &[
+                "condition",
+                "group",
+                "treatment",
+                "sample group",
+                "factor value condition",
+                "factor value treatment",
+                "characteristics condition",
+            ],
+        );
+        let block_idx = Self::probe_region_metadata_column_index(
+            &columns,
+            request.block_column.as_deref(),
+            &["block", "batch", "replicate", "biological replicate"],
+        );
+
+        let mut warnings = Vec::new();
+        let mut errors = Vec::new();
+        if request.sample_column.is_some() && sample_idx.is_none() {
+            errors.push(format!(
+                "Requested sample column '{}' was not found",
+                request.sample_column.as_deref().unwrap_or_default()
+            ));
+        } else if sample_idx.is_none() {
+            warnings.push(
+                "No sample/CEL column was inferred; sample-to-CEL validation was skipped"
+                    .to_string(),
+            );
+        }
+        if request.condition_column.is_some() && condition_idx.is_none() {
+            errors.push(format!(
+                "Requested condition column '{}' was not found",
+                request.condition_column.as_deref().unwrap_or_default()
+            ));
+        } else if condition_idx.is_none() {
+            warnings.push(
+                "No condition column was inferred; group summaries and default contrasts will be unavailable"
+                    .to_string(),
+            );
+        }
+        if request.block_column.is_some() && block_idx.is_none() {
+            errors.push(format!(
+                "Requested block column '{}' was not found",
+                request.block_column.as_deref().unwrap_or_default()
+            ));
+        }
+
+        let mut row_count = 0usize;
+        let mut sample_count = 0usize;
+        let mut condition_counts: BTreeMap<String, usize> = BTreeMap::new();
+        for record in reader.records() {
+            let record = match record {
+                Ok(record) => record,
+                Err(e) => {
+                    errors.push(format!(
+                        "Could not parse metadata row {}: {e}",
+                        row_count + 2
+                    ));
+                    continue;
+                }
+            };
+            row_count += 1;
+            if let Some(idx) = sample_idx
+                && record
+                    .get(idx)
+                    .map(str::trim)
+                    .is_some_and(|v| !v.is_empty())
+            {
+                sample_count += 1;
+            }
+            if let Some(idx) = condition_idx
+                && let Some(condition) = record.get(idx).map(str::trim).filter(|v| !v.is_empty())
+            {
+                *condition_counts.entry(condition.to_string()).or_insert(0) += 1;
+            }
+        }
+        if sample_idx.is_some() && sample_count == 0 && row_count > 0 {
+            warnings
+                .push("Sample column was present but no non-empty samples were found".to_string());
+        }
+        if condition_idx.is_some() && condition_counts.is_empty() && row_count > 0 {
+            warnings.push(
+                "Condition column was present but no non-empty conditions were found".to_string(),
+            );
+        }
+
+        Some(ProbeRegionMetadataPlan {
+            status: if errors.is_empty() {
+                "parsed".to_string()
+            } else {
+                "parse_error".to_string()
+            },
+            delimiter,
+            columns,
+            row_count,
+            sample_column: sample_idx.map(|idx| headers.get(idx).unwrap_or_default().to_string()),
+            condition_column: condition_idx
+                .map(|idx| headers.get(idx).unwrap_or_default().to_string()),
+            block_column: block_idx.map(|idx| headers.get(idx).unwrap_or_default().to_string()),
+            sample_count,
+            conditions: condition_counts
+                .into_iter()
+                .map(|(condition, sample_count)| ProbeRegionConditionSummary {
+                    condition,
+                    sample_count,
+                })
+                .collect(),
+            warnings,
+            errors,
+        })
+    }
+
+    fn probe_region_metadata_delimiter(path: &str) -> u8 {
+        match Path::new(path)
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "csv" => b',',
+            _ => b'\t',
+        }
+    }
+
+    fn probe_region_metadata_column_index(
+        columns: &[String],
+        requested: Option<&str>,
+        aliases: &[&str],
+    ) -> Option<usize> {
+        if let Some(requested) = requested {
+            let requested_key = Self::probe_region_header_key(requested);
+            return columns
+                .iter()
+                .position(|column| Self::probe_region_header_key(column) == requested_key);
+        }
+        let alias_keys: BTreeSet<String> = aliases
+            .iter()
+            .map(|alias| Self::probe_region_header_key(alias))
+            .collect();
+        columns
+            .iter()
+            .position(|column| alias_keys.contains(&Self::probe_region_header_key(column)))
+    }
+
+    fn probe_region_header_key(value: &str) -> String {
+        value
+            .chars()
+            .filter(|ch| ch.is_ascii_alphanumeric())
+            .flat_map(char::to_lowercase)
+            .collect()
+    }
+
+    fn probe_region_contrast_plan(
+        metadata_plan: Option<&ProbeRegionMetadataPlan>,
+    ) -> Vec<ProbeRegionContrastPlan> {
+        let Some(metadata_plan) = metadata_plan else {
+            return Vec::new();
+        };
+        if metadata_plan.conditions.len() < 2 {
+            return Vec::new();
+        }
+        let baseline = &metadata_plan.conditions[0];
+        metadata_plan
+            .conditions
+            .iter()
+            .skip(1)
+            .map(|condition| ProbeRegionContrastPlan {
+                contrast: format!("{}-{}", condition.condition, baseline.condition),
+                numerator_condition: condition.condition.clone(),
+                denominator_condition: baseline.condition.clone(),
+                numerator_sample_count: condition.sample_count,
+                denominator_sample_count: baseline.sample_count,
+                status: if condition.sample_count > 0 && baseline.sample_count > 0 {
+                    "planned".to_string()
+                } else {
+                    "insufficient_samples".to_string()
+                },
+            })
+            .collect()
+    }
+
+    fn probe_region_backend_candidates(
+        request: &ProbeRegionRequest,
+        platform: &ProbeRegionPlatformPlan,
+        annotation_source: &ProbeRegionAnnotationSourcePlan,
+        dependencies: &[ProbeRegionDependencyCheck],
+        normalization: &str,
+    ) -> Vec<ProbeRegionBackendCandidate> {
+        let rscript_present = Self::probe_region_dependency_present(dependencies, "Rscript");
+        let oligo_present = Self::probe_region_dependency_present(dependencies, "oligo");
+        let apt_present =
+            Self::probe_region_dependency_present(dependencies, "apt-probeset-summarize");
+        let platform_package_present = platform
+            .bioconductor_package
+            .as_deref()
+            .is_some_and(|package| Self::probe_region_dependency_present(dependencies, package));
+        let annotation_path_usable = annotation_source
+            .path
+            .as_ref()
+            .is_some_and(|path| path.exists);
+
+        let mut r_missing = Vec::new();
+        if !rscript_present {
+            r_missing.push("Rscript command".to_string());
+        }
+        if !oligo_present && normalization != "none" {
+            r_missing.push("R package oligo".to_string());
+        }
+        if platform.bioconductor_package.is_none() {
+            r_missing.push("known Bioconductor platform package mapping".to_string());
+        } else if !platform_package_present {
+            r_missing.push(
+                platform
+                    .bioconductor_package
+                    .clone()
+                    .unwrap_or_else(|| "Bioconductor platform package".to_string()),
+            );
+        }
+
+        let mut apt_missing = Vec::new();
+        if !apt_present {
+            apt_missing.push("apt-probeset-summarize command".to_string());
+        }
+        if !annotation_path_usable {
+            apt_missing.push("user-supplied APT/NetAffx annotation-library path".to_string());
+        }
+        if request.cel_paths.is_empty() {
+            apt_missing.push("explicit CEL file paths".to_string());
+        }
+
+        vec![
+            ProbeRegionBackendCandidate {
+                backend: "r_oligo".to_string(),
+                status: if r_missing.is_empty() {
+                    "ready".to_string()
+                } else {
+                    "missing_inputs".to_string()
+                },
+                required_inputs: vec![
+                    "Rscript command".to_string(),
+                    "R package oligo".to_string(),
+                    "Bioconductor platform package".to_string(),
+                ],
+                missing: r_missing,
+                detail: Some(
+                    "Preferred first execution backend for Clariom/whole-transcript arrays"
+                        .to_string(),
+                ),
+            },
+            ProbeRegionBackendCandidate {
+                backend: "affymetrix_power_tools".to_string(),
+                status: if apt_missing.is_empty() {
+                    "ready".to_string()
+                } else {
+                    "missing_inputs".to_string()
+                },
+                required_inputs: vec![
+                    "apt-probeset-summarize command".to_string(),
+                    "APT/NetAffx annotation-library path".to_string(),
+                    "explicit CEL file paths".to_string(),
+                ],
+                missing: apt_missing,
+                detail: Some(
+                    "Useful when PGF/CLF/MPS or compatible vendor libraries are supplied"
+                        .to_string(),
+                ),
+            },
+            ProbeRegionBackendCandidate {
+                backend: "plan_only".to_string(),
+                status: "ready".to_string(),
+                required_inputs: vec![],
+                missing: vec![],
+                detail: Some(
+                    "Current implemented mode: preflight without CEL summarization".to_string(),
+                ),
+            },
+        ]
+    }
+
+    fn probe_region_dependency_present(
+        dependencies: &[ProbeRegionDependencyCheck],
+        name: &str,
+    ) -> bool {
+        dependencies
+            .iter()
+            .any(|row| row.name == name && row.status == "present")
     }
 
     fn probe_region_command_dependency(
