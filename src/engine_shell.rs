@@ -60,7 +60,7 @@ use crate::{
         PlanningCloningVectorCandidate, PlanningEstimate, PlanningObjective, PlanningProfile,
         PlanningProfileScope, PlanningSuggestionStatus, PrimerDesignBackend,
         PrimerDesignPairConstraint, PrimerDesignReport, PrimerDesignSideConstraint,
-        PrimerSpecificityPolicy, ProjectState, PromoterArtifactManifestEntry,
+        PrimerSpecificityPolicy, ProbeRegionRequest, ProjectState, PromoterArtifactManifestEntry,
         PromoterExpressionEvidenceInput, PromoterTfbsGeneQuery, PromoterWindowCollapseMode,
         ProteinExternalOpinionSource, ProteinFeatureFilter, ProteinToDnaHandoffRankingGoal,
         QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting, QpcrTranscriptTargetingMode,
@@ -1529,6 +1529,26 @@ pub enum ShellCommand {
         max_adj_p: Option<f64>,
         max_features: Option<usize>,
         clear_existing: bool,
+    },
+    ArraysProbeRegions {
+        cel_paths: Vec<String>,
+        dataset: Option<String>,
+        metadata_path: Option<String>,
+        genes: Vec<String>,
+        loci: Vec<String>,
+        transcript_cluster_ids: Vec<String>,
+        probeset_ids: Vec<String>,
+        platform: Option<String>,
+        annotation_library_path: Option<String>,
+        condition_column: Option<String>,
+        sample_column: Option<String>,
+        block_column: Option<String>,
+        paired_by_replicate_suffix: bool,
+        plot: bool,
+        normalization: String,
+        output_dir: Option<String>,
+        cache_dir: Option<String>,
+        dry_run: bool,
     },
     TracksTrackedList,
     TracksTrackedAdd {
@@ -8073,6 +8093,45 @@ impl ShellCommand {
                     .map(|value| value.to_string())
                     .unwrap_or_else(|| "-".to_string()),
                 clear_existing
+            ),
+            Self::ArraysProbeRegions {
+                cel_paths,
+                dataset,
+                genes,
+                loci,
+                transcript_cluster_ids,
+                probeset_ids,
+                platform,
+                normalization,
+                dry_run,
+                ..
+            } => format!(
+                "plan Affymetrix probe-region inspection (cel_files={}, dataset='{}', genes={}, loci={}, transcript_clusters={}, probesets={}, platform='{}', normalization={}, dry_run={})",
+                cel_paths.len(),
+                dataset.as_deref().unwrap_or("-"),
+                if genes.is_empty() {
+                    "-".to_string()
+                } else {
+                    genes.join(",")
+                },
+                if loci.is_empty() {
+                    "-".to_string()
+                } else {
+                    loci.join(",")
+                },
+                if transcript_cluster_ids.is_empty() {
+                    "-".to_string()
+                } else {
+                    transcript_cluster_ids.join(",")
+                },
+                if probeset_ids.is_empty() {
+                    "-".to_string()
+                } else {
+                    probeset_ids.join(",")
+                },
+                platform.as_deref().unwrap_or("-"),
+                normalization,
+                dry_run
             ),
             Self::TracksTrackedList => "list tracked genome signal files".to_string(),
             Self::TracksTrackedAdd { subscription } => format!(
@@ -19427,6 +19486,216 @@ fn parse_slash_alias(tokens: &[String]) -> Result<ShellCommand, String> {
     }
 }
 
+fn parse_arrays_probe_regions_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    let mut cel_paths = Vec::new();
+    let mut dataset: Option<String> = None;
+    let mut metadata_path: Option<String> = None;
+    let mut genes = Vec::new();
+    let mut loci = Vec::new();
+    let mut transcript_cluster_ids = Vec::new();
+    let mut probeset_ids = Vec::new();
+    let mut platform: Option<String> = None;
+    let mut annotation_library_path: Option<String> = None;
+    let mut condition_column: Option<String> = None;
+    let mut sample_column: Option<String> = None;
+    let mut block_column: Option<String> = None;
+    let mut paired_by_replicate_suffix = false;
+    let mut plot = false;
+    let mut normalization = "rma".to_string();
+    let mut output_dir: Option<String> = None;
+    let mut cache_dir: Option<String> = None;
+    let mut dry_run = false;
+
+    let mut idx = 2usize;
+    while idx < tokens.len() {
+        match tokens[idx].as_str() {
+            "--cel" => {
+                let value = parse_option_path(tokens, &mut idx, "--cel", "arrays probe-regions")?;
+                if value.trim().is_empty() {
+                    return Err("--cel must not be empty".to_string());
+                }
+                cel_paths.push(value);
+            }
+            "--dataset" => {
+                let value =
+                    parse_option_path(tokens, &mut idx, "--dataset", "arrays probe-regions")?;
+                if value.trim().is_empty() {
+                    return Err("--dataset must not be empty".to_string());
+                }
+                dataset = Some(value);
+            }
+            "--metadata" | "--sdrf" => {
+                let option = tokens[idx].clone();
+                let value = parse_option_path(tokens, &mut idx, &option, "arrays probe-regions")?;
+                if value.trim().is_empty() {
+                    return Err(format!("{option} must not be empty"));
+                }
+                metadata_path = Some(value);
+            }
+            "--gene" => {
+                let value = parse_option_path(tokens, &mut idx, "--gene", "arrays probe-regions")?;
+                if value.trim().is_empty() {
+                    return Err("--gene must not be empty".to_string());
+                }
+                genes.push(value);
+            }
+            "--genes" => {
+                let value = parse_option_path(tokens, &mut idx, "--genes", "arrays probe-regions")?;
+                genes.extend(split_csv_tokens_with_empty_error(&value)?);
+            }
+            "--locus" => {
+                let value = parse_option_path(tokens, &mut idx, "--locus", "arrays probe-regions")?;
+                if value.trim().is_empty() {
+                    return Err("--locus must not be empty".to_string());
+                }
+                loci.push(value);
+            }
+            "--loci" => {
+                let value = parse_option_path(tokens, &mut idx, "--loci", "arrays probe-regions")?;
+                loci.extend(split_csv_tokens_with_empty_error(&value)?);
+            }
+            "--transcript-cluster-id" => {
+                let value = parse_option_path(
+                    tokens,
+                    &mut idx,
+                    "--transcript-cluster-id",
+                    "arrays probe-regions",
+                )?;
+                if value.trim().is_empty() {
+                    return Err("--transcript-cluster-id must not be empty".to_string());
+                }
+                transcript_cluster_ids.push(value);
+            }
+            "--transcript-cluster-ids" => {
+                let value = parse_option_path(
+                    tokens,
+                    &mut idx,
+                    "--transcript-cluster-ids",
+                    "arrays probe-regions",
+                )?;
+                transcript_cluster_ids.extend(split_csv_tokens_with_empty_error(&value)?);
+            }
+            "--probeset-id" => {
+                let value =
+                    parse_option_path(tokens, &mut idx, "--probeset-id", "arrays probe-regions")?;
+                if value.trim().is_empty() {
+                    return Err("--probeset-id must not be empty".to_string());
+                }
+                probeset_ids.push(value);
+            }
+            "--probeset-ids" => {
+                let value =
+                    parse_option_path(tokens, &mut idx, "--probeset-ids", "arrays probe-regions")?;
+                probeset_ids.extend(split_csv_tokens_with_empty_error(&value)?);
+            }
+            "--platform" | "--chip-type" => {
+                let option = tokens[idx].clone();
+                let value = parse_option_path(tokens, &mut idx, &option, "arrays probe-regions")?;
+                if value.trim().is_empty() {
+                    return Err(format!("{option} must not be empty"));
+                }
+                platform = Some(value);
+            }
+            "--annotation-library" | "--annotation-library-path" | "--library" => {
+                let option = tokens[idx].clone();
+                let value = parse_option_path(tokens, &mut idx, &option, "arrays probe-regions")?;
+                if value.trim().is_empty() {
+                    return Err(format!("{option} must not be empty"));
+                }
+                annotation_library_path = Some(value);
+            }
+            "--condition-column" => {
+                let value = parse_option_path(
+                    tokens,
+                    &mut idx,
+                    "--condition-column",
+                    "arrays probe-regions",
+                )?;
+                if value.trim().is_empty() {
+                    return Err("--condition-column must not be empty".to_string());
+                }
+                condition_column = Some(value);
+            }
+            "--sample-column" => {
+                let value =
+                    parse_option_path(tokens, &mut idx, "--sample-column", "arrays probe-regions")?;
+                if value.trim().is_empty() {
+                    return Err("--sample-column must not be empty".to_string());
+                }
+                sample_column = Some(value);
+            }
+            "--block-column" | "--batch-column" => {
+                let option = tokens[idx].clone();
+                let value = parse_option_path(tokens, &mut idx, &option, "arrays probe-regions")?;
+                if value.trim().is_empty() {
+                    return Err(format!("{option} must not be empty"));
+                }
+                block_column = Some(value);
+            }
+            "--paired-by-replicate-suffix" => {
+                paired_by_replicate_suffix = true;
+                idx += 1;
+            }
+            "--plot" => {
+                plot = true;
+                idx += 1;
+            }
+            "--normalization" => {
+                let value =
+                    parse_option_path(tokens, &mut idx, "--normalization", "arrays probe-regions")?;
+                if value.trim().is_empty() {
+                    return Err("--normalization must not be empty".to_string());
+                }
+                normalization = value;
+            }
+            "--output" | "--output-dir" => {
+                let option = tokens[idx].clone();
+                let value = parse_option_path(tokens, &mut idx, &option, "arrays probe-regions")?;
+                if value.trim().is_empty() {
+                    return Err(format!("{option} must not be empty"));
+                }
+                output_dir = Some(value);
+            }
+            "--cache-dir" => {
+                let value =
+                    parse_option_path(tokens, &mut idx, "--cache-dir", "arrays probe-regions")?;
+                if value.trim().is_empty() {
+                    return Err("--cache-dir must not be empty".to_string());
+                }
+                cache_dir = Some(value);
+            }
+            "--dry-run" | "--plan-only" => {
+                dry_run = true;
+                idx += 1;
+            }
+            other => {
+                return Err(format!("Unknown option '{other}' for arrays probe-regions"));
+            }
+        }
+    }
+
+    Ok(ShellCommand::ArraysProbeRegions {
+        cel_paths,
+        dataset,
+        metadata_path,
+        genes,
+        loci,
+        transcript_cluster_ids,
+        probeset_ids,
+        platform,
+        annotation_library_path,
+        condition_column,
+        sample_column,
+        block_column,
+        paired_by_replicate_suffix,
+        plot,
+        normalization,
+        output_dir,
+        cache_dir,
+        dry_run,
+    })
+}
+
 /// Parse tokenized shell input into one canonical `ShellCommand`.
 ///
 /// Start here when debugging shell grammar or adapter parity: GUI Shell and
@@ -22702,7 +22971,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "arrays" => {
             if tokens.len() < 2 {
                 return Err(
-                    "arrays requires a subcommand: inspect-microarray-track or project-microarray-track"
+                    "arrays requires a subcommand: inspect-microarray-track, project-microarray-track, or probe-regions"
                         .to_string(),
                 );
             }
@@ -22829,8 +23098,9 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         clear_existing,
                     })
                 }
+                "probe-regions" | "probe-region-plan" => parse_arrays_probe_regions_command(tokens),
                 other => Err(format!(
-                    "Unknown arrays subcommand '{other}' (expected inspect-microarray-track or project-microarray-track)"
+                    "Unknown arrays subcommand '{other}' (expected inspect-microarray-track, project-microarray-track, or probe-regions)"
                 )),
             }
         }
@@ -23506,6 +23776,7 @@ fn is_reference_or_track_command(command: &ShellCommand) -> bool {
             | ShellCommand::TracksImportVcf { .. }
             | ShellCommand::ArraysInspectMicroarrayTrack { .. }
             | ShellCommand::ArraysProjectMicroarrayTrack { .. }
+            | ShellCommand::ArraysProbeRegions { .. }
             | ShellCommand::TracksTrackedList
             | ShellCommand::TracksTrackedAdd { .. }
             | ShellCommand::TracksTrackedRemove { .. }
@@ -28084,6 +28355,51 @@ fn execute_reference_and_track_command(
             Ok(ShellRunResult {
                 state_changed,
                 output: json!({ "result": op_result }),
+            })
+        }
+        ShellCommand::ArraysProbeRegions {
+            cel_paths,
+            dataset,
+            metadata_path,
+            genes,
+            loci,
+            transcript_cluster_ids,
+            probeset_ids,
+            platform,
+            annotation_library_path,
+            condition_column,
+            sample_column,
+            block_column,
+            paired_by_replicate_suffix,
+            plot,
+            normalization,
+            output_dir,
+            cache_dir,
+            dry_run,
+        } => {
+            let plan = engine.plan_probe_regions(ProbeRegionRequest {
+                cel_paths: cel_paths.clone(),
+                dataset: dataset.clone(),
+                metadata_path: metadata_path.clone(),
+                genes: genes.clone(),
+                loci: loci.clone(),
+                transcript_cluster_ids: transcript_cluster_ids.clone(),
+                probeset_ids: probeset_ids.clone(),
+                platform: platform.clone(),
+                annotation_library_path: annotation_library_path.clone(),
+                condition_column: condition_column.clone(),
+                sample_column: sample_column.clone(),
+                block_column: block_column.clone(),
+                paired_by_replicate_suffix: *paired_by_replicate_suffix,
+                plot: *plot,
+                normalization: normalization.clone(),
+                output_dir: output_dir.clone(),
+                cache_dir: cache_dir.clone(),
+                dry_run: *dry_run,
+            });
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({ "plan": plan }),
             })
         }
         ShellCommand::TracksTrackedList => {
@@ -35697,6 +36013,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::TracksImportVcf { .. }
         | ShellCommand::ArraysInspectMicroarrayTrack { .. }
         | ShellCommand::ArraysProjectMicroarrayTrack { .. }
+        | ShellCommand::ArraysProbeRegions { .. }
         | ShellCommand::TracksTrackedList
         | ShellCommand::TracksTrackedAdd { .. }
         | ShellCommand::TracksTrackedRemove { .. }

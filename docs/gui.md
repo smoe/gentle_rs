@@ -2454,6 +2454,9 @@ Common examples:
   array-track manifest without changing state.
 - `arrays project-microarray-track SEQ_ID MANIFEST --contrasts CSV --level probeset`
   — project verified genome-anchored array intervals into the active sequence.
+- `arrays probe-regions --cel sample.CEL --gene TP73 --platform Clariom_D_Human --dry-run`
+  — preflight arbitrary Affymetrix CEL probe/probeset-region inspection without
+  running summarization.
 - `candidates generate SET_NAME SEQ_ID --length N ...` — create candidate set.
 - `guides oligos-export GUIDE_SET_ID OUTPUT_PATH ...` — export guide oligo set.
 - `planning profile show --scope effective` — inspect merged planning profile
@@ -2970,6 +2973,12 @@ The `Help` menu now includes:
   and displayed genomic intervals for assembly cross-checks.
 - Array feature context menus include copying the array value table and
   focusing matching probesets across all contrast lanes.
+- The shared GUI Shell and command reference expose
+  `arrays probe-regions` as a read-only preflight for arbitrary CEL files or
+  publication-resource datasets. The JSON plan reports CEL, metadata,
+  annotation/library, platform, local dependency, output, and cache-readiness
+  checks; chromosome-ordered intensity tables and plots remain a backend
+  follow-up.
 
 ## microRNA Target Scan
 

@@ -3368,10 +3368,9 @@ fn parse_racks_isometric_svg_command() {
 
 #[test]
 fn parse_racks_isometric_svg_accepts_cell_culture_template() {
-    let cmd = parse_shell_line(
-        "racks isometric-svg rack-1 rack.iso.svg --template cell_culture_plate",
-    )
-    .expect("parse command");
+    let cmd =
+        parse_shell_line("racks isometric-svg rack-1 rack.iso.svg --template cell_culture_plate")
+            .expect("parse command");
     match cmd {
         ShellCommand::RacksIsometricSvg { template, .. } => {
             assert_eq!(template, RackPhysicalTemplateKind::CellCulturePlate);
@@ -6841,6 +6840,62 @@ fn parse_arrays_microarray_track_commands() {
 }
 
 #[test]
+fn parse_arrays_probe_regions_command() {
+    let cmd = parse_shell_line(
+        "arrays probe-regions --cel sample1.CEL --cel sample2.CEL --metadata samples.tsv --gene PATZ1 --genes TP73,FUS --locus chr1:100-200 --transcript-cluster-id TC010 --probeset-ids PSR1,PSR2 --platform Clariom_D_Human --annotation-library libdir --condition-column condition --sample-column file --block-column batch --paired-by-replicate-suffix --plot --normalization rma --output analysis/probe_regions --cache-dir analysis/cache --dry-run",
+    )
+    .expect("parse probe-regions");
+    match cmd {
+        ShellCommand::ArraysProbeRegions {
+            cel_paths,
+            dataset,
+            metadata_path,
+            genes,
+            loci,
+            transcript_cluster_ids,
+            probeset_ids,
+            platform,
+            annotation_library_path,
+            condition_column,
+            sample_column,
+            block_column,
+            paired_by_replicate_suffix,
+            plot,
+            normalization,
+            output_dir,
+            cache_dir,
+            dry_run,
+        } => {
+            assert_eq!(
+                cel_paths,
+                vec!["sample1.CEL".to_string(), "sample2.CEL".to_string()]
+            );
+            assert_eq!(dataset, None);
+            assert_eq!(metadata_path.as_deref(), Some("samples.tsv"));
+            assert_eq!(
+                genes,
+                vec!["PATZ1".to_string(), "TP73".to_string(), "FUS".to_string()]
+            );
+            assert_eq!(loci, vec!["chr1:100-200".to_string()]);
+            assert_eq!(transcript_cluster_ids, vec!["TC010".to_string()]);
+            assert_eq!(probeset_ids, vec!["PSR1".to_string(), "PSR2".to_string()]);
+            assert_eq!(platform.as_deref(), Some("Clariom_D_Human"));
+            assert_eq!(annotation_library_path.as_deref(), Some("libdir"));
+            assert_eq!(condition_column.as_deref(), Some("condition"));
+            assert_eq!(sample_column.as_deref(), Some("file"));
+            assert_eq!(block_column.as_deref(), Some("batch"));
+            assert!(paired_by_replicate_suffix);
+            assert!(plot);
+            assert_eq!(normalization, "rma");
+            assert_eq!(output_dir.as_deref(), Some("analysis/probe_regions"));
+            assert_eq!(cache_dir.as_deref(), Some("analysis/cache"));
+            assert!(dry_run);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn execute_arrays_inspect_microarray_track_returns_manifest() {
     let mut engine = GentleEngine::default();
     let run = execute_shell_command(
@@ -6859,6 +6914,74 @@ fn execute_arrays_inspect_microarray_track_returns_manifest() {
     assert_eq!(
         run.output["manifest"]["contrast_order"][0].as_str(),
         Some("AdTAp73alpha-AdGFP")
+    );
+}
+
+#[test]
+fn execute_arrays_probe_regions_returns_plan() {
+    let temp = tempdir().expect("tempdir");
+    let cel = temp.path().join("sample1.CEL");
+    let metadata = temp.path().join("samples.tsv");
+    let annotation_dir = temp.path().join("annotation");
+    let output_dir = temp.path().join("out");
+    let cache_dir = temp.path().join("cache");
+    fs::write(&cel, "synthetic CEL placeholder\n").expect("write cel");
+    fs::write(&metadata, "file\tcondition\nsample1.CEL\tAdGFP\n").expect("write metadata");
+    fs::create_dir(&annotation_dir).expect("annotation dir");
+    fs::create_dir(&output_dir).expect("output dir");
+    fs::create_dir(&cache_dir).expect("cache dir");
+
+    let mut engine = GentleEngine::default();
+    let run = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ArraysProbeRegions {
+            cel_paths: vec![cel.to_string_lossy().to_string()],
+            dataset: None,
+            metadata_path: Some(metadata.to_string_lossy().to_string()),
+            genes: vec!["PATZ1".to_string()],
+            loci: vec![],
+            transcript_cluster_ids: vec![],
+            probeset_ids: vec![],
+            platform: Some("Clariom_D_Human".to_string()),
+            annotation_library_path: Some(annotation_dir.to_string_lossy().to_string()),
+            condition_column: Some("condition".to_string()),
+            sample_column: Some("file".to_string()),
+            block_column: None,
+            paired_by_replicate_suffix: false,
+            plot: true,
+            normalization: "none".to_string(),
+            output_dir: Some(output_dir.to_string_lossy().to_string()),
+            cache_dir: Some(cache_dir.to_string_lossy().to_string()),
+            dry_run: true,
+        },
+    )
+    .expect("plan probe regions");
+
+    assert!(!run.state_changed);
+    assert_eq!(
+        run.output["plan"]["schema"].as_str(),
+        Some("gentle.probe_region_plan.v1")
+    );
+    assert_eq!(
+        run.output["plan"]["input_mode"].as_str(),
+        Some("explicit_cel")
+    );
+    assert_eq!(
+        run.output["plan"]["selectors"]["genes"][0].as_str(),
+        Some("PATZ1")
+    );
+    assert_eq!(
+        run.output["plan"]["platform"]["bioconductor_package"].as_str(),
+        Some("pd.clariom.d.human")
+    );
+    assert_eq!(
+        run.output["plan"]["annotation_source"]["usable"].as_bool(),
+        Some(true)
+    );
+    assert_eq!(run.output["plan"]["preflight_ok"].as_bool(), Some(true));
+    assert_eq!(
+        run.output["plan"]["cel_files"][0]["exists"].as_bool(),
+        Some(true)
     );
 }
 
@@ -8420,7 +8543,9 @@ fn execute_planning_consult_cloning_recognizes_maximal_protein_intent() {
     }
     assert!(report.suggested_next_actions.iter().any(|action| {
         action.action_id == "inspect_protein_expression_service_handoff"
-            && action.shell_line.contains("geneart_protein_expression_request")
+            && action
+                .shell_line
+                .contains("geneart_protein_expression_request")
     }));
     assert!(
         report
