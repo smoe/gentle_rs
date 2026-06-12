@@ -2289,9 +2289,17 @@ Microarray track projection notes:
 - projection report schema: `gentle.microarray_projection_report.v1`
 - explicit interval-map projection report schema:
   `gentle.genome_coordinate_projection_report.v1`
+- probe/probeset-region preflight schema: `gentle.probe_region_plan.v1`
 - the manifest records dataset id, platform, normalization method, contrast
   order, coordinate system, supported `genome_id` aliases, and per-contrast TSV
   paths.
+- `arrays probe-regions` accepts explicit CEL paths or a publication-resource
+  dataset id plus gene, locus, transcript-cluster, or probeset selectors. The
+  stage-one report is read-only: it records filesystem status, CEL
+  size/mtime-derived cache keys, metadata and annotation/library readiness,
+  normalized platform hints, planned outputs, and local dependency checks
+  without running R, APT, package installation, downloads, or CEL
+  summarization.
 - manifests may also include `coordinate_projections[]` entries with
   `source_genome_id`, `target_genome_id`, `method`, and `path`. These paths
   point at tab-delimited interval maps for build-to-build projection, currently

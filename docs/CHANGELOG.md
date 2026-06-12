@@ -12,6 +12,13 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-06-12
+
+- Added `arrays probe-regions` as a shared-shell, GUI-shell-visible
+  Affymetrix CEL probe/probeset-region preflight, emitting
+  `gentle.probe_region_plan.v1` with CEL, metadata, annotation/library,
+  platform, dependency, output, and cache-readiness checks.
+
 ## 2026-06-06
 
 - Added `protein_expression_max_yield` as a planning consultation

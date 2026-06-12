@@ -3811,6 +3811,129 @@ pub struct MicroarrayTrackContrast {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(default)]
+/// Request contract for chromosome-ordered Affymetrix probe/probeset planning.
+pub struct ProbeRegionRequest {
+    pub cel_paths: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dataset: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metadata_path: Option<String>,
+    pub genes: Vec<String>,
+    pub loci: Vec<String>,
+    pub transcript_cluster_ids: Vec<String>,
+    pub probeset_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub platform: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub annotation_library_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub condition_column: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sample_column: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub block_column: Option<String>,
+    pub paired_by_replicate_suffix: bool,
+    pub plot: bool,
+    pub normalization: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_dir: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_dir: Option<String>,
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Selector summary separated from the original request for GUI-friendly display.
+pub struct ProbeRegionSelectorPlan {
+    pub genes: Vec<String>,
+    pub loci: Vec<String>,
+    pub transcript_cluster_ids: Vec<String>,
+    pub probeset_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Filesystem status for one CEL, metadata, annotation, output, or cache path.
+pub struct ProbeRegionFileStatus {
+    pub path: String,
+    pub role: String,
+    pub exists: bool,
+    pub is_file: bool,
+    pub is_dir: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub modified_unix_seconds: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Resolved annotation/library source for a planned Affymetrix probe-region run.
+pub struct ProbeRegionAnnotationSourcePlan {
+    pub path: Option<ProbeRegionFileStatus>,
+    pub source_kind: String,
+    pub usable: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub required_r_package: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Platform/backend plan derived from user input and known Affymetrix mappings.
+pub struct ProbeRegionPlatformPlan {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requested: Option<String>,
+    pub normalized: String,
+    pub backend_hint: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bioconductor_package: Option<String>,
+    pub confidence: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Dependency check row for non-downloading preflight of local analysis tools.
+pub struct ProbeRegionDependencyCheck {
+    pub name: String,
+    pub kind: String,
+    pub required: bool,
+    pub status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Stage-one preflight plan for a future Affymetrix probe-region execution.
+pub struct ProbeRegionPlan {
+    pub schema: String,
+    pub stage: String,
+    pub implementation_status: String,
+    pub input_mode: String,
+    pub request: ProbeRegionRequest,
+    pub selectors: ProbeRegionSelectorPlan,
+    pub cel_files: Vec<ProbeRegionFileStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<ProbeRegionFileStatus>,
+    pub annotation_source: ProbeRegionAnnotationSourcePlan,
+    pub platform: ProbeRegionPlatformPlan,
+    pub dependencies: Vec<ProbeRegionDependencyCheck>,
+    pub planned_outputs: Vec<String>,
+    pub cache_compatibility_keys: Vec<String>,
+    pub warnings: Vec<String>,
+    pub errors: Vec<String>,
+    pub preflight_ok: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
 /// Describes an explicit coordinate-projection map between two genome builds.
 pub struct GenomeCoordinateProjectionSpec {
     pub source_genome_id: String,

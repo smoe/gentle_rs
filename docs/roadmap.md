@@ -160,6 +160,10 @@ broad crate surgery that is not tied to the selected release story.
   build, liftover, multi-hit, and ambiguity provenance, then use those mapped
   probe/exon/junction constraints to identify compatible splice isoforms and
   rule out incompatible ones without hiding uncertain evidence.
+- Next array-evidence implementation pass: wire the `arrays probe-regions`
+  preflight plan into a backend that can run R/oligo or Affymetrix Power Tools
+  from explicit user-supplied CEL and annotation/library inputs, then emit the
+  chromosome-ordered intensity CSVs/plots promised by the plan schema.
 
 ## Phase D: Visualization And Workflow UX
 
