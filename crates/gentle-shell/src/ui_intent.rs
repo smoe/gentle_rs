@@ -140,6 +140,8 @@ pub struct UiIntentTargetCatalogRow {
     pub keywords: &'static str,
     pub menu_path: &'static str,
     pub actions: &'static [&'static str],
+    // deprecated-once-consumers-migrate: use `arguments` for structured
+    // name/required/detail metadata while keeping this compatibility surface.
     pub optional_arguments: &'static [&'static str],
     pub arguments: &'static [UiIntentArgument],
 }
@@ -490,6 +492,22 @@ mod tests {
 
     #[test]
     fn ui_intent_targets_round_trip_from_all() {
+        let explicit_targets = [
+            UiIntentTarget::OpenSequence,
+            UiIntentTarget::PreparedReferences,
+            UiIntentTarget::PrepareReferenceGenome,
+            UiIntentTarget::RetrieveGenomeSequence,
+            UiIntentTarget::BlastGenomeSequence,
+            UiIntentTarget::ImportGenomeTrack,
+            UiIntentTarget::PcrDesign,
+            UiIntentTarget::SequencingConfirmation,
+            UiIntentTarget::AgentAssistant,
+            UiIntentTarget::PrepareHelperGenome,
+            UiIntentTarget::RetrieveHelperSequence,
+            UiIntentTarget::BlastHelperSequence,
+        ];
+
+        assert_eq!(UiIntentTarget::all(), explicit_targets);
         assert_eq!(UiIntentTarget::all().len(), UiIntentTarget::COUNT);
         let mut seen = BTreeSet::new();
         for target in UiIntentTarget::all() {

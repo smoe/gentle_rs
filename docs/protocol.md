@@ -1141,6 +1141,14 @@ Behavior notes:
   engine while producing deterministic TSV outputs suitable for later GENtle
   panels. It expects `oligo`, `limma`, and the Clariom D platform design
   package `pd.clariom.d.human`.
+- `scripts/probe_regions_oligo.R` is the generic R/oligo backend helper for
+  `arrays probe-regions`; it consumes explicit CEL paths, optional TSV/CSV/SDRF
+  metadata, selectors, and a platform design package, then writes
+  chromosome-ordered intensity CSVs plus expression/feature TSVs, limma
+  contrast TSVs, provenance JSON, and a normalized matrix manifest. It
+  currently supports `--normalization rma`; the Rust preflight emits an advisory
+  command only for compatible explicit CEL requests, and users still run it
+  explicitly.
 
 ## RNA structure executable resources
 
@@ -2290,16 +2298,28 @@ Microarray track projection notes:
 - explicit interval-map projection report schema:
   `gentle.genome_coordinate_projection_report.v1`
 - probe/probeset-region preflight schema: `gentle.probe_region_plan.v1`
+- probe/probeset-region helper-output inspection schema:
+  `gentle.probe_region_output_inspection.v1`
 - the manifest records dataset id, platform, normalization method, contrast
   order, coordinate system, supported `genome_id` aliases, and per-contrast TSV
   paths.
 - `arrays probe-regions` accepts explicit CEL paths or a publication-resource
   dataset id plus gene, locus, transcript-cluster, or probeset selectors. The
   stage-one report is read-only: it records filesystem status, CEL
-  size/mtime-derived cache keys, metadata and annotation/library readiness,
-  normalized platform hints, planned outputs, and local dependency checks
-  without running R, APT, package installation, downloads, or CEL
-  summarization.
+  size/mtime-derived cache keys, parsed metadata previews, default condition
+  contrasts, annotation/library readiness, explicit output/cache path status,
+  backend-candidate readiness, normalized platform hints, planned outputs, and
+  local dependency checks. The `r_oligo` backend candidate includes the
+  `scripts/probe_regions_oligo.R` helper path and, for explicit RMA/CEL
+  requests, a suggested command, but GENtle still does not run R, APT, package
+  installation, downloads, or CEL summarization implicitly.
+- `arrays inspect-probe-region-output OUTPUT_DIR` consumes a completed explicit
+  helper output directory without mutating project state. It validates
+  `region_intensity_chrom_order.csv`, optional `sample_table.tsv`,
+  `normalized_feature_matrix_manifest.json`, and `provenance.json`, then emits
+  row/feature/transcript-cluster counts, sample/condition/logFC columns,
+  chromosome and gene previews, provenance hints, warnings, and required-column
+  errors.
 - manifests may also include `coordinate_projections[]` entries with
   `source_genome_id`, `target_genome_id`, `method`, and `path`. These paths
   point at tab-delimited interval maps for build-to-build projection, currently
@@ -3243,6 +3263,8 @@ Shell/engine quick-install contracts:
     - `target_details[]` now carries per-target discoverability metadata:
       `title`, `detail`, `keywords`, `menu_path`, supported `actions`, and
       stable `optional_arguments`
+    - `target_details[].arguments[]` carries structured argument metadata:
+      `name`, `required`, and `detail`
     - `target_metadata[]` is retained as a compatibility alias for older
       command-catalog clients that consumed only title/detail/keyword/action
       records
