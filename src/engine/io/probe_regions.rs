@@ -9,6 +9,7 @@ use super::*;
 const PROBE_REGION_STAGE: &str = "plan_only";
 const PROBE_REGION_IMPLEMENTATION_STATUS: &str =
     "stage_1_preflight_only_no_cel_summarization_backend";
+const PROBE_REGION_OLIGO_HELPER: &str = "scripts/probe_regions_oligo.R";
 
 impl GentleEngine {
     /// Build a reusable preflight plan for chromosome-ordered probe inspection.
@@ -128,6 +129,11 @@ impl GentleEngine {
             .any(|row| row.name == "Rscript" && row.status == "present");
         dependencies.push(Self::probe_region_r_package_dependency(
             "oligo",
+            normalization != "none",
+            rscript_available,
+        ));
+        dependencies.push(Self::probe_region_r_package_dependency(
+            "limma",
             normalization != "none",
             rscript_available,
         ));
@@ -739,6 +745,7 @@ impl GentleEngine {
     ) -> Vec<ProbeRegionBackendCandidate> {
         let rscript_present = Self::probe_region_dependency_present(dependencies, "Rscript");
         let oligo_present = Self::probe_region_dependency_present(dependencies, "oligo");
+        let limma_present = Self::probe_region_dependency_present(dependencies, "limma");
         let apt_present =
             Self::probe_region_dependency_present(dependencies, "apt-probeset-summarize");
         let platform_package_present = platform
@@ -749,13 +756,20 @@ impl GentleEngine {
             .path
             .as_ref()
             .is_some_and(|path| path.exists);
+        let r_oligo_normalization_supported = normalization == "rma";
 
         let mut r_missing = Vec::new();
+        if !r_oligo_normalization_supported {
+            r_missing.push(format!("normalization=rma (requested {normalization})"));
+        }
         if !rscript_present {
             r_missing.push("Rscript command".to_string());
         }
         if !oligo_present && normalization != "none" {
             r_missing.push("R package oligo".to_string());
+        }
+        if !limma_present && normalization != "none" {
+            r_missing.push("R package limma".to_string());
         }
         if platform.bioconductor_package.is_none() {
             r_missing.push("known Bioconductor platform package mapping".to_string());
@@ -790,9 +804,17 @@ impl GentleEngine {
                 required_inputs: vec![
                     "Rscript command".to_string(),
                     "R package oligo".to_string(),
+                    "R package limma".to_string(),
                     "Bioconductor platform package".to_string(),
+                    "normalization=rma".to_string(),
                 ],
                 missing: r_missing,
+                helper_script: Some(PROBE_REGION_OLIGO_HELPER.to_string()),
+                suggested_command: Self::probe_region_oligo_suggested_command(
+                    request,
+                    platform,
+                    normalization,
+                ),
                 detail: Some(
                     "Preferred first execution backend for Clariom/whole-transcript arrays"
                         .to_string(),
@@ -811,6 +833,8 @@ impl GentleEngine {
                     "explicit CEL file paths".to_string(),
                 ],
                 missing: apt_missing,
+                helper_script: None,
+                suggested_command: None,
                 detail: Some(
                     "Useful when PGF/CLF/MPS or compatible vendor libraries are supplied"
                         .to_string(),
@@ -821,11 +845,93 @@ impl GentleEngine {
                 status: "ready".to_string(),
                 required_inputs: vec![],
                 missing: vec![],
+                helper_script: None,
+                suggested_command: None,
                 detail: Some(
                     "Current implemented mode: preflight without CEL summarization".to_string(),
                 ),
             },
         ]
+    }
+
+    fn probe_region_oligo_suggested_command(
+        request: &ProbeRegionRequest,
+        platform: &ProbeRegionPlatformPlan,
+        normalization: &str,
+    ) -> Option<String> {
+        if request.cel_paths.is_empty() || normalization != "rma" {
+            return None;
+        }
+        let mut args = vec!["Rscript".to_string(), PROBE_REGION_OLIGO_HELPER.to_string()];
+        for cel in &request.cel_paths {
+            args.push("--cel".to_string());
+            args.push(cel.clone());
+        }
+        if let Some(metadata) = &request.metadata_path {
+            args.push("--metadata".to_string());
+            args.push(metadata.clone());
+        }
+        if let Some(sample_column) = &request.sample_column {
+            args.push("--sample-column".to_string());
+            args.push(sample_column.clone());
+        }
+        if let Some(condition_column) = &request.condition_column {
+            args.push("--condition-column".to_string());
+            args.push(condition_column.clone());
+        }
+        if let Some(block_column) = &request.block_column {
+            args.push("--block-column".to_string());
+            args.push(block_column.clone());
+        }
+        if let Some(package) = &platform.bioconductor_package {
+            args.push("--platform-package".to_string());
+            args.push(package.clone());
+        }
+        args.push("--normalization".to_string());
+        args.push(normalization.to_string());
+        args.push("--output".to_string());
+        args.push(
+            request
+                .output_dir
+                .clone()
+                .unwrap_or_else(|| "analysis/probe_regions".to_string()),
+        );
+        if let Some(cache_dir) = &request.cache_dir {
+            args.push("--cache-dir".to_string());
+            args.push(cache_dir.clone());
+        }
+        for gene in &request.genes {
+            args.push("--gene".to_string());
+            args.push(gene.clone());
+        }
+        for locus in &request.loci {
+            args.push("--locus".to_string());
+            args.push(locus.clone());
+        }
+        for transcript_cluster_id in &request.transcript_cluster_ids {
+            args.push("--transcript-cluster-id".to_string());
+            args.push(transcript_cluster_id.clone());
+        }
+        for probeset_id in &request.probeset_ids {
+            args.push("--probeset-id".to_string());
+            args.push(probeset_id.clone());
+        }
+        Some(
+            args.iter()
+                .map(|arg| Self::probe_region_shell_quote(arg))
+                .collect::<Vec<_>>()
+                .join(" "),
+        )
+    }
+
+    fn probe_region_shell_quote(value: &str) -> String {
+        if value
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.' | '/' | ':' | '='))
+        {
+            return value.to_string();
+        }
+        format!("'{}'", value.replace('\'', "'\"'\"'"))
     }
 
     fn probe_region_dependency_present(

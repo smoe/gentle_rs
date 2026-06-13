@@ -7009,6 +7009,21 @@ fn execute_arrays_probe_regions_returns_plan() {
         Some("plan_only")
     );
     assert_eq!(
+        run.output["plan"]["backend_candidates"][0]["helper_script"].as_str(),
+        Some("scripts/probe_regions_oligo.R")
+    );
+    assert!(
+        run.output["plan"]["backend_candidates"][0]["suggested_command"].is_null(),
+        "the R/oligo helper is RMA-only, so normalization=none must not emit a runnable command"
+    );
+    assert!(
+        run.output["plan"]["backend_candidates"][0]["missing"]
+            .as_array()
+            .is_some_and(|missing| missing
+                .iter()
+                .any(|item| item.as_str() == Some("normalization=rma (requested none)")))
+    );
+    assert_eq!(
         run.output["plan"]["backend_candidates"][2]["status"].as_str(),
         Some("ready")
     );
@@ -7020,6 +7035,52 @@ fn execute_arrays_probe_regions_returns_plan() {
         run.output["plan"]["cache_dir_status"]["is_dir"].as_bool(),
         Some(true)
     );
+}
+
+#[test]
+fn execute_arrays_probe_regions_rma_suggests_oligo_helper_command() {
+    let temp = tempdir().expect("tempdir");
+    let cel = temp.path().join("sample1.CEL");
+    let metadata = temp.path().join("samples.tsv");
+    let annotation_dir = temp.path().join("annotation");
+    let output_dir = temp.path().join("out");
+    fs::write(&cel, "synthetic CEL placeholder\n").expect("write cel");
+    fs::write(&metadata, "file\tcondition\nsample1.CEL\tAdGFP\n").expect("write metadata");
+    fs::create_dir(&annotation_dir).expect("annotation dir");
+
+    let mut engine = GentleEngine::default();
+    let run = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ArraysProbeRegions {
+            cel_paths: vec![cel.to_string_lossy().to_string()],
+            dataset: None,
+            metadata_path: Some(metadata.to_string_lossy().to_string()),
+            genes: vec!["PATZ1".to_string()],
+            loci: vec![],
+            transcript_cluster_ids: vec![],
+            probeset_ids: vec![],
+            platform: Some("Clariom_D_Human".to_string()),
+            annotation_library_path: Some(annotation_dir.to_string_lossy().to_string()),
+            condition_column: Some("condition".to_string()),
+            sample_column: Some("file".to_string()),
+            block_column: None,
+            paired_by_replicate_suffix: false,
+            plot: false,
+            normalization: "rma".to_string(),
+            output_dir: Some(output_dir.to_string_lossy().to_string()),
+            cache_dir: None,
+            dry_run: true,
+        },
+    )
+    .expect("plan probe regions");
+
+    let command = run.output["plan"]["backend_candidates"][0]["suggested_command"]
+        .as_str()
+        .expect("suggested R/oligo command");
+    assert!(command.contains("Rscript scripts/probe_regions_oligo.R"));
+    assert!(command.contains("--normalization rma"));
+    assert!(command.contains("--platform-package pd.clariom.d.human"));
+    assert!(command.contains("--gene PATZ1"));
 }
 
 #[test]

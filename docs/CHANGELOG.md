@@ -19,6 +19,10 @@ Maintenance rule:
   `gentle.probe_region_plan.v1` with CEL, metadata, annotation/library,
   platform, dependency, backend-candidate, metadata/contrast, output, and
   cache-readiness checks.
+- Added `scripts/probe_regions_oligo.R` as a generic explicit R/oligo helper
+  for the `arrays probe-regions` plan, producing chromosome-ordered intensity
+  CSVs, expression/feature TSVs, limma contrast tables, provenance, and an
+  RMA-normalized matrix manifest from user-supplied CEL files.
 
 ## 2026-06-06
 

@@ -2977,8 +2977,10 @@ The `Help` menu now includes:
   `arrays probe-regions` as a read-only preflight for arbitrary CEL files or
   publication-resource datasets. The JSON plan reports CEL, metadata,
   condition-contrast, annotation/library, platform, backend-candidate, local
-  dependency, output, and cache-readiness checks; chromosome-ordered intensity
-  tables and plots remain a backend follow-up.
+  dependency, output, and cache-readiness checks. The `r_oligo` candidate
+  advertises the generic `scripts/probe_regions_oligo.R` helper and includes
+  an advisory command for explicit RMA/CEL requests; first-class GUI execution
+  and plots remain a backend follow-up.
 
 ## microRNA Target Scan
 

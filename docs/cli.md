@@ -3583,6 +3583,18 @@ Tutorial companion:
     transcript-cluster RMA matrices, probeset-level RMA matrices when
     supported by the platform design package, limma contrasts, and first-pass
     probeset heterogeneity tables for splice-variant triage.
+- `Rscript scripts/probe_regions_oligo.R --cel sample1.CEL --cel sample2.CEL --metadata samples.tsv --gene PATZ1 --platform-package pd.clariom.d.human --output analysis/probe_regions`
+  - Generic external R/oligo backend helper for the `arrays probe-regions`
+    preflight contract.
+  - Currently supports `--normalization rma`; other normalization modes remain
+    plan-only until a matching backend is added.
+  - Requires explicit CEL paths and at least one selector unless
+    `--allow-all-features` is used intentionally.
+  - Requires R/Bioconductor packages `oligo`, `limma`, `Biobase`, `DBI`,
+    `RSQLite`, and the platform design package such as `pd.clariom.d.human`.
+  - Writes `region_intensity_chrom_order.csv`, expression/feature TSVs,
+    limma contrast TSVs when metadata defines conditions, a normalized matrix
+    manifest, provenance JSON, and `sessionInfo.txt`.
 - `resources sync-ucsc-rmsk INPUT.rmsk.txt_or_txt.gz [OUTPUT.rmsk.json] [--assembly DB] [--limit N]`
   - Normalizes the UCSC RepeatMasker `rmsk` table into
     `gentle.ucsc_rmsk_resource.v1`.
@@ -5141,9 +5153,10 @@ Notes:
   default condition contrasts, explicit output/cache path status, annotation
   source checks, platform hints such as
   `Clariom_D_Human -> pd.clariom.d.human`, backend-candidate readiness for
-  `r_oligo` and Affymetrix Power Tools, and local `Rscript` / APT / R-package
-  dependency status; it does not run CEL summarization yet and never downloads
-  or installs missing files/packages.
+  `r_oligo` and Affymetrix Power Tools, an advisory
+  `scripts/probe_regions_oligo.R` command for explicit RMA/CEL requests, and
+  local `Rscript` / APT / R-package dependency status; it does not run CEL
+  summarization itself and never downloads or installs missing files/packages.
 - The built-in genome catalog includes both `Human GRCh38 Ensembl 116` and
   `Human GRCh37 Ensembl 87` (`hg19`/`GRCh37.p13` aliases), so direct native
   extraction can use either build when the corresponding cache has been

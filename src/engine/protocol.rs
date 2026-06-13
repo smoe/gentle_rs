@@ -3958,6 +3958,10 @@ pub struct ProbeRegionBackendCandidate {
     pub required_inputs: Vec<String>,
     pub missing: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub helper_script: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub suggested_command: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
 }
 
