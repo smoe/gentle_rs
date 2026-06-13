@@ -492,7 +492,22 @@ mod tests {
 
     #[test]
     fn ui_intent_targets_round_trip_from_all() {
-        let explicit_targets = [
+        assert_eq!(UiIntentTarget::all().len(), UiIntentTarget::COUNT);
+        let mut seen = BTreeSet::new();
+        for target in UiIntentTarget::all() {
+            assert_exhaustive_target_match(*target);
+            assert!(
+                seen.insert(target.as_str()),
+                "duplicate target spelling {}",
+                target.as_str()
+            );
+            assert_eq!(UiIntentTarget::parse(target.as_str()), Some(*target));
+        }
+    }
+
+    #[test]
+    fn ui_intent_targets_match_explicit_variant_list() {
+        let expected = [
             UiIntentTarget::OpenSequence,
             UiIntentTarget::PreparedReferences,
             UiIntentTarget::PrepareReferenceGenome,
@@ -506,19 +521,8 @@ mod tests {
             UiIntentTarget::RetrieveHelperSequence,
             UiIntentTarget::BlastHelperSequence,
         ];
-
-        assert_eq!(UiIntentTarget::all(), explicit_targets);
-        assert_eq!(UiIntentTarget::all().len(), UiIntentTarget::COUNT);
-        let mut seen = BTreeSet::new();
-        for target in UiIntentTarget::all() {
-            assert_exhaustive_target_match(*target);
-            assert!(
-                seen.insert(target.as_str()),
-                "duplicate target spelling {}",
-                target.as_str()
-            );
-            assert_eq!(UiIntentTarget::parse(target.as_str()), Some(*target));
-        }
+        assert_eq!(UiIntentTarget::COUNT, expected.len());
+        assert_eq!(UiIntentTarget::all(), expected.as_slice());
     }
 
     #[test]

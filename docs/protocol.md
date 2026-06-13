@@ -3263,8 +3263,9 @@ Shell/engine quick-install contracts:
     - `target_details[]` now carries per-target discoverability metadata:
       `title`, `detail`, `keywords`, `menu_path`, supported `actions`, and
       stable `optional_arguments`
-    - `target_details[].arguments[]` carries structured argument metadata:
-      `name`, `required`, and `detail`
+    - `target_details[].arguments[]` is additive richer metadata; each entry
+      carries `name`, `required`, and `detail` while `optional_arguments`
+      remains available for legacy consumers
     - `target_metadata[]` is retained as a compatibility alias for older
       command-catalog clients that consumed only title/detail/keyword/action
       records
