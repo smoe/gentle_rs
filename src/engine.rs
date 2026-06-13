@@ -374,6 +374,7 @@ const GENOME_VCF_TRACK_GENERATED_TAG: &str = "genome_vcf_track";
 pub const MICROARRAY_TRACK_MANIFEST_SCHEMA: &str = "gentle.microarray_track_manifest.v1";
 pub const MICROARRAY_PROJECTION_REPORT_SCHEMA: &str = "gentle.microarray_projection_report.v1";
 pub const PROBE_REGION_PLAN_SCHEMA: &str = "gentle.probe_region_plan.v1";
+pub const PROBE_REGION_OUTPUT_INSPECTION_SCHEMA: &str = "gentle.probe_region_output_inspection.v1";
 pub const GENOME_COORDINATE_PROJECTION_REPORT_SCHEMA: &str =
     "gentle.genome_coordinate_projection_report.v1";
 const MICROARRAY_TRACK_GENERATED_TAG: &str = "microarray_track_projection";

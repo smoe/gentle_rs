@@ -12,6 +12,13 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-06-13
+
+- Added `arrays inspect-probe-region-output` to validate completed
+  `probe_regions_oligo.R` output directories and summarize region-table,
+  sample, condition, logFC, chromosome/gene, manifest, and provenance status as
+  `gentle.probe_region_output_inspection.v1`.
+
 ## 2026-06-12
 
 - Added `arrays probe-regions` as a shared-shell, GUI-shell-visible

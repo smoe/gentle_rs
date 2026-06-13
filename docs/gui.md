@@ -2457,6 +2457,8 @@ Common examples:
 - `arrays probe-regions --cel sample.CEL --gene TP73 --platform Clariom_D_Human --dry-run`
   — preflight arbitrary Affymetrix CEL probe/probeset-region inspection without
   running summarization.
+- `arrays inspect-probe-region-output OUTPUT_DIR` — inspect a completed
+  `probe_regions_oligo.R` output directory before plotting or projection.
 - `candidates generate SET_NAME SEQ_ID --length N ...` — create candidate set.
 - `guides oligos-export GUIDE_SET_ID OUTPUT_PATH ...` — export guide oligo set.
 - `planning profile show --scope effective` — inspect merged planning profile
@@ -2981,6 +2983,11 @@ The `Help` menu now includes:
   advertises the generic `scripts/probe_regions_oligo.R` helper and includes
   an advisory command for explicit RMA/CEL requests; first-class GUI execution
   and plots remain a backend follow-up.
+- The GUI shell also accepts `arrays inspect-probe-region-output OUTPUT_DIR` as
+  the read-only parity bridge after the explicit R helper has been run. The
+  returned JSON summarizes helper outputs, sample/condition/logFC columns,
+  chromosome/gene coverage, and missing required columns; native plotting still
+  remains a follow-up.
 
 ## microRNA Target Scan
 

@@ -1530,6 +1530,9 @@ pub enum ShellCommand {
         max_features: Option<usize>,
         clear_existing: bool,
     },
+    ArraysInspectProbeRegionOutput {
+        output_dir: String,
+    },
     ArraysProbeRegions {
         cel_paths: Vec<String>,
         dataset: Option<String>,
@@ -8094,6 +8097,9 @@ impl ShellCommand {
                     .unwrap_or_else(|| "-".to_string()),
                 clear_existing
             ),
+            Self::ArraysInspectProbeRegionOutput { output_dir } => {
+                format!("inspect probe-region helper output '{}'", output_dir)
+            }
             Self::ArraysProbeRegions {
                 cel_paths,
                 dataset,
@@ -22971,7 +22977,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "arrays" => {
             if tokens.len() < 2 {
                 return Err(
-                    "arrays requires a subcommand: inspect-microarray-track, project-microarray-track, or probe-regions"
+                    "arrays requires a subcommand: inspect-microarray-track, project-microarray-track, inspect-probe-region-output, or probe-regions"
                         .to_string(),
                 );
             }
@@ -23098,9 +23104,21 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         clear_existing,
                     })
                 }
+                "inspect-probe-region-output"
+                | "inspect-probe-regions-output"
+                | "inspect-probe-output" => {
+                    if tokens.len() != 3 {
+                        return Err(
+                            "arrays inspect-probe-region-output requires OUTPUT_DIR".to_string()
+                        );
+                    }
+                    Ok(ShellCommand::ArraysInspectProbeRegionOutput {
+                        output_dir: tokens[2].clone(),
+                    })
+                }
                 "probe-regions" | "probe-region-plan" => parse_arrays_probe_regions_command(tokens),
                 other => Err(format!(
-                    "Unknown arrays subcommand '{other}' (expected inspect-microarray-track, project-microarray-track, or probe-regions)"
+                    "Unknown arrays subcommand '{other}' (expected inspect-microarray-track, project-microarray-track, inspect-probe-region-output, or probe-regions)"
                 )),
             }
         }
@@ -23776,6 +23794,7 @@ fn is_reference_or_track_command(command: &ShellCommand) -> bool {
             | ShellCommand::TracksImportVcf { .. }
             | ShellCommand::ArraysInspectMicroarrayTrack { .. }
             | ShellCommand::ArraysProjectMicroarrayTrack { .. }
+            | ShellCommand::ArraysInspectProbeRegionOutput { .. }
             | ShellCommand::ArraysProbeRegions { .. }
             | ShellCommand::TracksTrackedList
             | ShellCommand::TracksTrackedAdd { .. }
@@ -28355,6 +28374,15 @@ fn execute_reference_and_track_command(
             Ok(ShellRunResult {
                 state_changed,
                 output: json!({ "result": op_result }),
+            })
+        }
+        ShellCommand::ArraysInspectProbeRegionOutput { output_dir } => {
+            let inspection = engine
+                .inspect_probe_region_output(output_dir)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({ "inspection": inspection }),
             })
         }
         ShellCommand::ArraysProbeRegions {
@@ -36013,6 +36041,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::TracksImportVcf { .. }
         | ShellCommand::ArraysInspectMicroarrayTrack { .. }
         | ShellCommand::ArraysProjectMicroarrayTrack { .. }
+        | ShellCommand::ArraysInspectProbeRegionOutput { .. }
         | ShellCommand::ArraysProbeRegions { .. }
         | ShellCommand::TracksTrackedList
         | ShellCommand::TracksTrackedAdd { .. }

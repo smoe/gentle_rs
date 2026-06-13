@@ -2072,6 +2072,7 @@ Shared shell command:
     - `tracks tracked apply [--index N] [--only-new-anchors]`
     - `arrays inspect-microarray-track MANIFEST`
     - `arrays project-microarray-track SEQ_ID MANIFEST [--contrasts CSV] [--level probeset] [--min-abs-logfc N] [--max-adj-p N] [--max-features N] [--clear-existing]`
+    - `arrays inspect-probe-region-output OUTPUT_DIR`
     - `arrays probe-regions (--cel PATH ... | --dataset ID) (--gene SYMBOL|--genes CSV|--locus LOCUS|--loci CSV|--transcript-cluster-id ID|--probeset-id ID ...) [--metadata PATH] [--platform NAME] [--annotation-library PATH] [--condition-column NAME] [--sample-column NAME] [--block-column NAME] [--paired-by-replicate-suffix] [--normalization rma|quantile-feature|none] [--plot] [--output DIR] [--cache-dir DIR] [--dry-run]`
     - `macros run [--transactional] [--file PATH | SCRIPT_OR_@FILE]`
     - `macros instance-list`
@@ -3595,6 +3596,13 @@ Tutorial companion:
   - Writes `region_intensity_chrom_order.csv`, expression/feature TSVs,
     limma contrast TSVs when metadata defines conditions, a normalized matrix
     manifest, provenance JSON, and `sessionInfo.txt`.
+- `arrays inspect-probe-region-output analysis/probe_regions`
+  - Read-only GENtle inspection of a completed `probe_regions_oligo.R` output
+    directory.
+  - Emits `gentle.probe_region_output_inspection.v1` JSON summarizing the
+    region table, optional `sample_table.tsv`, normalized matrix manifest,
+    provenance JSON, sample/condition/logFC columns, chromosomes, gene symbols,
+    row counts, feature counts, and required-column problems.
 - `resources sync-ucsc-rmsk INPUT.rmsk.txt_or_txt.gz [OUTPUT.rmsk.json] [--assembly DB] [--limit N]`
   - Normalizes the UCSC RepeatMasker `rmsk` table into
     `gentle.ucsc_rmsk_resource.v1`.
@@ -5157,6 +5165,10 @@ Notes:
   `scripts/probe_regions_oligo.R` command for explicit RMA/CEL requests, and
   local `Rscript` / APT / R-package dependency status; it does not run CEL
   summarization itself and never downloads or installs missing files/packages.
+- `arrays inspect-probe-region-output OUTPUT_DIR` validates the explicit helper
+  outputs after the user has run R themselves. It does not project features or
+  draw plots yet; it prepares a shared GUI/CLI-readable summary for that next
+  step.
 - The built-in genome catalog includes both `Human GRCh38 Ensembl 116` and
   `Human GRCh37 Ensembl 87` (`hg19`/`GRCh37.p13` aliases), so direct native
   extraction can use either build when the corresponding cache has been

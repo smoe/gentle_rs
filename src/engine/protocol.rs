@@ -3998,6 +3998,43 @@ pub struct ProbeRegionPlan {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(default)]
+/// Read-only inspection of a completed `probe_regions_oligo.R` output folder.
+pub struct ProbeRegionOutputInspection {
+    pub schema: String,
+    pub output_dir: String,
+    pub usable: bool,
+    pub region_table: ProbeRegionFileStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sample_table: Option<ProbeRegionFileStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub normalized_matrix_manifest: Option<ProbeRegionFileStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provenance: Option<ProbeRegionFileStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backend: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub platform: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub platform_package: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub normalization: Option<String>,
+    pub row_count: usize,
+    pub column_count: usize,
+    pub feature_count: usize,
+    pub transcript_cluster_count: usize,
+    pub chromosome_count: usize,
+    pub chromosomes: Vec<String>,
+    pub gene_symbols: Vec<String>,
+    pub sample_columns: Vec<String>,
+    pub condition_summary_columns: Vec<String>,
+    pub logfc_columns: Vec<String>,
+    pub required_columns_missing: Vec<String>,
+    pub warnings: Vec<String>,
+    pub errors: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
 /// Describes an explicit coordinate-projection map between two genome builds.
 pub struct GenomeCoordinateProjectionSpec {
     pub source_genome_id: String,

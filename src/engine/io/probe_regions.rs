@@ -10,6 +10,29 @@ const PROBE_REGION_STAGE: &str = "plan_only";
 const PROBE_REGION_IMPLEMENTATION_STATUS: &str =
     "stage_1_preflight_only_no_cel_summarization_backend";
 const PROBE_REGION_OLIGO_HELPER: &str = "scripts/probe_regions_oligo.R";
+const PROBE_REGION_TABLE_FILE: &str = "region_intensity_chrom_order.csv";
+const PROBE_REGION_SAMPLE_TABLE_FILE: &str = "sample_table.tsv";
+const PROBE_REGION_MATRIX_MANIFEST_FILE: &str = "normalized_feature_matrix_manifest.json";
+const PROBE_REGION_PROVENANCE_FILE: &str = "provenance.json";
+const PROBE_REGION_MATRIX_MANIFEST_SCHEMA: &str =
+    "gentle.probe_region_normalized_matrix_manifest.v1";
+const PROBE_REGION_BACKEND_PROVENANCE_SCHEMA: &str = "gentle.probe_region_backend_provenance.v1";
+
+#[derive(Default)]
+struct ProbeRegionTableSummary {
+    row_count: usize,
+    column_count: usize,
+    feature_count: usize,
+    transcript_cluster_count: usize,
+    chromosome_count: usize,
+    chromosomes: Vec<String>,
+    gene_symbols: Vec<String>,
+    sample_columns: Vec<String>,
+    condition_summary_columns: Vec<String>,
+    logfc_columns: Vec<String>,
+    required_columns_missing: Vec<String>,
+    warnings: Vec<String>,
+}
 
 impl GentleEngine {
     /// Build a reusable preflight plan for chromosome-ordered probe inspection.
@@ -274,6 +297,189 @@ impl GentleEngine {
         }
     }
 
+    /// Inspect outputs written by the explicit R/oligo probe-region helper.
+    pub fn inspect_probe_region_output(
+        &self,
+        output_dir: &str,
+    ) -> Result<ProbeRegionOutputInspection, EngineError> {
+        let output_dir = output_dir.trim();
+        if output_dir.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Probe-region output directory must not be empty".to_string(),
+                cause_chain: vec![],
+            });
+        }
+
+        let output_path = Path::new(output_dir);
+        let region_table_path = output_path.join(PROBE_REGION_TABLE_FILE);
+        let sample_table_path = output_path.join(PROBE_REGION_SAMPLE_TABLE_FILE);
+        let manifest_path = output_path.join(PROBE_REGION_MATRIX_MANIFEST_FILE);
+        let provenance_path = output_path.join(PROBE_REGION_PROVENANCE_FILE);
+
+        let region_table =
+            Self::probe_region_file_status(&region_table_path.to_string_lossy(), "region_table");
+        let sample_table =
+            Self::probe_region_optional_file_status(&sample_table_path, "sample_table");
+        let normalized_matrix_manifest =
+            Self::probe_region_optional_file_status(&manifest_path, "normalized_matrix_manifest");
+        let provenance = Self::probe_region_optional_file_status(&provenance_path, "provenance");
+
+        let mut warnings = Vec::new();
+        let mut errors = Vec::new();
+        if !output_path.exists() {
+            errors.push(format!(
+                "Probe-region output directory '{}' does not exist",
+                output_dir
+            ));
+        } else if !output_path.is_dir() {
+            errors.push(format!(
+                "Probe-region output path '{}' is not a directory",
+                output_dir
+            ));
+        }
+        if !region_table.exists {
+            errors.push(format!(
+                "Missing required probe-region table '{}'",
+                region_table.path
+            ));
+        } else if !region_table.is_file {
+            errors.push(format!(
+                "Probe-region table path '{}' is not a file",
+                region_table.path
+            ));
+        }
+        if sample_table.is_none() {
+            warnings.push(format!(
+                "Optional helper output '{}' is missing; sample columns will be inferred from the region table",
+                sample_table_path.to_string_lossy()
+            ));
+        }
+        if normalized_matrix_manifest.is_none() {
+            warnings.push(format!(
+                "Optional helper output '{}' is missing; normalization provenance is incomplete",
+                manifest_path.to_string_lossy()
+            ));
+        }
+        if provenance.is_none() {
+            warnings.push(format!(
+                "Optional helper output '{}' is missing; backend provenance is incomplete",
+                provenance_path.to_string_lossy()
+            ));
+        }
+
+        let sample_columns_from_table = if sample_table
+            .as_ref()
+            .is_some_and(|status| status.exists && status.is_file)
+        {
+            match Self::probe_region_sample_ids_from_sample_table(&sample_table_path) {
+                Ok(columns) => columns,
+                Err(err) => {
+                    warnings.push(format!("Could not parse sample table: {err}"));
+                    Vec::new()
+                }
+            }
+        } else {
+            Vec::new()
+        };
+
+        let mut backend = None;
+        let mut platform = None;
+        let mut platform_package = None;
+        let mut normalization = None;
+        if normalized_matrix_manifest
+            .as_ref()
+            .is_some_and(|status| status.exists && status.is_file)
+        {
+            match Self::probe_region_json_file(&manifest_path) {
+                Ok(value) => {
+                    Self::probe_region_warn_unexpected_json_schema(
+                        &value,
+                        PROBE_REGION_MATRIX_MANIFEST_SCHEMA,
+                        &mut warnings,
+                        "normalized matrix manifest",
+                    );
+                    platform = Self::probe_region_json_string(&value, "platform");
+                    platform_package = Self::probe_region_json_string(&value, "platform_package");
+                    normalization = Self::probe_region_json_string(&value, "normalization");
+                }
+                Err(err) => {
+                    errors.push(format!("Could not parse normalized matrix manifest: {err}"))
+                }
+            }
+        }
+        if provenance
+            .as_ref()
+            .is_some_and(|status| status.exists && status.is_file)
+        {
+            match Self::probe_region_json_file(&provenance_path) {
+                Ok(value) => {
+                    Self::probe_region_warn_unexpected_json_schema(
+                        &value,
+                        PROBE_REGION_BACKEND_PROVENANCE_SCHEMA,
+                        &mut warnings,
+                        "backend provenance",
+                    );
+                    backend = Self::probe_region_json_string(&value, "backend");
+                    if platform_package.is_none() {
+                        platform_package =
+                            Self::probe_region_json_string(&value, "platform_package");
+                    }
+                    if normalization.is_none() {
+                        normalization = Self::probe_region_json_string(&value, "normalization");
+                    }
+                }
+                Err(err) => errors.push(format!("Could not parse backend provenance: {err}")),
+            }
+        }
+
+        let table_summary = if region_table.exists && region_table.is_file {
+            match Self::inspect_probe_region_table(&region_table_path, &sample_columns_from_table) {
+                Ok(summary) => summary,
+                Err(err) => {
+                    errors.push(format!("Could not parse probe-region table: {err}"));
+                    ProbeRegionTableSummary::default()
+                }
+            }
+        } else {
+            ProbeRegionTableSummary::default()
+        };
+        warnings.extend(table_summary.warnings.iter().cloned());
+        errors.extend(
+            table_summary
+                .required_columns_missing
+                .iter()
+                .map(|column| format!("Probe-region table is missing required column '{column}'")),
+        );
+
+        Ok(ProbeRegionOutputInspection {
+            schema: PROBE_REGION_OUTPUT_INSPECTION_SCHEMA.to_string(),
+            output_dir: output_dir.to_string(),
+            usable: errors.is_empty(),
+            region_table,
+            sample_table,
+            normalized_matrix_manifest,
+            provenance,
+            backend,
+            platform,
+            platform_package,
+            normalization,
+            row_count: table_summary.row_count,
+            column_count: table_summary.column_count,
+            feature_count: table_summary.feature_count,
+            transcript_cluster_count: table_summary.transcript_cluster_count,
+            chromosome_count: table_summary.chromosome_count,
+            chromosomes: table_summary.chromosomes,
+            gene_symbols: table_summary.gene_symbols,
+            sample_columns: table_summary.sample_columns,
+            condition_summary_columns: table_summary.condition_summary_columns,
+            logfc_columns: table_summary.logfc_columns,
+            required_columns_missing: table_summary.required_columns_missing,
+            warnings,
+            errors,
+        })
+    }
+
     fn normalize_probe_region_request(mut request: ProbeRegionRequest) -> ProbeRegionRequest {
         request.cel_paths = Self::probe_region_dedupe_nonempty(&request.cel_paths);
         request.dataset = Self::probe_region_trim_option(request.dataset);
@@ -360,6 +566,262 @@ impl GentleEngine {
                 detail: Some(e.to_string()),
             },
         }
+    }
+
+    fn probe_region_optional_file_status(path: &Path, role: &str) -> Option<ProbeRegionFileStatus> {
+        let status = Self::probe_region_file_status(&path.to_string_lossy(), role);
+        status.exists.then_some(status)
+    }
+
+    fn probe_region_json_file(path: &Path) -> Result<serde_json::Value, String> {
+        let path_text = path.to_string_lossy();
+        let file = File::open(path).map_err(|e| format!("could not open '{path_text}': {e}"))?;
+        serde_json::from_reader(BufReader::new(file))
+            .map_err(|e| format!("could not parse '{path_text}' as JSON: {e}"))
+    }
+
+    fn probe_region_json_string(value: &serde_json::Value, key: &str) -> Option<String> {
+        value
+            .get(key)
+            .and_then(|value| value.as_str())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+    }
+
+    fn probe_region_warn_unexpected_json_schema(
+        value: &serde_json::Value,
+        expected_schema: &str,
+        warnings: &mut Vec<String>,
+        label: &str,
+    ) {
+        match Self::probe_region_json_string(value, "schema") {
+            Some(schema) if schema == expected_schema => {}
+            Some(schema) => warnings.push(format!(
+                "{} uses schema '{}' but '{}' was expected",
+                label, schema, expected_schema
+            )),
+            None => warnings.push(format!("{label} does not declare a schema")),
+        }
+    }
+
+    fn probe_region_sample_ids_from_sample_table(path: &Path) -> Result<Vec<String>, String> {
+        let mut reader = csv::ReaderBuilder::new()
+            .delimiter(b'\t')
+            .trim(csv::Trim::All)
+            .from_path(path)
+            .map_err(|e| format!("could not open '{}': {e}", path.to_string_lossy()))?;
+        let headers = reader
+            .headers()
+            .map_err(|e| format!("could not read header: {e}"))?
+            .iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        let sample_idx =
+            Self::probe_region_metadata_column_index(&headers, None, &["sample_id", "sample"])
+                .ok_or_else(|| {
+                    "sample_table.tsv does not include a sample_id column".to_string()
+                })?;
+        let mut sample_ids = Vec::new();
+        let mut seen = BTreeSet::new();
+        for record in reader.records() {
+            let record = record.map_err(|e| format!("could not read sample row: {e}"))?;
+            let sample_id = record.get(sample_idx).unwrap_or("").trim();
+            if !sample_id.is_empty() && seen.insert(sample_id.to_ascii_lowercase()) {
+                sample_ids.push(sample_id.to_string());
+            }
+        }
+        Ok(sample_ids)
+    }
+
+    fn inspect_probe_region_table(
+        path: &Path,
+        sample_ids_from_table: &[String],
+    ) -> Result<ProbeRegionTableSummary, String> {
+        let mut reader = csv::ReaderBuilder::new()
+            .trim(csv::Trim::All)
+            .from_path(path)
+            .map_err(|e| format!("could not open '{}': {e}", path.to_string_lossy()))?;
+        let headers = reader
+            .headers()
+            .map_err(|e| format!("could not read header: {e}"))?
+            .iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        let chromosome_idx =
+            Self::probe_region_metadata_column_index(&headers, None, &["chromosome", "chrom"]);
+        let start_idx =
+            Self::probe_region_metadata_column_index(&headers, None, &["start", "start_1based"]);
+        let stop_idx = Self::probe_region_metadata_column_index(
+            &headers,
+            None,
+            &["stop", "end", "end_1based"],
+        );
+        let feature_idx = Self::probe_region_metadata_column_index(
+            &headers,
+            None,
+            &[
+                "probeset_or_region_id",
+                "feature_id",
+                "probeset_id",
+                "psr_id",
+            ],
+        );
+        let transcript_idx = Self::probe_region_metadata_column_index(
+            &headers,
+            None,
+            &["transcript_cluster_id", "transcript_cluster"],
+        );
+        let gene_idx =
+            Self::probe_region_metadata_column_index(&headers, None, &["gene_symbol", "gene"]);
+
+        let mut required_columns_missing = Vec::new();
+        if chromosome_idx.is_none() {
+            required_columns_missing.push("chromosome".to_string());
+        }
+        if start_idx.is_none() {
+            required_columns_missing.push("start".to_string());
+        }
+        if stop_idx.is_none() {
+            required_columns_missing.push("stop".to_string());
+        }
+        if feature_idx.is_none() {
+            required_columns_missing.push("probeset_or_region_id".to_string());
+        }
+
+        let condition_summary_columns = headers
+            .iter()
+            .filter(|header| header.starts_with("mean_log2_") || header.starts_with("sd_log2_"))
+            .cloned()
+            .collect::<Vec<_>>();
+        let logfc_columns = headers
+            .iter()
+            .filter(|header| header.starts_with("log2FC_"))
+            .cloned()
+            .collect::<Vec<_>>();
+        let sample_columns =
+            Self::probe_region_region_sample_columns(&headers, sample_ids_from_table);
+        let mut warnings = Vec::new();
+        if !sample_ids_from_table.is_empty() {
+            let header_keys = headers
+                .iter()
+                .map(|header| header.to_ascii_lowercase())
+                .collect::<BTreeSet<_>>();
+            let missing_samples = sample_ids_from_table
+                .iter()
+                .filter(|sample_id| !header_keys.contains(&sample_id.to_ascii_lowercase()))
+                .cloned()
+                .collect::<Vec<_>>();
+            if !missing_samples.is_empty() {
+                warnings.push(format!(
+                    "sample_table.tsv sample(s) absent from region table columns: {}",
+                    missing_samples.join(", ")
+                ));
+            }
+        }
+
+        let mut chromosomes = BTreeSet::new();
+        let mut genes = BTreeSet::new();
+        let mut features = BTreeSet::new();
+        let mut transcripts = BTreeSet::new();
+        let mut row_count = 0usize;
+        for record in reader.records() {
+            let record = record.map_err(|e| format!("could not read region row: {e}"))?;
+            row_count += 1;
+            if let Some(idx) = chromosome_idx {
+                let value = record.get(idx).unwrap_or("").trim();
+                if !value.is_empty() {
+                    chromosomes.insert(value.to_string());
+                }
+            }
+            if let Some(idx) = gene_idx {
+                let value = record.get(idx).unwrap_or("").trim();
+                if !value.is_empty() {
+                    genes.insert(value.to_string());
+                }
+            }
+            if let Some(idx) = feature_idx {
+                let value = record.get(idx).unwrap_or("").trim();
+                if !value.is_empty() {
+                    features.insert(value.to_string());
+                }
+            }
+            if let Some(idx) = transcript_idx {
+                let value = record.get(idx).unwrap_or("").trim();
+                if !value.is_empty() {
+                    transcripts.insert(value.to_string());
+                }
+            }
+        }
+
+        Ok(ProbeRegionTableSummary {
+            row_count,
+            column_count: headers.len(),
+            feature_count: features.len(),
+            transcript_cluster_count: transcripts.len(),
+            chromosome_count: chromosomes.len(),
+            chromosomes: Self::probe_region_preview_values(chromosomes),
+            gene_symbols: Self::probe_region_preview_values(genes),
+            sample_columns,
+            condition_summary_columns,
+            logfc_columns,
+            required_columns_missing,
+            warnings,
+        })
+    }
+
+    fn probe_region_region_sample_columns(
+        headers: &[String],
+        sample_ids_from_table: &[String],
+    ) -> Vec<String> {
+        if !sample_ids_from_table.is_empty() {
+            let sample_keys = sample_ids_from_table
+                .iter()
+                .map(|sample_id| sample_id.to_ascii_lowercase())
+                .collect::<BTreeSet<_>>();
+            return headers
+                .iter()
+                .filter(|header| sample_keys.contains(&header.to_ascii_lowercase()))
+                .cloned()
+                .collect();
+        }
+
+        let fixed_keys = [
+            "chromosome",
+            "chrom",
+            "start",
+            "stop",
+            "end",
+            "strand",
+            "probeset_or_region_id",
+            "feature_id",
+            "probeset_id",
+            "psr_id",
+            "transcript_cluster_id",
+            "transcript_cluster",
+            "exon_id",
+            "number_of_probes",
+            "gene_symbol",
+            "gene",
+        ]
+        .iter()
+        .map(|value| Self::probe_region_header_key(value))
+        .collect::<BTreeSet<_>>();
+        headers
+            .iter()
+            .filter(|header| {
+                let key = Self::probe_region_header_key(header);
+                !fixed_keys.contains(&key)
+                    && !header.starts_with("mean_log2_")
+                    && !header.starts_with("sd_log2_")
+                    && !header.starts_with("log2FC_")
+            })
+            .cloned()
+            .collect()
+    }
+
+    fn probe_region_preview_values(values: BTreeSet<String>) -> Vec<String> {
+        values.into_iter().take(64).collect()
     }
 
     fn probe_region_platform_plan(platform: Option<&str>) -> ProbeRegionPlatformPlan {

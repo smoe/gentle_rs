@@ -6837,6 +6837,15 @@ fn parse_arrays_microarray_track_commands() {
         }
         other => panic!("unexpected command: {other:?}"),
     }
+
+    let inspect_probe_output =
+        parse_shell_line("arrays inspect-probe-region-output analysis/probe_regions")
+            .expect("parse inspect probe output");
+    assert!(matches!(
+        inspect_probe_output,
+        ShellCommand::ArraysInspectProbeRegionOutput { output_dir }
+            if output_dir == "analysis/probe_regions"
+    ));
 }
 
 #[test]
@@ -7081,6 +7090,98 @@ fn execute_arrays_probe_regions_rma_suggests_oligo_helper_command() {
     assert!(command.contains("--normalization rma"));
     assert!(command.contains("--platform-package pd.clariom.d.human"));
     assert!(command.contains("--gene PATZ1"));
+}
+
+#[test]
+fn execute_arrays_inspect_probe_region_output_summarizes_helper_outputs() {
+    let temp = tempdir().expect("tempdir");
+    let out = temp.path().join("probe_regions");
+    fs::create_dir(&out).expect("output dir");
+    fs::write(
+        out.join("sample_table.tsv"),
+        "sample_id\tfile_name\tcondition\tblock\tcel_path\nAdGFP_1\tAdGFP_1.CEL\tAdGFP\tblock1\tAdGFP_1.CEL\nTAp73_1\tTAp73_1.CEL\tTAp73\tblock1\tTAp73_1.CEL\n",
+    )
+    .expect("write sample table");
+    fs::write(
+        out.join("region_intensity_chrom_order.csv"),
+        concat!(
+            "chromosome,start,stop,strand,probeset_or_region_id,transcript_cluster_id,exon_id,number_of_probes,gene_symbol,AdGFP_1,TAp73_1,mean_log2_AdGFP,sd_log2_AdGFP,mean_log2_TAp73,sd_log2_TAp73,log2FC_TAp73-AdGFP\n",
+            "chr1,100,150,+,PSR1,TC1,EX1,4,PATZ1,8.1,9.2,8.1,0,9.2,0,1.1\n",
+            "chr1,200,240,+,PSR2,TC1,EX2,4,PATZ1,7.8,7.9,7.8,0,7.9,0,0.1\n"
+        ),
+    )
+    .expect("write region table");
+    fs::write(
+        out.join("normalized_feature_matrix_manifest.json"),
+        r#"{
+  "schema": "gentle.probe_region_normalized_matrix_manifest.v1",
+  "platform": "Clariom_D_Human",
+  "platform_package": "pd.clariom.d.human",
+  "normalization": "rma",
+  "targets": ["probeset"],
+  "contrasts": ["TAp73-AdGFP"],
+  "artifacts": []
+}"#,
+    )
+    .expect("write manifest");
+    fs::write(
+        out.join("provenance.json"),
+        r#"{
+  "schema": "gentle.probe_region_backend_provenance.v1",
+  "backend": "r_oligo",
+  "platform_package": "pd.clariom.d.human",
+  "normalization": "rma",
+  "artifacts": []
+}"#,
+    )
+    .expect("write provenance");
+
+    let mut engine = GentleEngine::default();
+    let run = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ArraysInspectProbeRegionOutput {
+            output_dir: out.to_string_lossy().to_string(),
+        },
+    )
+    .expect("inspect probe-region output");
+
+    assert!(!run.state_changed);
+    assert_eq!(
+        run.output["inspection"]["schema"].as_str(),
+        Some("gentle.probe_region_output_inspection.v1")
+    );
+    assert_eq!(run.output["inspection"]["usable"].as_bool(), Some(true));
+    assert_eq!(run.output["inspection"]["row_count"].as_u64(), Some(2));
+    assert_eq!(run.output["inspection"]["feature_count"].as_u64(), Some(2));
+    assert_eq!(
+        run.output["inspection"]["transcript_cluster_count"].as_u64(),
+        Some(1)
+    );
+    assert_eq!(
+        run.output["inspection"]["platform"].as_str(),
+        Some("Clariom_D_Human")
+    );
+    assert_eq!(
+        run.output["inspection"]["backend"].as_str(),
+        Some("r_oligo")
+    );
+    assert_eq!(
+        run.output["inspection"]["sample_columns"][0].as_str(),
+        Some("AdGFP_1")
+    );
+    assert_eq!(
+        run.output["inspection"]["logfc_columns"][0].as_str(),
+        Some("log2FC_TAp73-AdGFP")
+    );
+    assert_eq!(
+        run.output["inspection"]["gene_symbols"][0].as_str(),
+        Some("PATZ1")
+    );
+    assert!(
+        run.output["inspection"]["errors"]
+            .as_array()
+            .is_some_and(Vec::is_empty)
+    );
 }
 
 #[test]
