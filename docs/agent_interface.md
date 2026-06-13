@@ -167,6 +167,7 @@ an agent has selected a deterministic operation.
 - `arrange-serial`
 - `arrange-set-ladders`
 - `arrays inspect-microarray-track`
+- `arrays probe-regions`
 - `arrays project-microarray-track`
 - `batch plan`
 - `batch run`
