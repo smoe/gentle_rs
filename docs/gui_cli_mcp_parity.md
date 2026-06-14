@@ -17,11 +17,11 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 
 | Adapter | prominent | shell-only | gap |
 |---|---:|---:|---:|
-| GUI | 21 | 544 | 0 |
-| gentle_cli | 325 | 265 | 0 |
-| MCP | 67 | 404 | 22 |
-| JS | 78 | 385 | 22 |
-| Lua | 77 | 386 | 22 |
+| GUI | 21 | 545 | 0 |
+| gentle_cli | 326 | 265 | 0 |
+| MCP | 67 | 404 | 23 |
+| JS | 78 | 385 | 23 |
+| Lua | 77 | 386 | 23 |
 | ClawBio | 0 | 0 | 0 |
 
 ## Glossary Commands
@@ -226,6 +226,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | tracks import-vcf | glossary-command | prominent | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | arrays inspect-microarray-track | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Local shell workflow without a portable engine operation; intentionally not projected on this adapter.<br>JS: Local shell workflow without a portable engine operation; intentionally not projected on this adapter.<br>Lua: Local shell workflow without a portable engine operation; intentionally not projected on this adapter.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | arrays project-microarray-track | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| arrays probe-regions | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | mirna explain-seed | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: microRNA scan service is currently shared-shell only.<br>JS: microRNA scan service is currently shared-shell only.<br>Lua: microRNA scan service is currently shared-shell only.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | mirna catalog-show | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: microRNA scan service is currently shared-shell only.<br>JS: microRNA scan service is currently shared-shell only.<br>Lua: microRNA scan service is currently shared-shell only.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | mirna scan-target | glossary-command | prominent | prominent | n/a | n/a | n/a | n/a | MCP: microRNA scan service is currently shared-shell only.<br>JS: microRNA scan service is currently shared-shell only.<br>Lua: microRNA scan service is currently shared-shell only.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
@@ -714,6 +715,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 
 | Adapter | Capability | Source | Triage | Note |
 |---|---|---|---|---|
+| JS | arrays probe-regions | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | ensembl-gene list | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | ensembl-gene show | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | ensembl-protein list | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
@@ -736,6 +738,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | JS | uniprot projection-list | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | uniprot projection-show | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | uniprot show | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| Lua | arrays probe-regions | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | ensembl-gene list | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | ensembl-gene show | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | ensembl-protein list | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
@@ -758,6 +761,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | Lua | uniprot projection-list | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | uniprot projection-show | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | uniprot show | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| MCP | arrays probe-regions | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | ensembl-gene list | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | ensembl-gene show | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | ensembl-protein list | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
