@@ -17,11 +17,11 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 
 | Adapter | prominent | shell-only | gap |
 |---|---:|---:|---:|
-| GUI | 21 | 545 | 0 |
-| gentle_cli | 326 | 265 | 0 |
-| MCP | 67 | 404 | 23 |
-| JS | 78 | 385 | 23 |
-| Lua | 77 | 386 | 23 |
+| GUI | 21 | 546 | 0 |
+| gentle_cli | 326 | 266 | 0 |
+| MCP | 67 | 404 | 24 |
+| JS | 78 | 385 | 24 |
+| Lua | 77 | 386 | 24 |
 | ClawBio | 0 | 0 | 0 |
 
 ## Glossary Commands
@@ -358,6 +358,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | routines explain | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Planner and macro management remains shell workflow state until a portable operation is defined.<br>JS: Planner and macro management remains shell workflow state until a portable operation is defined.<br>Lua: Planner and macro management remains shell workflow state until a portable operation is defined.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | routines compare | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Planner and macro management remains shell workflow state until a portable operation is defined.<br>JS: Planner and macro management remains shell workflow state until a portable operation is defined.<br>Lua: Planner and macro management remains shell workflow state until a portable operation is defined.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | planning consult cloning | glossary-command | shell-only | shell-only | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| planning protein-expression-handoff | glossary-command | shell-only | shell-only | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | planning profile show | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Planner and macro management remains shell workflow state until a portable operation is defined.<br>JS: Planner and macro management remains shell workflow state until a portable operation is defined.<br>Lua: Planner and macro management remains shell workflow state until a portable operation is defined.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | planning profile set | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Planner and macro management remains shell workflow state until a portable operation is defined.<br>JS: Planner and macro management remains shell workflow state until a portable operation is defined.<br>Lua: Planner and macro management remains shell workflow state until a portable operation is defined.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | planning profile clear | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Planner and macro management remains shell workflow state until a portable operation is defined.<br>JS: Planner and macro management remains shell workflow state until a portable operation is defined.<br>Lua: Planner and macro management remains shell workflow state until a portable operation is defined.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
@@ -722,6 +723,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | JS | ensembl-protein show | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | gibson preview | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | planning consult cloning | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| JS | planning protein-expression-handoff | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | primers export-qpcr-report | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | primers export-report | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | primers list-qpcr-reports | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
@@ -745,6 +747,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | Lua | ensembl-protein show | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | gibson preview | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | planning consult cloning | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| Lua | planning protein-expression-handoff | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | primers export-qpcr-report | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | primers export-report | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | primers list-qpcr-reports | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
@@ -768,6 +771,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | MCP | ensembl-protein show | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | gibson preview | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | planning consult cloning | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| MCP | planning protein-expression-handoff | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | primers export-qpcr-report | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | primers export-report | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | primers list-qpcr-reports | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |

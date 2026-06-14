@@ -12,6 +12,13 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-06-14
+
+- Added the read-only `planning protein-expression-handoff` route emitting
+  `gentle.protein_expression_handoff.v1` with product context, chassis/route
+  candidates, high-yield missing questions, and a GeneArt protein-expression
+  preflight scaffold.
+
 ## 2026-06-13
 
 - Added `arrays inspect-probe-region-output` to validate completed

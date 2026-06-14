@@ -4451,6 +4451,19 @@
          "usage": "planning consult cloning [--seq-id SEQ_ID] [--objective JSON_OR_@FILE] [--profile-scope effective] [--format json|text]"
       },
       {
+         "aliases": [
+            "planning protein_expression_handoff"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "planning protein-expression-handoff",
+         "summary": "Return a read-only protein-expression handoff for high-yield requests, including chassis/route candidates, missing questions, and a GeneArt preflight scaffold.",
+         "usage": "planning protein-expression-handoff [--seq-id SEQ_ID] [--objective JSON_OR_@FILE] [--profile-scope effective] [--format json|text]"
+      },
+      {
          "aliases": [],
          "engine_operations": [],
          "interfaces": [

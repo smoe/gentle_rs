@@ -1873,6 +1873,10 @@ Patterns menu:
     by the effective profile, host/helper catalogs, and routine estimates;
     v1 keeps `seq_id` traceability-only and turns marker/promoter/MCS gaps into
     explicit follow-up questions instead of hidden heuristics.
+  - high-yield protein-expression requests can use the separate read-only
+    shell route (`planning protein-expression-handoff`) to surface product
+    context, chassis/route candidates, missing yield/folding/chassis questions,
+    and a GeneArt preflight scaffold without creating or ordering constructs.
   - supports registering pending planning sync suggestions (`pull`/`push`) from
     JSON payload and explicit `Accept`/`Reject` resolution in-window.
   - exposes sync status (`pending count`, latest pull/push timestamps, last
@@ -2465,6 +2469,8 @@ Common examples:
   (`global -> confirmed_agent_overlay -> project_override`).
 - `planning consult cloning --format text` — get read-only cloning
   strategy/vector advice from the effective planning profile and catalogs.
+- `planning protein-expression-handoff --format text` — get a read-only
+  protein-expression handoff for high-yield requests.
 - `planning sync pull @suggestion.json --source lab_manager` — register a
   pending advisory planning suggestion (apply via
   `planning suggestions accept SUGGESTION_ID`).

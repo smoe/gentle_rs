@@ -7490,9 +7490,31 @@ fn parse_planning_commands() {
             && output_format == "text"
     ));
 
+    let handoff = parse_shell_line(
+        "planning protein-expression-handoff --seq-id protein_1 --objective @objective.json --profile-scope effective --format text",
+    )
+    .expect("parse planning protein-expression-handoff");
+    assert!(matches!(
+        handoff,
+        ShellCommand::PlanningProteinExpressionHandoff {
+            seq_id,
+            objective_json,
+            profile_scope,
+            output_format,
+        } if seq_id.as_deref() == Some("protein_1")
+            && objective_json.as_deref() == Some("@objective.json")
+            && profile_scope == PlanningProfileScope::Effective
+            && output_format == "text"
+    ));
+
     let rejected = parse_shell_line("planning consult cloning --profile-scope global")
         .expect_err("non-effective consult scope should be rejected");
     assert!(rejected.contains("--profile-scope effective only"));
+
+    let handoff_rejected =
+        parse_shell_line("planning protein-expression-handoff --profile-scope global")
+            .expect_err("non-effective protein-expression handoff scope should be rejected");
+    assert!(handoff_rejected.contains("--profile-scope effective only"));
 
     let profile = parse_shell_line("planning profile set @profile.json --scope global")
         .expect("parse planning profile set");
@@ -8855,6 +8877,92 @@ fn execute_planning_consult_cloning_recognizes_maximal_protein_intent() {
             .as_deref()
             .unwrap_or_default()
             .contains("Biological intent: protein_expression_max_yield")
+    );
+}
+
+#[test]
+fn execute_planning_protein_expression_handoff_returns_reviewable_contract() {
+    let mut engine = GentleEngine::default();
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PlanningProteinExpressionHandoff {
+            seq_id: None,
+            objective_json: Some(
+                r#"{
+                  "schema":"gentle.planning_objective.v1",
+                  "biological_intent":"Give me the maximal amount of protein"
+                }"#
+                .to_string(),
+            ),
+            profile_scope: PlanningProfileScope::Effective,
+            output_format: "text".to_string(),
+        },
+    )
+    .expect("planning protein-expression handoff");
+    assert!(!out.state_changed);
+    let report: crate::engine::ProteinExpressionHandoffReport =
+        serde_json::from_value(out.output).expect("protein-expression handoff report");
+    assert_eq!(report.schema, "gentle.protein_expression_handoff.v1");
+    assert_eq!(report.status, "needs_product_definition");
+    assert_eq!(report.biological_intent, "protein_expression_max_yield");
+    assert_eq!(
+        report
+            .host_chassis_candidates
+            .first()
+            .map(|candidate| candidate.chassis_id.as_str()),
+        Some("e_coli")
+    );
+    assert!(
+        report
+            .host_chassis_candidates
+            .iter()
+            .any(|candidate| candidate.chassis_id == "hek293"),
+        "mammalian expression should stay visible as a review candidate"
+    );
+    assert!(
+        report
+            .vector_route_candidates
+            .iter()
+            .any(|candidate| candidate.route_id == "cell_free_expression"),
+        "cell-free route should stay visible for toxicity/screening cases"
+    );
+    for question_id in [
+        "protein_yield_metric",
+        "expression_chassis",
+        "protein_folding_requirements",
+        "toxicity_and_induction_tolerance",
+        "scale_and_purification_endpoint",
+    ] {
+        assert!(
+            report
+                .missing_questions
+                .iter()
+                .any(|question| question.question_id == question_id),
+            "missing protein-expression handoff question {question_id}"
+        );
+    }
+    let service = report
+        .service_handoff_candidates
+        .first()
+        .expect("GeneArt handoff scaffold");
+    assert_eq!(service.provider, "geneart");
+    assert_eq!(service.service_kind, "protein_expression");
+    assert_eq!(
+        service.draft_request_preview["schema"].as_str(),
+        Some("gentle.external_service_request.v1")
+    );
+    assert!(service.shell_line.contains("services project-preflight"));
+    assert!(report.suggested_next_actions.iter().any(|action| {
+        action
+            .shell_line
+            .contains("geneart_protein_expression_request")
+    }));
+    assert!(
+        report
+            .text_report
+            .as_deref()
+            .unwrap_or_default()
+            .contains("GENtle protein-expression handoff")
     );
 }
 

@@ -53,15 +53,18 @@ use crate::{
         MacroInstanceStatus, Operation, OperationProgress, PLANNING_CLONING_CONSULTATION_SCHEMA,
         PLANNING_ESTIMATE_SCHEMA, PLANNING_OBJECTIVE_SCHEMA, PLANNING_PROFILE_SCHEMA,
         PLANNING_SUGGESTION_SCHEMA, PLANNING_SYNC_STATUS_SCHEMA,
-        PRIMER_DESIGN_REPORTS_METADATA_KEY, PairwiseAlignmentMode, PlanningCloningConsultation,
-        PlanningCloningHelperVectorSummary, PlanningCloningHostProfileSummary,
-        PlanningCloningLocalConstraint, PlanningCloningMissingQuestion,
-        PlanningCloningStrategyCandidate, PlanningCloningSuggestedNextAction,
-        PlanningCloningVectorCandidate, PlanningEstimate, PlanningObjective, PlanningProfile,
-        PlanningProfileScope, PlanningSuggestionStatus, PrimerDesignBackend,
-        PrimerDesignPairConstraint, PrimerDesignReport, PrimerDesignSideConstraint,
-        PrimerSpecificityPolicy, ProbeRegionRequest, ProjectState, PromoterArtifactManifestEntry,
-        PromoterExpressionEvidenceInput, PromoterTfbsGeneQuery, PromoterWindowCollapseMode,
+        PRIMER_DESIGN_REPORTS_METADATA_KEY, PROTEIN_EXPRESSION_HANDOFF_SCHEMA,
+        PairwiseAlignmentMode, PlanningCloningConsultation, PlanningCloningHelperVectorSummary,
+        PlanningCloningHostProfileSummary, PlanningCloningLocalConstraint,
+        PlanningCloningMissingQuestion, PlanningCloningStrategyCandidate,
+        PlanningCloningSuggestedNextAction, PlanningCloningVectorCandidate, PlanningEstimate,
+        PlanningObjective, PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus,
+        PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignReport,
+        PrimerDesignSideConstraint, PrimerSpecificityPolicy, ProbeRegionRequest, ProjectState,
+        PromoterArtifactManifestEntry, PromoterExpressionEvidenceInput, PromoterTfbsGeneQuery,
+        PromoterWindowCollapseMode, ProteinExpressionHandoffReport,
+        ProteinExpressionHostChassisCandidate, ProteinExpressionProductDefinition,
+        ProteinExpressionServiceHandoffCandidate, ProteinExpressionVectorRouteCandidate,
         ProteinExternalOpinionSource, ProteinFeatureFilter, ProteinToDnaHandoffRankingGoal,
         QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting, QpcrTranscriptTargetingMode,
         RNA_READ_ALIGNMENT_DISPLAY_BATCH_SCHEMA, RackAuthoringTemplate, RackCarrierLabelPreset,
@@ -159,6 +162,8 @@ const CLONING_ROUTINE_LIST_SCHEMA: &str = "gentle.cloning_routines_list.v1";
 const CLONING_ROUTINE_EXPLAIN_SCHEMA: &str = "gentle.cloning_routine_explain.v1";
 const CLONING_ROUTINE_COMPARE_SCHEMA: &str = "gentle.cloning_routine_compare.v1";
 pub const DEFAULT_CLONING_ROUTINE_CATALOG_PATH: &str = "assets/cloning_routines.json";
+const PROTEIN_EXPRESSION_GENEART_EXAMPLE_REQUEST_PATH: &str =
+    "docs/examples/external_services/geneart_protein_expression_request.json";
 const BLAST_ASYNC_JOB_SCHEMA: &str = "gentle.blast_async_job_status.v1";
 const BLAST_ASYNC_STORE_SCHEMA: &str = "gentle.blast_async_job_store.v1";
 const BLAST_ASYNC_STORE_METADATA_KEY: &str = "blast_async_jobs";
@@ -1082,6 +1087,12 @@ pub enum ShellCommand {
         seq_id: Option<String>,
     },
     PlanningConsultCloning {
+        seq_id: Option<String>,
+        objective_json: Option<String>,
+        profile_scope: PlanningProfileScope,
+        output_format: String,
+    },
+    PlanningProteinExpressionHandoff {
         seq_id: Option<String>,
         objective_json: Option<String>,
         profile_scope: PlanningProfileScope,
@@ -6845,6 +6856,31 @@ impl ShellCommand {
                     .unwrap_or_else(|| "stored_objective".to_string());
                 format!(
                     "consult cloning planning (scope={}, seq_id={}, objective={}, format={})",
+                    profile_scope.as_str(),
+                    seq_id,
+                    objective,
+                    output_format
+                )
+            }
+            Self::PlanningProteinExpressionHandoff {
+                seq_id,
+                objective_json,
+                profile_scope,
+                output_format,
+            } => {
+                let seq_id = seq_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("-");
+                let objective = objective_json
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(|value| format!("payload_len={}", value.len()))
+                    .unwrap_or_else(|| "stored_objective".to_string());
+                format!(
+                    "plan protein-expression handoff (scope={}, seq_id={}, objective={}, format={})",
                     profile_scope.as_str(),
                     seq_id,
                     objective,
@@ -12619,6 +12655,36 @@ fn planning_consult_biological_intent(objective: &PlanningObjective) -> String {
     "cloning_strategy_vector_selection".to_string()
 }
 
+fn protein_expression_max_yield_missing_questions() -> Vec<PlanningCloningMissingQuestion> {
+    vec![
+        PlanningCloningMissingQuestion {
+            question_id: "protein_yield_metric".to_string(),
+            prompt: "Should GENtle optimize total expressed protein, soluble protein, active protein, purified protein, secreted protein, or membrane-localized protein?".to_string(),
+            reason: "Maximal protein amount is not one scalar objective; the desired yield metric changes host, vector, tag, induction, and purification choices.".to_string(),
+        },
+        PlanningCloningMissingQuestion {
+            question_id: "expression_chassis".to_string(),
+            prompt: "Which expression chassis is acceptable: bacterial, yeast, insect, mammalian, cell-free, or provider-managed expression?".to_string(),
+            reason: "Protein yield depends strongly on chassis compatibility, folding burden, post-translational requirements, and local/provider capabilities.".to_string(),
+        },
+        PlanningCloningMissingQuestion {
+            question_id: "protein_folding_requirements".to_string(),
+            prompt: "Does the protein require disulfides, glycosylation, cofactors, secretion, membrane insertion, low temperature, chaperones, or solubility tags?".to_string(),
+            reason: "GENtle should not rank a high-expression route as suitable when the product may be insoluble, inactive, or misprocessed.".to_string(),
+        },
+        PlanningCloningMissingQuestion {
+            question_id: "toxicity_and_induction_tolerance".to_string(),
+            prompt: "Is toxicity expected, and should expression be constitutive, inducible, tightly repressed before induction, or provider-optimized?".to_string(),
+            reason: "The strongest expression cassette can reduce final yield when the product slows growth, aggregates, or harms the host.".to_string(),
+        },
+        PlanningCloningMissingQuestion {
+            question_id: "scale_and_purification_endpoint".to_string(),
+            prompt: "What scale, tag, purity, buffer, and delivery endpoint define success for this protein-production request?".to_string(),
+            reason: "Construct planning should stay aligned with the downstream purification or service handoff rather than maximizing expression in isolation.".to_string(),
+        },
+    ]
+}
+
 fn build_planning_cloning_consultation_text(report: &PlanningCloningConsultation) -> String {
     let mut lines = vec![
         "GENtle cloning planning consultation".to_string(),
@@ -12678,6 +12744,416 @@ fn build_planning_cloning_consultation_text(report: &PlanningCloningConsultation
         }
     }
     lines.join("\n")
+}
+
+fn protein_expression_product_definition(
+    engine: &GentleEngine,
+    seq_id: &Option<String>,
+    warnings: &mut Vec<String>,
+) -> ProteinExpressionProductDefinition {
+    let seq_id = seq_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    let mut product = ProteinExpressionProductDefinition {
+        seq_id: seq_id.clone(),
+        product_metric: "review_required".to_string(),
+        notes: vec![
+            "Protein-expression V1 treats maximal amount as an underspecified objective until the desired yield metric is selected.".to_string(),
+        ],
+        ..ProteinExpressionProductDefinition::default()
+    };
+
+    match seq_id {
+        Some(ref id) => {
+            if let Some(sequence) = engine.state().sequences.get(id) {
+                product.sequence_present = true;
+                product.sequence_name = sequence.name().clone();
+                product.length_bp = Some(sequence.len());
+                product.feature_count = Some(sequence.features().len());
+                product.notes.push(
+                    "Stored sequence context is available for review; V1 does not infer expression-ready CDS boundaries or codon optimization from it."
+                        .to_string(),
+                );
+            } else {
+                warnings.push(format!(
+                    "Sequence id '{id}' was supplied but is not present in the current state."
+                ));
+                product.notes.push(
+                    "The supplied sequence id could not be resolved in state; load or create the product sequence before execution planning."
+                        .to_string(),
+                );
+            }
+        }
+        None => {
+            product.notes.push(
+                "No sequence id was supplied; the product definition is a planning placeholder only."
+                    .to_string(),
+            );
+        }
+    }
+
+    product
+}
+
+fn protein_expression_host_chassis_candidates() -> Vec<ProteinExpressionHostChassisCandidate> {
+    vec![
+        ProteinExpressionHostChassisCandidate {
+            rank: 1,
+            chassis_id: "e_coli".to_string(),
+            label: "E. coli bacterial expression".to_string(),
+            status: "review_required".to_string(),
+            rationale: vec![
+                "Fast, inexpensive, high-biomass route for many soluble cytosolic proteins."
+                    .to_string(),
+                "Often the first offline screening candidate when post-translational processing is not required."
+                    .to_string(),
+            ],
+            warnings: vec![
+                "May fail for proteins needing glycosylation, complex disulfides, secretion, membrane insertion, or low-toxicity expression."
+                    .to_string(),
+            ],
+        },
+        ProteinExpressionHostChassisCandidate {
+            rank: 2,
+            chassis_id: "yeast".to_string(),
+            label: "Yeast expression or secretion".to_string(),
+            status: "review_required".to_string(),
+            rationale: vec![
+                "Useful when secretion, eukaryotic folding machinery, or scalable fermentation matters."
+                    .to_string(),
+            ],
+            warnings: vec![
+                "Glycosylation patterns and secretion tags need review for the target protein."
+                    .to_string(),
+            ],
+        },
+        ProteinExpressionHostChassisCandidate {
+            rank: 3,
+            chassis_id: "hek293".to_string(),
+            label: "HEK293 or related mammalian transient expression".to_string(),
+            status: "review_required".to_string(),
+            rationale: vec![
+                "Best-aligned with mammalian folding and post-translational context when biological activity depends on it."
+                    .to_string(),
+            ],
+            warnings: vec![
+                "Usually slower and more expensive than microbial expression; yield metric must be explicit."
+                    .to_string(),
+            ],
+        },
+        ProteinExpressionHostChassisCandidate {
+            rank: 4,
+            chassis_id: "insect_baculovirus".to_string(),
+            label: "Insect or baculovirus expression".to_string(),
+            status: "review_required".to_string(),
+            rationale: vec![
+                "Middle ground for eukaryotic folding and larger-scale production where mammalian expression is too costly."
+                    .to_string(),
+            ],
+            warnings: vec![
+                "Requires route-specific setup and provider or local baculovirus capability review.".to_string(),
+            ],
+        },
+        ProteinExpressionHostChassisCandidate {
+            rank: 5,
+            chassis_id: "cell_free".to_string(),
+            label: "Cell-free expression".to_string(),
+            status: "review_required".to_string(),
+            rationale: vec![
+                "Rapid screening route, especially when cellular toxicity is expected.".to_string(),
+            ],
+            warnings: vec![
+                "Scale, cost, folding support, and downstream purification endpoint must be checked."
+                    .to_string(),
+            ],
+        },
+    ]
+}
+
+fn protein_expression_vector_route_candidates() -> Vec<ProteinExpressionVectorRouteCandidate> {
+    vec![
+        ProteinExpressionVectorRouteCandidate {
+            rank: 1,
+            route_id: "bacterial_cytosolic_high_expression".to_string(),
+            label: "Bacterial cytosolic high-expression vector".to_string(),
+            status: "requires_product_review".to_string(),
+            rationale: vec![
+                "Shortest deterministic route when the protein is soluble, non-toxic, and does not need eukaryotic processing."
+                    .to_string(),
+            ],
+            missing_inputs: vec![
+                "yield_metric".to_string(),
+                "induction_control".to_string(),
+                "affinity_or_solubility_tag".to_string(),
+                "reading_frame_and_stop_policy".to_string(),
+            ],
+        },
+        ProteinExpressionVectorRouteCandidate {
+            rank: 2,
+            route_id: "bacterial_solubility_or_periplasmic".to_string(),
+            label: "Bacterial solubility-tag or periplasmic route".to_string(),
+            status: "requires_product_review".to_string(),
+            rationale: vec![
+                "Preserves bacterial speed while acknowledging folding, disulfide, or solubility constraints."
+                    .to_string(),
+            ],
+            missing_inputs: vec![
+                "folding_constraints".to_string(),
+                "secretion_or_periplasmic_signal".to_string(),
+                "tag_cleavage_policy".to_string(),
+            ],
+        },
+        ProteinExpressionVectorRouteCandidate {
+            rank: 3,
+            route_id: "yeast_secreted_expression".to_string(),
+            label: "Yeast secreted-expression route".to_string(),
+            status: "requires_product_review".to_string(),
+            rationale: vec![
+                "Candidate route when secretion and scalable eukaryotic processing are more important than fastest turnaround."
+                    .to_string(),
+            ],
+            missing_inputs: vec![
+                "secretion_signal".to_string(),
+                "glycosylation_tolerance".to_string(),
+                "host_strain_or_provider".to_string(),
+            ],
+        },
+        ProteinExpressionVectorRouteCandidate {
+            rank: 4,
+            route_id: "mammalian_transient_expression".to_string(),
+            label: "Mammalian transient-expression route".to_string(),
+            status: "requires_product_review".to_string(),
+            rationale: vec![
+                "Candidate route when activity depends on mammalian-like processing or complex folding."
+                    .to_string(),
+            ],
+            missing_inputs: vec![
+                "cell_line_or_provider".to_string(),
+                "signal_peptide_or_localization".to_string(),
+                "purification_endpoint".to_string(),
+            ],
+        },
+        ProteinExpressionVectorRouteCandidate {
+            rank: 5,
+            route_id: "insect_baculovirus_expression".to_string(),
+            label: "Insect/baculovirus expression route".to_string(),
+            status: "requires_product_review".to_string(),
+            rationale: vec![
+                "Candidate route for eukaryotic proteins when mammalian expression is not the preferred scale/cost point."
+                    .to_string(),
+            ],
+            missing_inputs: vec![
+                "baculovirus_route_available".to_string(),
+                "scale".to_string(),
+                "post_translational_requirement".to_string(),
+            ],
+        },
+        ProteinExpressionVectorRouteCandidate {
+            rank: 6,
+            route_id: "cell_free_expression".to_string(),
+            label: "Cell-free expression route".to_string(),
+            status: "requires_product_review".to_string(),
+            rationale: vec![
+                "Useful as a rapid screen or toxicity-avoidance route before committing to cellular expression."
+                    .to_string(),
+            ],
+            missing_inputs: vec![
+                "cell_free_system".to_string(),
+                "expected_scale".to_string(),
+                "folding_or_cofactor_support".to_string(),
+            ],
+        },
+    ]
+}
+
+fn protein_expression_service_handoff_candidates(
+    warnings: &mut Vec<String>,
+) -> Vec<ProteinExpressionServiceHandoffCandidate> {
+    let draft_request_preview =
+        match fs::read_to_string(PROTEIN_EXPRESSION_GENEART_EXAMPLE_REQUEST_PATH) {
+            Ok(raw) => match serde_json::from_str::<Value>(&raw) {
+                Ok(value) => value,
+                Err(err) => {
+                    warnings.push(format!(
+                        "Could not parse GeneArt protein-expression example request '{}': {err}.",
+                        PROTEIN_EXPRESSION_GENEART_EXAMPLE_REQUEST_PATH
+                    ));
+                    json!({
+                        "schema": "gentle.external_service_request.v1",
+                        "provider": "geneart",
+                        "service_kind": "protein_expression",
+                        "status": "example_parse_failed"
+                    })
+                }
+            },
+            Err(err) => {
+                warnings.push(format!(
+                    "Could not read GeneArt protein-expression example request '{}': {err}.",
+                    PROTEIN_EXPRESSION_GENEART_EXAMPLE_REQUEST_PATH
+                ));
+                json!({
+                    "schema": "gentle.external_service_request.v1",
+                    "provider": "geneart",
+                    "service_kind": "protein_expression",
+                    "status": "example_unavailable"
+                })
+            }
+        };
+
+    vec![ProteinExpressionServiceHandoffCandidate {
+        provider: "geneart".to_string(),
+        service_kind: "protein_expression".to_string(),
+        status: "draft_example_review_required".to_string(),
+        example_request_path: PROTEIN_EXPRESSION_GENEART_EXAMPLE_REQUEST_PATH.to_string(),
+        draft_request_preview,
+        shell_line: format!(
+            "services project-preflight @{}",
+            PROTEIN_EXPRESSION_GENEART_EXAMPLE_REQUEST_PATH
+        ),
+        rationale: "Uses the existing provider-neutral GeneArt protein-expression request example as a review scaffold; V1 does not submit, quote, optimize, or order anything.".to_string(),
+    }]
+}
+
+fn build_protein_expression_handoff_text(report: &ProteinExpressionHandoffReport) -> String {
+    let mut lines = vec![
+        "GENtle protein-expression handoff".to_string(),
+        format!("Schema: {}", report.schema),
+        format!("Status: {}", report.status),
+        format!("Biological intent: {}", report.biological_intent),
+    ];
+    match report.product_definition.seq_id.as_deref() {
+        Some(seq_id) if report.product_definition.sequence_present => {
+            lines.push(format!(
+                "Product sequence: {} ({} bp, {} feature(s))",
+                seq_id,
+                report.product_definition.length_bp.unwrap_or_default(),
+                report.product_definition.feature_count.unwrap_or_default()
+            ));
+        }
+        Some(seq_id) => lines.push(format!("Product sequence: {seq_id} (not loaded)")),
+        None => lines.push("Product sequence: not supplied".to_string()),
+    }
+    lines.push(String::new());
+    lines.push("Top chassis candidates:".to_string());
+    for candidate in report.host_chassis_candidates.iter().take(5) {
+        lines.push(format!(
+            "{}. {} ({})",
+            candidate.rank, candidate.label, candidate.status
+        ));
+    }
+    lines.push(String::new());
+    lines.push("Vector/expression routes:".to_string());
+    for candidate in report.vector_route_candidates.iter().take(5) {
+        lines.push(format!(
+            "{}. {} ({})",
+            candidate.rank, candidate.label, candidate.status
+        ));
+    }
+    if !report.missing_questions.is_empty() {
+        lines.push(String::new());
+        lines.push("Questions before committing:".to_string());
+        for question in &report.missing_questions {
+            lines.push(format!("- {}", question.prompt));
+        }
+    }
+    if let Some(service) = report.service_handoff_candidates.first() {
+        lines.push(String::new());
+        lines.push(format!(
+            "Service handoff scaffold: {} {}",
+            service.provider, service.service_kind
+        ));
+        lines.push(format!("Preflight: {}", service.shell_line));
+    }
+    lines.join("\n")
+}
+
+fn execute_planning_protein_expression_handoff(
+    engine: &GentleEngine,
+    seq_id: &Option<String>,
+    objective_json: &Option<String>,
+    profile_scope: PlanningProfileScope,
+    output_format: &str,
+) -> Result<ProteinExpressionHandoffReport, String> {
+    if profile_scope != PlanningProfileScope::Effective {
+        return Err(
+            "planning protein-expression-handoff currently supports --profile-scope effective only"
+                .to_string(),
+        );
+    }
+
+    let objective = match objective_json.as_deref() {
+        Some(payload) => parse_optional_json_payload::<PlanningObjective>(
+            payload,
+            "planning protein-expression-handoff objective",
+        )?
+        .unwrap_or_default(),
+        None => engine.planning_objective(),
+    };
+    let mut biological_intent = planning_consult_biological_intent(&objective);
+    let mut warnings = vec![
+        "Protein-expression handoff V1 is read-only: it does not design, optimize, order, or mutate constructs.".to_string(),
+    ];
+    if !planning_intent_is_protein_expression_max_yield(&biological_intent) {
+        warnings.push(format!(
+            "Objective intent '{biological_intent}' was interpreted through the protein-expression handoff route; confirm that maximal protein production is intended."
+        ));
+        biological_intent = "protein_expression_max_yield".to_string();
+    }
+
+    let product_definition = protein_expression_product_definition(engine, seq_id, &mut warnings);
+    let host_chassis_candidates = protein_expression_host_chassis_candidates();
+    let vector_route_candidates = protein_expression_vector_route_candidates();
+    let missing_questions = protein_expression_max_yield_missing_questions();
+    let service_handoff_candidates = protein_expression_service_handoff_candidates(&mut warnings);
+    let suggested_next_actions = vec![
+        PlanningCloningSuggestedNextAction {
+            action_id: "answer_yield_questions".to_string(),
+            label: "Answer protein-expression disambiguation questions".to_string(),
+            shell_line: "planning objective show".to_string(),
+            rationale: "Review the active objective before narrowing yield metric, chassis, and endpoint choices.".to_string(),
+        },
+        PlanningCloningSuggestedNextAction {
+            action_id: "inspect_service_handoff_scaffold".to_string(),
+            label: "Inspect GeneArt protein-expression preflight scaffold".to_string(),
+            shell_line: format!(
+                "services project-preflight @{}",
+                PROTEIN_EXPRESSION_GENEART_EXAMPLE_REQUEST_PATH
+            ),
+            rationale: "Use the existing external-service request contract as a human-reviewed handoff scaffold.".to_string(),
+        },
+        PlanningCloningSuggestedNextAction {
+            action_id: "consult_cloning_strategy".to_string(),
+            label: "Consult cloning strategy after expression constraints are known".to_string(),
+            shell_line: "planning consult cloning --objective '{\"schema\":\"gentle.planning_objective.v1\",\"biological_intent\":\"protein_expression_max_yield\"}' --format json".to_string(),
+            rationale: "Rank cloning routine families only after the protein-expression constraints are explicit.".to_string(),
+        },
+    ];
+
+    let status = if product_definition.sequence_present {
+        "needs_expression_specification"
+    } else {
+        "needs_product_definition"
+    };
+    let mut report = ProteinExpressionHandoffReport {
+        schema: PROTEIN_EXPRESSION_HANDOFF_SCHEMA.to_string(),
+        generated_at_unix_ms: shell_now_unix_ms(),
+        status: status.to_string(),
+        biological_intent,
+        product_definition,
+        host_chassis_candidates,
+        vector_route_candidates,
+        missing_questions,
+        service_handoff_candidates,
+        warnings,
+        suggested_next_actions,
+        text_report: None,
+    };
+    if output_format == "text" {
+        report.text_report = Some(build_protein_expression_handoff_text(&report));
+    }
+    Ok(report)
 }
 
 fn execute_planning_consult_cloning(
@@ -12915,31 +13391,7 @@ fn execute_planning_consult_cloning(
 
     let mut missing_questions = vec![];
     if protein_expression_max_yield {
-        missing_questions.push(PlanningCloningMissingQuestion {
-            question_id: "protein_yield_metric".to_string(),
-            prompt: "Should GENtle optimize total expressed protein, soluble protein, active protein, purified protein, secreted protein, or membrane-localized protein?".to_string(),
-            reason: "Maximal protein amount is not one scalar objective; the desired yield metric changes host, vector, tag, induction, and purification choices.".to_string(),
-        });
-        missing_questions.push(PlanningCloningMissingQuestion {
-            question_id: "expression_chassis".to_string(),
-            prompt: "Which expression chassis is acceptable: bacterial, yeast, insect, mammalian, cell-free, or provider-managed expression?".to_string(),
-            reason: "Protein yield depends strongly on chassis compatibility, folding burden, post-translational requirements, and local/provider capabilities.".to_string(),
-        });
-        missing_questions.push(PlanningCloningMissingQuestion {
-            question_id: "protein_folding_requirements".to_string(),
-            prompt: "Does the protein require disulfides, glycosylation, cofactors, secretion, membrane insertion, low temperature, chaperones, or solubility tags?".to_string(),
-            reason: "GENtle should not rank a high-expression route as suitable when the product may be insoluble, inactive, or misprocessed.".to_string(),
-        });
-        missing_questions.push(PlanningCloningMissingQuestion {
-            question_id: "toxicity_and_induction_tolerance".to_string(),
-            prompt: "Is toxicity expected, and should expression be constitutive, inducible, tightly repressed before induction, or provider-optimized?".to_string(),
-            reason: "The strongest expression cassette can reduce final yield when the product slows growth, aggregates, or harms the host.".to_string(),
-        });
-        missing_questions.push(PlanningCloningMissingQuestion {
-            question_id: "scale_and_purification_endpoint".to_string(),
-            prompt: "What scale, tag, purity, buffer, and delivery endpoint define success for this protein-production request?".to_string(),
-            reason: "Construct planning should stay aligned with the downstream purification or service handoff rather than maximizing expression in isolation.".to_string(),
-        });
+        missing_questions.extend(protein_expression_max_yield_missing_questions());
     }
     if seq_id
         .as_deref()
@@ -29068,6 +29520,26 @@ fn execute_planning_command(
                     .map_err(|e| format!("Could not serialize planning consult result: {e}"))?,
             })
         }
+        ShellCommand::PlanningProteinExpressionHandoff {
+            seq_id,
+            objective_json,
+            profile_scope,
+            output_format,
+        } => {
+            let report = execute_planning_protein_expression_handoff(
+                engine,
+                seq_id,
+                objective_json,
+                *profile_scope,
+                output_format,
+            )?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(report).map_err(|e| {
+                    format!("Could not serialize protein-expression handoff result: {e}")
+                })?,
+            })
+        }
         ShellCommand::PlanningProfileShow { scope } => {
             let scope_profile = engine.planning_profile(*scope);
             let effective_profile = engine.planning_effective_profile();
@@ -35169,6 +35641,7 @@ fn execute_shell_command_with_options_dispatch(
     if matches!(
         command,
         ShellCommand::PlanningConsultCloning { .. }
+            | ShellCommand::PlanningProteinExpressionHandoff { .. }
             | ShellCommand::PlanningProfileShow { .. }
             | ShellCommand::PlanningProfileSet { .. }
             | ShellCommand::PlanningObjectiveShow
@@ -35796,6 +36269,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::RoutinesExplain { .. }
         | ShellCommand::RoutinesCompare { .. } => execute_routines_command(engine, command)?,
         ShellCommand::PlanningConsultCloning { .. }
+        | ShellCommand::PlanningProteinExpressionHandoff { .. }
         | ShellCommand::PlanningProfileShow { .. }
         | ShellCommand::PlanningProfileSet { .. }
         | ShellCommand::PlanningObjectiveShow

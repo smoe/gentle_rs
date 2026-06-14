@@ -1075,6 +1075,7 @@ Current shared GENtle routes behind this capability:
 - `planning profile|objective|suggestions ...`
 - `planning consult cloning --format json`
 - `planning consult cloning --objective '{"schema":"gentle.planning_objective.v1","biological_intent":"protein_expression_max_yield"}' --format json`
+- `planning protein-expression-handoff --objective '{"schema":"gentle.planning_objective.v1","biological_intent":"protein_expression_max_yield"}' --format json`
 - `macros template-import assets/cloning_patterns_catalog`
 - `macros template-run allele_paired_promoter_luciferase_reporter ... --validate-only`
 
@@ -1201,12 +1202,13 @@ task:
      and quote its `strategy_candidates`, `vector_candidates`, and
      `missing_questions` rather than improvising biological planning prose
    - if the user asks for the maximal amount/yield of protein, call
-     `planning consult cloning` with
+     `planning protein-expression-handoff` with
      `biological_intent=protein_expression_max_yield` and quote
-     `biological_intent`, `missing_questions`, `local_constraints`, and
-     `suggested_next_actions`; do not equate maximum yield with the strongest
-     promoter until the product metric, host, folding, toxicity, and
-     purification endpoint are explicit
+     `biological_intent`, `product_definition`, `host_chassis_candidates`,
+     `vector_route_candidates`, `missing_questions`,
+     `service_handoff_candidates`, and `suggested_next_actions`; do not equate
+     maximum yield with the strongest promoter until the product metric, host,
+     folding, toxicity, and purification endpoint are explicit
    - if the user asks for reporter selection, reporter catalog inspection,
      promoter-reporter handoff, or local-AI reporter-corpus preparation, prefer
      the reporter routes (`reporters list`, `reporters recommend`,

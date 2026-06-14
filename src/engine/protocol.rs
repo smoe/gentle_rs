@@ -6511,6 +6511,74 @@ pub struct PlanningCloningSuggestedNextAction {
     pub rationale: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Read-only protein-expression planning handoff for underspecified yield requests.
+pub struct ProteinExpressionHandoffReport {
+    pub schema: String,
+    pub generated_at_unix_ms: u128,
+    pub status: String,
+    pub biological_intent: String,
+    pub product_definition: ProteinExpressionProductDefinition,
+    pub host_chassis_candidates: Vec<ProteinExpressionHostChassisCandidate>,
+    pub vector_route_candidates: Vec<ProteinExpressionVectorRouteCandidate>,
+    pub missing_questions: Vec<PlanningCloningMissingQuestion>,
+    pub service_handoff_candidates: Vec<ProteinExpressionServiceHandoffCandidate>,
+    pub warnings: Vec<String>,
+    pub suggested_next_actions: Vec<PlanningCloningSuggestedNextAction>,
+    pub text_report: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Product context supplied to a protein-expression handoff.
+pub struct ProteinExpressionProductDefinition {
+    pub seq_id: Option<String>,
+    pub sequence_present: bool,
+    pub sequence_name: Option<String>,
+    pub length_bp: Option<usize>,
+    pub feature_count: Option<usize>,
+    pub product_metric: String,
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Candidate expression chassis row.
+pub struct ProteinExpressionHostChassisCandidate {
+    pub rank: usize,
+    pub chassis_id: String,
+    pub label: String,
+    pub status: String,
+    pub rationale: Vec<String>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Candidate construct/vector route row.
+pub struct ProteinExpressionVectorRouteCandidate {
+    pub rank: usize,
+    pub route_id: String,
+    pub label: String,
+    pub status: String,
+    pub rationale: Vec<String>,
+    pub missing_inputs: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Provider-neutral service handoff preview row.
+pub struct ProteinExpressionServiceHandoffCandidate {
+    pub provider: String,
+    pub service_kind: String,
+    pub status: String,
+    pub example_request_path: String,
+    pub draft_request_preview: serde_json::Value,
+    pub shell_line: String,
+    pub rationale: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 /// Advisory pull/push suggestion awaiting explicit user acceptance or rejection.

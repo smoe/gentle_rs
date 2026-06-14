@@ -4288,6 +4288,7 @@ Planning meta-layer commands (`gentle_cli planning ...` or `gentle_cli shell 'pl
   - `gentle.planning_suggestion.v1`
   - `gentle.planning_sync_status.v1`
   - `gentle.planning_cloning_consultation.v1`
+  - `gentle.protein_expression_handoff.v1`
 - Effective profile merge precedence:
   - `global_profile -> confirmed_agent_overlay -> project_override`
 - Schema compatibility:
@@ -4311,6 +4312,17 @@ Planning meta-layer commands (`gentle_cli planning ...` or `gentle_cli shell 'pl
     explicit `missing_questions[]` until structured profile fields exist.
   - `--seq-id` is traceability-only in v1 and is not consumed as a
     construct-candidate graph input.
+- `planning protein-expression-handoff [--seq-id SEQ_ID] [--objective JSON_OR_@FILE] [--profile-scope effective] [--format json|text]`
+  - Returns a read-only protein-expression planning handoff for underspecified
+    requests such as "give me the maximal amount of protein."
+  - Emits `product_definition`, ranked `host_chassis_candidates[]`, ranked
+    `vector_route_candidates[]`, explicit `missing_questions[]`, a GeneArt
+    protein-expression `service_handoff_candidates[]` preflight scaffold, and
+    `suggested_next_actions[]`.
+  - The route never designs, optimizes, orders, or mutates constructs. If
+    `--seq-id` is supplied, V1 records whether the product sequence exists in
+    state plus length/feature context, but still requires human review of CDS
+    boundaries, tags, chassis, folding, toxicity, yield metric, and endpoint.
 - `planning profile show [--scope global|project_override|confirmed_agent_overlay|effective]`
   - Shows one profile scope or merged effective profile.
 - `planning profile set JSON_OR_@FILE [--scope global|project_override|confirmed_agent_overlay]`

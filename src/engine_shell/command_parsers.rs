@@ -11708,6 +11708,75 @@ pub(super) fn parse_planning_command(tokens: &[String]) -> Result<ShellCommand, 
                 )),
             }
         }
+        "protein-expression-handoff" | "protein_expression_handoff" => {
+            let mut seq_id: Option<String> = None;
+            let mut objective_json: Option<String> = None;
+            let mut profile_scope = PlanningProfileScope::Effective;
+            let mut output_format = "json".to_string();
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--seq-id" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--seq-id",
+                            "planning protein-expression-handoff",
+                        )?;
+                        seq_id = Some(raw);
+                    }
+                    "--objective" => {
+                        objective_json = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--objective",
+                            "planning protein-expression-handoff",
+                        )?);
+                    }
+                    "--profile-scope" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--profile-scope",
+                            "planning protein-expression-handoff",
+                        )?;
+                        profile_scope = parse_planning_profile_scope(&raw)?;
+                    }
+                    "--format" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--format",
+                            "planning protein-expression-handoff",
+                        )?;
+                        let normalized = raw.trim().to_ascii_lowercase();
+                        if !matches!(normalized.as_str(), "json" | "text") {
+                            return Err(format!(
+                                "Invalid --format value '{raw}' for planning protein-expression-handoff; expected json or text"
+                            ));
+                        }
+                        output_format = normalized;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for planning protein-expression-handoff"
+                        ));
+                    }
+                }
+            }
+            if profile_scope != PlanningProfileScope::Effective {
+                return Err(
+                    "planning protein-expression-handoff currently supports --profile-scope effective only"
+                        .to_string(),
+                );
+            }
+            Ok(ShellCommand::PlanningProteinExpressionHandoff {
+                seq_id,
+                objective_json,
+                profile_scope,
+                output_format,
+            })
+        }
         "profile" => {
             if tokens.len() < 3 {
                 return Err("planning profile requires a subcommand: show, set, clear".to_string());

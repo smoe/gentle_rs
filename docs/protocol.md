@@ -3464,6 +3464,8 @@ Adapter-equivalence guarantee for UI-intent tools:
   - sync-status schema: `gentle.planning_sync_status.v1`
   - cloning-consultation schema:
     `gentle.planning_cloning_consultation.v1`
+  - protein-expression handoff schema:
+    `gentle.protein_expression_handoff.v1`
   - merge precedence for effective profile:
     - `global_profile -> confirmed_agent_overlay -> project_override`
   - purchasing latency heuristic in v1:
@@ -3502,6 +3504,23 @@ Adapter-equivalence guarantee for UI-intent tools:
     explicit `missing_questions[]`
   - `--seq-id` is accepted for traceability, but v1 does not yet consume
     construct-candidate graphs when ranking strategies or helper vectors
+- `planning protein-expression-handoff [--seq-id SEQ_ID] [--objective JSON_OR_@FILE] [--profile-scope effective] [--format json|text]`
+  - read-only handoff route for high-yield protein-expression requests
+  - emits `gentle.protein_expression_handoff.v1`
+  - records `biological_intent = protein_expression_max_yield` for phrase-like
+    objectives such as "give me the maximal amount of protein"
+  - fields include `product_definition`, `host_chassis_candidates[]`,
+    `vector_route_candidates[]`, `missing_questions[]`,
+    `service_handoff_candidates[]`, `warnings[]`, and
+    `suggested_next_actions[]`
+  - the first V1 service scaffold points at
+    `docs/examples/external_services/geneart_protein_expression_request.json`
+    through a local `services project-preflight @...` command; no provider
+    network call, quote, order, optimization, or construct mutation is made
+  - `--seq-id` only records product-sequence availability and basic
+    length/feature context; CDS boundaries, tags, chassis, folding/PTMs,
+    toxicity/induction, yield metric, and purification/delivery endpoint stay
+    explicit review questions
 - `planning profile show [--scope global|project_override|confirmed_agent_overlay|effective]`
   - inspect one planning profile scope or merged effective profile
 - `planning profile set JSON_OR_@FILE [--scope global|project_override|confirmed_agent_overlay]`

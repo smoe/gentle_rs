@@ -307,6 +307,7 @@ an agent has selected a deterministic operation.
 - `panels render-isoform-svg`
 - `panels validate-isoform`
 - `planning consult cloning`
+- `planning protein-expression-handoff`
 - `planning objective clear`
 - `planning objective set`
 - `planning objective show`

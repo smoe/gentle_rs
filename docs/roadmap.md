@@ -113,6 +113,11 @@ is one best candidate per the 11 catalogued routine families plus structured
 helper/vector ranking; `seq_id` stays traceability-only and unresolved
 marker/promoter/MCS constraints stay explicit questions rather than hidden
 heuristics.
+High-yield protein-production requests should go through the separate
+read-only `planning protein-expression-handoff` route, which surfaces product
+context, chassis/route candidates, GeneArt service preflight scaffolding, and
+the required yield/folding/chassis review questions without creating
+constructs.
 
 MCP follow-up: the typed `tools/list` surface is curated rather than a
 one-command/one-tool mirror. Keep `docs/agent_interface.md` as the exclusion
