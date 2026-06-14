@@ -7094,6 +7094,108 @@ fn execute_arrays_probe_regions_rma_suggests_oligo_helper_command() {
 }
 
 #[test]
+fn execute_arrays_probe_regions_reports_clariom_vendor_support_paths() {
+    let temp = tempdir().expect("tempdir");
+    let cel = temp.path().join("sample1.CEL");
+    fs::write(&cel, "synthetic CEL placeholder\n").expect("write cel");
+
+    let mut engine = GentleEngine::default();
+    let run = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ArraysProbeRegions {
+            cel_paths: vec![cel.to_string_lossy().to_string()],
+            dataset: None,
+            metadata_path: None,
+            genes: vec!["TP73".to_string()],
+            loci: vec![],
+            transcript_cluster_ids: vec![],
+            probeset_ids: vec![],
+            platform: Some("Clariom_D_Human".to_string()),
+            annotation_library_path: None,
+            condition_column: None,
+            sample_column: None,
+            block_column: None,
+            paired_by_replicate_suffix: false,
+            plot: false,
+            normalization: "none".to_string(),
+            output_dir: None,
+            cache_dir: None,
+            dry_run: true,
+        },
+    )
+    .expect("plan probe regions");
+
+    let support_files = run.output["plan"]["annotation_source"]["vendor_support_files"]
+        .as_array()
+        .expect("Clariom D vendor support file candidates");
+    assert_eq!(support_files.len(), 2);
+    assert_eq!(
+        support_files[0]["path"].as_str(),
+        Some(
+            "data/resources/affymetrix/clariom_d_human_na36_hg38/Clariom_D_Human-na36-hg38-probeset-csv.zip"
+        )
+    );
+    assert_eq!(
+        support_files[1]["path"].as_str(),
+        Some(
+            "data/resources/affymetrix/clariom_d_human_na36_hg38/Clariom_D_Human.r1.na36.hg38.a1.transcript.csv.zip"
+        )
+    );
+    assert_eq!(
+        support_files[0]["role"].as_str(),
+        Some("thermofisher_clariom_d_human_hg38_probeset_zip")
+    );
+    assert_eq!(
+        support_files[1]["role"].as_str(),
+        Some("thermofisher_clariom_d_human_hg38_transcript_zip")
+    );
+}
+
+#[test]
+fn clariomd_gene_panel_fixture_is_small_and_gene_complete() {
+    let fixture_dir =
+        Path::new("test_files/fixtures/affymetrix_clariom_d_human_na36_hg38_subset");
+    let probesets =
+        fs::read_to_string(fixture_dir.join("clariom_d_human_na36_hg38_gene_panel.probesets.tsv"))
+            .expect("read probeset subset fixture");
+    let transcripts = fs::read_to_string(
+        fixture_dir.join("clariom_d_human_na36_hg38_gene_panel.transcripts.tsv"),
+    )
+    .expect("read transcript subset fixture");
+
+    let probeset_header = probesets.lines().next().expect("probeset header");
+    assert_eq!(
+        probeset_header,
+        "gene_symbols\tprobeset_id\tseqname\tstrand\tstart\tstop\tprobe_count\ttranscript_cluster_id\tlocus_type\texon_id\tpsr_id\tprobeset_type\tpsr_type\tjunction_start_edge\tjunction_stop_edge\tlevel\thas_cds"
+    );
+    let transcript_header = transcripts.lines().next().expect("transcript header");
+    assert_eq!(
+        transcript_header,
+        "gene_symbols\ttranscript_cluster_id\tprobeset_id\tseqname\tstrand\tstart\tstop\ttotal_probes\tcategory\tlocus type\tnotes"
+    );
+    assert_eq!(probesets.lines().count() - 1, 906);
+    assert_eq!(transcripts.lines().count() - 1, 23);
+
+    let mut genes = std::collections::BTreeSet::new();
+    for line in probesets.lines().skip(1).chain(transcripts.lines().skip(1)) {
+        for gene in line.split('\t').next().unwrap_or("").split(';') {
+            if !gene.is_empty() {
+                genes.insert(gene.to_string());
+            }
+        }
+    }
+    let expected = [
+        "E2F1", "TP73", "SP1", "PATZ1", "TP53", "TP63", "IL6", "IL10", "FUS", "TERT",
+        "TARDBP", "MDM2", "CDKN1A", "BAX", "GADD45A", "MYC", "RB1", "ESR1", "GAPDH", "ACTB",
+        "SRSF1",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(genes, expected);
+}
+
+#[test]
 fn execute_arrays_inspect_probe_region_output_summarizes_helper_outputs() {
     let temp = tempdir().expect("tempdir");
     let out = temp.path().join("probe_regions");

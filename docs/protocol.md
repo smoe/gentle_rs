@@ -1149,6 +1149,13 @@ Behavior notes:
   currently supports `--normalization rma`; the Rust preflight emits an advisory
   command only for compatible explicit CEL requests, and users still run it
   explicitly.
+- Thermo Fisher Clariom D Human na36 hg38 probeset/transcript support ZIPs are
+  login-walled vendor files. GENtle never downloads them automatically; users
+  place them manually under
+  `data/resources/affymetrix/clariom_d_human_na36_hg38/` as documented in that
+  directory's README, and `arrays probe-regions --platform Clariom_D_Human`
+  reports their local status under
+  `annotation_source.vendor_support_files[]`.
 
 ## RNA structure executable resources
 
@@ -2313,6 +2320,13 @@ Microarray track projection notes:
   `scripts/probe_regions_oligo.R` helper path and, for explicit RMA/CEL
   requests, a suggested command, but GENtle still does not run R, APT, package
   installation, downloads, or CEL summarization implicitly.
+- For `Clariom_D_Human`, the probe-region preflight also reports the canonical
+  local Thermo Fisher support ZIP paths in
+  `annotation_source.vendor_support_files[]`. These ZIPs are optional local
+  inputs for probe/probeset coordinate and annotation development; they are not
+  themselves a `gentle.microarray_track_manifest.v1` manifest. DNA-viewer array
+  projection continues to consume a prepared manifest plus per-contrast TSVs
+  whose coordinate build has been verified.
 - `arrays inspect-probe-region-output OUTPUT_DIR` consumes a completed explicit
   helper output directory without mutating project state. It validates
   `region_intensity_chrom_order.csv`, optional `sample_table.tsv`,

@@ -3876,6 +3876,8 @@ pub struct ProbeRegionAnnotationSourcePlan {
     pub path: Option<ProbeRegionFileStatus>,
     pub source_kind: String,
     pub usable: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub vendor_support_files: Vec<ProbeRegionFileStatus>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub required_r_package: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

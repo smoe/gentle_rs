@@ -2794,8 +2794,7 @@ impl MainAreaDna {
                 {
                     let cell_w = dotplot_rect.width() / cols as f32;
                     let cell_h = dotplot_rect.height() / rows as f32;
-                    let stroke_width =
-                        (cell_w.min(cell_h) * 0.45_f32).clamp(0.8_f32, 2.0_f32);
+                    let stroke_width = (cell_w.min(cell_h) * 0.45_f32).clamp(0.8_f32, 2.0_f32);
                     for ((x_cell, y_cell), color) in &visible_cells {
                         for dy in [-1, 0, 1] {
                             let neighbor = (*x_cell + 1, *y_cell + dy);
@@ -3374,20 +3373,14 @@ impl MainAreaDna {
                     egui::pos2(x, dotplot_rect.top()),
                     egui::pos2(x, dotplot_rect.bottom()),
                 ],
-                egui::Stroke::new(
-                    if is_locked { 1.6_f32 } else { 1.1_f32 },
-                    crosshair_color,
-                ),
+                egui::Stroke::new(if is_locked { 1.6_f32 } else { 1.1_f32 }, crosshair_color),
             );
             painter.line_segment(
                 [
                     egui::pos2(dotplot_rect.left(), y),
                     egui::pos2(dotplot_rect.right(), y),
                 ],
-                egui::Stroke::new(
-                    if is_locked { 1.6_f32 } else { 1.1_f32 },
-                    crosshair_color,
-                ),
+                egui::Stroke::new(if is_locked { 1.6_f32 } else { 1.1_f32 }, crosshair_color),
             );
             painter.circle_filled(
                 egui::pos2(x, y),

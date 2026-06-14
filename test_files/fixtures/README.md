@@ -37,6 +37,10 @@ checks.
   - `clariomd.synthetic.hg19-to-hg38.tsv`
   - `clariomd.synthetic.AdTAp73alpha-AdGFP.tsv`
   - `clariomd.synthetic.AdTAp73beta-AdGFP.tsv`
+- `affymetrix_clariom_d_human_na36_hg38_subset/`
+  - `README.md`
+  - `clariom_d_human_na36_hg38_gene_panel.probesets.tsv`
+  - `clariom_d_human_na36_hg38_gene_panel.transcripts.tsv`
 
 ## Provenance and usage
 
@@ -145,6 +149,24 @@ checks.
     `primer3_core` script.
 - Purpose: deterministic offline coverage for Primer3 normalization/provenance
   behavior without requiring a system Primer3 installation in CI.
+
+### `affymetrix_clariom_d_human_na36_hg38_subset/*`
+
+- Origin: derived minimal subset from Thermo Fisher/Affymetrix Clariom D Human
+  na36 hg38 NetAffx CSV support ZIPs.
+- Deterministic recreation:
+  - manually obtain the login-walled vendor ZIPs as described in
+    `data/resources/affymetrix/clariom_d_human_na36_hg38/README.md`
+  - run `scripts/extract_clariomd_gene_panel_fixture.py` with those ZIP paths
+    and this fixture directory as `--output-dir`
+- Primary usage:
+  - offline parser/projection tests that need realistic Clariom D probeset and
+    transcript-cluster IDs for a small TP73/PATZ1/p53-pathway gene panel
+  - future array-evidence development without committing full vendor NetAffx
+    annotation payloads
+- Runtime/parser role:
+  - intentionally stripped to minimal IDs, hg38 coordinates, feature types, and
+    gene symbols; it is not a replacement for the full vendor annotations.
 
 ### `mapping/*.fasta` (TP73/TP53 benchmark set)
 

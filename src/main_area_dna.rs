@@ -3850,7 +3850,9 @@ impl MainAreaDna {
                 ui,
                 egui::CentralPanel::default().frame(Frame::NONE),
                 |ui| {
-                    crate::gentle_gui_profile_scope!("MainAreaDna::render_inside.sequence_only_panel");
+                    crate::gentle_gui_profile_scope!(
+                        "MainAreaDna::render_inside.sequence_only_panel"
+                    );
                     paint_window_backdrop(ui, backdrop_kind, &backdrop_settings);
                     self.render_sequence(ui);
                 },

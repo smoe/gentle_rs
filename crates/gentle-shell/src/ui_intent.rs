@@ -73,8 +73,7 @@ const UI_INTENT_ARGUMENT_GENOME_ID: UiIntentArgument = UiIntentArgument {
 const UI_INTENT_ARGUMENT_HELPERS: UiIntentArgument = UiIntentArgument {
     name: "helpers",
     required: false,
-    detail:
-        "Query helper-genome catalogs and caches instead of reference-genome catalogs and caches.",
+    detail: "Query helper-genome catalogs and caches instead of reference-genome catalogs and caches.",
 };
 const UI_INTENT_ARGUMENT_CATALOG_PATH: UiIntentArgument = UiIntentArgument {
     name: "catalog_path",
@@ -99,8 +98,7 @@ const UI_INTENT_ARGUMENT_SPECIES: UiIntentArgument = UiIntentArgument {
 const UI_INTENT_ARGUMENT_LATEST: UiIntentArgument = UiIntentArgument {
     name: "latest",
     required: false,
-    detail:
-        "Prefer the latest matching prepared reference when deterministic selection is available.",
+    detail: "Prefer the latest matching prepared reference when deterministic selection is available.",
 };
 const UI_INTENT_OPTIONAL_ARGUMENTS_DEFAULT: [&str; 1] = ["genome_id"];
 const UI_INTENT_OPTIONAL_ARGUMENTS_PREPARED_REFERENCES: [&str; 7] = [

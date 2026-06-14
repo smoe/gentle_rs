@@ -2983,6 +2983,12 @@ The `Help` menu now includes:
   advertises the generic `scripts/probe_regions_oligo.R` helper and includes
   an advisory command for explicit RMA/CEL requests; first-class GUI execution
   and plots remain a backend follow-up.
+- For `Clariom_D_Human`, the same preflight lists the canonical local Thermo
+  Fisher na36 hg38 support ZIP paths under
+  `annotation_source.vendor_support_files[]`; these login-walled files are
+  manually staged under
+  `data/resources/affymetrix/clariom_d_human_na36_hg38/`, never
+  auto-downloaded by GENtle.
 - The GUI shell also accepts `arrays inspect-probe-region-output OUTPUT_DIR` as
   the read-only parity bridge after the explicit R helper has been run. The
   returned JSON summarizes helper outputs, sample/condition/logFC columns,

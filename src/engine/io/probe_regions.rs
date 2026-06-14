@@ -17,6 +17,10 @@ const PROBE_REGION_PROVENANCE_FILE: &str = "provenance.json";
 const PROBE_REGION_MATRIX_MANIFEST_SCHEMA: &str =
     "gentle.probe_region_normalized_matrix_manifest.v1";
 const PROBE_REGION_BACKEND_PROVENANCE_SCHEMA: &str = "gentle.probe_region_backend_provenance.v1";
+const CLARIOM_D_HUMAN_VENDOR_SUPPORT_DIR: &str =
+    "data/resources/affymetrix/clariom_d_human_na36_hg38";
+const CLARIOM_D_HUMAN_PROBESET_ZIP: &str = "Clariom_D_Human-na36-hg38-probeset-csv.zip";
+const CLARIOM_D_HUMAN_TRANSCRIPT_ZIP: &str = "Clariom_D_Human.r1.na36.hg38.a1.transcript.csv.zip";
 
 #[derive(Default)]
 struct ProbeRegionTableSummary {
@@ -869,6 +873,7 @@ impl GentleEngine {
         platform: &ProbeRegionPlatformPlan,
         dependencies: &[ProbeRegionDependencyCheck],
     ) -> ProbeRegionAnnotationSourcePlan {
+        let vendor_support_files = Self::probe_region_vendor_support_files(platform);
         let path = request
             .annotation_library_path
             .as_deref()
@@ -895,6 +900,7 @@ impl GentleEngine {
                 },
                 path: Some(path_status),
                 source_kind: source_kind.to_string(),
+                vendor_support_files,
                 required_r_package,
             };
         }
@@ -913,15 +919,74 @@ impl GentleEngine {
             },
             usable: package_usable,
             detail: required_r_package.as_ref().map(|package| {
-                if package_usable {
+                let vendor_hint = Self::probe_region_vendor_support_detail(&vendor_support_files);
+                let package_detail = if package_usable {
                     format!("Using detected Bioconductor platform package '{package}'")
                 } else {
                     format!(
                         "Bioconductor platform package '{package}' was not confirmed; provide --annotation-library or install the package before execution"
                     )
+                };
+                if let Some(vendor_hint) = vendor_hint {
+                    format!("{package_detail}. {vendor_hint}")
+                } else {
+                    package_detail
                 }
             }),
+            vendor_support_files,
             required_r_package,
+        }
+    }
+
+    fn probe_region_vendor_support_files(
+        platform: &ProbeRegionPlatformPlan,
+    ) -> Vec<ProbeRegionFileStatus> {
+        if platform.normalized != "Clariom_D_Human" {
+            return Vec::new();
+        }
+        [
+            (
+                CLARIOM_D_HUMAN_PROBESET_ZIP,
+                "thermofisher_clariom_d_human_hg38_probeset_zip",
+            ),
+            (
+                CLARIOM_D_HUMAN_TRANSCRIPT_ZIP,
+                "thermofisher_clariom_d_human_hg38_transcript_zip",
+            ),
+        ]
+        .iter()
+        .map(|(file_name, role)| {
+            let path = Path::new(CLARIOM_D_HUMAN_VENDOR_SUPPORT_DIR).join(file_name);
+            let mut status = Self::probe_region_file_status(&path.to_string_lossy(), role);
+            if !status.exists {
+                status.detail = Some(
+                    "Manual Thermo Fisher login download required; GENtle never auto-downloads this support file".to_string(),
+                );
+            }
+            status
+        })
+        .collect()
+    }
+
+    fn probe_region_vendor_support_detail(
+        vendor_support_files: &[ProbeRegionFileStatus],
+    ) -> Option<String> {
+        if vendor_support_files.is_empty() {
+            return None;
+        }
+        let present = vendor_support_files
+            .iter()
+            .filter(|file| file.exists)
+            .count();
+        let expected = vendor_support_files.len();
+        if present == expected {
+            Some(format!(
+                "Thermo Fisher Clariom D hg38 support ZIPs are present under {CLARIOM_D_HUMAN_VENDOR_SUPPORT_DIR}"
+            ))
+        } else {
+            Some(format!(
+                "Thermo Fisher Clariom D hg38 support ZIPs are expected under {CLARIOM_D_HUMAN_VENDOR_SUPPORT_DIR} ({present}/{expected} present); these login-walled files must be placed manually"
+            ))
         }
     }
 

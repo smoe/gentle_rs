@@ -15,3 +15,6 @@ data/publication_resources/*/*
 !data/publication_resources/*/manifest.json
 !data/publication_resources/*/download_manifest.tsv
 !data/publication_resources/*/download.sh
+TFS-Assets_LSG_Support-Files_*.zip
+data/resources/affymetrix/clariom_d_human_na36_hg38/*
+!data/resources/affymetrix/clariom_d_human_na36_hg38/README.md

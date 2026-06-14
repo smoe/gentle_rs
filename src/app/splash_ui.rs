@@ -70,10 +70,14 @@ impl GENtleApp {
                     points_a.push(egui::pos2(x, dna_y + wave));
                     points_b.push(egui::pos2(x, dna_y - wave));
                 }
-                ui.painter()
-                    .add(egui::Shape::line(points_a, egui::Stroke::new(2.0_f32, accent)));
-                ui.painter()
-                    .add(egui::Shape::line(points_b, egui::Stroke::new(2.0_f32, reverse)));
+                ui.painter().add(egui::Shape::line(
+                    points_a,
+                    egui::Stroke::new(2.0_f32, accent),
+                ));
+                ui.painter().add(egui::Shape::line(
+                    points_b,
+                    egui::Stroke::new(2.0_f32, reverse),
+                ));
 
                 ui.vertical_centered(|ui| {
                     let top_space = (ui.available_height() - 470.0).max(28.0) * 0.42;

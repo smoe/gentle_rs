@@ -1840,6 +1840,7 @@ cargo run --bin gentle_cli -- arrays inspect-microarray-track data/publication_r
 cargo run --bin gentle_cli -- arrays project-microarray-track grch38_tp73 data/publication_resources/rostock_p73_clariomd_e_mtab_14704/analysis/clariomd_probe_level/clariomd_microarray_track_manifest.json --contrasts AdTAp73alpha-AdGFP,AdTAp73beta-AdGFP --level probeset --max-features 5000 --clear-existing
 cargo run --bin gentle_cli -- arrays probe-regions --cel sample1.CEL --cel sample2.CEL --metadata samples.tsv --gene PATZ1 --gene TP73 --platform Clariom_D_Human --annotation-library path/to/NetAffx_or_APT_library --condition-column condition --sample-column file --normalization rma --plot --output analysis/probe_regions --dry-run
 cargo run --bin gentle_cli -- arrays probe-regions --dataset E-MTAB-14704 --gene PATZ1 --gene FUS --gene MDM2 --paired-by-replicate-suffix --platform Clariom_D_Human --plot --dry-run
+cargo run --bin gentle_cli -- arrays probe-regions --dataset E-MTAB-14704 --gene TP73 --platform Clariom_D_Human --dry-run
 cargo run --bin gentle_cli -- cutrun list --catalog assets/cutrun.json --filter CTCF
 cargo run --bin gentle_cli -- cutrun status toy_ctcf --catalog assets/cutrun.json --cache-dir data/cutrun
 cargo run --bin gentle_cli -- cutrun prepare toy_ctcf --catalog assets/cutrun.json --cache-dir data/cutrun
@@ -5165,6 +5166,11 @@ Notes:
   `scripts/probe_regions_oligo.R` command for explicit RMA/CEL requests, and
   local `Rscript` / APT / R-package dependency status; it does not run CEL
   summarization itself and never downloads or installs missing files/packages.
+  For `Clariom_D_Human`, the same preflight reports the expected local Thermo
+  Fisher na36 hg38 support ZIPs under
+  `annotation_source.vendor_support_files[]`; place them manually in
+  `data/resources/affymetrix/clariom_d_human_na36_hg38/` when probe/probeset
+  coordinate development needs vendor CSV annotations.
 - `arrays inspect-probe-region-output OUTPUT_DIR` validates the explicit helper
   outputs after the user has run R themselves. It does not project features or
   draw plots yet; it prepares a shared GUI/CLI-readable summary for that next
