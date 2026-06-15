@@ -76,6 +76,9 @@ mod clawbio_ui;
 #[path = "app/mirna_ui.rs"]
 mod mirna_ui;
 
+#[path = "app/evidence_preparation_ui.rs"]
+mod evidence_preparation_ui;
+
 #[path = "app/agent_assistant_config.rs"]
 mod agent_assistant_config;
 
@@ -152,9 +155,10 @@ use crate::{
         RoutineDecisionTraceDisambiguationAnswer, RoutineDecisionTraceDisambiguationQuestion,
         RoutineDecisionTraceExportEvent, RoutineDecisionTracePreflightSnapshot,
         RoutineDecisionTraceStore, RoutinePreferenceContextRecord, SequenceGenomeAnchorSummary,
-        SequenceScanTarget, TranslationSpeedMark, TranslationSpeedProfile,
-        UniprotFeatureCodingDnaQueryMode, UniprotFeatureCodingDnaQueryReport,
-        UniprotProjectionAuditParityReport, UniprotProjectionAuditReport,
+        SequenceScanTarget, SplicingScopePreset, TfbsScoreTrackValueKind, TranslationSpeedMark,
+        TranslationSpeedProfile, UniprotFeatureCodingDnaQueryMode,
+        UniprotFeatureCodingDnaQueryReport, UniprotProjectionAuditParityReport,
+        UniprotProjectionAuditReport,
     },
     engine_shell::{
         ShellCommand, ShellExecutionOptions, UiIntentAction, UiIntentTarget,
@@ -962,6 +966,7 @@ pub struct GENtleApp {
     external_services_ui: ExternalServicesUiState,
     clawbio_panel: clawbio_ui::ClawBioPanelState,
     mirna_panel: mirna_ui::MirnaTargetScanPanelState,
+    evidence_preparation_panel: evidence_preparation_ui::EvidencePreparationPanelState,
     show_jobs_panel: bool,
     history_ui: HistoryUiState,
     hover_status_name: String,
@@ -2170,6 +2175,7 @@ enum CommandPaletteAction {
     OpenExternalServices,
     OpenGibson,
     OpenMirnaTargetScan,
+    OpenEvidencePreparation,
     OpenPlanning,
     OpenRoutineAssistant,
     UiIntent(UiIntentTarget),
@@ -2597,6 +2603,8 @@ impl Default for GENtleApp {
             external_services_ui: ExternalServicesUiState::default(),
             clawbio_panel: clawbio_ui::ClawBioPanelState::default(),
             mirna_panel: mirna_ui::MirnaTargetScanPanelState::default(),
+            evidence_preparation_panel:
+                evidence_preparation_ui::EvidencePreparationPanelState::default(),
             show_jobs_panel: false,
             history_ui: HistoryUiState::default(),
             hover_status_name: String::new(),
@@ -2834,6 +2842,17 @@ impl GENtleApp {
         egui::Id::new((
             "hosted_mirna_target_scan_window",
             Self::mirna_target_scan_viewport_id(),
+        ))
+    }
+
+    fn evidence_preparation_viewport_id() -> ViewportId {
+        ViewportId::from_hash_of("GENtle Evidence Preparation Viewport")
+    }
+
+    fn hosted_evidence_preparation_window_id() -> egui::Id {
+        egui::Id::new((
+            "hosted_evidence_preparation_window",
+            Self::evidence_preparation_viewport_id(),
         ))
     }
 
@@ -4979,6 +4998,12 @@ Error: `{err}`"
                 action: CommandPaletteAction::OpenMirnaTargetScan,
             },
             CommandPaletteEntry {
+                title: "Evidence Preparation".to_string(),
+                detail: "Prepare the TP73 evidence-viewer proof material through shared GENtle operations and copyable handoff commands".to_string(),
+                keywords: "tp73 evidence preparation array clariom repeat rmsk cutrun bed tfbs proof".to_string(),
+                action: CommandPaletteAction::OpenEvidencePreparation,
+            },
+            CommandPaletteEntry {
                 title: "Planning".to_string(),
                 detail: "Edit planning profiles/objectives and resolve suggestions".to_string(),
                 keywords: "planning profile objective suggestions sync meta-layer".to_string(),
@@ -5085,6 +5110,9 @@ Error: `{err}`"
             CommandPaletteAction::OpenExternalServices => self.open_external_services_dialog(),
             CommandPaletteAction::OpenGibson => self.open_gibson_dialog(),
             CommandPaletteAction::OpenMirnaTargetScan => self.open_mirna_target_scan_dialog(),
+            CommandPaletteAction::OpenEvidencePreparation => {
+                self.open_evidence_preparation_dialog()
+            }
             CommandPaletteAction::OpenPlanning => self.open_planning_dialog(),
             CommandPaletteAction::OpenRoutineAssistant => self.open_routine_assistant_dialog(),
             CommandPaletteAction::UiIntent(target) => {
@@ -23981,6 +24009,7 @@ impl GENtleApp {
                 self.render_external_services_dialog(ctx);
                 self.render_clawbio_dialog(ctx);
                 self.render_mirna_target_scan_dialog(ctx);
+                self.render_evidence_preparation_dialog(ctx);
                 self.render_configuration_dialog(ctx);
                 self.render_help_dialog(ctx);
                 self.render_about_dialog(ctx);

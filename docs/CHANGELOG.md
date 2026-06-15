@@ -14,6 +14,10 @@ Maintenance rule:
 
 ## 2026-06-15
 
+- Added the command-palette `Evidence Preparation` assistant for the TP73
+  evidence-viewer proof path, reusing shared operations for local repeat,
+  array, BED, TFBS, and proof-export preparation while keeping CEL/R/vendor
+  steps as explicit copy-command handoffs.
 - Added `services delivery-route` and the
   `gentle.external_service_delivery_route.v1` contract so generic "deliver this
   sequence" wording is classified by sequence kind before selecting Metabion or

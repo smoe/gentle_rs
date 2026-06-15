@@ -336,6 +336,16 @@ impl GENtleApp {
                 detail: "Provider catalog, preflight, and quote handoff workspace".to_string(),
             });
         }
+        if self.evidence_preparation_panel.show_panel {
+            entries.push(OpenWindowEntry {
+                native_menu_key: Self::native_menu_key_for_viewport(
+                    Self::evidence_preparation_viewport_id(),
+                ),
+                viewport_id: Self::evidence_preparation_viewport_id(),
+                title: "Evidence Preparation".to_string(),
+                detail: "TP73 evidence-viewer proof material preparation".to_string(),
+            });
+        }
         if self.history_ui.show_panel {
             entries.push(OpenWindowEntry {
                 native_menu_key: Self::native_menu_key_for_viewport(Self::history_viewport_id()),
