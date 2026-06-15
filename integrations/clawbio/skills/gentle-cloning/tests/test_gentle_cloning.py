@@ -5552,6 +5552,7 @@ def test_experimental_followup_request_catalog_covers_core_intents_and_paths() -
         "differential_expression_followup",
         "splice_variant_characterization",
         "overexpression_planning",
+        "protein_expression_max_yield",
         "knockdown_planning",
         "genomic_perturbation_planning",
         "routine_cost_comparison",
@@ -5580,6 +5581,32 @@ def test_experimental_followup_request_catalog_covers_core_intents_and_paths() -
         "adenoviral_expression",
         "lentiviral_expression",
     } <= set(intents["overexpression_planning"]["followup_families"])
+    protein_handoff_requests = {
+        request["path"]
+        for request in intents["protein_expression_max_yield"]["gentle_requests"]
+    }
+    assert (
+        "skills/gentle-cloning/examples/request_planning_protein_expression_handoff.json"
+        in protein_handoff_requests
+    )
+    protein_handoff_commands = {
+        command["shell_line"]
+        for command in intents["protein_expression_max_yield"]["gentle_shell_commands"]
+    }
+    assert any(
+        command.startswith("planning protein-expression-handoff ")
+        for command in protein_handoff_commands
+    )
+    assert {
+        "high_yield_protein_expression",
+        "outsourced_gene_synthesis_or_expression",
+        "purification_handoff",
+    } <= set(intents["protein_expression_max_yield"]["followup_families"])
+    assert {
+        "product_identity_review",
+        "host_route_selection",
+        "outsourcing_or_vendor_review",
+    } <= set(intents["protein_expression_max_yield"]["confirmation_gates"])
     assert {
         "antisense_knockdown",
         "siRNA_knockdown",

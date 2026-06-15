@@ -514,6 +514,78 @@
       ]
     },
     {
+      "intent_id": "protein_expression_max_yield",
+      "title": "Plan a high-yield protein-expression handoff",
+      "detection_phrases": [
+        "give me the maximal amount of protein",
+        "maximize protein yield",
+        "maximum protein expression",
+        "high yield protein expression",
+        "which system should I use to produce this protein"
+      ],
+      "evidence_classes": [
+        "protein_product_intent",
+        "expression_route_context",
+        "local_capability_context",
+        "outsourcing_context"
+      ],
+      "required_user_inputs": [
+        "protein_or_orf_or_gene"
+      ],
+      "optional_user_inputs": [
+        "host_preference",
+        "purification_tag",
+        "solubility_constraints",
+        "endotoxin_or_ptm_constraints",
+        "scale_or_yield_target",
+        "outsourcing_allowed"
+      ],
+      "external_evidence": [
+        "ORF and predicted product context",
+        "protein solubility, secretion, disulfide, PTM, toxicity, and tag constraints",
+        "local host/vector/instrument availability from the planning profile",
+        "outsourcing/vendor constraints kept separate from construct generation"
+      ],
+      "gentle_requests": [
+        {
+          "path": "skills/gentle-cloning/examples/request_planning_protein_expression_handoff.json",
+          "purpose": "Emit GENtle's read-only protein-expression handoff report with route candidates, missing questions, and GeneArt preflight scaffold.",
+          "requires_adaptation": true
+        },
+        {
+          "path": "skills/gentle-cloning/examples/request_workflow_tp73_isoform_protein_2d_gel.json",
+          "purpose": "Inspect isoform protein size/pI expectations when product identity or isoform choice matters.",
+          "requires_adaptation": true
+        }
+      ],
+      "gentle_shell_commands": [
+        {
+          "shell_line": "planning protein-expression-handoff --objective '{\"schema\":\"gentle.planning_objective.v1\",\"biological_intent\":\"protein_expression_max_yield\"}' --format json",
+          "purpose": "Ask GENtle for a non-mutating high-yield protein-expression handoff plan.",
+          "confirmation": "not_required"
+        },
+        {
+          "shell_line": "planning consult cloning --objective '{\"schema\":\"gentle.planning_objective.v1\",\"biological_intent\":\"protein_expression_max_yield\"}' --format json",
+          "purpose": "Review the underlying cloning and local-profile questions before selecting a construct route.",
+          "confirmation": "not_required"
+        }
+      ],
+      "followup_families": [
+        "high_yield_protein_expression",
+        "transient_plasmid_overexpression",
+        "stable_plasmid_expression",
+        "outsourced_gene_synthesis_or_expression",
+        "purification_handoff"
+      ],
+      "confirmation_gates": [
+        "product_identity_review",
+        "host_route_selection",
+        "biosafety_or_policy_review",
+        "outsourcing_or_vendor_review",
+        "multi_step_construct_planning"
+      ]
+    },
+    {
       "intent_id": "knockdown_planning",
       "title": "Plan gene knockdown or repression",
       "detection_phrases": [

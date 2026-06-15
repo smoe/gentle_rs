@@ -16,7 +16,8 @@ Maintenance rule:
 
 - Routed high-yield protein-expression ClawBio intents such as "maximal amount
   of protein" to the read-only `planning protein-expression-handoff` request
-  example, keeping skill discovery and intent dispatch aligned.
+  example and added the same scenario to the experimental follow-up catalog,
+  keeping skill discovery and intent dispatch aligned.
 
 ## 2026-06-14
 
