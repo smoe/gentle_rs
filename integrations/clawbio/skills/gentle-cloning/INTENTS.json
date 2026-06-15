@@ -335,6 +335,43 @@
       ]
     },
     {
+      "intent_id": "sequence_delivery_route",
+      "description": "Classify a generic 'deliver this sequence' request into the appropriate external-service provider/service-kind route before quote or handoff.",
+      "trigger_terms": [
+        "deliver this sequence",
+        "deliver that sequence",
+        "sequence delivered",
+        "i want that sequence delivered",
+        "i want this sequence delivered",
+        "order this sequence",
+        "get this sequence synthesized",
+        "synthesize this sequence",
+        "send this sequence for synthesis",
+        "deliver this oligo",
+        "deliver this primer",
+        "deliver this protein sequence"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "slots": {
+            "delivery_route_request_json": {
+              "required": true,
+              "description": "One JSON argument with schema gentle.external_service_delivery_route_request.v1 built from the active sequence/source context"
+            }
+          },
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "mode": "shell",
+            "shell_line": "services delivery-route {delivery_route_request_json}",
+            "timeout_secs": 180
+          }
+        }
+      ]
+    },
+    {
       "intent_id": "external_service_provider_catalog",
       "description": "List configured external-service providers and quote/handoff capabilities, including GeneArt and Metabion when present.",
       "trigger_terms": [

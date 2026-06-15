@@ -14,6 +14,10 @@ Maintenance rule:
 
 ## 2026-06-15
 
+- Added `services delivery-route` and the
+  `gentle.external_service_delivery_route.v1` contract so generic "deliver this
+  sequence" wording is classified by sequence kind before selecting Metabion or
+  GeneArt quote-handoff routes.
 - Added ClawBio external-service intents and request examples for provider
   catalog/doctor checks plus review-only Metabion oligo/m-block and GeneArt
   cloned-gene/protein-expression quote handoff routes.

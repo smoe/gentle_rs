@@ -37,8 +37,10 @@ Use the `gentle-cloning` skill for:
 - TFBS/JASPAR, REBASE, ATtRACT-style resource-backed analyses,
 - isoform/protein gel and 2D-gel visualizations,
 - lab-assistant cloning instruction exports,
-- external-service provider discovery and review-only GeneArt/Metabion
-  quote/handoff packet preparation,
+- sequence-kind routing for generic delivery requests such as "deliver this
+  sequence",
+- external-service provider discovery and review-only GeneArt/Metabion quote/
+  handoff packet preparation,
 - visual review of generated PNG/SVG/report artifacts.
 
 For broad planning questions, prefer a read-only GENtle status/guide/consult
@@ -119,6 +121,10 @@ Useful request examples include:
 - `request_runtime_version.json`
 - `request_skill_info.json`
 - `request_services_status.json`
+- `request_services_sequence_delivery_route_short_oligo.json`
+- `request_services_sequence_delivery_route_fragment.json`
+- `request_services_sequence_delivery_route_cloned_gene.json`
+- `request_services_sequence_delivery_route_protein.json`
 - `request_services_providers_list.json`
 - `request_services_providers_doctor.json`
 - `request_services_metabion_oligo_preflight.json`
@@ -250,8 +256,11 @@ resources/tools until the user has seen the expected command, target location,
 download/build size when known, platform-specific install route, and permission
 requirements.
 
-External-service routes are also local and review-first. Use provider catalog
-or doctor examples before quoting if the user asks what is available. Quote
+External-service routes are also local and review-first. For generic wording
+such as "I want that sequence delivered", first construct a
+`gentle.external_service_delivery_route_request.v1` from the active sequence
+context and run `services delivery-route @request.json`. Use the returned
+candidate request for later preflight/quote only after human review. Quote
 examples may prepare handoff packets, but they must not be treated as vendor
 submission, portal automation, account login, or approval to store commercial
 details.

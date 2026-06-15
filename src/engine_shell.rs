@@ -1051,6 +1051,9 @@ pub enum ShellCommand {
         catalog_path: Option<String>,
         output: Option<String>,
     },
+    ServicesDeliveryRoute {
+        request_json: String,
+    },
     ServicesProjectPreflight {
         request_json: String,
     },
@@ -6727,6 +6730,14 @@ impl ShellCommand {
                 "validate external-service provider config catalog '{}' (output='{}')",
                 catalog_path.as_deref().unwrap_or("default discovery"),
                 output.as_deref().unwrap_or("-"),
+            ),
+            Self::ServicesDeliveryRoute { request_json } => format!(
+                "route sequence-delivery request from '{}'",
+                if request_json.trim_start().starts_with('{') {
+                    "inline JSON"
+                } else {
+                    request_json
+                }
             ),
             Self::ServicesProjectPreflight { request_json } => format!(
                 "preflight external-service request from '{}'",
@@ -22837,7 +22848,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "services" => {
             if tokens.len() < 2 {
                 return Err(
-                    "services requires a subcommand: status, providers, project-preflight, project-quote, handoff, doctor or guide".to_string(),
+                    "services requires a subcommand: status, providers, delivery-route, project-preflight, project-quote, handoff, doctor or guide".to_string(),
                 );
             }
             match tokens[1].as_str() {
@@ -22903,6 +22914,16 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                             "Unknown services providers subcommand '{other}' (expected list or doctor)"
                         )),
                     }
+                }
+                "delivery-route" | "route-delivery" => {
+                    if tokens.len() != 3 {
+                        return Err(
+                            "services delivery-route requires REQUEST_JSON_OR_@FILE".to_string()
+                        );
+                    }
+                    Ok(ShellCommand::ServicesDeliveryRoute {
+                        request_json: tokens[2].clone(),
+                    })
                 }
                 "project-preflight" => {
                     if tokens.len() != 3 {
@@ -23023,7 +23044,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     })
                 }
                 other => Err(format!(
-                    "Unknown services subcommand '{other}' (expected status, providers, project-preflight, project-quote, handoff, doctor or guide)"
+                    "Unknown services subcommand '{other}' (expected status, providers, delivery-route, project-preflight, project-quote, handoff, doctor or guide)"
                 )),
             }
         }
@@ -27088,6 +27109,16 @@ fn execute_export_import_and_resource_command(
                 state_changed: false,
                 output: serde_json::to_value(report).map_err(|e| {
                     format!("Could not serialize external-service provider config doctor: {e}")
+                })?,
+            })
+        }
+        ShellCommand::ServicesDeliveryRoute { request_json } => {
+            let request = parse_json_payload(request_json)?;
+            let report = service_readiness::external_service_delivery_route(&request)?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(report).map_err(|e| {
+                    format!("Could not serialize external service delivery route: {e}")
                 })?,
             })
         }
@@ -35556,6 +35587,7 @@ fn execute_shell_command_with_options_dispatch(
             | ShellCommand::ServicesStatus
             | ShellCommand::ServicesProvidersList
             | ShellCommand::ServicesProvidersDoctor { .. }
+            | ShellCommand::ServicesDeliveryRoute { .. }
             | ShellCommand::ServicesProjectPreflight { .. }
             | ShellCommand::ServicesProjectQuote { .. }
             | ShellCommand::ServicesHandoff { .. }
@@ -36235,6 +36267,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ServicesStatus
         | ShellCommand::ServicesProvidersList
         | ShellCommand::ServicesProvidersDoctor { .. }
+        | ShellCommand::ServicesDeliveryRoute { .. }
         | ShellCommand::ServicesProjectPreflight { .. }
         | ShellCommand::ServicesProjectQuote { .. }
         | ShellCommand::ServicesHandoff { .. }

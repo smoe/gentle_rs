@@ -1219,6 +1219,30 @@ than GeneArt-, metabion-, or portal-specific fields.
   - returned by `services providers doctor [--catalog PATH] [--output PATH]`
   - reports inspected sources, parsed source/provider counts, SHA1 checksums,
     warnings, and deterministic validation errors
+- `gentle.external_service_delivery_route_request.v1`
+  - accepted by `services delivery-route REQUEST_JSON_OR_@FILE`
+  - fields: `schema`, `source_target`, optional `optimization_target`,
+    optional `vector_spec`, optional `delivery_options`, optional
+    `commercial_context_ref`, `return_spec`, and optional `request_metadata`
+  - this is the provider-neutral input for generic wording such as "deliver
+    this sequence"; callers should fill it from the active sequence or selected
+    line items before asking GENtle to choose a provider route
+- `gentle.external_service_delivery_route.v1`
+  - returned by `services delivery-route`
+  - fields include `status`, `molecule_type`, `sequence_kind`,
+    `sequence_count`, optional sequence-length fields,
+    `recommended_provider`, `recommended_service_kind`, `candidates[]`,
+    `summary_lines[]`, `rationale[]`, `clarification_questions[]`, and
+    `warnings[]`
+  - `candidates[].request` is a concrete
+    `gentle.external_service_request.v1` that can be passed to
+    `services project-preflight` or `services project-quote` after human review
+  - current routing treats short DNA oligos/primers/probes as Metabion
+    `dna_oligo_single_tube`, medium DNA fragments as Metabion `dna_fragment`,
+    cloned/vector-backed DNA as GeneArt `cloned_gene`, long synthetic DNA as
+    GeneArt `dna_fragment`, and protein products as GeneArt
+    `protein_expression`; RNA or unclear molecule context asks for
+    clarification rather than guessing
 - `gentle.external_service_request.v1`
   - accepted by `services project-preflight REQUEST_JSON_OR_@FILE` and
     `services project-quote REQUEST_JSON_OR_@FILE [--output-dir DIR]`

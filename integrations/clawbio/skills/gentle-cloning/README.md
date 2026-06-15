@@ -54,11 +54,12 @@ free text.
 
 The immediate chat-adapter routing layer is `INTENTS.json`. It maps broad user
 wording for runtime version, service readiness, installed databases/resources,
-external-service provider catalog/doctor checks, GeneArt and Metabion
-quote-handoff requests, residue-to-genome codon mapping, Telegram guide
-overview/sections, PCR/qPCR/TaqMan seed/design/test/report/cartoon requests,
-transcript qPCR panels, TP73 protein gel, TP73 2D gel, trypsin-digest gel,
-capabilities, skill info, and explicit demo requests to stable
+generic sequence-delivery routing, external-service provider catalog/doctor
+checks, GeneArt and Metabion quote-handoff requests, residue-to-genome codon
+mapping, Telegram guide overview/sections, PCR/qPCR/TaqMan
+seed/design/test/report/cartoon requests, transcript qPCR panels, TP73 protein
+gel, TP73 2D gel, trypsin-digest gel, capabilities, skill info, and explicit
+demo requests to stable
 `examples/*.json` payloads or typed request templates. Descriptor-only skill
 directories are discoverable by the current ClawBio planner, but execution
 still requires registering `gentle-cloning` in ClawBio's top-level `SKILLS`
@@ -91,10 +92,10 @@ intended framing is:
 - GENtle does not prove causality by itself.
 - GENtle can also inspect pasted DNA fragments directly for restriction sites
   or TFBS hits without first creating project state when the task is read-only.
-- GENtle can list configured external-service providers and prepare
-  review-only GeneArt/Metabion quote-handoff packets. It does not submit
-  orders, scrape vendor portals, or store account, PO, shipping, or billing
-  details.
+- GENtle can route generic "deliver this sequence" wording by sequence kind,
+  list configured external-service providers, and prepare review-only
+  GeneArt/Metabion quote-handoff packets. It does not submit orders, scrape
+  vendor portals, or store account, PO, shipping, or billing details.
 - GENtle can seed, design, inspect, and export PCR primer and probe-based
   qPCR/TaqMan assay work through typed ClawBio modes over the shared
   `primers ...` command family.
@@ -722,6 +723,10 @@ Included first-run bootstrap requests:
 - `examples/request_genomes_install_ensembl_mouse.json`
 - `examples/request_shell_state_summary.json`
 - `examples/request_services_status.json`
+- `examples/request_services_sequence_delivery_route_short_oligo.json`
+- `examples/request_services_sequence_delivery_route_fragment.json`
+- `examples/request_services_sequence_delivery_route_cloned_gene.json`
+- `examples/request_services_sequence_delivery_route_protein.json`
 - `examples/request_services_providers_list.json`
 - `examples/request_services_providers_doctor.json`
 - `examples/request_services_metabion_oligo_preflight.json`

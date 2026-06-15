@@ -3384,6 +3384,25 @@ Service and resource commands:
   - Reports source scope/path, provider counts, SHA1 checksums, and
     deterministic schema/required-field errors.
   - With `--output`, also writes the JSON doctor report to disk.
+- `services delivery-route REQUEST_JSON_OR_@FILE`
+  - Parses `gentle.external_service_delivery_route_request.v1` and returns
+    `gentle.external_service_delivery_route.v1`.
+  - This is the generic "deliver this sequence" classifier before any vendor
+    preflight or quote handoff. It uses source kind, sequence alphabet, line
+    items, length hints, and vector/construct context to recommend a
+    provider/service-kind candidate.
+  - Current deterministic routing rules are intentionally conservative:
+    short DNA oligos/primers/probes route to Metabion
+    `dna_oligo_single_tube`; medium DNA fragments route to Metabion
+    `dna_fragment` m-block handoff; vector-backed/cloned-gene DNA routes to
+    GeneArt `cloned_gene`; long synthetic DNA without vector context routes to
+    GeneArt `dna_fragment`; protein/amino-acid products route to GeneArt
+    `protein_expression`.
+  - RNA, missing sequence context, or unclear molecule type returns
+    `needs_clarification` instead of guessing.
+  - Returned candidate requests are ordinary
+    `gentle.external_service_request.v1` objects suitable for human-reviewed
+    `services project-preflight` or `services project-quote`.
 - `services project-preflight REQUEST_JSON_OR_@FILE`
   - Parses `gentle.external_service_request.v1` and returns
     `gentle.external_service_preflight.v1`.

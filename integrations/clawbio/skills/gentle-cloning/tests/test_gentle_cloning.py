@@ -117,6 +117,10 @@ INTENT_EXAMPLE_ALLOWLIST = {
     "request_seed_qpcr_tp53_feature.json",
     "request_seed_qpcr_tp53_splicing.json",
     "request_seed_qpcr_tp53_splicing_specific_junction.json",
+    "request_services_sequence_delivery_route_cloned_gene.json",
+    "request_services_sequence_delivery_route_fragment.json",
+    "request_services_sequence_delivery_route_protein.json",
+    "request_services_sequence_delivery_route_short_oligo.json",
     "request_services_handoff.json",
     "request_services_telegram_guide_isoforms_bach2.json",
     "request_shell_state_summary.json",
@@ -5160,6 +5164,7 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
         "capabilities",
         "runtime_version",
         "services_status",
+        "sequence_delivery_route",
         "external_service_provider_catalog",
         "external_service_provider_doctor",
         "metabion_oligo_preflight",
@@ -5225,6 +5230,7 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
         "capabilities": "examples/request_capabilities.json",
         "runtime_version": "examples/request_runtime_version.json",
         "services_status": "examples/request_services_status.json",
+        "sequence_delivery_route": None,
         "external_service_provider_catalog": (
             "examples/request_services_providers_list.json"
         ),
@@ -5324,6 +5330,12 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
                     "services guide --channel telegram --section isoforms --gene {gene_symbol}"
                 )
                 assert step["slots"]["gene_symbol"]["required"] is True
+            elif intent_id == "sequence_delivery_route":
+                assert step["input_template"]["mode"] == "shell"
+                assert step["input_template"]["shell_line"] == (
+                    "services delivery-route {delivery_route_request_json}"
+                )
+                assert step["slots"]["delivery_route_request_json"]["required"] is True
             elif intent_id == "ensembl_gene_protein_2d_gel":
                 assert step["input_template"]["mode"] == "gene-protein-2d-gel"
                 assert step["input_template"]["gene_symbol"] == "{gene_symbol}"
@@ -5451,6 +5463,12 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
     ]
     assert "local resources" in routes["services_status"]["trigger_terms"]
     assert "rnafold resource" in routes["services_status"]["trigger_terms"]
+    assert "i want that sequence delivered" in routes["sequence_delivery_route"][
+        "trigger_terms"
+    ]
+    assert "deliver this protein sequence" in routes["sequence_delivery_route"][
+        "trigger_terms"
+    ]
     assert "external service providers" in routes[
         "external_service_provider_catalog"
     ]["trigger_terms"]

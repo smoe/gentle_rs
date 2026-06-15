@@ -14,11 +14,13 @@ use crate::{
     resource_status::{ExternalToolResourceStatus, ResourceCatalogReport, resource_catalog_status},
 };
 use gentle_protocol::{
+    EXTERNAL_SERVICE_DELIVERY_ROUTE_REQUEST_SCHEMA, EXTERNAL_SERVICE_DELIVERY_ROUTE_SCHEMA,
     EXTERNAL_SERVICE_PREFLIGHT_SCHEMA, EXTERNAL_SERVICE_PROVIDER_CATALOG_SCHEMA,
     EXTERNAL_SERVICE_QUOTE_SCHEMA, EXTERNAL_SERVICE_REQUEST_SCHEMA, ExternalServiceArtifactBundle,
-    ExternalServiceArtifactRef, ExternalServiceInlinePayload, ExternalServiceLink,
-    ExternalServicePreflightReport, ExternalServiceProviderCatalog, ExternalServiceQuoteReport,
-    ExternalServiceRequest,
+    ExternalServiceArtifactRef, ExternalServiceDeliveryRouteCandidate,
+    ExternalServiceDeliveryRouteReport, ExternalServiceDeliveryRouteRequest,
+    ExternalServiceInlinePayload, ExternalServiceLink, ExternalServicePreflightReport,
+    ExternalServiceProviderCatalog, ExternalServiceQuoteReport, ExternalServiceRequest,
 };
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -34,6 +36,8 @@ pub const SERVICE_HANDOFF_SCHEMA: &str = "gentle.service_handoff.v1";
 pub const TELEGRAM_GUIDE_SCHEMA: &str = "gentle.telegram_guide.v1";
 pub const DEFAULT_REFERENCE_GENOME_IDS: &[&str] = &["Human GRCh38 Ensembl 116"];
 pub const DEFAULT_HELPER_IDS: &[&str] = &["Plasmid pUC19 (online)"];
+const DELIVERY_ROUTE_OLIGO_MAX_NT: usize = 120;
+const DELIVERY_ROUTE_METABION_FRAGMENT_MAX_NT: usize = 3000;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ServiceReadinessReport {
@@ -455,6 +459,455 @@ fn summarize_external_service_request(request: &ExternalServiceRequest) -> Vec<S
 fn parse_external_service_request(request_json: &str) -> Result<ExternalServiceRequest, String> {
     serde_json::from_str::<ExternalServiceRequest>(request_json)
         .map_err(|e| format!("Invalid external-service request JSON: {e}"))
+}
+
+fn parse_external_service_delivery_route_request(
+    request_json: &str,
+) -> Result<ExternalServiceDeliveryRouteRequest, String> {
+    serde_json::from_str::<ExternalServiceDeliveryRouteRequest>(request_json)
+        .map_err(|e| format!("Invalid external-service delivery-route request JSON: {e}"))
+}
+
+fn normalized_sequence_letters(raw: &str) -> String {
+    raw.chars()
+        .filter(|ch| !ch.is_whitespace() && *ch != '-' && !ch.is_ascii_digit())
+        .map(|ch| ch.to_ascii_uppercase())
+        .collect()
+}
+
+fn integer_from_value_keys(value: &Value, keys: &[&str]) -> Option<usize> {
+    let object = value.as_object()?;
+    for key in keys {
+        if let Some(number) = object.get(*key).and_then(Value::as_u64) {
+            return Some(number as usize);
+        }
+        if let Some(text) = object.get(*key).and_then(Value::as_str)
+            && let Ok(number) = text.trim().parse::<usize>()
+        {
+            return Some(number);
+        }
+    }
+    None
+}
+
+fn source_target_kind(value: &Value) -> String {
+    string_from_value_keys(
+        value,
+        &[
+            "kind",
+            "type",
+            "molecule_type",
+            "sequence_kind",
+            "delivery_kind",
+            "product_kind",
+        ],
+    )
+    .unwrap_or("")
+    .trim()
+    .to_ascii_lowercase()
+}
+
+fn source_target_has_any_key(value: &Value, keys: &[&str]) -> bool {
+    value
+        .as_object()
+        .map(|object| keys.iter().any(|key| object.contains_key(*key)))
+        .unwrap_or(false)
+}
+
+fn source_target_contains_construct_context(request: &ExternalServiceDeliveryRouteRequest) -> bool {
+    request.vector_spec.is_some()
+        || source_target_has_any_key(
+            &request.source_target,
+            &[
+                "vector_spec",
+                "construct_id",
+                "plasmid_id",
+                "backbone_id",
+                "helper_profile_id",
+                "insertion_site",
+            ],
+        )
+        || source_target_kind(&request.source_target).contains("construct")
+        || source_target_kind(&request.source_target).contains("cloned")
+        || source_target_kind(&request.source_target).contains("plasmid")
+        || source_target_kind(&request.source_target).contains("synthetic_gene")
+}
+
+fn source_target_sequences(value: &Value) -> Vec<String> {
+    let mut sequences = vec![];
+    if let Some(text) = string_from_value_keys(
+        value,
+        &[
+            "sequence",
+            "sequence_text",
+            "dna_sequence",
+            "protein_sequence",
+            "amino_acid_sequence",
+        ],
+    ) {
+        sequences.push(normalized_sequence_letters(text));
+    }
+    if let Some(object) = value.as_object() {
+        for key in ["line_items", "oligos", "fragments", "sequences", "targets"] {
+            if let Some(items) = object.get(key).and_then(Value::as_array) {
+                for item in items {
+                    if let Some(text) = string_from_value_keys(
+                        item,
+                        &[
+                            "sequence",
+                            "sequence_text",
+                            "dna_sequence",
+                            "protein_sequence",
+                            "amino_acid_sequence",
+                        ],
+                    ) {
+                        sequences.push(normalized_sequence_letters(text));
+                    }
+                }
+            }
+        }
+    }
+    sequences.retain(|sequence| !sequence.is_empty());
+    sequences
+}
+
+fn source_target_declared_length(value: &Value) -> Option<usize> {
+    integer_from_value_keys(
+        value,
+        &[
+            "sequence_length_nt",
+            "length_nt",
+            "length_bp",
+            "nucleotide_length",
+            "nucleotide_length_bp",
+            "amino_acid_length",
+            "length_aa",
+        ],
+    )
+}
+
+fn sequence_looks_dna(sequence: &str) -> bool {
+    !sequence.is_empty()
+        && sequence.chars().all(|ch| {
+            matches!(
+                ch,
+                'A' | 'C'
+                    | 'G'
+                    | 'T'
+                    | 'U'
+                    | 'R'
+                    | 'Y'
+                    | 'S'
+                    | 'W'
+                    | 'K'
+                    | 'M'
+                    | 'B'
+                    | 'D'
+                    | 'H'
+                    | 'V'
+                    | 'N'
+            )
+        })
+}
+
+fn sequence_looks_rna(sequence: &str) -> bool {
+    sequence.contains('U') && !sequence.contains('T') && sequence_looks_dna(sequence)
+}
+
+fn sequence_looks_protein(sequence: &str) -> bool {
+    !sequence.is_empty()
+        && sequence.chars().all(|ch| {
+            matches!(
+                ch,
+                'A' | 'C'
+                    | 'D'
+                    | 'E'
+                    | 'F'
+                    | 'G'
+                    | 'H'
+                    | 'I'
+                    | 'K'
+                    | 'L'
+                    | 'M'
+                    | 'N'
+                    | 'P'
+                    | 'Q'
+                    | 'R'
+                    | 'S'
+                    | 'T'
+                    | 'V'
+                    | 'W'
+                    | 'Y'
+                    | '*'
+                    | 'X'
+            )
+        })
+        && sequence
+            .chars()
+            .any(|ch| !matches!(ch, 'A' | 'C' | 'G' | 'T' | 'N'))
+}
+
+fn capability_display_name(
+    provider: &LoadedExternalServiceProviderConfig,
+    service_kind: &str,
+) -> String {
+    provider
+        .capability_for(service_kind)
+        .map(|capability| capability.display_name)
+        .unwrap_or_else(|| service_kind.to_string())
+}
+
+fn delivery_route_candidate(
+    provider_config: &LoadedExternalServiceProviderConfig,
+    service_kind: &str,
+    confidence: &str,
+    rationale: Vec<String>,
+    route_request: &ExternalServiceDeliveryRouteRequest,
+) -> Option<ExternalServiceDeliveryRouteCandidate> {
+    provider_config.capability_for(service_kind)?;
+    let provider = normalize_service_token(&provider_config.record.provider);
+    let service_kind = normalize_service_token(service_kind);
+    let request = ExternalServiceRequest {
+        schema: EXTERNAL_SERVICE_REQUEST_SCHEMA.to_string(),
+        provider: provider.clone(),
+        service_kind: service_kind.clone(),
+        source_target: route_request.source_target.clone(),
+        optimization_target: route_request.optimization_target.clone(),
+        vector_spec: route_request.vector_spec.clone(),
+        delivery_options: route_request.delivery_options.clone(),
+        commercial_context_ref: route_request.commercial_context_ref.clone(),
+        return_spec: route_request.return_spec.clone(),
+        request_metadata: route_request.request_metadata.clone(),
+    };
+    Some(ExternalServiceDeliveryRouteCandidate {
+        provider,
+        provider_display_name: provider_config.record.display_name.clone(),
+        service_kind: service_kind.clone(),
+        service_display_name: capability_display_name(provider_config, &service_kind),
+        confidence: confidence.to_string(),
+        rationale,
+        request,
+    })
+}
+
+pub fn external_service_delivery_route(
+    request_json: &str,
+) -> Result<ExternalServiceDeliveryRouteReport, String> {
+    let request = parse_external_service_delivery_route_request(request_json)?;
+    let mut warnings = vec![];
+    if !request.schema.trim().is_empty()
+        && request.schema != EXTERNAL_SERVICE_DELIVERY_ROUTE_REQUEST_SCHEMA
+    {
+        warnings.push(format!(
+            "Request schema '{}' is not '{}'; parsing with v1 defaults.",
+            request.schema, EXTERNAL_SERVICE_DELIVERY_ROUTE_REQUEST_SCHEMA
+        ));
+    }
+    let provider_index = external_service_provider_config_index()
+        .map_err(|err| format!("External-service provider config could not be loaded: {err}"))?;
+    let sequences = source_target_sequences(&request.source_target);
+    let sequence_count = sequences.len();
+    let max_sequence_length_nt = sequences
+        .iter()
+        .map(String::len)
+        .max()
+        .or_else(|| source_target_declared_length(&request.source_target));
+    let sequence_length_nt = if sequence_count == 1 {
+        sequences
+            .first()
+            .map(String::len)
+            .or(max_sequence_length_nt)
+    } else {
+        None
+    };
+    let source_kind = source_target_kind(&request.source_target);
+    let has_protein_field = source_target_has_any_key(
+        &request.source_target,
+        &["protein_sequence", "amino_acid_sequence", "protein_seq_id"],
+    );
+    let has_line_item_oligos = source_target_has_any_key(&request.source_target, &["oligos"]);
+    let has_fragments = source_target_has_any_key(&request.source_target, &["fragments"]);
+    let construct_context = source_target_contains_construct_context(&request);
+    let dna_kind_hint = source_kind.contains("dna")
+        || source_kind.contains("gene")
+        || source_kind.contains("oligo")
+        || source_kind.contains("primer")
+        || source_kind.contains("probe")
+        || source_kind.contains("fragment")
+        || source_kind.contains("mblock")
+        || source_kind.contains("m-block")
+        || source_kind.contains("cloned")
+        || source_kind.contains("plasmid");
+    let all_dna = (!sequences.is_empty()
+        && sequences
+            .iter()
+            .all(|sequence| sequence_looks_dna(sequence)))
+        || (sequences.is_empty() && max_sequence_length_nt.is_some() && dna_kind_hint);
+    let any_rna = sequences
+        .iter()
+        .any(|sequence| sequence_looks_rna(sequence))
+        || source_kind.contains("rna");
+    let protein_like = has_protein_field
+        || source_kind.contains("protein")
+        || (!sequences.is_empty()
+            && !dna_kind_hint
+            && sequences
+                .iter()
+                .all(|sequence| sequence_looks_protein(sequence)));
+
+    let mut candidates = vec![];
+    let mut rationale = vec![];
+    let mut clarification_questions = vec![];
+    let mut molecule_type = "unknown".to_string();
+    let mut sequence_kind = "ambiguous".to_string();
+
+    let route = if any_rna {
+        molecule_type = "rna".to_string();
+        sequence_kind = "rna_sequence".to_string();
+        clarification_questions.push(
+            "RNA oligo delivery is not represented by the active provider config; choose a provider/service kind explicitly or add a provider overlay.".to_string(),
+        );
+        None
+    } else if protein_like {
+        molecule_type = "protein".to_string();
+        sequence_kind = "protein_product".to_string();
+        rationale.push(
+            "Protein/amino-acid source fields route to protein-expression service handoff, not DNA oligo ordering.".to_string(),
+        );
+        Some(("geneart", "protein_expression", "high"))
+    } else if sequences.is_empty() && max_sequence_length_nt.is_none() {
+        clarification_questions.push(
+            "Provide sequence text, line items, a length hint, or a typed source record before selecting a delivery provider.".to_string(),
+        );
+        None
+    } else if source_kind.contains("oligo")
+        || source_kind.contains("primer")
+        || source_kind.contains("probe")
+        || has_line_item_oligos
+        || (all_dna
+            && !construct_context
+            && max_sequence_length_nt.unwrap_or(0) <= DELIVERY_ROUTE_OLIGO_MAX_NT)
+    {
+        molecule_type = "dna".to_string();
+        sequence_kind = "dna_oligo_single_tube".to_string();
+        rationale.push(format!(
+            "DNA line items at or below {DELIVERY_ROUTE_OLIGO_MAX_NT} nt route to the configured Metabion single-tube oligo handoff."
+        ));
+        Some(("metabion", "dna_oligo_single_tube", "high"))
+    } else if construct_context {
+        molecule_type = "dna".to_string();
+        sequence_kind = "cloned_gene_or_construct".to_string();
+        rationale.push(
+            "Vector, plasmid, construct, or cloned-gene context routes to GeneArt cloned-gene/plasmid construction handoff.".to_string(),
+        );
+        Some(("geneart", "cloned_gene", "high"))
+    } else if source_kind.contains("fragment")
+        || source_kind.contains("mblock")
+        || source_kind.contains("m-block")
+        || has_fragments
+        || (all_dna
+            && max_sequence_length_nt.unwrap_or(0) <= DELIVERY_ROUTE_METABION_FRAGMENT_MAX_NT)
+    {
+        molecule_type = "dna".to_string();
+        sequence_kind = "dna_fragment".to_string();
+        rationale.push(format!(
+            "DNA fragments longer than routine oligos and up to the local {DELIVERY_ROUTE_METABION_FRAGMENT_MAX_NT} nt routing threshold use the configured Metabion m-block handoff."
+        ));
+        Some(("metabion", "dna_fragment", "medium"))
+    } else if all_dna {
+        molecule_type = "dna".to_string();
+        sequence_kind = "long_synthetic_dna".to_string();
+        rationale.push(format!(
+            "DNA longer than the Metabion fragment routing threshold is treated as long synthetic DNA and routed to GeneArt DNA-fragment handoff unless construct context is supplied."
+        ));
+        Some(("geneart", "dna_fragment", "medium"))
+    } else {
+        clarification_questions.push(
+            "The sequence alphabet is not clearly DNA, RNA, or protein; provide molecule type before provider selection.".to_string(),
+        );
+        None
+    };
+
+    if let Some((provider_id, service_kind_id, confidence)) = route {
+        if let Some(provider_config) = provider_index.provider(provider_id) {
+            if let Some(candidate) = delivery_route_candidate(
+                provider_config,
+                service_kind_id,
+                confidence,
+                rationale.clone(),
+                &request,
+            ) {
+                candidates.push(candidate);
+            } else {
+                warnings.push(format!(
+                    "Configured provider '{}' does not expose service_kind '{}'",
+                    provider_id, service_kind_id
+                ));
+            }
+        } else {
+            warnings.push(format!(
+                "Configured provider catalog does not include provider '{}'",
+                provider_id
+            ));
+        }
+    }
+
+    if candidates.is_empty() && clarification_questions.is_empty() {
+        clarification_questions.push(
+            "No configured provider/service-kind route matched this delivery request.".to_string(),
+        );
+    }
+    let status = if candidates.is_empty() {
+        "needs_clarification"
+    } else {
+        "route_ready"
+    }
+    .to_string();
+    let length_unit = match molecule_type.as_str() {
+        "protein" => "aa",
+        "dna" | "rna" => "nt",
+        _ => "unknown",
+    }
+    .to_string();
+    let recommended_provider = candidates
+        .first()
+        .map(|candidate| candidate.provider.clone());
+    let recommended_service_kind = candidates
+        .first()
+        .map(|candidate| candidate.service_kind.clone());
+    let mut summary_lines = vec![format!(
+        "Sequence-delivery route status: {status}; molecule_type={molecule_type}; sequence_kind={sequence_kind}."
+    )];
+    if let Some(candidate) = candidates.first() {
+        summary_lines.push(format!(
+            "Recommended route: provider={} service_kind={} ({})",
+            candidate.provider, candidate.service_kind, candidate.service_display_name
+        ));
+    }
+    if !clarification_questions.is_empty() {
+        summary_lines.push(format!(
+            "Clarification required: {}",
+            clarification_questions.join(" ")
+        ));
+    }
+    Ok(ExternalServiceDeliveryRouteReport {
+        schema: EXTERNAL_SERVICE_DELIVERY_ROUTE_SCHEMA.to_string(),
+        generated_at_unix_ms: now_unix_ms(),
+        status,
+        molecule_type,
+        sequence_kind,
+        sequence_count,
+        sequence_length: sequence_length_nt,
+        max_sequence_length: max_sequence_length_nt,
+        length_unit,
+        recommended_provider,
+        recommended_service_kind,
+        candidates,
+        summary_lines,
+        rationale,
+        clarification_questions,
+        warnings,
+    })
 }
 
 pub fn external_service_project_preflight(

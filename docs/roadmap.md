@@ -109,13 +109,17 @@ and avoid adding routing or planner semantics to GENtle.
 
 External-service bridge status: the provider-neutral schema/shell layer is now
 concrete through `services providers list`, `services providers doctor`,
-`services project-preflight`, and `services project-quote`. Built-in provider
-configuration covers GeneArt quote handoff for DNA fragments/cloned genes/
-reorders/mutagenesis/protein expression and Metabion handoff routes for
-single-tube DNA oligos and m-block fragments. Agent work should stay focused on
-ClawBio intent/example parity and clear "handoff, not submission" wording;
-direct GeneArt API use, WOP/OCI automation, credential handling, and commercial
-order state remain later explicitly confirmed integration phases.
+`services delivery-route`, `services project-preflight`, and
+`services project-quote`. Built-in provider configuration covers GeneArt quote
+handoff for DNA fragments/cloned genes/reorders/mutagenesis/protein expression
+and Metabion handoff routes for single-tube DNA oligos and m-block fragments.
+Generic "deliver this sequence" wording should go through delivery-route
+classification first so sequence kind, length, and construct/protein context
+choose the provider/service route before any quote packet is prepared. Agent
+work should stay focused on ClawBio intent/example parity and clear "handoff,
+not submission" wording; direct GeneArt API use, WOP/OCI automation,
+credential handling, and commercial order state remain later explicitly
+confirmed integration phases.
 
 Near-term consult rule: keep `planning consult cloning` narrow and
 deterministic until richer construct reasoning lands. The preferred v1 surface

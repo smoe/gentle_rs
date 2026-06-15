@@ -7153,8 +7153,7 @@ fn execute_arrays_probe_regions_reports_clariom_vendor_support_paths() {
 
 #[test]
 fn clariomd_gene_panel_fixture_is_small_and_gene_complete() {
-    let fixture_dir =
-        Path::new("test_files/fixtures/affymetrix_clariom_d_human_na36_hg38_subset");
+    let fixture_dir = Path::new("test_files/fixtures/affymetrix_clariom_d_human_na36_hg38_subset");
     let probesets =
         fs::read_to_string(fixture_dir.join("clariom_d_human_na36_hg38_gene_panel.probesets.tsv"))
             .expect("read probeset subset fixture");
@@ -7185,9 +7184,8 @@ fn clariomd_gene_panel_fixture_is_small_and_gene_complete() {
         }
     }
     let expected = [
-        "E2F1", "TP73", "SP1", "PATZ1", "TP53", "TP63", "IL6", "IL10", "FUS", "TERT",
-        "TARDBP", "MDM2", "CDKN1A", "BAX", "GADD45A", "MYC", "RB1", "ESR1", "GAPDH", "ACTB",
-        "SRSF1",
+        "E2F1", "TP73", "SP1", "PATZ1", "TP53", "TP63", "IL6", "IL10", "FUS", "TERT", "TARDBP",
+        "MDM2", "CDKN1A", "BAX", "GADD45A", "MYC", "RB1", "ESR1", "GAPDH", "ACTB", "SRSF1",
     ]
     .into_iter()
     .map(str::to_string)
@@ -16267,6 +16265,15 @@ fn parse_services_external_provider_commands() {
         other => panic!("unexpected command: {other:?}"),
     }
 
+    let route = parse_shell_line("services delivery-route @delivery_request.json")
+        .expect("parse services delivery-route");
+    match route {
+        ShellCommand::ServicesDeliveryRoute { request_json } => {
+            assert_eq!(request_json, "@delivery_request.json");
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
     let preflight = parse_shell_line("services project-preflight @geneart_request.json")
         .expect("parse services project-preflight");
     match preflight {
@@ -16290,6 +16297,237 @@ fn parse_services_external_provider_commands() {
         }
         other => panic!("unexpected command: {other:?}"),
     }
+}
+
+#[test]
+fn execute_services_delivery_route_selects_sequence_kind_provider_rules() {
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+
+    let oligo_request = serde_json::json!({
+        "schema": "gentle.external_service_delivery_route_request.v1",
+        "source_target": {
+            "kind": "inline_dna",
+            "name": "short_primer",
+            "sequence": "ACGTACGTACGTACGTACGT"
+        }
+    })
+    .to_string();
+    let oligo_route = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ServicesDeliveryRoute {
+            request_json: oligo_request,
+        },
+    )
+    .expect("execute oligo delivery route");
+    assert!(!oligo_route.state_changed);
+    assert_eq!(
+        oligo_route.output["schema"].as_str(),
+        Some("gentle.external_service_delivery_route.v1")
+    );
+    assert_eq!(oligo_route.output["status"].as_str(), Some("route_ready"));
+    assert_eq!(
+        oligo_route.output["recommended_provider"].as_str(),
+        Some("metabion")
+    );
+    assert_eq!(
+        oligo_route.output["recommended_service_kind"].as_str(),
+        Some("dna_oligo_single_tube")
+    );
+    assert_eq!(
+        oligo_route.output["candidates"][0]["request"]["provider"].as_str(),
+        Some("metabion")
+    );
+
+    let degenerate_primer_request = serde_json::json!({
+        "schema": "gentle.external_service_delivery_route_request.v1",
+        "source_target": {
+            "kind": "primer",
+            "name": "degenerate_primer",
+            "sequence": "ATGRYSWKM"
+        }
+    })
+    .to_string();
+    let degenerate_primer_route = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ServicesDeliveryRoute {
+            request_json: degenerate_primer_request,
+        },
+    )
+    .expect("execute degenerate primer delivery route");
+    assert_eq!(
+        degenerate_primer_route.output["recommended_provider"].as_str(),
+        Some("metabion")
+    );
+    assert_eq!(
+        degenerate_primer_route.output["recommended_service_kind"].as_str(),
+        Some("dna_oligo_single_tube")
+    );
+
+    let fragment_sequence = "ACGT".repeat(50);
+    let fragment_request = serde_json::json!({
+        "schema": "gentle.external_service_delivery_route_request.v1",
+        "source_target": {
+            "kind": "inline_dna",
+            "name": "medium_fragment",
+            "sequence": fragment_sequence
+        }
+    })
+    .to_string();
+    let fragment_route = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ServicesDeliveryRoute {
+            request_json: fragment_request,
+        },
+    )
+    .expect("execute fragment delivery route");
+    assert_eq!(
+        fragment_route.output["recommended_provider"].as_str(),
+        Some("metabion")
+    );
+    assert_eq!(
+        fragment_route.output["recommended_service_kind"].as_str(),
+        Some("dna_fragment")
+    );
+
+    let construct_request = serde_json::json!({
+        "schema": "gentle.external_service_delivery_route_request.v1",
+        "source_target": {
+            "kind": "cloned_gene",
+            "name": "construct_sequence",
+            "sequence": "ATGGCTGCTGCTTAA"
+        },
+        "vector_spec": {
+            "vector_name": "review_required"
+        }
+    })
+    .to_string();
+    let construct_route = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ServicesDeliveryRoute {
+            request_json: construct_request,
+        },
+    )
+    .expect("execute construct delivery route");
+    assert_eq!(
+        construct_route.output["recommended_provider"].as_str(),
+        Some("geneart")
+    );
+    assert_eq!(
+        construct_route.output["recommended_service_kind"].as_str(),
+        Some("cloned_gene")
+    );
+
+    let long_dna_request = serde_json::json!({
+        "schema": "gentle.external_service_delivery_route_request.v1",
+        "source_target": {
+            "kind": "inline_dna",
+            "name": "long_synthetic_dna",
+            "length_nt": 5000
+        }
+    })
+    .to_string();
+    let long_dna_route = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ServicesDeliveryRoute {
+            request_json: long_dna_request,
+        },
+    )
+    .expect("execute long DNA delivery route");
+    assert_eq!(
+        long_dna_route.output["recommended_provider"].as_str(),
+        Some("geneart")
+    );
+    assert_eq!(
+        long_dna_route.output["recommended_service_kind"].as_str(),
+        Some("dna_fragment")
+    );
+
+    let protein_request = serde_json::json!({
+        "schema": "gentle.external_service_delivery_route_request.v1",
+        "source_target": {
+            "kind": "inline_protein",
+            "name": "protein_product",
+            "protein_sequence": "MSEQUENCE"
+        }
+    })
+    .to_string();
+    let protein_route = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ServicesDeliveryRoute {
+            request_json: protein_request,
+        },
+    )
+    .expect("execute protein delivery route");
+    assert_eq!(
+        protein_route.output["recommended_provider"].as_str(),
+        Some("geneart")
+    );
+    assert_eq!(
+        protein_route.output["recommended_service_kind"].as_str(),
+        Some("protein_expression")
+    );
+}
+
+#[test]
+fn execute_services_delivery_route_asks_when_sequence_kind_is_missing_or_unsupported() {
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let empty_request = serde_json::json!({
+        "schema": "gentle.external_service_delivery_route_request.v1",
+        "source_target": {
+            "kind": "selected_sequence"
+        }
+    })
+    .to_string();
+    let empty_route = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ServicesDeliveryRoute {
+            request_json: empty_request,
+        },
+    )
+    .expect("execute empty delivery route");
+    assert_eq!(
+        empty_route.output["status"].as_str(),
+        Some("needs_clarification")
+    );
+    assert!(
+        empty_route.output["clarification_questions"]
+            .as_array()
+            .expect("clarification questions")
+            .iter()
+            .any(|question| question
+                .as_str()
+                .is_some_and(|text| text.contains("Provide sequence text")))
+    );
+
+    let rna_request = serde_json::json!({
+        "schema": "gentle.external_service_delivery_route_request.v1",
+        "source_target": {
+            "kind": "inline_rna",
+            "sequence": "AUGCAUGCAUGC"
+        }
+    })
+    .to_string();
+    let rna_route = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ServicesDeliveryRoute {
+            request_json: rna_request,
+        },
+    )
+    .expect("execute RNA delivery route");
+    assert_eq!(
+        rna_route.output["status"].as_str(),
+        Some("needs_clarification")
+    );
+    assert_eq!(rna_route.output["molecule_type"].as_str(), Some("rna"));
+    assert!(
+        rna_route.output["clarification_questions"]
+            .as_array()
+            .expect("clarification questions")
+            .iter()
+            .any(|question| question
+                .as_str()
+                .is_some_and(|text| text.contains("RNA oligo delivery")))
+    );
 }
 
 #[test]

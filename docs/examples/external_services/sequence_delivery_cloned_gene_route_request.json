@@ -1,0 +1,33 @@
+{
+  "schema": "gentle.external_service_delivery_route_request.v1",
+  "source_target": {
+    "kind": "cloned_gene",
+    "name": "DEMO_DO_NOT_ORDER_delivery_route_cloned_gene",
+    "sequence": "ATGGCTAGCGGTACTGATCGTACCTGACGATCGGTTACGATGCTAGCTAACTGACCGTACGATCGTACGATGCTAA",
+    "note": "Synthetic tutorial input for routing a cloned-gene or construct delivery request."
+  },
+  "vector_spec": {
+    "vector_name": "DEMO_DO_NOT_ORDER_reviewed_vector_placeholder",
+    "insertion_site": "review_required"
+  },
+  "delivery_options": {
+    "delivery_form": "plasmid DNA",
+    "qc": "vendor default plus sequence confirmation if available"
+  },
+  "return_spec": {
+    "requested_payloads": [
+      "genbank",
+      "fasta",
+      "quote_metadata",
+      "handoff_bundle"
+    ],
+    "inline_max_bytes": 20000,
+    "redact_commercial_fields": true,
+    "prefer_artifact_bundle": true
+  },
+  "request_metadata": {
+    "tutorial": true,
+    "human_review_only": true,
+    "prompt_example": "I want this cloned sequence delivered."
+  }
+}

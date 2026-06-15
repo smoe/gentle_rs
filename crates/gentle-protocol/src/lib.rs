@@ -11,7 +11,7 @@ pub mod gene_groups;
 pub mod reporter;
 
 use serde::{Deserialize, Deserializer, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     error::Error,
@@ -20,33 +20,31 @@ use std::{
 };
 
 pub use construct_reasoning::{
-    ANNOTATION_CANDIDATE_SCHEMA, ANNOTATION_CANDIDATE_SUMMARY_SCHEMA,
-    ANNOTATION_CANDIDATE_WRITEBACK_SCHEMA, AdapterCaptureProtectionMode, AdapterCaptureStyle,
-    AdapterRestrictionCapturePlan, AnnotationCandidate, AnnotationCandidateSummary,
-    AnnotationCandidateWriteback, CONSTRUCT_CANDIDATE_SCHEMA, CONSTRUCT_OBJECTIVE_SCHEMA,
-    CONSTRUCT_REASONING_GRAPH_SCHEMA, CONSTRUCT_REASONING_STORE_SCHEMA, ConstructCandidate,
-    ConstructObjective, ConstructReasoningGraph, ConstructReasoningStore, ConstructRole,
-    DESIGN_DECISION_NODE_SCHEMA, DESIGN_EVIDENCE_SCHEMA, DESIGN_FACT_SCHEMA, DecisionMethod,
-    DesignDecisionNode, DesignEvidence, DesignFact, EditableStatus, EvidenceClass, EvidenceScope,
-    HOST_PROFILE_CATALOG_SCHEMA, HelperConstructProfile, HostLifecycleRole, HostProfileCatalog,
+    AdapterCaptureProtectionMode, AdapterCaptureStyle, AdapterRestrictionCapturePlan,
+    AnnotationCandidate, AnnotationCandidateSummary, AnnotationCandidateWriteback,
+    ConstructCandidate, ConstructObjective, ConstructReasoningGraph, ConstructReasoningStore,
+    ConstructRole, DecisionMethod, DesignDecisionNode, DesignEvidence, DesignFact, EditableStatus,
+    EvidenceClass, EvidenceScope, HelperConstructProfile, HostLifecycleRole, HostProfileCatalog,
     HostProfileRecord, HostRouteStep, ProteinToDnaHandoffCandidate, ProteinToDnaHandoffCoverage,
-    ProteinToDnaHandoffRankingGoal, ProteinToDnaHandoffStrategy,
+    ProteinToDnaHandoffRankingGoal, ProteinToDnaHandoffStrategy, ANNOTATION_CANDIDATE_SCHEMA,
+    ANNOTATION_CANDIDATE_SUMMARY_SCHEMA, ANNOTATION_CANDIDATE_WRITEBACK_SCHEMA,
+    CONSTRUCT_CANDIDATE_SCHEMA, CONSTRUCT_OBJECTIVE_SCHEMA, CONSTRUCT_REASONING_GRAPH_SCHEMA,
+    CONSTRUCT_REASONING_STORE_SCHEMA, DESIGN_DECISION_NODE_SCHEMA, DESIGN_EVIDENCE_SCHEMA,
+    DESIGN_FACT_SCHEMA, HOST_PROFILE_CATALOG_SCHEMA,
 };
 pub use dna_ladder::{
-    DNALadder, DNALadderBand, DNALadders, Ladder, LadderBand, LadderCatalog, LadderMolecule,
-    RNALadder, RNALadderBand, RNALadders, default_dna_ladders, default_rna_ladders,
+    default_dna_ladders, default_rna_ladders, DNALadder, DNALadderBand, DNALadders, Ladder,
+    LadderBand, LadderCatalog, LadderMolecule, RNALadder, RNALadderBand, RNALadders,
 };
 pub use gene_groups::{
-    GENE_GROUP_CATALOG_SCHEMA, GENE_GROUP_DOCTOR_REPORT_SCHEMA, GENE_GROUP_DRAFT_REPORT_SCHEMA,
-    GENE_GROUP_LIST_REPORT_SCHEMA, GENE_GROUP_RESOLVE_REPORT_SCHEMA, GENE_GROUP_SHOW_REPORT_SCHEMA,
     GeneGroupCatalog, GeneGroupCatalogSourceReport, GeneGroupDoctorReport, GeneGroupDraftReport,
     GeneGroupExternalMapping, GeneGroupExternalResource, GeneGroupListEntry, GeneGroupListReport,
     GeneGroupMember, GeneGroupRecord, GeneGroupResolveReport, GeneGroupShowReport,
+    GENE_GROUP_CATALOG_SCHEMA, GENE_GROUP_DOCTOR_REPORT_SCHEMA, GENE_GROUP_DRAFT_REPORT_SCHEMA,
+    GENE_GROUP_LIST_REPORT_SCHEMA, GENE_GROUP_RESOLVE_REPORT_SCHEMA, GENE_GROUP_SHOW_REPORT_SCHEMA,
 };
 pub use reporter::{
-    PortBindingStatus, REPORTER_CATALOG_REPORT_SCHEMA, REPORTER_CATALOG_SCHEMA,
-    REPORTER_CONSTRUCT_HANDOFF_SCHEMA, REPORTER_CORPUS_EXPORT_SCHEMA,
-    REPORTER_RECOMMENDATION_SCHEMA, ReporterAnnotatedRecord, ReporterBackboneResolution,
+    PortBindingStatus, ReporterAnnotatedRecord, ReporterBackboneResolution,
     ReporterBackboneResolutionStatus, ReporterCatalog, ReporterCatalogReport,
     ReporterComputedAnnotation, ReporterConstraints, ReporterConstructHandoffCommand,
     ReporterConstructHandoffPlan, ReporterConstructHandoffProvenance, ReporterConstructPortBinding,
@@ -54,6 +52,8 @@ pub use reporter::{
     ReporterCorpusExportFormat, ReporterPreferenceWeights, ReporterQuarantinedRecord,
     ReporterRecommendation, ReporterRecommendationResult, ReporterRecord,
     ReporterRejectedCandidate, ReporterSourceRef, ReporterSpectralProfile,
+    REPORTER_CATALOG_REPORT_SCHEMA, REPORTER_CATALOG_SCHEMA, REPORTER_CONSTRUCT_HANDOFF_SCHEMA,
+    REPORTER_CORPUS_EXPORT_SCHEMA, REPORTER_RECOMMENDATION_SCHEMA,
 };
 
 /// Stable identifier for one sequence entry stored in project state.
@@ -78,6 +78,12 @@ pub const EXTERNAL_SERVICE_REQUEST_SCHEMA: &str = "gentle.external_service_reque
 pub const EXTERNAL_SERVICE_PREFLIGHT_SCHEMA: &str = "gentle.external_service_preflight.v1";
 /// Quote/handoff report for external services that have not been submitted.
 pub const EXTERNAL_SERVICE_QUOTE_SCHEMA: &str = "gentle.external_service_quote.v1";
+/// Provider/service-kind routing report for ambiguous sequence-delivery requests.
+pub const EXTERNAL_SERVICE_DELIVERY_ROUTE_SCHEMA: &str =
+    "gentle.external_service_delivery_route.v1";
+/// Input contract for selecting an external-service route from sequence context.
+pub const EXTERNAL_SERVICE_DELIVERY_ROUTE_REQUEST_SCHEMA: &str =
+    "gentle.external_service_delivery_route_request.v1";
 
 /// Engine-owned list of external providers and their supported service kinds.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -268,6 +274,70 @@ impl Default for ExternalServiceReturnSpec {
             prefer_artifact_bundle: true,
         }
     }
+}
+
+/// Provider-neutral request for classifying "deliver this sequence" intent.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ExternalServiceDeliveryRouteRequest {
+    pub schema: String,
+    pub source_target: Value,
+    pub optimization_target: Option<Value>,
+    pub vector_spec: Option<Value>,
+    pub delivery_options: Option<Value>,
+    pub commercial_context_ref: Option<String>,
+    pub return_spec: ExternalServiceReturnSpec,
+    pub request_metadata: Option<Value>,
+}
+
+impl Default for ExternalServiceDeliveryRouteRequest {
+    fn default() -> Self {
+        Self {
+            schema: EXTERNAL_SERVICE_DELIVERY_ROUTE_REQUEST_SCHEMA.to_string(),
+            source_target: Value::Null,
+            optimization_target: None,
+            vector_spec: None,
+            delivery_options: None,
+            commercial_context_ref: None,
+            return_spec: ExternalServiceReturnSpec::default(),
+            request_metadata: None,
+        }
+    }
+}
+
+/// Candidate provider route for a classified sequence-delivery request.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ExternalServiceDeliveryRouteCandidate {
+    pub provider: String,
+    pub provider_display_name: String,
+    pub service_kind: String,
+    pub service_display_name: String,
+    pub confidence: String,
+    pub rationale: Vec<String>,
+    pub request: ExternalServiceRequest,
+}
+
+/// Deterministic routing report for generic sequence-delivery wording.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ExternalServiceDeliveryRouteReport {
+    pub schema: String,
+    pub generated_at_unix_ms: u128,
+    pub status: String,
+    pub molecule_type: String,
+    pub sequence_kind: String,
+    pub sequence_count: usize,
+    pub sequence_length: Option<usize>,
+    pub max_sequence_length: Option<usize>,
+    pub length_unit: String,
+    pub recommended_provider: Option<String>,
+    pub recommended_service_kind: Option<String>,
+    pub candidates: Vec<ExternalServiceDeliveryRouteCandidate>,
+    pub summary_lines: Vec<String>,
+    pub rationale: Vec<String>,
+    pub clarification_questions: Vec<String>,
+    pub warnings: Vec<String>,
 }
 
 /// Deterministic local eligibility/capability report for one service request.
