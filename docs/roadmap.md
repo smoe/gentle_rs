@@ -179,10 +179,9 @@ broad crate surgery that is not tied to the selected release story.
   build, liftover, multi-hit, and ambiguity provenance, then use those mapped
   probe/exon/junction constraints to identify compatible splice isoforms and
   rule out incompatible ones without hiding uncertain evidence.
-- Next array-evidence implementation pass: add first-class GUI controls for
-  direct helper-output projection, add projection-map/liftover support for
-  helper-output coordinate systems that do not directly match anchors, and then
-  add an Affymetrix Power Tools path for user-supplied APT/NetAffx library
+- Next array-evidence implementation pass: add projection-map/liftover support
+  for helper-output coordinate systems that do not directly match anchors, and
+  then add an Affymetrix Power Tools path for user-supplied APT/NetAffx library
   inputs.
 
 ## Phase D: Visualization And Workflow UX

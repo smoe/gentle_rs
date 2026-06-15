@@ -42,6 +42,9 @@ Maintenance rule:
 - Added `arrays project-probe-region-output` / `ProjectProbeRegionOutput` for
   direct-coordinate-compatible projection of inspected helper `log2FC_*` rows
   into genome-anchored array features.
+- Added first-class sequence-window controls for projecting inspected
+  probe-region helper output into genome-anchored array features without
+  leaving the Clariom D evidence panel.
 
 ## 2026-06-14
 

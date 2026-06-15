@@ -3022,10 +3022,9 @@ The `Help` menu now includes:
   then previews helper outputs, sample/condition/logFC columns, chromosome/gene
   coverage, coordinate/build declarations, projection blockers, and a bounded
   chromosome-ordered row preview. The same panel can export a deterministic
-  native SVG plot from `mean_log2_*` and `log2FC_*` helper-table columns;
-  `arrays project-probe-region-output` provides the shared direct-compatible
-  projection route, while first-class projection controls in this panel remain
-  a follow-up.
+  native SVG plot from `mean_log2_*` and `log2FC_*` helper-table columns, then
+  project direct-coordinate-compatible helper output into genome-anchored array
+  features through the shared `arrays project-probe-region-output` route.
 
 ## microRNA Target Scan
 

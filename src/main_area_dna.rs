@@ -103,10 +103,11 @@ use crate::{
         ExportFormat, FlexibilityModel, FlexibilityTrack, GenomeAnchorPreparedFallbackPolicy,
         GenomeAnchorSide, GentleEngine, IsoformPromoterComparisonGroup,
         IsoformPromoterComparisonReport, JasparCatalogRemoteSummary, LigationProtocol,
-        LinearSequenceLetterLayoutMode, MAX_DOTPLOT_PAIR_EVALUATIONS, OpResult, Operation,
-        OperationProgress, PairwiseAlignmentMode, PcrPrimerSpec, PrimerDesignBackend,
-        PrimerDesignBaseLock, PrimerDesignPairConstraint, PrimerDesignProgress, PrimerDesignReport,
-        PrimerDesignSideConstraint, PrimerSpecificityPolicy, ProbeRegionOutputInspection,
+        LinearSequenceLetterLayoutMode, MAX_DOTPLOT_PAIR_EVALUATIONS, MicroarrayProjectionReport,
+        OpResult, Operation, OperationProgress, PairwiseAlignmentMode, PcrPrimerSpec,
+        PrimerDesignBackend, PrimerDesignBaseLock, PrimerDesignPairConstraint,
+        PrimerDesignProgress, PrimerDesignReport, PrimerDesignSideConstraint,
+        PrimerSpecificityPolicy, ProbeRegionOutputInspection,
         PromoterEvidenceMatrixReport, PromoterEvidenceMatrixRow, PromoterReporterCandidateSet,
         PromoterWindowCollapseMode, ProtocolCartoonPreviewTelemetry, QpcrDesignReport,
         QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting, QpcrTranscriptTargetingMode,
@@ -588,6 +589,16 @@ struct EngineOpsUiState {
     probe_region_output_dir: String,
     #[serde(default)]
     probe_region_svg_output_path: String,
+    #[serde(default)]
+    probe_region_projection_seq_id: String,
+    #[serde(default)]
+    probe_region_projection_contrasts: String,
+    #[serde(default)]
+    probe_region_projection_min_abs_logfc: String,
+    #[serde(default = "default_probe_region_projection_max_features_text")]
+    probe_region_projection_max_features: String,
+    #[serde(default)]
+    probe_region_projection_clear_existing: bool,
     #[serde(default = "default_true")]
     tfbs_display_use_llr_bits: bool,
     #[serde(default = "default_zero_f64")]
@@ -703,6 +714,10 @@ fn default_ucsc_rmsk_interval_index_path() -> String {
 }
 
 fn default_rmsk_max_features_text() -> String {
+    "5000".to_string()
+}
+
+fn default_probe_region_projection_max_features_text() -> String {
     "5000".to_string()
 }
 
@@ -1332,8 +1347,14 @@ pub struct MainAreaDna {
     cutrun_regulatory_species_filters: String,
     probe_region_output_dir: String,
     probe_region_svg_output_path: String,
+    probe_region_projection_seq_id: String,
+    probe_region_projection_contrasts: String,
+    probe_region_projection_min_abs_logfc: String,
+    probe_region_projection_max_features: String,
+    probe_region_projection_clear_existing: bool,
     cached_cutrun_regulatory_support: Option<CutRunRegulatorySupportReport>,
     cached_probe_region_output_inspection: Option<ProbeRegionOutputInspection>,
+    cached_probe_region_projection: Option<MicroarrayProjectionReport>,
     cached_restriction_site_scan: Option<RestrictionSiteScanReport>,
     cached_tfbs_hit_scan: Option<TfbsHitScanReport>,
     cached_tfbs_score_tracks: Option<TfbsScoreTrackReport>,
@@ -2006,8 +2027,14 @@ impl MainAreaDna {
             probe_region_output_dir: "analysis/probe_regions".to_string(),
             probe_region_svg_output_path: "analysis/probe_regions/probe_region_plot.svg"
                 .to_string(),
+            probe_region_projection_seq_id: seq_id_for_defaults.clone().unwrap_or_default(),
+            probe_region_projection_contrasts: String::new(),
+            probe_region_projection_min_abs_logfc: String::new(),
+            probe_region_projection_max_features: default_probe_region_projection_max_features_text(),
+            probe_region_projection_clear_existing: false,
             cached_cutrun_regulatory_support: None,
             cached_probe_region_output_inspection: None,
+            cached_probe_region_projection: None,
             cached_restriction_site_scan: None,
             cached_tfbs_hit_scan: None,
             cached_tfbs_score_tracks: None,
@@ -7798,6 +7825,7 @@ impl MainAreaDna {
         if output_dir.is_empty() {
             self.op_status = "Probe-region output directory is empty".to_string();
             self.cached_probe_region_output_inspection = None;
+            self.cached_probe_region_projection = None;
             return;
         }
 
@@ -7813,6 +7841,7 @@ impl MainAreaDna {
             Ok(run) => {
                 let Some(value) = run.output.get("inspection").cloned() else {
                     self.cached_probe_region_output_inspection = None;
+                    self.cached_probe_region_projection = None;
                     self.op_status =
                         "Probe-region inspection completed without an inspection payload"
                             .to_string();
@@ -7834,6 +7863,7 @@ impl MainAreaDna {
                     }
                     Err(err) => {
                         self.cached_probe_region_output_inspection = None;
+                        self.cached_probe_region_projection = None;
                         self.op_status =
                             format!("Could not decode probe-region inspection payload: {err}");
                     }
@@ -7841,6 +7871,7 @@ impl MainAreaDna {
             }
             Err(err) => {
                 self.cached_probe_region_output_inspection = None;
+                self.cached_probe_region_projection = None;
                 self.op_status = format!("Probe-region inspection failed: {err}");
             }
         }
@@ -7891,6 +7922,116 @@ impl MainAreaDna {
         }
     }
 
+    fn project_probe_region_output_for_current_path(&mut self) {
+        let Some(engine) = self.engine.clone() else {
+            self.op_status = "No engine attached".to_string();
+            return;
+        };
+        let seq_id = if self.probe_region_projection_seq_id.trim().is_empty() {
+            self.seq_id.clone().unwrap_or_default()
+        } else {
+            self.probe_region_projection_seq_id.trim().to_string()
+        };
+        let output_dir = self.probe_region_output_dir.trim().to_string();
+        if seq_id.is_empty() {
+            self.op_status = "Probe-region projection target sequence ID is empty".to_string();
+            return;
+        }
+        if output_dir.is_empty() {
+            self.op_status = "Probe-region output directory is empty".to_string();
+            return;
+        }
+        let min_abs_logfc = match Self::parse_optional_f64_text(
+            &self.probe_region_projection_min_abs_logfc,
+            "probe-region min |log2FC|",
+        ) {
+            Ok(Some(value)) if value.is_finite() && value >= 0.0 => Some(value),
+            Ok(Some(_)) => {
+                self.op_status =
+                    "Invalid probe-region min |log2FC|: expected a finite value >= 0".to_string();
+                return;
+            }
+            Ok(None) => None,
+            Err(message) => {
+                self.op_status = message;
+                return;
+            }
+        };
+        let max_features = match self.probe_region_projection_max_features.trim() {
+            "" => None,
+            value => match Self::parse_positive_usize_text(value, "probe-region max features") {
+                Ok(parsed) => Some(parsed),
+                Err(message) => {
+                    self.op_status = message;
+                    return;
+                }
+            },
+        };
+        let command = ShellCommand::ArraysProjectProbeRegionOutput {
+            seq_id: seq_id.clone(),
+            output_dir: output_dir.clone(),
+            contrasts: Self::parse_ids(&self.probe_region_projection_contrasts),
+            min_abs_logfc,
+            max_features,
+            clear_existing: self.probe_region_projection_clear_existing,
+        };
+        let started = Instant::now();
+        let outcome = {
+            let mut guard = engine.write().expect("Engine lock poisoned");
+            let options = ShellExecutionOptions::from_env();
+            execute_shell_command_with_options(&mut guard, &command, &options)
+        };
+        match outcome {
+            Ok(run) => {
+                let Some(value) = run.output.get("result").cloned() else {
+                    self.cached_probe_region_projection = None;
+                    self.op_status =
+                        "Probe-region projection completed without an OpResult payload"
+                            .to_string();
+                    return;
+                };
+                match serde_json::from_value::<OpResult>(value) {
+                    Ok(result) => {
+                        let projection = result.microarray_projection.clone();
+                        self.probe_region_projection_seq_id = seq_id;
+                        self.handle_operation_success(result, started);
+                        if let Some(report) = projection {
+                            self.op_status = format!(
+                                "Probe-region projection imported {} feature(s) into '{}' from '{}' (contrasts={}, parsed={}, skipped={})",
+                                report.imported_features,
+                                report.seq_id,
+                                output_dir,
+                                if report.projected_contrasts.is_empty() {
+                                    "none".to_string()
+                                } else {
+                                    report.projected_contrasts.join(",")
+                                },
+                                report.parsed_rows,
+                                report.skipped_rows
+                            );
+                            self.cached_probe_region_projection = Some(report);
+                            self.save_engine_ops_state();
+                        } else {
+                            self.cached_probe_region_projection = None;
+                            self.op_status =
+                                "Probe-region projection completed without a projection report"
+                                    .to_string();
+                        }
+                    }
+                    Err(err) => {
+                        self.cached_probe_region_projection = None;
+                        self.op_status =
+                            format!("Could not decode probe-region projection payload: {err}");
+                    }
+                }
+            }
+            Err(err) => {
+                self.cached_probe_region_projection = None;
+                self.op_status = format!("Probe-region projection failed: {err}");
+            }
+        }
+    }
+
     fn render_probe_region_output_inspection_panel(&mut self, ui: &mut egui::Ui) {
         ui.small(
             egui::RichText::new(
@@ -7927,6 +8068,7 @@ impl MainAreaDna {
         });
         if output_dir_changed {
             self.cached_probe_region_output_inspection = None;
+            self.cached_probe_region_projection = None;
             self.save_engine_ops_state();
         }
         let mut svg_output_changed = false;
@@ -7957,6 +8099,152 @@ impl MainAreaDna {
         });
         if svg_output_changed {
             self.save_engine_ops_state();
+        }
+
+        ui.add_space(4.0);
+        ui.separator();
+        ui.label(egui::RichText::new("Project helper output").strong());
+        let mut projection_fields_changed = false;
+        ui.horizontal_wrapped(|ui| {
+            ui.label("target_seq_id");
+            if ui
+                .add_sized(
+                    [ui.available_width().min(280.0), 0.0],
+                    egui::TextEdit::singleline(&mut self.probe_region_projection_seq_id),
+                )
+                .changed()
+            {
+                projection_fields_changed = true;
+                self.cached_probe_region_projection = None;
+            }
+            if ui
+                .button("Use current")
+                .on_hover_text("Use the active sequence window as projection target")
+                .clicked()
+            {
+                self.probe_region_projection_seq_id = self.seq_id.clone().unwrap_or_default();
+                projection_fields_changed = true;
+                self.cached_probe_region_projection = None;
+            }
+        });
+        ui.horizontal_wrapped(|ui| {
+            ui.label("contrasts");
+            if ui
+                .add_sized(
+                    [ui.available_width().min(300.0), 0.0],
+                    egui::TextEdit::singleline(&mut self.probe_region_projection_contrasts),
+                )
+                .on_hover_text("Comma-separated log2FC contrast labels; empty projects all")
+                .changed()
+            {
+                projection_fields_changed = true;
+                self.cached_probe_region_projection = None;
+            }
+            let inspected_logfc_tracks = self
+                .cached_probe_region_output_inspection
+                .as_ref()
+                .map(|report| report.logfc_columns.clone())
+                .unwrap_or_default();
+            if ui
+                .add_enabled(
+                    !inspected_logfc_tracks.is_empty(),
+                    egui::Button::new("Use inspected"),
+                )
+                .on_hover_text("Fill the contrast filter from the inspected log2FC tracks")
+                .clicked()
+            {
+                self.probe_region_projection_contrasts = inspected_logfc_tracks.join(",");
+                projection_fields_changed = true;
+                self.cached_probe_region_projection = None;
+            }
+        });
+        ui.horizontal_wrapped(|ui| {
+            ui.label("min |log2FC|");
+            if ui
+                .add(
+                    egui::TextEdit::singleline(
+                        &mut self.probe_region_projection_min_abs_logfc,
+                    )
+                    .desired_width(80.0),
+                )
+                .on_hover_text("Optional absolute log2 fold-change threshold")
+                .changed()
+            {
+                projection_fields_changed = true;
+                self.cached_probe_region_projection = None;
+            }
+            ui.label("max features");
+            if ui
+                .add(
+                    egui::TextEdit::singleline(
+                        &mut self.probe_region_projection_max_features,
+                    )
+                    .desired_width(90.0),
+                )
+                .on_hover_text("Optional cap for imported feature rows; empty uses the engine default")
+                .changed()
+            {
+                projection_fields_changed = true;
+                self.cached_probe_region_projection = None;
+            }
+            if ui
+                .checkbox(
+                    &mut self.probe_region_projection_clear_existing,
+                    "Clear existing array features",
+                )
+                .on_hover_text("Remove existing generated array-track features before projection")
+                .changed()
+            {
+                projection_fields_changed = true;
+                self.cached_probe_region_projection = None;
+            }
+        });
+        if projection_fields_changed {
+            self.save_engine_ops_state();
+        }
+        let projection_metadata_ready = self
+            .cached_probe_region_output_inspection
+            .as_ref()
+            .is_some_and(|report| report.projection_ready);
+        let project_enabled = projection_metadata_ready
+            && !self.probe_region_output_dir.trim().is_empty()
+            && !self.probe_region_projection_seq_id.trim().is_empty();
+        ui.horizontal_wrapped(|ui| {
+            if ui
+                .add_enabled(
+                    project_enabled,
+                    egui::Button::new("Project as array features"),
+                )
+                .on_hover_text(
+                    "Run arrays project-probe-region-output through the shared shell executor",
+                )
+                .clicked()
+            {
+                self.project_probe_region_output_for_current_path();
+            }
+            if !projection_metadata_ready {
+                ui.small(
+                    egui::RichText::new("Inspect projection-ready output before projecting.")
+                        .color(egui::Color32::from_rgb(100, 116, 139)),
+                );
+            }
+        });
+        if let Some(report) = self.cached_probe_region_projection.as_ref() {
+            ui.small(format!(
+                "last projection: {} imported, {} skipped, contrasts: {}",
+                report.imported_features,
+                report.skipped_rows,
+                Self::probe_region_preview_list(&report.projected_contrasts)
+            ));
+            if !report.warnings.is_empty() {
+                ui.small(
+                    egui::RichText::new(format!(
+                        "projection warnings: {}",
+                        Self::probe_region_preview_list(&report.warnings)
+                    ))
+                    .color(egui::Color32::from_rgb(180, 83, 9)),
+                );
+            }
         }
 
         let Some(report) = self.cached_probe_region_output_inspection.as_ref() else {
@@ -21246,6 +21534,15 @@ impl MainAreaDna {
             cutrun_regulatory_species_filters: self.cutrun_regulatory_species_filters.clone(),
             probe_region_output_dir: self.probe_region_output_dir.clone(),
             probe_region_svg_output_path: self.probe_region_svg_output_path.clone(),
+            probe_region_projection_seq_id: self.probe_region_projection_seq_id.clone(),
+            probe_region_projection_contrasts: self.probe_region_projection_contrasts.clone(),
+            probe_region_projection_min_abs_logfc: self
+                .probe_region_projection_min_abs_logfc
+                .clone(),
+            probe_region_projection_max_features: self
+                .probe_region_projection_max_features
+                .clone(),
+            probe_region_projection_clear_existing: self.probe_region_projection_clear_existing,
             tfbs_display_use_llr_bits: tfbs_display.use_llr_bits,
             tfbs_display_min_llr_bits: tfbs_display.min_llr_bits,
             tfbs_display_use_llr_quantile: tfbs_display.use_llr_quantile,
@@ -21512,12 +21809,28 @@ impl MainAreaDna {
         } else {
             s.probe_region_svg_output_path
         };
+        self.probe_region_projection_seq_id = if s.probe_region_projection_seq_id.trim().is_empty()
+        {
+            self.seq_id.clone().unwrap_or_default()
+        } else {
+            s.probe_region_projection_seq_id
+        };
+        self.probe_region_projection_contrasts = s.probe_region_projection_contrasts;
+        self.probe_region_projection_min_abs_logfc = s.probe_region_projection_min_abs_logfc;
+        self.probe_region_projection_max_features =
+            if s.probe_region_projection_max_features.trim().is_empty() {
+                default_probe_region_projection_max_features_text()
+            } else {
+                s.probe_region_projection_max_features
+            };
+        self.probe_region_projection_clear_existing = s.probe_region_projection_clear_existing;
         self.cached_restriction_site_scan = None;
         self.cached_tfbs_hit_scan = None;
         self.cached_tfbs_score_tracks = None;
         self.cached_tfbs_track_similarity = None;
         self.cached_cutrun_regulatory_support = None;
         self.cached_probe_region_output_inspection = None;
+        self.cached_probe_region_projection = None;
         self.vcf_display_required_info_keys = s.vcf_display_required_info_keys;
         self.isoform_panel_path = s.isoform_panel_path;
         self.isoform_panel_id = s.isoform_panel_id;
