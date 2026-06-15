@@ -29,7 +29,10 @@ description: >-
   parameterized Ensembl genes, and Ensembl gene panels; and
   (9) bench-side handoff outputs including arrangements, rack placements,
   label sheets, and fabrication templates that connect digital planning to
-  physical sample handling within the same replayable workflow.
+  physical sample handling within the same replayable workflow; and
+  (10) provider-neutral external-service catalog, preflight, and quote/handoff
+  packets for configured GeneArt and Metabion service routes without portal
+  scraping, credential use, or order submission.
 
   Each successful run produces a versioned ClawBio bundle with `report.md`,
   `result.json`, and reproducibility files (`commands.sh`, `environment.yml`,
@@ -45,7 +48,7 @@ description: >-
 version: 0.1.0
 author: GENtle project
 license: MIT
-tags: [cloning, dna-design, primer-design, gibson, pcr, qpcr, cdna, genome-context, reproducibility, tfbs, restriction-sites, ensembl, protein-gel, protein-analysis, protease-digest, rna-structure, viennarna, rnapkin, bench-handoff, lineage-provenance]
+tags: [cloning, dna-design, primer-design, gibson, pcr, qpcr, cdna, genome-context, reproducibility, tfbs, restriction-sites, ensembl, protein-gel, protein-analysis, protease-digest, rna-structure, viennarna, rnapkin, bench-handoff, external-services, geneart, metabion, lineage-provenance]
 metadata:
   openclaw:
     requires:
@@ -155,6 +158,54 @@ metadata:
       - rnafold resource
       - viennarna resource
       - rnapkin resource
+      - external service providers
+      - service provider catalog
+      - provider catalog
+      - services providers list
+      - list service providers
+      - geneart metabion providers
+      - metabion geneart providers
+      - external services catalog
+      - provider config doctor
+      - external service provider doctor
+      - services providers doctor
+      - validate provider catalog
+      - external services doctor
+      - check service provider config
+      - metabion oligo preflight
+      - metabion primer preflight
+      - metabion oligo handoff preflight
+      - metabion primer order preflight
+      - metabion oligo quote
+      - metabion primer quote
+      - metabion oligo handoff
+      - metabion primer handoff
+      - prepare metabion oligo order
+      - prepare metabion primer order
+      - metabion dna oligo quote
+      - metabion m-block quote
+      - metabion mblock quote
+      - metabion dna fragment quote
+      - metabion fragment handoff
+      - metabion m-block handoff
+      - geneart cloned gene preflight
+      - geneart gene synthesis preflight
+      - geneart construct preflight
+      - thermo fisher geneart preflight
+      - thermofisher geneart preflight
+      - geneart cloned gene quote
+      - geneart gene synthesis quote
+      - geneart construct handoff
+      - geneart cloned gene handoff
+      - thermo fisher geneart quote
+      - thermofisher geneart quote
+      - geneart long synthetic sequence
+      - geneart protein expression quote
+      - geneart protein expression handoff
+      - thermo fisher protein expression quote
+      - thermofisher protein expression quote
+      - geneart expression service handoff
+      - geneart protein production quote
       - resources status
       - resource status
       - resources
@@ -406,10 +457,11 @@ This skill is execution-first.
 
 ClawBio shared chat adapters should consume `INTENTS.json` first. That
 `clawbio.skill_intents.v1` descriptor maps runtime-version, service-readiness,
-installed-database/resource, residue-to-genome codon mapping, Telegram guide
-overview/section navigation, PCR/qPCR/TaqMan seed/design/test/report/cartoon
-requests, lab-assistant cloning handoff exports, transcript qPCR panel requests,
-parameterized Ensembl gene 2D-gel,
+installed-database/resource, external-service provider catalog/doctor and
+GeneArt/Metabion quote-handoff requests, residue-to-genome codon mapping,
+Telegram guide overview/section navigation, PCR/qPCR/TaqMan
+seed/design/test/report/cartoon requests, lab-assistant cloning handoff
+exports, transcript qPCR panel requests, parameterized Ensembl gene 2D-gel,
 Ensembl gene-panel 1D protein-gel, bundled example protein-gel, bundled
 example 2D-gel, Ensembl gene 2D-gel example, trypsin-digest, capability,
 skill-info, and explicit-demo wording to concrete `examples/*.json` requests
@@ -497,6 +549,9 @@ capability-led language:
   - inspect annotations, isoforms, splicing structure, TFBS/JASPAR hits, and
     restriction-enzyme features,
   - export graphics and tables such as SVG and BED artifacts,
+  - list configured external-service providers and prepare human-reviewable
+    quote/handoff packets for GeneArt and Metabion tutorial routes without
+    submitting vendor orders or storing account/PO/shipping details,
   - bootstrap Ensembl/reference datasets and BLAST-ready indices for later
     automated queries.
 - Be equally explicit that prepared reference assets are not GENtle-only:

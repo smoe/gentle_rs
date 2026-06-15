@@ -335,6 +335,166 @@
       ]
     },
     {
+      "intent_id": "external_service_provider_catalog",
+      "description": "List configured external-service providers and quote/handoff capabilities, including GeneArt and Metabion when present.",
+      "trigger_terms": [
+        "external service providers",
+        "service provider catalog",
+        "provider catalog",
+        "services providers list",
+        "list service providers",
+        "geneart metabion providers",
+        "metabion geneart providers",
+        "external services catalog"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_services_providers_list.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "external_service_provider_doctor",
+      "description": "Validate the external-service provider configuration discovery chain and report source/catalog issues.",
+      "trigger_terms": [
+        "provider config doctor",
+        "external service provider doctor",
+        "services providers doctor",
+        "validate provider catalog",
+        "external services doctor",
+        "check service provider config"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_services_providers_doctor.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "metabion_oligo_preflight",
+      "description": "Preflight the synthetic Metabion single-tube DNA oligo handoff example without submitting an order.",
+      "trigger_terms": [
+        "metabion oligo preflight",
+        "metabion primer preflight",
+        "metabion oligo handoff preflight",
+        "metabion primer order preflight"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_services_metabion_oligo_preflight.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "metabion_oligo_quote_handoff",
+      "description": "Prepare the synthetic Metabion single-tube DNA oligo quote/handoff packet without WOP scraping or order submission.",
+      "trigger_terms": [
+        "metabion oligo quote",
+        "metabion primer quote",
+        "metabion oligo handoff",
+        "metabion primer handoff",
+        "prepare metabion oligo order",
+        "prepare metabion primer order",
+        "metabion dna oligo quote"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_services_metabion_oligo_quote.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "metabion_mblock_quote_handoff",
+      "description": "Prepare the synthetic Metabion m-block DNA fragment quote/handoff packet without WOP scraping or order submission.",
+      "trigger_terms": [
+        "metabion m-block quote",
+        "metabion mblock quote",
+        "metabion dna fragment quote",
+        "metabion fragment handoff",
+        "metabion m-block handoff"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_services_metabion_mblock_quote.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "geneart_cloned_gene_preflight",
+      "description": "Preflight the synthetic GeneArt cloned-gene handoff example without contacting Thermo Fisher or submitting an order.",
+      "trigger_terms": [
+        "geneart cloned gene preflight",
+        "geneart gene synthesis preflight",
+        "geneart construct preflight",
+        "thermo fisher geneart preflight",
+        "thermofisher geneart preflight"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_services_geneart_cloned_gene_preflight.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "geneart_cloned_gene_quote_handoff",
+      "description": "Prepare the synthetic GeneArt cloned-gene quote/handoff packet without Thermo Fisher API upload or order submission.",
+      "trigger_terms": [
+        "geneart cloned gene quote",
+        "geneart gene synthesis quote",
+        "geneart construct handoff",
+        "geneart cloned gene handoff",
+        "thermo fisher geneart quote",
+        "thermofisher geneart quote",
+        "geneart long synthetic sequence"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_services_geneart_cloned_gene_quote.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "geneart_protein_expression_quote_handoff",
+      "description": "Prepare the synthetic GeneArt protein-expression quote/handoff packet without provider submission.",
+      "trigger_terms": [
+        "geneart protein expression quote",
+        "geneart protein expression handoff",
+        "thermo fisher protein expression quote",
+        "thermofisher protein expression quote",
+        "geneart expression service handoff",
+        "geneart protein production quote"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_services_geneart_protein_expression_quote.json"
+        }
+      ]
+    },
+    {
       "intent_id": "resources_status",
       "description": "Check GENtle external resource and installed database readiness.",
       "trigger_terms": [

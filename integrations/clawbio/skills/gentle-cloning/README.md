@@ -54,13 +54,15 @@ free text.
 
 The immediate chat-adapter routing layer is `INTENTS.json`. It maps broad user
 wording for runtime version, service readiness, installed databases/resources,
-residue-to-genome codon mapping, Telegram guide overview/sections,
-PCR/qPCR/TaqMan seed/design/test/report/cartoon requests, transcript qPCR
-panels, TP73 protein gel, TP73 2D gel, trypsin-digest gel, capabilities, skill
-info, and explicit demo requests to stable `examples/*.json` payloads or
-typed request templates. Descriptor-only skill directories are
-discoverable by the current ClawBio planner, but execution still requires
-registering `gentle-cloning` in ClawBio's top-level `SKILLS` table.
+external-service provider catalog/doctor checks, GeneArt and Metabion
+quote-handoff requests, residue-to-genome codon mapping, Telegram guide
+overview/sections, PCR/qPCR/TaqMan seed/design/test/report/cartoon requests,
+transcript qPCR panels, TP73 protein gel, TP73 2D gel, trypsin-digest gel,
+capabilities, skill info, and explicit demo requests to stable
+`examples/*.json` payloads or typed request templates. Descriptor-only skill
+directories are discoverable by the current ClawBio planner, but execution
+still requires registering `gentle-cloning` in ClawBio's top-level `SKILLS`
+table.
 
 ## Files
 
@@ -74,7 +76,8 @@ registering `gentle-cloning` in ClawBio's top-level `SKILLS` table.
 - `gentle_apptainer_cli.sh`: Apptainer/Singularity launcher for `gentle_cli`
 - `catalog_entry.json`: ready-to-paste object for ClawBio `skills/catalog.json`
 - `examples/*.json`: request payload examples, including bootstrap, stateless
-  inline-sequence scans, extract/BLAST, planning, and graphics flows
+  inline-sequence scans, extract/BLAST, planning, external-service handoff,
+  and graphics flows
 - `tests/test_gentle_cloning.py`: minimal wrapper tests
 
 ## Positioning for OpenClaw
@@ -88,6 +91,10 @@ intended framing is:
 - GENtle does not prove causality by itself.
 - GENtle can also inspect pasted DNA fragments directly for restriction sites
   or TFBS hits without first creating project state when the task is read-only.
+- GENtle can list configured external-service providers and prepare
+  review-only GeneArt/Metabion quote-handoff packets. It does not submit
+  orders, scrape vendor portals, or store account, PO, shipping, or billing
+  details.
 - GENtle can seed, design, inspect, and export PCR primer and probe-based
   qPCR/TaqMan assay work through typed ClawBio modes over the shared
   `primers ...` command family.
@@ -715,6 +722,14 @@ Included first-run bootstrap requests:
 - `examples/request_genomes_install_ensembl_mouse.json`
 - `examples/request_shell_state_summary.json`
 - `examples/request_services_status.json`
+- `examples/request_services_providers_list.json`
+- `examples/request_services_providers_doctor.json`
+- `examples/request_services_metabion_oligo_preflight.json`
+- `examples/request_services_metabion_oligo_quote.json`
+- `examples/request_services_metabion_mblock_quote.json`
+- `examples/request_services_geneart_cloned_gene_preflight.json`
+- `examples/request_services_geneart_cloned_gene_quote.json`
+- `examples/request_services_geneart_protein_expression_quote.json`
 - `examples/request_services_telegram_guide.json`
 - `examples/request_services_telegram_guide_{readiness,gene_context,tfbs,inline_dna,cloning,isoforms,follow_up}.json`
 - `examples/request_services_telegram_guide_isoforms_bach2.json`

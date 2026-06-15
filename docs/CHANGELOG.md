@@ -14,6 +14,9 @@ Maintenance rule:
 
 ## 2026-06-15
 
+- Added ClawBio external-service intents and request examples for provider
+  catalog/doctor checks plus review-only Metabion oligo/m-block and GeneArt
+  cloned-gene/protein-expression quote handoff routes.
 - Routed high-yield protein-expression ClawBio intents such as "maximal amount
   of protein" to the read-only `planning protein-expression-handoff` request
   example and added the same scenario to the experimental follow-up catalog,

@@ -107,6 +107,16 @@ ClawBio panel, the next bridge work should stay contract-led: reserve any
 action-level `skill_alias` field on the ClawBio side before GENtle honors it,
 and avoid adding routing or planner semantics to GENtle.
 
+External-service bridge status: the provider-neutral schema/shell layer is now
+concrete through `services providers list`, `services providers doctor`,
+`services project-preflight`, and `services project-quote`. Built-in provider
+configuration covers GeneArt quote handoff for DNA fragments/cloned genes/
+reorders/mutagenesis/protein expression and Metabion handoff routes for
+single-tube DNA oligos and m-block fragments. Agent work should stay focused on
+ClawBio intent/example parity and clear "handoff, not submission" wording;
+direct GeneArt API use, WOP/OCI automation, credential handling, and commercial
+order state remain later explicitly confirmed integration phases.
+
 Near-term consult rule: keep `planning consult cloning` narrow and
 deterministic until richer construct reasoning lands. The preferred v1 surface
 is one best candidate per the 11 catalogued routine families plus structured
@@ -184,6 +194,10 @@ unrelated to the next release aim.
   splice-isoform constraints inspectable together, so a user can see which
   oligos, exons, junctions, and mapped intervals support, constrain, or exclude
   each transcript isoform.
+- External-services GUI follow-up: keep the window a thin inspector over the
+  shared provider/preflight/quote contracts, then improve product-specific
+  starter templates, validation previews, and exported-bundle review affordances
+  before considering provider-specific portal/API actions.
 
 ## Phase E: Integration Polish And Deferred Policy Items
 

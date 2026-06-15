@@ -37,6 +37,8 @@ Use the `gentle-cloning` skill for:
 - TFBS/JASPAR, REBASE, ATtRACT-style resource-backed analyses,
 - isoform/protein gel and 2D-gel visualizations,
 - lab-assistant cloning instruction exports,
+- external-service provider discovery and review-only GeneArt/Metabion
+  quote/handoff packet preparation,
 - visual review of generated PNG/SVG/report artifacts.
 
 For broad planning questions, prefer a read-only GENtle status/guide/consult
@@ -117,6 +119,14 @@ Useful request examples include:
 - `request_runtime_version.json`
 - `request_skill_info.json`
 - `request_services_status.json`
+- `request_services_providers_list.json`
+- `request_services_providers_doctor.json`
+- `request_services_metabion_oligo_preflight.json`
+- `request_services_metabion_oligo_quote.json`
+- `request_services_metabion_mblock_quote.json`
+- `request_services_geneart_cloned_gene_preflight.json`
+- `request_services_geneart_cloned_gene_quote.json`
+- `request_services_geneart_protein_expression_quote.json`
 - `request_resources_status.json`
 - `request_genomes_status_grch38.json`
 - `request_helpers_status_puc19.json`
@@ -217,8 +227,9 @@ Known local host profile:
 
 When a user asks for GENtle, cloning design, plasmid/vector work,
 restriction/Gibson/assembly planning, sequence annotation, primer/qPCR design,
-isoform/protein-gel figures, TFBS/resource-backed analyses, or lab-assistant
-handoffs, route through:
+isoform/protein-gel figures, TFBS/resource-backed analyses, lab-assistant
+handoffs, or review-only GeneArt/Metabion external-service handoff packets,
+route through:
 
   cd /home/clawbio/ClawBio
   GENTLE_CLI_CMD=/home/clawbio/GENtle/integrations/clawbio/skills/gentle-cloning/gentle_local_checkout_cli.sh \
@@ -238,4 +249,10 @@ do not prepare GRCh38, pUC19, RNAfold/ViennaRNA, rnapkin, or other large
 resources/tools until the user has seen the expected command, target location,
 download/build size when known, platform-specific install route, and permission
 requirements.
+
+External-service routes are also local and review-first. Use provider catalog
+or doctor examples before quoting if the user asks what is available. Quote
+examples may prepare handoff packets, but they must not be treated as vendor
+submission, portal automation, account login, or approval to store commercial
+details.
 ```

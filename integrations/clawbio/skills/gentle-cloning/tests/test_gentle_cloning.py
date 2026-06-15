@@ -5160,6 +5160,14 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
         "capabilities",
         "runtime_version",
         "services_status",
+        "external_service_provider_catalog",
+        "external_service_provider_doctor",
+        "metabion_oligo_preflight",
+        "metabion_oligo_quote_handoff",
+        "metabion_mblock_quote_handoff",
+        "geneart_cloned_gene_preflight",
+        "geneart_cloned_gene_quote_handoff",
+        "geneart_protein_expression_quote_handoff",
         "resources_status",
         "protein_expression_handoff",
         "protein_residue_genomic_coordinates",
@@ -5217,6 +5225,30 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
         "capabilities": "examples/request_capabilities.json",
         "runtime_version": "examples/request_runtime_version.json",
         "services_status": "examples/request_services_status.json",
+        "external_service_provider_catalog": (
+            "examples/request_services_providers_list.json"
+        ),
+        "external_service_provider_doctor": (
+            "examples/request_services_providers_doctor.json"
+        ),
+        "metabion_oligo_preflight": (
+            "examples/request_services_metabion_oligo_preflight.json"
+        ),
+        "metabion_oligo_quote_handoff": (
+            "examples/request_services_metabion_oligo_quote.json"
+        ),
+        "metabion_mblock_quote_handoff": (
+            "examples/request_services_metabion_mblock_quote.json"
+        ),
+        "geneart_cloned_gene_preflight": (
+            "examples/request_services_geneart_cloned_gene_preflight.json"
+        ),
+        "geneart_cloned_gene_quote_handoff": (
+            "examples/request_services_geneart_cloned_gene_quote.json"
+        ),
+        "geneart_protein_expression_quote_handoff": (
+            "examples/request_services_geneart_protein_expression_quote.json"
+        ),
         "resources_status": "examples/request_resources_status.json",
         "protein_expression_handoff": (
             "examples/request_planning_protein_expression_handoff.json"
@@ -5419,6 +5451,30 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
     ]
     assert "local resources" in routes["services_status"]["trigger_terms"]
     assert "rnafold resource" in routes["services_status"]["trigger_terms"]
+    assert "external service providers" in routes[
+        "external_service_provider_catalog"
+    ]["trigger_terms"]
+    assert "services providers doctor" in routes[
+        "external_service_provider_doctor"
+    ]["trigger_terms"]
+    assert "metabion oligo preflight" in routes["metabion_oligo_preflight"][
+        "trigger_terms"
+    ]
+    assert "metabion primer handoff" in routes[
+        "metabion_oligo_quote_handoff"
+    ]["trigger_terms"]
+    assert "metabion m-block quote" in routes[
+        "metabion_mblock_quote_handoff"
+    ]["trigger_terms"]
+    assert "geneart gene synthesis preflight" in routes[
+        "geneart_cloned_gene_preflight"
+    ]["trigger_terms"]
+    assert "geneart long synthetic sequence" in routes[
+        "geneart_cloned_gene_quote_handoff"
+    ]["trigger_terms"]
+    assert "geneart protein expression quote" in routes[
+        "geneart_protein_expression_quote_handoff"
+    ]["trigger_terms"]
     assert "installed databases" in routes["resources_status"]["trigger_terms"]
     assert "rnapkin" in routes["resources_status"]["trigger_terms"]
     assert "viennarna" in routes["resources_status"]["trigger_terms"]
