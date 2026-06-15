@@ -2362,6 +2362,12 @@ Microarray track projection notes:
   `projection_ready`: output can be readable while genome-anchored projection
   remains blocked until the helper declares compatible coordinate-system and
   genome-build metadata.
+- `arrays render-probe-region-output-svg OUTPUT_DIR OUTPUT.svg` consumes the
+  same completed helper directory and writes
+  `gentle.probe_region_output_svg_export.v1` provenance for a deterministic
+  SVG plot. The upper panel renders `mean_log2_*` condition intensity tracks;
+  the lower panel renders `log2FC_*` tracks. It is still read-only with respect
+  to project state and does not run R/APT.
 - manifests may also include `coordinate_projections[]` entries with
   `source_genome_id`, `target_genome_id`, `method`, and `path`. These paths
   point at tab-delimited interval maps for build-to-build projection, currently

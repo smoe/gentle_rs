@@ -586,6 +586,8 @@ struct EngineOpsUiState {
     cutrun_regulatory_species_filters: String,
     #[serde(default)]
     probe_region_output_dir: String,
+    #[serde(default)]
+    probe_region_svg_output_path: String,
     #[serde(default = "default_true")]
     tfbs_display_use_llr_bits: bool,
     #[serde(default = "default_zero_f64")]
@@ -1329,6 +1331,7 @@ pub struct MainAreaDna {
     cutrun_regulatory_neighbor_window_bp: String,
     cutrun_regulatory_species_filters: String,
     probe_region_output_dir: String,
+    probe_region_svg_output_path: String,
     cached_cutrun_regulatory_support: Option<CutRunRegulatorySupportReport>,
     cached_probe_region_output_inspection: Option<ProbeRegionOutputInspection>,
     cached_restriction_site_scan: Option<RestrictionSiteScanReport>,
@@ -2001,6 +2004,8 @@ impl MainAreaDna {
             cutrun_regulatory_neighbor_window_bp: default_cutrun_neighbor_window_bp_text(),
             cutrun_regulatory_species_filters: String::new(),
             probe_region_output_dir: "analysis/probe_regions".to_string(),
+            probe_region_svg_output_path: "analysis/probe_regions/probe_region_plot.svg"
+                .to_string(),
             cached_cutrun_regulatory_support: None,
             cached_probe_region_output_inspection: None,
             cached_restriction_site_scan: None,
@@ -7841,6 +7846,51 @@ impl MainAreaDna {
         }
     }
 
+    fn export_probe_region_output_svg_for_current_path(&mut self) {
+        let Some(engine) = self.engine.clone() else {
+            self.op_status = "No engine attached".to_string();
+            return;
+        };
+        let output_dir = self.probe_region_output_dir.trim().to_string();
+        let output = self.probe_region_svg_output_path.trim().to_string();
+        if output_dir.is_empty() {
+            self.op_status = "Probe-region output directory is empty".to_string();
+            return;
+        }
+        if output.is_empty() {
+            self.op_status = "Probe-region SVG output path is empty".to_string();
+            return;
+        }
+
+        let command = ShellCommand::ArraysRenderProbeRegionOutputSvg {
+            output_dir: output_dir.clone(),
+            output: output.clone(),
+        };
+        let outcome = {
+            let mut guard = engine.write().expect("Engine lock poisoned");
+            let options = ShellExecutionOptions::from_env();
+            execute_shell_command_with_options(&mut guard, &command, &options)
+        };
+        match outcome {
+            Ok(run) => {
+                let row_count = run
+                    .output
+                    .get("export")
+                    .and_then(|value| value.get("row_count"))
+                    .and_then(|value| value.as_u64())
+                    .unwrap_or(0);
+                self.op_status = format!(
+                    "Probe-region SVG exported to '{}' ({} row(s))",
+                    output, row_count
+                );
+                self.save_engine_ops_state();
+            }
+            Err(err) => {
+                self.op_status = format!("Probe-region SVG export failed: {err}");
+            }
+        }
+    }
+
     fn render_probe_region_output_inspection_panel(&mut self, ui: &mut egui::Ui) {
         ui.small(
             egui::RichText::new(
@@ -7877,6 +7927,35 @@ impl MainAreaDna {
         });
         if output_dir_changed {
             self.cached_probe_region_output_inspection = None;
+            self.save_engine_ops_state();
+        }
+        let mut svg_output_changed = false;
+        ui.horizontal_wrapped(|ui| {
+            ui.label("svg_output");
+            if ui
+                .add_sized(
+                    [ui.available_width().min(360.0), 0.0],
+                    egui::TextEdit::singleline(&mut self.probe_region_svg_output_path),
+                )
+                .changed()
+            {
+                svg_output_changed = true;
+            }
+            if ui
+                .add_enabled(
+                    !self.probe_region_output_dir.trim().is_empty()
+                        && !self.probe_region_svg_output_path.trim().is_empty(),
+                    egui::Button::new("Export SVG"),
+                )
+                .on_hover_text(
+                    "Render a deterministic native SVG from the inspected helper output table",
+                )
+                .clicked()
+            {
+                self.export_probe_region_output_svg_for_current_path();
+            }
+        });
+        if svg_output_changed {
             self.save_engine_ops_state();
         }
 
@@ -21166,6 +21245,7 @@ impl MainAreaDna {
             cutrun_regulatory_neighbor_window_bp: self.cutrun_regulatory_neighbor_window_bp.clone(),
             cutrun_regulatory_species_filters: self.cutrun_regulatory_species_filters.clone(),
             probe_region_output_dir: self.probe_region_output_dir.clone(),
+            probe_region_svg_output_path: self.probe_region_svg_output_path.clone(),
             tfbs_display_use_llr_bits: tfbs_display.use_llr_bits,
             tfbs_display_min_llr_bits: tfbs_display.min_llr_bits,
             tfbs_display_use_llr_quantile: tfbs_display.use_llr_quantile,
@@ -21426,6 +21506,11 @@ impl MainAreaDna {
             "analysis/probe_regions".to_string()
         } else {
             s.probe_region_output_dir
+        };
+        self.probe_region_svg_output_path = if s.probe_region_svg_output_path.trim().is_empty() {
+            "analysis/probe_regions/probe_region_plot.svg".to_string()
+        } else {
+            s.probe_region_svg_output_path
         };
         self.cached_restriction_site_scan = None;
         self.cached_tfbs_hit_scan = None;

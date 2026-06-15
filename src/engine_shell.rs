@@ -1561,6 +1561,10 @@ pub enum ShellCommand {
     ArraysInspectProbeRegionOutput {
         output_dir: String,
     },
+    ArraysRenderProbeRegionOutputSvg {
+        output_dir: String,
+        output: String,
+    },
     ArraysProbeRegions {
         cel_paths: Vec<String>,
         dataset: Option<String>,
@@ -8160,6 +8164,12 @@ impl ShellCommand {
             ),
             Self::ArraysInspectProbeRegionOutput { output_dir } => {
                 format!("inspect probe-region helper output '{}'", output_dir)
+            }
+            Self::ArraysRenderProbeRegionOutputSvg { output_dir, output } => {
+                format!(
+                    "render probe-region helper output '{}' to SVG '{}'",
+                    output_dir, output
+                )
             }
             Self::ArraysProbeRegions {
                 cel_paths,
@@ -23468,7 +23478,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "arrays" => {
             if tokens.len() < 2 {
                 return Err(
-                    "arrays requires a subcommand: inspect-microarray-track, project-microarray-track, inspect-probe-region-output, or probe-regions"
+                    "arrays requires a subcommand: inspect-microarray-track, project-microarray-track, inspect-probe-region-output, render-probe-region-output-svg, or probe-regions"
                         .to_string(),
                 );
             }
@@ -23607,9 +23617,23 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         output_dir: tokens[2].clone(),
                     })
                 }
+                "render-probe-region-output-svg"
+                | "plot-probe-region-output"
+                | "plot-probe-region-output-svg" => {
+                    if tokens.len() != 4 {
+                        return Err(
+                            "arrays render-probe-region-output-svg requires OUTPUT_DIR OUTPUT.svg"
+                                .to_string(),
+                        );
+                    }
+                    Ok(ShellCommand::ArraysRenderProbeRegionOutputSvg {
+                        output_dir: tokens[2].clone(),
+                        output: tokens[3].clone(),
+                    })
+                }
                 "probe-regions" | "probe-region-plan" => parse_arrays_probe_regions_command(tokens),
                 other => Err(format!(
-                    "Unknown arrays subcommand '{other}' (expected inspect-microarray-track, project-microarray-track, inspect-probe-region-output, or probe-regions)"
+                    "Unknown arrays subcommand '{other}' (expected inspect-microarray-track, project-microarray-track, inspect-probe-region-output, render-probe-region-output-svg, or probe-regions)"
                 )),
             }
         }
@@ -24286,6 +24310,7 @@ fn is_reference_or_track_command(command: &ShellCommand) -> bool {
             | ShellCommand::ArraysInspectMicroarrayTrack { .. }
             | ShellCommand::ArraysProjectMicroarrayTrack { .. }
             | ShellCommand::ArraysInspectProbeRegionOutput { .. }
+            | ShellCommand::ArraysRenderProbeRegionOutputSvg { .. }
             | ShellCommand::ArraysProbeRegions { .. }
             | ShellCommand::TracksTrackedList
             | ShellCommand::TracksTrackedAdd { .. }
@@ -28884,6 +28909,15 @@ fn execute_reference_and_track_command(
             Ok(ShellRunResult {
                 state_changed: false,
                 output: json!({ "inspection": inspection }),
+            })
+        }
+        ShellCommand::ArraysRenderProbeRegionOutputSvg { output_dir, output } => {
+            let export = engine
+                .export_probe_region_output_svg(output_dir, output)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({ "export": export }),
             })
         }
         ShellCommand::ArraysProbeRegions {
@@ -36567,6 +36601,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ArraysInspectMicroarrayTrack { .. }
         | ShellCommand::ArraysProjectMicroarrayTrack { .. }
         | ShellCommand::ArraysInspectProbeRegionOutput { .. }
+        | ShellCommand::ArraysRenderProbeRegionOutputSvg { .. }
         | ShellCommand::ArraysProbeRegions { .. }
         | ShellCommand::TracksTrackedList
         | ShellCommand::TracksTrackedAdd { .. }

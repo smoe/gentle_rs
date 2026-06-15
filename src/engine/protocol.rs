@@ -4060,6 +4060,21 @@ pub struct ProbeRegionOutputInspection {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(default)]
+/// Deterministic SVG export summary for inspected probe-region output.
+pub struct ProbeRegionOutputSvgExport {
+    pub schema: String,
+    pub output_dir: String,
+    pub svg_path: String,
+    pub row_count: usize,
+    pub intensity_track_count: usize,
+    pub logfc_track_count: usize,
+    pub chromosome_count: usize,
+    pub projection_ready: bool,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
 /// Describes an explicit coordinate-projection map between two genome builds.
 pub struct GenomeCoordinateProjectionSpec {
     pub source_genome_id: String,

@@ -32,6 +32,9 @@ Maintenance rule:
 - Added a native GUI inspector for completed probe-region helper output, plus
   coordinate/build provenance, bounded preview rows, and projection-readiness
   blockers in `gentle.probe_region_output_inspection.v1`.
+- Added `arrays render-probe-region-output-svg` and a matching GUI export
+  control for deterministic native SVG plots of inspected `mean_log2_*` and
+  `log2FC_*` probe-region helper tracks.
 
 ## 2026-06-14
 

@@ -6847,6 +6847,15 @@ fn parse_arrays_microarray_track_commands() {
         ShellCommand::ArraysInspectProbeRegionOutput { output_dir }
             if output_dir == "analysis/probe_regions"
     ));
+
+    let render_probe_output =
+        parse_shell_line("arrays render-probe-region-output-svg analysis/probe_regions out.svg")
+            .expect("parse render probe output svg");
+    assert!(matches!(
+        render_probe_output,
+        ShellCommand::ArraysRenderProbeRegionOutputSvg { output_dir, output }
+            if output_dir == "analysis/probe_regions" && output == "out.svg"
+    ));
 }
 
 #[test]
@@ -7221,10 +7230,7 @@ fn clariomd_gene_panel_fixture_is_small_and_gene_complete() {
     assert_eq!(genes, expected);
 }
 
-#[test]
-fn execute_arrays_inspect_probe_region_output_summarizes_helper_outputs() {
-    let temp = tempdir().expect("tempdir");
-    let out = temp.path().join("probe_regions");
+fn write_probe_region_output_fixture(out: &Path) {
     fs::create_dir(&out).expect("output dir");
     fs::write(
         out.join("sample_table.tsv"),
@@ -7268,6 +7274,13 @@ fn execute_arrays_inspect_probe_region_output_summarizes_helper_outputs() {
 }"#,
     )
     .expect("write provenance");
+}
+
+#[test]
+fn execute_arrays_inspect_probe_region_output_summarizes_helper_outputs() {
+    let temp = tempdir().expect("tempdir");
+    let out = temp.path().join("probe_regions");
+    write_probe_region_output_fixture(&out);
 
     let mut engine = GentleEngine::default();
     let run = execute_shell_command(
@@ -7348,6 +7361,46 @@ fn execute_arrays_inspect_probe_region_output_summarizes_helper_outputs() {
             .as_array()
             .is_some_and(Vec::is_empty)
     );
+}
+
+#[test]
+fn execute_arrays_render_probe_region_output_svg_writes_native_plot() {
+    let temp = tempdir().expect("tempdir");
+    let out = temp.path().join("probe_regions");
+    write_probe_region_output_fixture(&out);
+    let svg_path = temp.path().join("probe_region_plot.svg");
+
+    let mut engine = GentleEngine::default();
+    let run = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ArraysRenderProbeRegionOutputSvg {
+            output_dir: out.to_string_lossy().to_string(),
+            output: svg_path.to_string_lossy().to_string(),
+        },
+    )
+    .expect("render probe-region output svg");
+
+    assert!(!run.state_changed);
+    assert_eq!(
+        run.output["export"]["schema"].as_str(),
+        Some("gentle.probe_region_output_svg_export.v1")
+    );
+    assert_eq!(run.output["export"]["row_count"].as_u64(), Some(2));
+    assert_eq!(
+        run.output["export"]["intensity_track_count"].as_u64(),
+        Some(2)
+    );
+    assert_eq!(run.output["export"]["logfc_track_count"].as_u64(), Some(1));
+    assert!(run.output["export"]["projection_ready"].as_bool() == Some(true));
+
+    let svg = fs::read_to_string(&svg_path).expect("read probe-region svg");
+    assert!(svg.contains("<svg"));
+    assert!(svg.contains("gentle.probe_region_output_svg_export.v1"));
+    assert!(svg.contains("Probe-region intensity evidence"));
+    assert!(svg.contains("Mean log2 intensity by condition"));
+    assert!(svg.contains("Log2 fold-change tracks"));
+    assert!(svg.contains("PSR1"));
+    assert!(svg.contains("TAp73-AdGFP"));
 }
 
 #[test]

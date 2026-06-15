@@ -2075,6 +2075,7 @@ Shared shell command:
     - `arrays inspect-microarray-track MANIFEST`
     - `arrays project-microarray-track SEQ_ID MANIFEST [--contrasts CSV] [--level probeset] [--min-abs-logfc N] [--max-adj-p N] [--max-features N] [--clear-existing]`
     - `arrays inspect-probe-region-output OUTPUT_DIR`
+    - `arrays render-probe-region-output-svg OUTPUT_DIR OUTPUT.svg`
     - `arrays probe-regions (--cel PATH ... | --dataset ID) (--gene SYMBOL|--genes CSV|--locus LOCUS|--loci CSV|--transcript-cluster-id ID|--probeset-id ID ...) [--metadata PATH] [--platform NAME] [--annotation-library PATH] [--condition-column NAME] [--sample-column NAME] [--block-column NAME] [--paired-by-replicate-suffix] [--normalization rma|quantile-feature|none] [--plot] [--output DIR] [--cache-dir DIR] [--dry-run]`
     - `macros run [--transactional] [--file PATH | SCRIPT_OR_@FILE]`
     - `macros instance-list`
@@ -3627,6 +3628,11 @@ Tutorial companion:
     provenance JSON, sample/condition/logFC columns, chromosomes, gene symbols,
     bounded preview rows, row counts, feature counts, coordinate/build
     declarations, projection-readiness blockers, and required-column problems.
+- `arrays render-probe-region-output-svg analysis/probe_regions analysis/probe_regions/probe_region_plot.svg`
+  - Read-only deterministic SVG export for inspected helper output. The SVG
+    plots `mean_log2_*` condition tracks in the upper panel and `log2FC_*`
+    tracks in the lower panel, using the existing chromosome-ordered helper
+    table and reporting projection blockers without running R/APT.
 - `resources sync-ucsc-rmsk INPUT.rmsk.txt_or_txt.gz [OUTPUT.rmsk.json] [--assembly DB] [--limit N]`
   - Normalizes the UCSC RepeatMasker `rmsk` table into
     `gentle.ucsc_rmsk_resource.v1`.
@@ -5208,9 +5214,11 @@ Notes:
   `data/resources/affymetrix/clariom_d_human_na36_hg38/` when probe/probeset
   coordinate development needs vendor CSV annotations.
 - `arrays inspect-probe-region-output OUTPUT_DIR` validates the explicit helper
-  outputs after the user has run R themselves. It does not project features or
-  draw plots yet; it prepares a shared GUI/CLI-readable summary for that next
-  step.
+  outputs after the user has run R themselves. It does not project features;
+  it prepares a shared GUI/CLI-readable summary for projection triage.
+- `arrays render-probe-region-output-svg OUTPUT_DIR OUTPUT.svg` draws the
+  inspected helper output natively as a deterministic SVG plot, without running
+  R/APT or changing project state.
 - The built-in genome catalog includes both `Human GRCh38 Ensembl 116` and
   `Human GRCh37 Ensembl 87` (`hg19`/`GRCh37.p13` aliases), so direct native
   extraction can use either build when the corresponding cache has been
