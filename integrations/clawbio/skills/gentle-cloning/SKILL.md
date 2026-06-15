@@ -169,6 +169,15 @@ metadata:
       - vienna rna
       - rnapkin
       - mfe
+      - protein expression handoff
+      - protein production handoff
+      - maximal protein yield
+      - maximum protein yield
+      - maximum protein expression
+      - maximal amount of protein
+      - give me the maximal amount of protein
+      - high yield protein expression
+      - highest protein yield
       - protein residue coordinates
       - map residue to genome
       - protein to genome

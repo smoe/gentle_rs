@@ -5044,6 +5044,9 @@ def test_catalog_entry_describes_patient_to_bench_and_reusable_reference_assets(
     assert "lab assistant instructions" in trigger_keywords
     assert "lab assistant demo" in trigger_keywords
     assert "cloning handoff demo" in trigger_keywords
+    assert "protein expression handoff" in trigger_keywords
+    assert "maximal amount of protein" in trigger_keywords
+    assert "high yield protein expression" in trigger_keywords
     assert "database status" in trigger_keywords
     assert "installed databases" in trigger_keywords
     assert "resources status" in trigger_keywords
@@ -5158,6 +5161,7 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
         "runtime_version",
         "services_status",
         "resources_status",
+        "protein_expression_handoff",
         "protein_residue_genomic_coordinates",
         "transcript_qpcr_panel",
         "ensembl_gene_protein_2d_gel",
@@ -5214,6 +5218,9 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
         "runtime_version": "examples/request_runtime_version.json",
         "services_status": "examples/request_services_status.json",
         "resources_status": "examples/request_resources_status.json",
+        "protein_expression_handoff": (
+            "examples/request_planning_protein_expression_handoff.json"
+        ),
         "protein_residue_genomic_coordinates": None,
         "transcript_qpcr_panel": None,
         "telegram_guide_isoforms_gene": None,
@@ -5415,6 +5422,12 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
     assert "installed databases" in routes["resources_status"]["trigger_terms"]
     assert "rnapkin" in routes["resources_status"]["trigger_terms"]
     assert "viennarna" in routes["resources_status"]["trigger_terms"]
+    assert "maximal amount of protein" in routes["protein_expression_handoff"][
+        "trigger_terms"
+    ]
+    assert "protein expression handoff" in routes["protein_expression_handoff"][
+        "trigger_terms"
+    ]
     assert "genomic codon" in routes["protein_residue_genomic_coordinates"][
         "trigger_terms"
     ]

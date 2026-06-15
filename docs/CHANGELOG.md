@@ -12,6 +12,12 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-06-15
+
+- Routed high-yield protein-expression ClawBio intents such as "maximal amount
+  of protein" to the read-only `planning protein-expression-handoff` request
+  example, keeping skill discovery and intent dispatch aligned.
+
 ## 2026-06-14
 
 - Added the read-only `planning protein-expression-handoff` route emitting

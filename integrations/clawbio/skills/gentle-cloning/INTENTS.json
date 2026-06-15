@@ -364,6 +364,29 @@
       ]
     },
     {
+      "intent_id": "protein_expression_handoff",
+      "description": "Route underspecified high-yield protein-expression requests through GENtle's read-only planning handoff.",
+      "trigger_terms": [
+        "protein expression handoff",
+        "protein production handoff",
+        "maximal protein yield",
+        "maximum protein yield",
+        "maximum protein expression",
+        "maximal amount of protein",
+        "give me the maximal amount of protein",
+        "high yield protein expression",
+        "highest protein yield"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_planning_protein_expression_handoff.json"
+        }
+      ]
+    },
+    {
       "intent_id": "protein_residue_genomic_coordinates",
       "description": "Map one protein residue back to transcript-native genomic codon bases on a loaded locus.",
       "trigger_terms": [
