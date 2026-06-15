@@ -35,6 +35,9 @@ Maintenance rule:
 - Added `arrays render-probe-region-output-svg` and a matching GUI export
   control for deterministic native SVG plots of inspected `mean_log2_*` and
   `log2FC_*` probe-region helper tracks.
+- Added `arrays project-probe-region-output` / `ProjectProbeRegionOutput` for
+  direct-coordinate-compatible projection of inspected helper `log2FC_*` rows
+  into genome-anchored array features.
 
 ## 2026-06-14
 

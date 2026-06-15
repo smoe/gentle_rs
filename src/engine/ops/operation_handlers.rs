@@ -19355,6 +19355,56 @@ impl GentleEngine {
                     ));
                     result.microarray_projection = Some(report);
                 }
+                Operation::ProjectProbeRegionOutput {
+                    seq_id,
+                    output_dir,
+                    contrasts,
+                    min_abs_logfc,
+                    max_features,
+                    clear_existing,
+                } => {
+                    let anchor = self.latest_genome_anchor_for_seq(&seq_id)?;
+                    let _ = self.ensure_lineage_node(&seq_id);
+                    let dna = self
+                        .state
+                        .sequences
+                        .get_mut(&seq_id)
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!("Sequence '{seq_id}' not found"),
+
+                            cause_chain: vec![],
+                        })?;
+                    let report = Self::project_probe_region_output(
+                        dna,
+                        &anchor,
+                        &seq_id,
+                        &output_dir,
+                        &contrasts,
+                        min_abs_logfc,
+                        max_features,
+                        clear_existing.unwrap_or(false),
+                    )?;
+
+                    result.changed_seq_ids.push(seq_id.clone());
+                    result.warnings.extend(report.warnings.clone());
+                    result.messages.push(format!(
+                        "Projected {} probe-region helper feature(s) into '{}' from '{}' (platform={}, contrasts={}, anchor={} {}:{}-{} strand {}, parsed={}, skipped={})",
+                        report.imported_features,
+                        seq_id,
+                        output_dir,
+                        report.platform,
+                        report.projected_contrasts.join(","),
+                        report.anchor_genome_id,
+                        report.anchor_chromosome,
+                        report.anchor_start_1based,
+                        report.anchor_end_1based,
+                        report.anchor_strand,
+                        report.parsed_rows,
+                        report.skipped_rows
+                    ));
+                    result.microarray_projection = Some(report);
+                }
                 Operation::ProjectGenomeInterval {
                     source_genome_id,
                     target_genome_id,

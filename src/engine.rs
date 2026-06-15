@@ -2948,6 +2948,18 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         clear_existing: Option<bool>,
     },
+    ProjectProbeRegionOutput {
+        seq_id: SeqId,
+        output_dir: String,
+        #[serde(default)]
+        contrasts: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        min_abs_logfc: Option<f64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_features: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        clear_existing: Option<bool>,
+    },
     ProjectGenomeInterval {
         source_genome_id: String,
         target_genome_id: String,

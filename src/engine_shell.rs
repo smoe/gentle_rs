@@ -1565,6 +1565,14 @@ pub enum ShellCommand {
         output_dir: String,
         output: String,
     },
+    ArraysProjectProbeRegionOutput {
+        seq_id: String,
+        output_dir: String,
+        contrasts: Vec<String>,
+        min_abs_logfc: Option<f64>,
+        max_features: Option<usize>,
+        clear_existing: bool,
+    },
     ArraysProbeRegions {
         cel_paths: Vec<String>,
         dataset: Option<String>,
@@ -8171,6 +8179,30 @@ impl ShellCommand {
                     output_dir, output
                 )
             }
+            Self::ArraysProjectProbeRegionOutput {
+                seq_id,
+                output_dir,
+                contrasts,
+                min_abs_logfc,
+                max_features,
+                clear_existing,
+            } => format!(
+                "project probe-region helper output '{}' into '{}' (contrasts={}, min_abs_logfc={}, max_features={}, clear_existing={})",
+                output_dir,
+                seq_id,
+                if contrasts.is_empty() {
+                    "all".to_string()
+                } else {
+                    contrasts.join(",")
+                },
+                min_abs_logfc
+                    .map(|value| format!("{value:.3}"))
+                    .unwrap_or_else(|| "-".to_string()),
+                max_features
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                clear_existing
+            ),
             Self::ArraysProbeRegions {
                 cel_paths,
                 dataset,
@@ -23478,7 +23510,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "arrays" => {
             if tokens.len() < 2 {
                 return Err(
-                    "arrays requires a subcommand: inspect-microarray-track, project-microarray-track, inspect-probe-region-output, render-probe-region-output-svg, or probe-regions"
+                    "arrays requires a subcommand: inspect-microarray-track, project-microarray-track, inspect-probe-region-output, render-probe-region-output-svg, project-probe-region-output, or probe-regions"
                         .to_string(),
                 );
             }
@@ -23631,9 +23663,93 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         output: tokens[3].clone(),
                     })
                 }
+                "project-probe-region-output" => {
+                    if tokens.len() < 4 {
+                        return Err(
+                            "arrays project-probe-region-output requires SEQ_ID OUTPUT_DIR [--contrasts CSV] [--min-abs-logfc N] [--max-features N] [--clear-existing]"
+                                .to_string(),
+                        );
+                    }
+                    let seq_id = tokens[2].trim().to_string();
+                    if seq_id.is_empty() {
+                        return Err(
+                            "arrays project-probe-region-output SEQ_ID must not be empty"
+                                .to_string(),
+                        );
+                    }
+                    let output_dir = tokens[3].clone();
+                    let mut contrasts = Vec::new();
+                    let mut min_abs_logfc = None;
+                    let mut max_features = None;
+                    let mut clear_existing = false;
+                    let mut idx = 4usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--contrasts" | "--contrast" => {
+                                idx += 1;
+                                if idx >= tokens.len() {
+                                    return Err("Missing CSV after --contrasts".to_string());
+                                }
+                                contrasts.extend(split_csv_tokens_with_empty_error(&tokens[idx])?);
+                                idx += 1;
+                            }
+                            "--min-abs-logfc" | "--min-abs-logFC" => {
+                                idx += 1;
+                                if idx >= tokens.len() {
+                                    return Err("Missing N after --min-abs-logfc".to_string());
+                                }
+                                let raw = tokens[idx].clone();
+                                let value = raw.parse::<f64>().map_err(|e| {
+                                    format!("Invalid --min-abs-logfc value '{raw}': {e}")
+                                })?;
+                                if !value.is_finite() || value < 0.0 {
+                                    return Err(
+                                        "--min-abs-logfc must be a finite value >= 0".to_string()
+                                    );
+                                }
+                                min_abs_logfc = Some(value);
+                                idx += 1;
+                            }
+                            "--max-features" => {
+                                idx += 1;
+                                if idx >= tokens.len() {
+                                    return Err("Missing N after --max-features".to_string());
+                                }
+                                let raw = tokens[idx].clone();
+                                let value = raw.parse::<usize>().map_err(|e| {
+                                    format!("Invalid --max-features value '{raw}': {e}")
+                                })?;
+                                if value == 0 {
+                                    return Err(
+                                        "--max-features must be greater than zero".to_string()
+                                    );
+                                }
+                                max_features = Some(value);
+                                idx += 1;
+                            }
+                            "--clear-existing" => {
+                                clear_existing = true;
+                                idx += 1;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for arrays project-probe-region-output"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::ArraysProjectProbeRegionOutput {
+                        seq_id,
+                        output_dir,
+                        contrasts,
+                        min_abs_logfc,
+                        max_features,
+                        clear_existing,
+                    })
+                }
                 "probe-regions" | "probe-region-plan" => parse_arrays_probe_regions_command(tokens),
                 other => Err(format!(
-                    "Unknown arrays subcommand '{other}' (expected inspect-microarray-track, project-microarray-track, inspect-probe-region-output, render-probe-region-output-svg, or probe-regions)"
+                    "Unknown arrays subcommand '{other}' (expected inspect-microarray-track, project-microarray-track, inspect-probe-region-output, render-probe-region-output-svg, project-probe-region-output, or probe-regions)"
                 )),
             }
         }
@@ -24311,6 +24427,7 @@ fn is_reference_or_track_command(command: &ShellCommand) -> bool {
             | ShellCommand::ArraysProjectMicroarrayTrack { .. }
             | ShellCommand::ArraysInspectProbeRegionOutput { .. }
             | ShellCommand::ArraysRenderProbeRegionOutputSvg { .. }
+            | ShellCommand::ArraysProjectProbeRegionOutput { .. }
             | ShellCommand::ArraysProbeRegions { .. }
             | ShellCommand::TracksTrackedList
             | ShellCommand::TracksTrackedAdd { .. }
@@ -28918,6 +29035,31 @@ fn execute_reference_and_track_command(
             Ok(ShellRunResult {
                 state_changed: false,
                 output: json!({ "export": export }),
+            })
+        }
+        ShellCommand::ArraysProjectProbeRegionOutput {
+            seq_id,
+            output_dir,
+            contrasts,
+            min_abs_logfc,
+            max_features,
+            clear_existing,
+        } => {
+            let op_result = engine
+                .apply(Operation::ProjectProbeRegionOutput {
+                    seq_id: seq_id.clone(),
+                    output_dir: output_dir.clone(),
+                    contrasts: contrasts.clone(),
+                    min_abs_logfc: *min_abs_logfc,
+                    max_features: *max_features,
+                    clear_existing: Some(*clear_existing),
+                })
+                .map_err(|e| e.to_string())?;
+            let state_changed =
+                !op_result.created_seq_ids.is_empty() || !op_result.changed_seq_ids.is_empty();
+            Ok(ShellRunResult {
+                state_changed,
+                output: json!({ "result": op_result }),
             })
         }
         ShellCommand::ArraysProbeRegions {
@@ -36602,6 +36744,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ArraysProjectMicroarrayTrack { .. }
         | ShellCommand::ArraysInspectProbeRegionOutput { .. }
         | ShellCommand::ArraysRenderProbeRegionOutputSvg { .. }
+        | ShellCommand::ArraysProjectProbeRegionOutput { .. }
         | ShellCommand::ArraysProbeRegions { .. }
         | ShellCommand::TracksTrackedList
         | ShellCommand::TracksTrackedAdd { .. }

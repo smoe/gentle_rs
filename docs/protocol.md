@@ -2368,6 +2368,13 @@ Microarray track projection notes:
   SVG plot. The upper panel renders `mean_log2_*` condition intensity tracks;
   the lower panel renders `log2FC_*` tracks. It is still read-only with respect
   to project state and does not run R/APT.
+- `arrays project-probe-region-output SEQ_ID OUTPUT_DIR` projects selected or
+  all `log2FC_*` helper-output rows into the existing genome-anchored array
+  feature model (`gentle_array_*` qualifiers and
+  `gentle.microarray_projection_report.v1`). The route accepts only direct
+  coordinate compatibility: the helper output's declared `coordinate_system` or
+  `genome_build` must match the target sequence anchor genome id. Projection
+  maps/liftover for helper-output directories remain a follow-up.
 - manifests may also include `coordinate_projections[]` entries with
   `source_genome_id`, `target_genome_id`, `method`, and `path`. These paths
   point at tab-delimited interval maps for build-to-build projection, currently

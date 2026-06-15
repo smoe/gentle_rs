@@ -2076,6 +2076,7 @@ Shared shell command:
     - `arrays project-microarray-track SEQ_ID MANIFEST [--contrasts CSV] [--level probeset] [--min-abs-logfc N] [--max-adj-p N] [--max-features N] [--clear-existing]`
     - `arrays inspect-probe-region-output OUTPUT_DIR`
     - `arrays render-probe-region-output-svg OUTPUT_DIR OUTPUT.svg`
+    - `arrays project-probe-region-output SEQ_ID OUTPUT_DIR [--contrasts CSV] [--min-abs-logfc N] [--max-features N] [--clear-existing]`
     - `arrays probe-regions (--cel PATH ... | --dataset ID) (--gene SYMBOL|--genes CSV|--locus LOCUS|--loci CSV|--transcript-cluster-id ID|--probeset-id ID ...) [--metadata PATH] [--platform NAME] [--annotation-library PATH] [--condition-column NAME] [--sample-column NAME] [--block-column NAME] [--paired-by-replicate-suffix] [--normalization rma|quantile-feature|none] [--plot] [--output DIR] [--cache-dir DIR] [--dry-run]`
     - `macros run [--transactional] [--file PATH | SCRIPT_OR_@FILE]`
     - `macros instance-list`
@@ -3633,6 +3634,11 @@ Tutorial companion:
     plots `mean_log2_*` condition tracks in the upper panel and `log2FC_*`
     tracks in the lower panel, using the existing chromosome-ordered helper
     table and reporting projection blockers without running R/APT.
+- `arrays project-probe-region-output grch38_tp73 analysis/probe_regions --contrasts TAp73-AdGFP --min-abs-logfc 0.5`
+  - Projects direct-coordinate-compatible `log2FC_*` helper-output rows into
+    genome-anchored array features on the target sequence. The route refuses
+    projection unless the helper output declares `coordinate_system` or
+    `genome_build` compatible with the target sequence anchor.
 - `resources sync-ucsc-rmsk INPUT.rmsk.txt_or_txt.gz [OUTPUT.rmsk.json] [--assembly DB] [--limit N]`
   - Normalizes the UCSC RepeatMasker `rmsk` table into
     `gentle.ucsc_rmsk_resource.v1`.
@@ -5219,6 +5225,11 @@ Notes:
 - `arrays render-probe-region-output-svg OUTPUT_DIR OUTPUT.svg` draws the
   inspected helper output natively as a deterministic SVG plot, without running
   R/APT or changing project state.
+- `arrays project-probe-region-output SEQ_ID OUTPUT_DIR` projects selected or
+  all `log2FC_*` helper-output rows into genome-anchored array features when
+  the helper output's declared `coordinate_system` or `genome_build` directly
+  matches the sequence anchor genome id. Liftover/projection-map support for
+  helper output remains a follow-up.
 - The built-in genome catalog includes both `Human GRCh38 Ensembl 116` and
   `Human GRCh37 Ensembl 87` (`hg19`/`GRCh37.p13` aliases), so direct native
   extraction can use either build when the corresponding cache has been

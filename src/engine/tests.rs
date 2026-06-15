@@ -165,6 +165,46 @@ fn microarray_anchored_engine_at(
     engine
 }
 
+fn write_probe_region_projection_fixture(out: &Path) {
+    fs::create_dir(out).expect("probe-region fixture dir");
+    fs::write(
+        out.join("region_intensity_chrom_order.csv"),
+        concat!(
+            "chromosome,start,stop,strand,probeset_or_region_id,transcript_cluster_id,number_of_probes,gene_symbol,mean_log2_AdGFP,mean_log2_TAp73,log2FC_TAp73-AdGFP\n",
+            "chr1,1010,1030,+,PSR1,TC1,4,PATZ1,8.1,9.2,1.1\n",
+            "chr1,1060,1080,+,PSR2,TC1,4,PATZ1,7.8,7.9,0.1\n",
+            "chr2,1010,1030,+,PSR3,TC2,4,OTHER,6.0,6.7,0.7\n"
+        ),
+    )
+    .expect("probe-region table");
+    fs::write(
+        out.join("normalized_feature_matrix_manifest.json"),
+        r#"{
+  "schema": "gentle.probe_region_normalized_matrix_manifest.v1",
+  "platform": "Clariom_D_Human",
+  "platform_package": "pd.clariom.d.human",
+  "coordinate_system": "hg38",
+  "genome_build": "GRCh38",
+  "normalization": "rma",
+  "targets": ["probeset"],
+  "artifacts": []
+}"#,
+    )
+    .expect("probe-region manifest");
+    fs::write(
+        out.join("provenance.json"),
+        r#"{
+  "schema": "gentle.probe_region_backend_provenance.v1",
+  "backend": "r_oligo",
+  "coordinate_system": "hg38",
+  "genome_build": "GRCh38",
+  "normalization": "rma",
+  "artifacts": []
+}"#,
+    )
+    .expect("probe-region provenance");
+}
+
 fn first_qualifier(feature: &gb_io::seq::Feature, key: &str) -> Option<String> {
     feature
         .qualifier_values(key)
@@ -366,6 +406,101 @@ fn project_microarray_track_forward_anchor_materializes_array_features() {
 }
 
 #[test]
+fn project_probe_region_output_direct_anchor_materializes_array_features() {
+    let temp = tempdir().expect("tempdir");
+    let output_dir = temp.path().join("probe_regions");
+    write_probe_region_projection_fixture(&output_dir);
+    let mut engine = microarray_anchored_engine("hg38", "+");
+
+    let result = engine
+        .apply(Operation::ProjectProbeRegionOutput {
+            seq_id: "array_slice".to_string(),
+            output_dir: output_dir.to_string_lossy().to_string(),
+            contrasts: vec!["TAp73-AdGFP".to_string()],
+            min_abs_logfc: Some(0.5),
+            max_features: Some(10),
+            clear_existing: Some(true),
+        })
+        .expect("project probe-region helper output");
+    let report = result.microarray_projection.expect("projection report");
+    assert_eq!(report.schema, MICROARRAY_PROJECTION_REPORT_SCHEMA);
+    assert_eq!(report.manifest_path, output_dir.to_string_lossy());
+    assert_eq!(report.dataset, "probe_region_output");
+    assert_eq!(report.platform, "Clariom_D_Human");
+    assert_eq!(report.coordinate_system, "hg38");
+    assert_eq!(report.projected_contrasts, vec!["TAp73-AdGFP".to_string()]);
+    assert_eq!(report.parsed_rows, 3);
+    assert_eq!(report.imported_features, 1);
+    assert_eq!(report.skipped_filter, 1);
+    assert_eq!(report.skipped_wrong_chromosome, 1);
+
+    let dna = engine.state().sequences.get("array_slice").unwrap();
+    let array_features = dna
+        .features()
+        .iter()
+        .filter(|feature| {
+            first_qualifier(feature, "gentle_track_source").as_deref() == Some("Array")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(array_features.len(), 1);
+    let feature = array_features[0];
+    assert_eq!(
+        first_qualifier(feature, "gentle_array_dataset").as_deref(),
+        Some("probe_region_output")
+    );
+    assert_eq!(
+        first_qualifier(feature, "gentle_array_level").as_deref(),
+        Some("probe_region")
+    );
+    assert_eq!(
+        first_qualifier(feature, "gentle_array_assembly_check").as_deref(),
+        Some("helper_output_coordinate_system_matches_anchor")
+    );
+    assert_eq!(
+        first_qualifier(feature, "gentle_array_projection_status").as_deref(),
+        Some("direct_helper_output_coordinate_match")
+    );
+    assert_eq!(first_qualifier(feature, "logFC").as_deref(), Some("1.100"));
+    assert!(
+        first_qualifier(feature, "gentle_array_value_summary")
+            .unwrap()
+            .contains("TAp73-AdGFP logFC=1.100")
+    );
+    assert_eq!(feature.location.find_bounds().unwrap(), (9, 30));
+}
+
+#[test]
+fn project_probe_region_output_rejects_anchor_coordinate_mismatch() {
+    let temp = tempdir().expect("tempdir");
+    let output_dir = temp.path().join("probe_regions");
+    write_probe_region_projection_fixture(&output_dir);
+    let mut engine = microarray_anchored_engine("mm39", "+");
+
+    let err = engine
+        .apply(Operation::ProjectProbeRegionOutput {
+            seq_id: "array_slice".to_string(),
+            output_dir: output_dir.to_string_lossy().to_string(),
+            contrasts: vec![],
+            min_abs_logfc: None,
+            max_features: Some(10),
+            clear_existing: Some(true),
+        })
+        .expect_err("mismatched helper output should fail");
+    assert_eq!(err.code, ErrorCode::InvalidInput);
+    assert!(err.message.contains("is not compatible"));
+    assert_eq!(
+        engine
+            .state()
+            .sequences
+            .get("array_slice")
+            .unwrap()
+            .features()
+            .len(),
+        0
+    );
+}
+
+#[test]
 fn project_microarray_track_uses_vendor_subset_on_tp73_genbank_anchor() {
     let mut engine = GentleEngine::default();
     engine
@@ -406,7 +541,9 @@ fn project_microarray_track_uses_vendor_subset_on_tp73_genbank_anchor() {
     let array_features = dna
         .features()
         .iter()
-        .filter(|feature| first_qualifier(feature, "gentle_track_source").as_deref() == Some("Array"))
+        .filter(|feature| {
+            first_qualifier(feature, "gentle_track_source").as_deref() == Some("Array")
+        })
         .collect::<Vec<_>>();
     assert_eq!(array_features.len(), 5);
     let first = array_features

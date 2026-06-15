@@ -6856,6 +6856,29 @@ fn parse_arrays_microarray_track_commands() {
         ShellCommand::ArraysRenderProbeRegionOutputSvg { output_dir, output }
             if output_dir == "analysis/probe_regions" && output == "out.svg"
     ));
+
+    let project_probe_output = parse_shell_line(
+        "arrays project-probe-region-output array_slice analysis/probe_regions --contrasts TAp73-AdGFP --min-abs-logfc 0.5 --max-features 25 --clear-existing",
+    )
+    .expect("parse project probe output");
+    match project_probe_output {
+        ShellCommand::ArraysProjectProbeRegionOutput {
+            seq_id,
+            output_dir,
+            contrasts,
+            min_abs_logfc,
+            max_features,
+            clear_existing,
+        } => {
+            assert_eq!(seq_id, "array_slice");
+            assert_eq!(output_dir, "analysis/probe_regions");
+            assert_eq!(contrasts, vec!["TAp73-AdGFP".to_string()]);
+            assert_eq!(min_abs_logfc, Some(0.5));
+            assert_eq!(max_features, Some(25));
+            assert!(clear_existing);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
 }
 
 #[test]

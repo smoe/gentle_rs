@@ -2465,6 +2465,9 @@ Common examples:
   `probe_regions_oligo.R` output directory before plotting or projection.
 - `arrays render-probe-region-output-svg OUTPUT_DIR OUTPUT.svg` — export a
   deterministic native SVG plot from completed probe-region helper output.
+- `arrays project-probe-region-output SEQ_ID OUTPUT_DIR --contrasts CSV`
+  — project direct-coordinate-compatible helper output into array features on
+  a genome-anchored sequence.
 - `candidates generate SET_NAME SEQ_ID --length N ...` — create candidate set.
 - `guides oligos-export GUIDE_SET_ID OUTPUT_PATH ...` — export guide oligo set.
 - `planning profile show --scope effective` — inspect merged planning profile
@@ -3005,7 +3008,9 @@ The `Help` menu now includes:
   coverage, coordinate/build declarations, projection blockers, and a bounded
   chromosome-ordered row preview. The same panel can export a deterministic
   native SVG plot from `mean_log2_*` and `log2FC_*` helper-table columns;
-  genome-anchored projection still remains a follow-up.
+  `arrays project-probe-region-output` provides the shared direct-compatible
+  projection route, while first-class projection controls in this panel remain
+  a follow-up.
 
 ## microRNA Target Scan
 
