@@ -6925,6 +6925,34 @@ fn execute_arrays_inspect_microarray_track_returns_manifest() {
         run.output["manifest"]["contrast_order"][0].as_str(),
         Some("AdTAp73alpha-AdGFP")
     );
+
+    let vendor_subset = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ArraysInspectMicroarrayTrack {
+            manifest_path:
+                "test_files/fixtures/microarray_tracks/clariomd.tp73_vendor_subset.manifest.json"
+                    .to_string(),
+        },
+    )
+    .expect("inspect vendor-derived manifest");
+    assert!(!vendor_subset.state_changed);
+    let manifest = &vendor_subset.output["manifest"];
+    assert_eq!(
+        manifest["schema"].as_str(),
+        Some("gentle.microarray_track_manifest.v1")
+    );
+    assert_eq!(manifest["coordinate_system"].as_str(), Some("hg38"));
+    assert!(manifest["supported_genome_ids"]
+        .as_array()
+        .expect("supported genome ids")
+        .iter()
+        .any(|value| value.as_str() == Some("GRCh38.p14")));
+    assert_eq!(manifest["contrasts"][0]["row_count"].as_u64(), Some(3));
+    assert_eq!(manifest["contrasts"][1]["row_count"].as_u64(), Some(2));
+    assert!(manifest["warnings"][0]
+        .as_str()
+        .unwrap_or_default()
+        .contains("contrast statistics are synthetic"));
 }
 
 #[test]

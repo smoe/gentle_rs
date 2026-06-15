@@ -1837,6 +1837,7 @@ cargo run --bin gentle_cli -- tracks import-bed grch38_tp53 data/chipseq/peaks.b
 cargo run --bin gentle_cli -- tracks import-bigwig grch38_tp53 data/chipseq/signal.bw --name ATAC --min-score 0.2 --clear-existing
 cargo run --bin gentle_cli -- tracks import-vcf grch38_tp53 data/variants/sample.vcf.gz --name Variants --min-score 20 --clear-existing
 cargo run --bin gentle_cli -- arrays inspect-microarray-track data/publication_resources/rostock_p73_clariomd_e_mtab_14704/analysis/clariomd_probe_level/clariomd_microarray_track_manifest.json
+cargo run --bin gentle_cli -- arrays inspect-microarray-track test_files/fixtures/microarray_tracks/clariomd.tp73_vendor_subset.manifest.json
 cargo run --bin gentle_cli -- arrays project-microarray-track grch38_tp73 data/publication_resources/rostock_p73_clariomd_e_mtab_14704/analysis/clariomd_probe_level/clariomd_microarray_track_manifest.json --contrasts AdTAp73alpha-AdGFP,AdTAp73beta-AdGFP --level probeset --max-features 5000 --clear-existing
 cargo run --bin gentle_cli -- arrays probe-regions --cel sample1.CEL --cel sample2.CEL --metadata samples.tsv --gene PATZ1 --gene TP73 --platform Clariom_D_Human --annotation-library path/to/NetAffx_or_APT_library --condition-column condition --sample-column file --normalization rma --plot --output analysis/probe_regions --dry-run
 cargo run --bin gentle_cli -- arrays probe-regions --dataset E-MTAB-14704 --gene PATZ1 --gene FUS --gene MDM2 --paired-by-replicate-suffix --platform Clariom_D_Human --plot --dry-run
