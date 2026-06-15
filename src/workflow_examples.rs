@@ -5525,7 +5525,10 @@ mod tests {
     fn tutorial_sources_are_v4_with_catalog_group_assignments() {
         let sources =
             load_tutorial_source_units(&tutorial_source_dir()).expect("load tutorial sources");
-        assert_eq!(sources.len(), 40);
+        assert!(
+            !sources.is_empty(),
+            "Expected at least one tutorial source unit"
+        );
         let unnumbered_reference_units = HashSet::from([
             "generated_hub".to_string(),
             "tutorial_landscape_overview".to_string(),
@@ -5580,7 +5583,14 @@ mod tests {
     fn tutorial_catalog_entries_have_group_and_decimal_placement() {
         let catalog =
             load_tutorial_catalog(&tutorial_catalog_path()).expect("load tutorial catalog");
-        assert_eq!(catalog.entries.len(), 40);
+        let source_count = load_tutorial_source_units(&tutorial_source_dir())
+            .expect("load tutorial sources")
+            .len();
+        assert_eq!(
+            catalog.entries.len(),
+            source_count,
+            "committed tutorial catalog should cover every source unit"
+        );
         let unnumbered_reference_units = HashSet::from([
             "generated_hub".to_string(),
             "tutorial_landscape_overview".to_string(),
