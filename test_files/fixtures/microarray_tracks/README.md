@@ -36,3 +36,25 @@
   - tooltip/detail tests for native interval versus displayed interval
 - Runtime relevance: models the intended GRCh37-to-GRCh38 array-track path
   without committing large chain files or raw array data.
+
+## `clariomd.tp73_vendor_subset.manifest.json`
+
+- Origin: TP73-only projection fixture derived from the committed
+  `affymetrix_clariom_d_human_na36_hg38_subset` annotation fixture.
+- Deterministic recreation:
+  - derive the source subset with
+    `scripts/extract_clariomd_gene_panel_fixture.py`
+  - select TP73 probeset rows with numeric hg38 `start`/`stop` coordinates from
+    `clariom_d_human_na36_hg38_gene_panel.probesets.tsv`
+  - keep real Clariom D probeset IDs, transcript-cluster IDs, exon IDs, hg38
+    chromosome, strand, and coordinates
+  - assign small synthetic `logFC`, `AveExpr`, `P.Value`, and `adj.P.Val`
+    values for deterministic projection/display tests
+- Primary usage:
+  - projection tests against the committed `test_files/tp73.ncbi.gb` GRCh38.p14
+    locus
+  - release-proof development that needs realistic Clariom D TP73 IDs without
+    committing full vendor annotation or CEL-derived analysis output
+- Runtime relevance: bridges the synthetic microarray-track contract and the
+  real Thermo Fisher/NetAffx coordinate support workflow while remaining
+  non-substitutable and offline-safe.

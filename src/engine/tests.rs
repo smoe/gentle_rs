@@ -115,6 +115,13 @@ fn microarray_projected_track_fixture_manifest() -> String {
         .to_string()
 }
 
+fn microarray_tp73_vendor_subset_manifest() -> String {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("test_files/fixtures/microarray_tracks/clariomd.tp73_vendor_subset.manifest.json")
+        .to_string_lossy()
+        .to_string()
+}
+
 fn microarray_projection_fixture_map() -> String {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("test_files/fixtures/microarray_tracks/clariomd.synthetic.hg19-to-hg38.tsv")
@@ -356,6 +363,78 @@ fn project_microarray_track_forward_anchor_materializes_array_features() {
             .contains("AdTAp73beta-AdGFP logFC=-0.750000")
     );
     assert_eq!(feature.location.find_bounds().unwrap(), (9, 20));
+}
+
+#[test]
+fn project_microarray_track_uses_vendor_subset_on_tp73_genbank_anchor() {
+    let mut engine = GentleEngine::default();
+    engine
+        .apply(Operation::LoadFile {
+            path: "test_files/tp73.ncbi.gb".to_string(),
+            as_id: Some("tp73_clariomd_subset".to_string()),
+        })
+        .expect("load TP73 GenBank locus");
+    let result = engine
+        .apply(Operation::ProjectMicroarrayTrack {
+            seq_id: "tp73_clariomd_subset".to_string(),
+            manifest_path: microarray_tp73_vendor_subset_manifest(),
+            contrasts: vec![
+                "AdTAp73alpha-AdGFP".to_string(),
+                "AdTAp73beta-AdGFP".to_string(),
+            ],
+            level: Some("probeset".to_string()),
+            min_abs_logfc: Some(0.0),
+            max_adj_p: Some(1.0),
+            max_features: Some(20),
+            clear_existing: Some(true),
+        })
+        .expect("project vendor-derived TP73 Clariom D subset");
+    let report = result.microarray_projection.expect("projection report");
+    assert_eq!(report.coordinate_system, "hg38");
+    assert_eq!(report.anchor_genome_id, "GRCh38.p14");
+    assert_eq!(report.anchor_chromosome, "1");
+    assert_eq!(report.parsed_rows, 5);
+    assert_eq!(report.imported_features, 5);
+    assert_eq!(report.skipped_wrong_chromosome, 0);
+    assert_eq!(report.skipped_non_overlap, 0);
+
+    let dna = engine
+        .state()
+        .sequences
+        .get("tp73_clariomd_subset")
+        .expect("TP73 sequence");
+    let array_features = dna
+        .features()
+        .iter()
+        .filter(|feature| first_qualifier(feature, "gentle_track_source").as_deref() == Some("Array"))
+        .collect::<Vec<_>>();
+    assert_eq!(array_features.len(), 5);
+    let first = array_features
+        .iter()
+        .find(|feature| {
+            first_qualifier(feature, "feature_id").as_deref() == Some("PSR0100145779.hg.1")
+                && first_qualifier(feature, "gentle_array_contrast").as_deref()
+                    == Some("AdTAp73alpha-AdGFP")
+        })
+        .expect("TP73 first Clariom probeset");
+    assert_eq!(first.location.find_bounds().unwrap(), (4, 49));
+    assert_eq!(
+        first_qualifier(first, "transcript_cluster_id").as_deref(),
+        Some("TC0100006620.hg.1")
+    );
+    assert_eq!(
+        first_qualifier(first, "exon_id").as_deref(),
+        Some("EX0100125487.hg")
+    );
+    assert_eq!(
+        first_qualifier(first, "gentle_array_assembly_check").as_deref(),
+        Some("supported_genome_id_alias_matches_anchor")
+    );
+    assert!(
+        first_qualifier(first, "gentle_array_value_summary")
+            .unwrap()
+            .contains("AdTAp73beta-AdGFP logFC=-0.510000")
+    );
 }
 
 #[test]

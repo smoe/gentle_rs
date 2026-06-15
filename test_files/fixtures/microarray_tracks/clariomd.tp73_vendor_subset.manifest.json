@@ -1,0 +1,26 @@
+{
+  "schema": "gentle.microarray_track_manifest.v1",
+  "dataset": "E-MTAB-14704",
+  "platform": "Clariom D human",
+  "normalization": "RMA",
+  "coordinate_system": "hg38",
+  "supported_genome_ids": ["hg38", "GRCh38", "GRCh38.p14"],
+  "contrast_order": ["AdTAp73alpha-AdGFP", "AdTAp73beta-AdGFP"],
+  "contrasts": [
+    {
+      "contrast": "AdTAp73alpha-AdGFP",
+      "level": "probeset",
+      "path": "clariomd.tp73_vendor_subset.AdTAp73alpha-AdGFP.tsv",
+      "row_count": 3
+    },
+    {
+      "contrast": "AdTAp73beta-AdGFP",
+      "level": "probeset",
+      "path": "clariomd.tp73_vendor_subset.AdTAp73beta-AdGFP.tsv",
+      "row_count": 2
+    }
+  ],
+  "warnings": [
+    "Fixture uses real Clariom D Human na36 hg38 TP73 probeset IDs/coordinates from the derived gene-panel subset; contrast statistics are synthetic and are not derived from CEL files."
+  ]
+}

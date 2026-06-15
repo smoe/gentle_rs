@@ -37,6 +37,9 @@ checks.
   - `clariomd.synthetic.hg19-to-hg38.tsv`
   - `clariomd.synthetic.AdTAp73alpha-AdGFP.tsv`
   - `clariomd.synthetic.AdTAp73beta-AdGFP.tsv`
+  - `clariomd.tp73_vendor_subset.manifest.json`
+  - `clariomd.tp73_vendor_subset.AdTAp73alpha-AdGFP.tsv`
+  - `clariomd.tp73_vendor_subset.AdTAp73beta-AdGFP.tsv`
 - `affymetrix_clariom_d_human_na36_hg38_subset/`
   - `README.md`
   - `clariom_d_human_na36_hg38_gene_panel.probesets.tsv`

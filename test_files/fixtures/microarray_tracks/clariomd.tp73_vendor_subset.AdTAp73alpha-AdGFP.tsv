@@ -1,0 +1,4 @@
+chrom	start_1based	end_1based	strand	feature_id	transcript_cluster_id	exon_id	probe_type	logFC	AveExpr	P.Value	adj.P.Val	gene_symbol	junction_start_edge	junction_stop_edge	junction_sequence	has_cds
+chr1	3652520	3652564	+	PSR0100145779.hg.1	TC0100006620.hg.1	EX0100125487.hg	main->psr	1.120000	8.400000	0.002000	0.030000	TP73				false
+chr1	3707792	3708534	+	PSR0100145791.hg.1	TC0100006620.hg.1	EX0100125498.hg	main->psr	-0.740000	7.900000	0.030000	0.090000	TP73				false
+chr1	3733368	3736200	+	PSR0100145810.hg.1	TC0100006620.hg.1	EX0100125518.hg /// EX0100125519.hg	main->psr	1.860000	6.950000	0.000400	0.008000	TP73				false

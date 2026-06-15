@@ -13,9 +13,17 @@ not download a full genome, full UCSC `rmsk`, raw CEL files, or SRA reads.
   - UCSC `rmsk`-style repeat rows and generated interval index
   - Clariom D-style microarray track manifest and per-contrast TSVs
   - CUT&RUN-style BED6 intervals
+- Vendor-derived Clariom D TP73 subset:
+  `test_files/fixtures/microarray_tracks/clariomd.tp73_vendor_subset.manifest.json`
+  - uses real Thermo Fisher Clariom D Human na36 hg38 TP73 probeset IDs,
+    transcript-cluster IDs, exon IDs, and hg38 coordinates from the derived
+    gene-panel fixture
+  - keeps expression/statistical values synthetic so no CEL-derived biological
+    conclusion is implied
 
 All proof fixture provenance and regeneration notes are in
-`test_files/fixtures/evidence_viewer/README.md`.
+`test_files/fixtures/evidence_viewer/README.md` and
+`test_files/fixtures/microarray_tracks/README.md`.
 
 ## Regenerate The Repeat Sidecars
 
@@ -100,6 +108,7 @@ cargo test -q genome_track_feature_details_include_provenance_and_coordinates
 cargo test -q set_display_visibility_controls_array_features
 cargo test -q set_display_visibility_controls_repeat_features
 cargo test -q project_microarray_track_forward_anchor_materializes_array_features
+cargo test -q project_microarray_track_uses_vendor_subset_on_tp73_genbank_anchor
 cargo test -q materialize_repeat_features_creates_repeat_regions_on_reverse_anchor
 ```
 
