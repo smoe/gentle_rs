@@ -134,6 +134,17 @@ Expected outcome:
 - direct submission remains unavailable
 - warnings keep the human-review boundary visible
 
+After the product definition, outsourcing permission, and route constraints have
+been reviewed, prepare the local quote packet:
+
+```bash
+cargo run --quiet --bin gentle_cli -- services project-quote \
+  @docs/examples/external_services/geneart_protein_expression_request.json
+```
+
+This remains a local handoff artifact. It does not upload data, request pricing
+from a provider API, or submit an order.
+
 Use this only as a scaffold. Replace the synthetic tutorial payload with a
 reviewed product definition before any real quote or provider handoff.
 
@@ -171,7 +182,7 @@ At the end of this tutorial you should have:
 - a clear distinction between product definition and expression route choice
 - ranked but review-required chassis and route candidates
 - the five missing biological questions for high-yield protein production
-- a local GeneArt preflight scaffold
+- a local GeneArt preflight scaffold and optional quote-packet handoff
 - no created construct and no vendor-side action
 
 ## Feedback

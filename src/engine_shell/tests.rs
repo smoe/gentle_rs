@@ -8955,12 +8955,23 @@ fn execute_planning_protein_expression_handoff_returns_reviewable_contract() {
             .shell_line
             .contains("geneart_protein_expression_request")
     }));
+    assert!(report.suggested_next_actions.iter().any(|action| {
+        action.action_id == "prepare_geneart_quote_packet_after_review"
+            && action.shell_line.contains("services project-quote")
+    }));
     assert!(
         report
             .text_report
             .as_deref()
             .unwrap_or_default()
             .contains("GENtle protein-expression handoff")
+    );
+    assert!(
+        report
+            .text_report
+            .as_deref()
+            .unwrap_or_default()
+            .contains("Quote packet after review: services project-quote")
     );
 }
 

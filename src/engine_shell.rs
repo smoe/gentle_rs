@@ -164,6 +164,20 @@ const CLONING_ROUTINE_COMPARE_SCHEMA: &str = "gentle.cloning_routine_compare.v1"
 pub const DEFAULT_CLONING_ROUTINE_CATALOG_PATH: &str = "assets/cloning_routines.json";
 const PROTEIN_EXPRESSION_GENEART_EXAMPLE_REQUEST_PATH: &str =
     "docs/examples/external_services/geneart_protein_expression_request.json";
+fn protein_expression_geneart_preflight_shell_line() -> String {
+    format!(
+        "services project-preflight @{}",
+        PROTEIN_EXPRESSION_GENEART_EXAMPLE_REQUEST_PATH
+    )
+}
+
+fn protein_expression_geneart_quote_shell_line() -> String {
+    format!(
+        "services project-quote @{}",
+        PROTEIN_EXPRESSION_GENEART_EXAMPLE_REQUEST_PATH
+    )
+}
+
 const BLAST_ASYNC_JOB_SCHEMA: &str = "gentle.blast_async_job_status.v1";
 const BLAST_ASYNC_STORE_SCHEMA: &str = "gentle.blast_async_job_store.v1";
 const BLAST_ASYNC_STORE_METADATA_KEY: &str = "blast_async_jobs";
@@ -13019,10 +13033,7 @@ fn protein_expression_service_handoff_candidates(
         status: "draft_example_review_required".to_string(),
         example_request_path: PROTEIN_EXPRESSION_GENEART_EXAMPLE_REQUEST_PATH.to_string(),
         draft_request_preview,
-        shell_line: format!(
-            "services project-preflight @{}",
-            PROTEIN_EXPRESSION_GENEART_EXAMPLE_REQUEST_PATH
-        ),
+        shell_line: protein_expression_geneart_preflight_shell_line(),
         rationale: "Uses the existing provider-neutral GeneArt protein-expression request example as a review scaffold; V1 does not submit, quote, optimize, or order anything.".to_string(),
     }]
 }
@@ -13076,6 +13087,10 @@ fn build_protein_expression_handoff_text(report: &ProteinExpressionHandoffReport
             service.provider, service.service_kind
         ));
         lines.push(format!("Preflight: {}", service.shell_line));
+        lines.push(format!(
+            "Quote packet after review: {}",
+            protein_expression_geneart_quote_shell_line()
+        ));
     }
     lines.join("\n")
 }
@@ -13128,11 +13143,14 @@ fn execute_planning_protein_expression_handoff(
         PlanningCloningSuggestedNextAction {
             action_id: "inspect_service_handoff_scaffold".to_string(),
             label: "Inspect GeneArt protein-expression preflight scaffold".to_string(),
-            shell_line: format!(
-                "services project-preflight @{}",
-                PROTEIN_EXPRESSION_GENEART_EXAMPLE_REQUEST_PATH
-            ),
+            shell_line: protein_expression_geneart_preflight_shell_line(),
             rationale: "Use the existing external-service request contract as a human-reviewed handoff scaffold.".to_string(),
+        },
+        PlanningCloningSuggestedNextAction {
+            action_id: "prepare_geneart_quote_packet_after_review".to_string(),
+            label: "Prepare GeneArt protein-expression quote packet after review".to_string(),
+            shell_line: protein_expression_geneart_quote_shell_line(),
+            rationale: "After product and outsourcing constraints are reviewed, prepare the provider-neutral quote packet without submitting it.".to_string(),
         },
         PlanningCloningSuggestedNextAction {
             action_id: "consult_cloning_strategy".to_string(),

@@ -4337,7 +4337,8 @@ Planning meta-layer commands (`gentle_cli planning ...` or `gentle_cli shell 'pl
   - Emits `product_definition`, ranked `host_chassis_candidates[]`, ranked
     `vector_route_candidates[]`, explicit `missing_questions[]`, a GeneArt
     protein-expression `service_handoff_candidates[]` preflight scaffold, and
-    `suggested_next_actions[]`.
+    `suggested_next_actions[]` including a review-gated
+    `services project-quote @...` packet-preparation step.
   - The route never designs, optimizes, orders, or mutates constructs. If
     `--seq-id` is supplied, V1 records whether the product sequence exists in
     state plus length/feature context, but still requires human review of CDS

@@ -26,6 +26,9 @@ Maintenance rule:
   example and added the same scenario to the experimental follow-up catalog,
   graph, and human guide, with a review-gated GeneArt protein-expression quote
   packet as the downstream provider handoff.
+- Added an explicit `services project-quote @...` suggested next action to the
+  protein-expression handoff report so GeneArt preflight and quote-packet
+  preparation remain separate review stages.
 
 ## 2026-06-14
 

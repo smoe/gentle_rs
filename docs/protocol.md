@@ -3539,8 +3539,11 @@ Adapter-equivalence guarantee for UI-intent tools:
     `suggested_next_actions[]`
   - the first V1 service scaffold points at
     `docs/examples/external_services/geneart_protein_expression_request.json`
-    through a local `services project-preflight @...` command; no provider
-    network call, quote, order, optimization, or construct mutation is made
+    through a local `services project-preflight @...` command, and
+    `suggested_next_actions[]` includes a `services project-quote @...`
+    packet-preparation step that is only appropriate after product and
+    outsourcing constraints are reviewed; no provider network call, order,
+    optimization, or construct mutation is made
   - `--seq-id` only records product-sequence availability and basic
     length/feature context; CDS boundaries, tags, chassis, folding/PTMs,
     toxicity/induction, yield metric, and purification/delivery endpoint stay
