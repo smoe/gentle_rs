@@ -25,6 +25,10 @@ this as a confidence map for the current GUI surface.
   Services...`, using the same provider catalog, preflight, and quote payload
   contracts as CLI/agent/ClawBio routes. Metabion and GeneArt appear only via
   the shared provider catalog; the GUI does not duplicate vendor logic.
+- TP73 evidence-viewer material preparation through the command palette action
+  `Evidence Preparation`, which guides local repeat, array, BED, TFBS, and
+  proof-export steps while showing copyable CLI/R handoff commands for
+  external CEL/probeset preparation.
 
 ### Works with caveats
 
@@ -2964,6 +2968,17 @@ The `Help` menu now includes:
 
 ## Array Tracks In DNA Viewer
 
+- The command palette action `Evidence Preparation` opens a TP73 proof-path
+  assistant. It loads the committed anchored TP73 locus, materializes local
+  repeat fixtures, inspects/projects the Clariom D manifest, imports the
+  CUT&RUN-style BED fixture, annotates TFBS, enables evidence layers, and
+  renders proof SVG/report artifacts through the same shared operations used by
+  CLI workflows.
+- Manual CEL/probeset preparation remains explicit: the assistant shows
+  copyable `arrays probe-regions --dry-run`, `scripts/probe_regions_oligo.R`,
+  and `arrays inspect-probe-region-output` commands. Login-walled Thermo Fisher
+  support ZIPs are only listed as expected local inputs; GENtle does not
+  download them or run R package installation from the GUI.
 - Prepared Clariom D array output can be projected with
   `arrays project-microarray-track`. The command validates that the manifest
   coordinate system matches the open sequence's genome anchor, or that the

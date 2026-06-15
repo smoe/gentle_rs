@@ -4988,6 +4988,25 @@ fn command_palette_includes_gui_prominent_glossary_entries() {
 }
 
 #[test]
+fn command_palette_includes_evidence_preparation_direct_action() {
+    let app = GENtleApp::default();
+    let entries = app.collect_command_palette_entries();
+    assert!(entries.iter().any(|entry| {
+        entry.title == "Evidence Preparation"
+            && matches!(entry.action, CommandPaletteAction::OpenEvidencePreparation)
+    }));
+}
+
+#[test]
+fn evidence_preparation_is_not_a_gui_prominent_glossary_entry() {
+    assert!(
+        !gui_prominent_glossary_entries()
+            .iter()
+            .any(|entry| entry.palette_title == "Evidence Preparation")
+    );
+}
+
+#[test]
 fn execute_command_palette_action_opens_routine_assistant_dialog() {
     let mut app = GENtleApp::default();
     app.routine_assistant_candidates
@@ -5204,6 +5223,18 @@ fn execute_command_palette_action_opens_mirna_target_scan_dialog() {
     );
 
     assert!(app.mirna_panel.show_panel);
+}
+
+#[test]
+fn execute_command_palette_action_opens_evidence_preparation_dialog() {
+    let mut app = GENtleApp::default();
+
+    app.execute_command_palette_action(
+        &egui::Context::default(),
+        CommandPaletteAction::OpenEvidencePreparation,
+    );
+
+    assert!(app.evidence_preparation_panel.show_panel);
 }
 
 #[test]
