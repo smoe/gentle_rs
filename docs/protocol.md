@@ -2356,8 +2356,12 @@ Microarray track projection notes:
   `region_intensity_chrom_order.csv`, optional `sample_table.tsv`,
   `normalized_feature_matrix_manifest.json`, and `provenance.json`, then emits
   row/feature/transcript-cluster counts, sample/condition/logFC columns,
-  chromosome and gene previews, provenance hints, warnings, and required-column
-  errors.
+  chromosome and gene previews, bounded preview rows, coordinate/build
+  declarations, target levels, artifact paths, provenance hints, warnings,
+  and required-column errors. The same report separates `usable` from
+  `projection_ready`: output can be readable while genome-anchored projection
+  remains blocked until the helper declares compatible coordinate-system and
+  genome-build metadata.
 - manifests may also include `coordinate_projections[]` entries with
   `source_genome_id`, `target_genome_id`, `method`, and `path`. These paths
   point at tab-delimited interval maps for build-to-build projection, currently

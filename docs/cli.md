@@ -3605,7 +3605,7 @@ Tutorial companion:
     transcript-cluster RMA matrices, probeset-level RMA matrices when
     supported by the platform design package, limma contrasts, and first-pass
     probeset heterogeneity tables for splice-variant triage.
-- `Rscript scripts/probe_regions_oligo.R --cel sample1.CEL --cel sample2.CEL --metadata samples.tsv --gene PATZ1 --platform-package pd.clariom.d.human --output analysis/probe_regions`
+- `Rscript scripts/probe_regions_oligo.R --cel sample1.CEL --cel sample2.CEL --metadata samples.tsv --gene PATZ1 --platform-package pd.clariom.d.human --coordinate-system hg38 --genome-build GRCh38 --output analysis/probe_regions`
   - Generic external R/oligo backend helper for the `arrays probe-regions`
     preflight contract.
   - Currently supports `--normalization rma`; other normalization modes remain
@@ -3616,14 +3616,17 @@ Tutorial companion:
     `RSQLite`, and the platform design package such as `pd.clariom.d.human`.
   - Writes `region_intensity_chrom_order.csv`, expression/feature TSVs,
     limma contrast TSVs when metadata defines conditions, a normalized matrix
-    manifest, provenance JSON, and `sessionInfo.txt`.
+    manifest, provenance JSON, and `sessionInfo.txt`. Supplying
+    `--coordinate-system` and `--genome-build` records the coordinate basis
+    needed before any later genome-anchored projection can be accepted.
 - `arrays inspect-probe-region-output analysis/probe_regions`
   - Read-only GENtle inspection of a completed `probe_regions_oligo.R` output
     directory.
   - Emits `gentle.probe_region_output_inspection.v1` JSON summarizing the
     region table, optional `sample_table.tsv`, normalized matrix manifest,
     provenance JSON, sample/condition/logFC columns, chromosomes, gene symbols,
-    row counts, feature counts, and required-column problems.
+    bounded preview rows, row counts, feature counts, coordinate/build
+    declarations, projection-readiness blockers, and required-column problems.
 - `resources sync-ucsc-rmsk INPUT.rmsk.txt_or_txt.gz [OUTPUT.rmsk.json] [--assembly DB] [--limit N]`
   - Normalizes the UCSC RepeatMasker `rmsk` table into
     `gentle.ucsc_rmsk_resource.v1`.

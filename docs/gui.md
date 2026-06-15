@@ -2995,11 +2995,13 @@ The `Help` menu now includes:
   manually staged under
   `data/resources/affymetrix/clariom_d_human_na36_hg38/`, never
   auto-downloaded by GENtle.
-- The GUI shell also accepts `arrays inspect-probe-region-output OUTPUT_DIR` as
-  the read-only parity bridge after the explicit R helper has been run. The
-  returned JSON summarizes helper outputs, sample/condition/logFC columns,
-  chromosome/gene coverage, and missing required columns; native plotting still
-  remains a follow-up.
+- The sequence-window extended panel includes a native
+  `Clariom D / probe-region evidence` inspector for completed
+  `probe_regions_oligo.R` output directories. It uses the same shared
+  `arrays inspect-probe-region-output OUTPUT_DIR` contract as the GUI shell,
+  then previews helper outputs, sample/condition/logFC columns, chromosome/gene
+  coverage, coordinate/build declarations, projection blockers, and a bounded
+  chromosome-ordered row preview. Native plotting still remains a follow-up.
 
 ## microRNA Target Scan
 

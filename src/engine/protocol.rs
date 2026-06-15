@@ -4000,6 +4000,20 @@ pub struct ProbeRegionPlan {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(default)]
+/// One chromosome-ordered preview row from a completed probe-region output table.
+pub struct ProbeRegionOutputPreviewRow {
+    pub chromosome: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub start_1based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stop_1based: Option<usize>,
+    pub probeset_or_region_id: String,
+    pub transcript_cluster_id: String,
+    pub gene_symbol: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
 /// Read-only inspection of a completed `probe_regions_oligo.R` output folder.
 pub struct ProbeRegionOutputInspection {
     pub schema: String,
@@ -4020,6 +4034,14 @@ pub struct ProbeRegionOutputInspection {
     pub platform_package: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub normalization: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub coordinate_system: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genome_build: Option<String>,
+    pub projection_ready: bool,
+    pub projection_blockers: Vec<String>,
+    pub target_levels: Vec<String>,
+    pub artifact_paths: Vec<String>,
     pub row_count: usize,
     pub column_count: usize,
     pub feature_count: usize,
@@ -4030,6 +4052,7 @@ pub struct ProbeRegionOutputInspection {
     pub sample_columns: Vec<String>,
     pub condition_summary_columns: Vec<String>,
     pub logfc_columns: Vec<String>,
+    pub preview_rows: Vec<ProbeRegionOutputPreviewRow>,
     pub required_columns_missing: Vec<String>,
     pub warnings: Vec<String>,
     pub errors: Vec<String>,

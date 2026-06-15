@@ -14,6 +14,7 @@ usage <- function(status = 0) {
     "    (--gene SYMBOL | --locus CHR:START-END | --transcript-cluster-id ID | --probeset-id ID ...)\n",
     "    [--metadata samples.tsv] [--sample-column NAME] [--condition-column NAME] [--block-column NAME]\n",
     "    [--platform-package pd.clariom.d.human] [--normalization rma]\n",
+    "    [--coordinate-system hg38] [--genome-build GRCh38]\n",
     "    [--target probeset|transcript_cluster] [--contrast A-B] --output DIR [--cache-dir DIR]\n",
     "\n",
     "Outputs include region_intensity_chrom_order.csv, feature/expression TSVs, limma contrast TSVs,\n",
@@ -32,6 +33,8 @@ empty_args <- function() {
     block_column = "",
     platform_package = Sys.getenv("GENTLE_PROBE_REGION_PD_PACKAGE", "pd.clariom.d.human"),
     platform_name = Sys.getenv("GENTLE_PROBE_REGION_PLATFORM", "Clariom_D_Human"),
+    coordinate_system = Sys.getenv("GENTLE_PROBE_REGION_COORDINATE_SYSTEM", ""),
+    genome_build = Sys.getenv("GENTLE_PROBE_REGION_GENOME_BUILD", ""),
     normalization = "rma",
     targets = "probeset",
     contrasts = character(),
@@ -89,6 +92,12 @@ parse_args <- function(argv) {
       i <- i + 2
     } else if (flag == "--platform-name") {
       out$platform_name <- take_value(argv, i, flag)
+      i <- i + 2
+    } else if (flag == "--coordinate-system") {
+      out$coordinate_system <- take_value(argv, i, flag)
+      i <- i + 2
+    } else if (flag == "--genome-build" || flag == "--reference-genome-id") {
+      out$genome_build <- take_value(argv, i, flag)
       i <- i + 2
     } else if (flag == "--normalization") {
       out$normalization <- tolower(take_value(argv, i, flag))
@@ -605,6 +614,8 @@ manifest_lines <- c(
   paste0("  \"schema\": ", json_string("gentle.probe_region_normalized_matrix_manifest.v1"), ","),
   paste0("  \"platform\": ", json_string(args$platform_name), ","),
   paste0("  \"platform_package\": ", json_string(args$platform_package), ","),
+  paste0("  \"coordinate_system\": ", json_string(args$coordinate_system), ","),
+  paste0("  \"genome_build\": ", json_string(args$genome_build), ","),
   paste0("  \"normalization\": ", json_string(args$normalization), ","),
   paste0("  \"targets\": ", json_array(args$targets), ","),
   paste0("  \"contrasts\": ", json_array(args$contrasts), ","),
@@ -623,6 +634,8 @@ provenance_lines <- c(
   paste0("  \"backend\": ", json_string("r_oligo"), ","),
   paste0("  \"command\": ", json_string(paste(commandArgs(FALSE), collapse = " ")), ","),
   paste0("  \"platform_package\": ", json_string(args$platform_package), ","),
+  paste0("  \"coordinate_system\": ", json_string(args$coordinate_system), ","),
+  paste0("  \"genome_build\": ", json_string(args$genome_build), ","),
   paste0("  \"normalization\": ", json_string(args$normalization), ","),
   paste0("  \"output_dir\": ", json_string(args$output), ","),
   paste0("  \"artifacts\": ", json_array(artifact_paths)),

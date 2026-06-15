@@ -7246,10 +7246,12 @@ fn execute_arrays_inspect_probe_region_output_summarizes_helper_outputs() {
   "schema": "gentle.probe_region_normalized_matrix_manifest.v1",
   "platform": "Clariom_D_Human",
   "platform_package": "pd.clariom.d.human",
+  "coordinate_system": "hg38",
+  "genome_build": "GRCh38",
   "normalization": "rma",
   "targets": ["probeset"],
   "contrasts": ["TAp73-AdGFP"],
-  "artifacts": []
+  "artifacts": ["probeset_expression_rma.tsv"]
 }"#,
     )
     .expect("write manifest");
@@ -7259,8 +7261,10 @@ fn execute_arrays_inspect_probe_region_output_summarizes_helper_outputs() {
   "schema": "gentle.probe_region_backend_provenance.v1",
   "backend": "r_oligo",
   "platform_package": "pd.clariom.d.human",
+  "coordinate_system": "hg38",
+  "genome_build": "GRCh38",
   "normalization": "rma",
-  "artifacts": []
+  "artifacts": ["region_intensity_chrom_order.csv"]
 }"#,
     )
     .expect("write provenance");
@@ -7293,6 +7297,39 @@ fn execute_arrays_inspect_probe_region_output_summarizes_helper_outputs() {
     assert_eq!(
         run.output["inspection"]["backend"].as_str(),
         Some("r_oligo")
+    );
+    assert_eq!(
+        run.output["inspection"]["coordinate_system"].as_str(),
+        Some("hg38")
+    );
+    assert_eq!(
+        run.output["inspection"]["genome_build"].as_str(),
+        Some("GRCh38")
+    );
+    assert_eq!(
+        run.output["inspection"]["projection_ready"].as_bool(),
+        Some(true)
+    );
+    assert!(
+        run.output["inspection"]["projection_blockers"]
+            .as_array()
+            .is_some_and(Vec::is_empty)
+    );
+    assert_eq!(
+        run.output["inspection"]["target_levels"][0].as_str(),
+        Some("probeset")
+    );
+    assert_eq!(
+        run.output["inspection"]["preview_rows"][0]["probeset_or_region_id"].as_str(),
+        Some("PSR1")
+    );
+    assert_eq!(
+        run.output["inspection"]["artifact_paths"][0].as_str(),
+        Some("probeset_expression_rma.tsv")
+    );
+    assert_eq!(
+        run.output["inspection"]["artifact_paths"][1].as_str(),
+        Some("region_intensity_chrom_order.csv")
     );
     assert_eq!(
         run.output["inspection"]["sample_columns"][0].as_str(),

@@ -20,7 +20,7 @@ Maintenance rule:
   GeneArt quote-handoff routes.
 - Added ClawBio external-service intents and request examples for provider
   catalog/doctor checks plus review-only Metabion oligo/m-block and GeneArt
-  cloned-gene/protein-expression quote handoff routes.
+  cloned-gene/protein-expression preflight and quote handoff routes.
 - Routed high-yield protein-expression ClawBio intents such as "maximal amount
   of protein" to the read-only `planning protein-expression-handoff` request
   example and added the same scenario to the experimental follow-up catalog,
@@ -29,6 +29,9 @@ Maintenance rule:
 - Added an explicit `services project-quote @...` suggested next action to the
   protein-expression handoff report so GeneArt preflight and quote-packet
   preparation remain separate review stages.
+- Added a native GUI inspector for completed probe-region helper output, plus
+  coordinate/build provenance, bounded preview rows, and projection-readiness
+  blockers in `gentle.probe_region_output_inspection.v1`.
 
 ## 2026-06-14
 

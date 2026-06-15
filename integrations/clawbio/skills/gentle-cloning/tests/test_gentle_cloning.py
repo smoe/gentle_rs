@@ -5051,6 +5051,7 @@ def test_catalog_entry_describes_patient_to_bench_and_reusable_reference_assets(
     assert "protein expression handoff" in trigger_keywords
     assert "maximal amount of protein" in trigger_keywords
     assert "high yield protein expression" in trigger_keywords
+    assert "geneart protein expression preflight" in trigger_keywords
     assert "database status" in trigger_keywords
     assert "installed databases" in trigger_keywords
     assert "resources status" in trigger_keywords
@@ -5172,6 +5173,7 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
         "metabion_mblock_quote_handoff",
         "geneart_cloned_gene_preflight",
         "geneart_cloned_gene_quote_handoff",
+        "geneart_protein_expression_preflight",
         "geneart_protein_expression_quote_handoff",
         "resources_status",
         "protein_expression_handoff",
@@ -5251,6 +5253,9 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
         ),
         "geneart_cloned_gene_quote_handoff": (
             "examples/request_services_geneart_cloned_gene_quote.json"
+        ),
+        "geneart_protein_expression_preflight": (
+            "examples/request_services_geneart_protein_expression_preflight.json"
         ),
         "geneart_protein_expression_quote_handoff": (
             "examples/request_services_geneart_protein_expression_quote.json"
@@ -5489,6 +5494,9 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
     ]["trigger_terms"]
     assert "geneart long synthetic sequence" in routes[
         "geneart_cloned_gene_quote_handoff"
+    ]["trigger_terms"]
+    assert "geneart protein expression preflight" in routes[
+        "geneart_protein_expression_preflight"
     ]["trigger_terms"]
     assert "geneart protein expression quote" in routes[
         "geneart_protein_expression_quote_handoff"

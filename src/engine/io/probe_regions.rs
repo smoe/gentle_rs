@@ -34,6 +34,7 @@ struct ProbeRegionTableSummary {
     sample_columns: Vec<String>,
     condition_summary_columns: Vec<String>,
     logfc_columns: Vec<String>,
+    preview_rows: Vec<ProbeRegionOutputPreviewRow>,
     required_columns_missing: Vec<String>,
     warnings: Vec<String>,
 }
@@ -391,6 +392,10 @@ impl GentleEngine {
         let mut platform = None;
         let mut platform_package = None;
         let mut normalization = None;
+        let mut coordinate_system = None;
+        let mut genome_build = None;
+        let mut target_levels = Vec::new();
+        let mut artifact_paths = Vec::new();
         if normalized_matrix_manifest
             .as_ref()
             .is_some_and(|status| status.exists && status.is_file)
@@ -406,6 +411,11 @@ impl GentleEngine {
                     platform = Self::probe_region_json_string(&value, "platform");
                     platform_package = Self::probe_region_json_string(&value, "platform_package");
                     normalization = Self::probe_region_json_string(&value, "normalization");
+                    coordinate_system = Self::probe_region_json_string(&value, "coordinate_system");
+                    genome_build = Self::probe_region_json_string(&value, "genome_build")
+                        .or_else(|| Self::probe_region_json_string(&value, "reference_genome_id"));
+                    target_levels = Self::probe_region_json_string_array(&value, "targets");
+                    artifact_paths = Self::probe_region_json_string_array(&value, "artifacts");
                 }
                 Err(err) => {
                     errors.push(format!("Could not parse normalized matrix manifest: {err}"))
@@ -432,6 +442,20 @@ impl GentleEngine {
                     if normalization.is_none() {
                         normalization = Self::probe_region_json_string(&value, "normalization");
                     }
+                    if coordinate_system.is_none() {
+                        coordinate_system =
+                            Self::probe_region_json_string(&value, "coordinate_system");
+                    }
+                    if genome_build.is_none() {
+                        genome_build = Self::probe_region_json_string(&value, "genome_build")
+                            .or_else(|| {
+                                Self::probe_region_json_string(&value, "reference_genome_id")
+                            });
+                    }
+                    Self::probe_region_extend_unique(
+                        &mut artifact_paths,
+                        Self::probe_region_json_string_array(&value, "artifacts"),
+                    );
                 }
                 Err(err) => errors.push(format!("Could not parse backend provenance: {err}")),
             }
@@ -456,6 +480,27 @@ impl GentleEngine {
                 .map(|column| format!("Probe-region table is missing required column '{column}'")),
         );
 
+        let mut projection_blockers = Vec::new();
+        if coordinate_system.is_none() {
+            projection_blockers.push(
+                "Missing coordinate_system; genome-anchored projection must be refused until the helper output declares its coordinate basis"
+                    .to_string(),
+            );
+        }
+        if genome_build.is_none() {
+            projection_blockers.push(
+                "Missing genome_build; genome-anchored projection must be refused until the helper output declares its reference build"
+                    .to_string(),
+            );
+        }
+        if !table_summary.required_columns_missing.is_empty() {
+            projection_blockers.push(format!(
+                "Missing required region table column(s): {}",
+                table_summary.required_columns_missing.join(", ")
+            ));
+        }
+        let projection_ready = projection_blockers.is_empty();
+
         Ok(ProbeRegionOutputInspection {
             schema: PROBE_REGION_OUTPUT_INSPECTION_SCHEMA.to_string(),
             output_dir: output_dir.to_string(),
@@ -468,6 +513,12 @@ impl GentleEngine {
             platform,
             platform_package,
             normalization,
+            coordinate_system,
+            genome_build,
+            projection_ready,
+            projection_blockers,
+            target_levels,
+            artifact_paths,
             row_count: table_summary.row_count,
             column_count: table_summary.column_count,
             feature_count: table_summary.feature_count,
@@ -478,6 +529,7 @@ impl GentleEngine {
             sample_columns: table_summary.sample_columns,
             condition_summary_columns: table_summary.condition_summary_columns,
             logfc_columns: table_summary.logfc_columns,
+            preview_rows: table_summary.preview_rows,
             required_columns_missing: table_summary.required_columns_missing,
             warnings,
             errors,
@@ -591,6 +643,34 @@ impl GentleEngine {
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(str::to_string)
+    }
+
+    fn probe_region_json_string_array(value: &serde_json::Value, key: &str) -> Vec<String> {
+        value
+            .get(key)
+            .and_then(|value| value.as_array())
+            .map(|values| {
+                values
+                    .iter()
+                    .filter_map(|value| value.as_str())
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    fn probe_region_extend_unique(target: &mut Vec<String>, values: Vec<String>) {
+        let mut seen = target
+            .iter()
+            .map(|value| value.to_ascii_lowercase())
+            .collect::<BTreeSet<_>>();
+        for value in values {
+            if seen.insert(value.to_ascii_lowercase()) {
+                target.push(value);
+            }
+        }
     }
 
     fn probe_region_warn_unexpected_json_schema(
@@ -729,9 +809,28 @@ impl GentleEngine {
         let mut features = BTreeSet::new();
         let mut transcripts = BTreeSet::new();
         let mut row_count = 0usize;
+        let mut preview_rows = Vec::new();
         for record in reader.records() {
             let record = record.map_err(|e| format!("could not read region row: {e}"))?;
             row_count += 1;
+            if preview_rows.len() < 12 {
+                let value_at = |idx: Option<usize>| -> String {
+                    idx.and_then(|idx| record.get(idx))
+                        .unwrap_or("")
+                        .trim()
+                        .to_string()
+                };
+                let parse_position =
+                    |idx: Option<usize>| -> Option<usize> { value_at(idx).parse().ok() };
+                preview_rows.push(ProbeRegionOutputPreviewRow {
+                    chromosome: value_at(chromosome_idx),
+                    start_1based: parse_position(start_idx),
+                    stop_1based: parse_position(stop_idx),
+                    probeset_or_region_id: value_at(feature_idx),
+                    transcript_cluster_id: value_at(transcript_idx),
+                    gene_symbol: value_at(gene_idx),
+                });
+            }
             if let Some(idx) = chromosome_idx {
                 let value = record.get(idx).unwrap_or("").trim();
                 if !value.is_empty() {
@@ -769,6 +868,7 @@ impl GentleEngine {
             sample_columns,
             condition_summary_columns,
             logfc_columns,
+            preview_rows,
             required_columns_missing,
             warnings,
         })

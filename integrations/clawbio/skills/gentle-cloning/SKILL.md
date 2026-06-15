@@ -212,6 +212,11 @@ metadata:
       - thermo fisher geneart quote
       - thermofisher geneart quote
       - geneart long synthetic sequence
+      - geneart protein expression preflight
+      - geneart protein production preflight
+      - geneart expression service preflight
+      - thermo fisher protein expression preflight
+      - thermofisher protein expression preflight
       - geneart protein expression quote
       - geneart protein expression handoff
       - thermo fisher protein expression quote

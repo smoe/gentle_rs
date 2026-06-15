@@ -512,6 +512,25 @@
       ]
     },
     {
+      "intent_id": "geneart_protein_expression_preflight",
+      "description": "Preflight the synthetic GeneArt protein-expression handoff example without contacting Thermo Fisher or submitting an order.",
+      "trigger_terms": [
+        "geneart protein expression preflight",
+        "geneart protein production preflight",
+        "geneart expression service preflight",
+        "thermo fisher protein expression preflight",
+        "thermofisher protein expression preflight"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_services_geneart_protein_expression_preflight.json"
+        }
+      ]
+    },
+    {
       "intent_id": "geneart_protein_expression_quote_handoff",
       "description": "Prepare the synthetic GeneArt protein-expression quote/handoff packet without provider submission.",
       "trigger_terms": [

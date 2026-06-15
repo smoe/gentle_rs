@@ -106,11 +106,11 @@ use crate::{
         LinearSequenceLetterLayoutMode, MAX_DOTPLOT_PAIR_EVALUATIONS, OpResult, Operation,
         OperationProgress, PairwiseAlignmentMode, PcrPrimerSpec, PrimerDesignBackend,
         PrimerDesignBaseLock, PrimerDesignPairConstraint, PrimerDesignProgress, PrimerDesignReport,
-        PrimerDesignSideConstraint, PrimerSpecificityPolicy, PromoterEvidenceMatrixReport,
-        PromoterEvidenceMatrixRow, PromoterReporterCandidateSet, PromoterWindowCollapseMode,
-        ProtocolCartoonPreviewTelemetry, QpcrDesignReport, QpcrTranscriptSpecificityEvidence,
-        QpcrTranscriptTargeting, QpcrTranscriptTargetingMode, RenderSvgMode,
-        RestrictionCloningPcrHandoffMode, RestrictionCloningPcrHandoffReport,
+        PrimerDesignSideConstraint, PrimerSpecificityPolicy, ProbeRegionOutputInspection,
+        PromoterEvidenceMatrixReport, PromoterEvidenceMatrixRow, PromoterReporterCandidateSet,
+        PromoterWindowCollapseMode, ProtocolCartoonPreviewTelemetry, QpcrDesignReport,
+        QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting, QpcrTranscriptTargetingMode,
+        RenderSvgMode, RestrictionCloningPcrHandoffMode, RestrictionCloningPcrHandoffReport,
         RestrictionCloningPcrHandoffSeedRequest, RestrictionCloningVectorEnzymeSuggestions,
         RestrictionEnzymeDisplayMode, RestrictionSiteScanReport, RnaReadAlignConfig,
         RnaReadAlignmentDisplay, RnaReadAlignmentEffect, RnaReadAlignmentInspection,
@@ -584,6 +584,8 @@ struct EngineOpsUiState {
     cutrun_regulatory_neighbor_window_bp: String,
     #[serde(default)]
     cutrun_regulatory_species_filters: String,
+    #[serde(default)]
+    probe_region_output_dir: String,
     #[serde(default = "default_true")]
     tfbs_display_use_llr_bits: bool,
     #[serde(default = "default_zero_f64")]
@@ -1326,7 +1328,9 @@ pub struct MainAreaDna {
     cutrun_regulatory_promoter_end_0based_exclusive: String,
     cutrun_regulatory_neighbor_window_bp: String,
     cutrun_regulatory_species_filters: String,
+    probe_region_output_dir: String,
     cached_cutrun_regulatory_support: Option<CutRunRegulatorySupportReport>,
+    cached_probe_region_output_inspection: Option<ProbeRegionOutputInspection>,
     cached_restriction_site_scan: Option<RestrictionSiteScanReport>,
     cached_tfbs_hit_scan: Option<TfbsHitScanReport>,
     cached_tfbs_score_tracks: Option<TfbsScoreTrackReport>,
@@ -1996,7 +2000,9 @@ impl MainAreaDna {
             cutrun_regulatory_promoter_end_0based_exclusive: String::new(),
             cutrun_regulatory_neighbor_window_bp: default_cutrun_neighbor_window_bp_text(),
             cutrun_regulatory_species_filters: String::new(),
+            probe_region_output_dir: "analysis/probe_regions".to_string(),
             cached_cutrun_regulatory_support: None,
+            cached_probe_region_output_inspection: None,
             cached_restriction_site_scan: None,
             cached_tfbs_hit_scan: None,
             cached_tfbs_score_tracks: None,
@@ -7448,6 +7454,12 @@ impl MainAreaDna {
                         self.render_cutrun_regulatory_support_summary_panel(ui);
                     });
 
+                egui::CollapsingHeader::new("Clariom D / probe-region evidence")
+                    .default_open(false)
+                    .show(ui, |ui| {
+                        self.render_probe_region_output_inspection_panel(ui);
+                    });
+
                 egui::CollapsingHeader::new("Direct scan inspectors")
                     .default_open(false)
                     .show(ui, |ui| {
@@ -7753,6 +7765,269 @@ impl MainAreaDna {
                 self.save_engine_ops_state();
             }
         }
+    }
+
+    fn probe_region_optional_label(value: &Option<String>) -> &str {
+        value.as_deref().unwrap_or("not declared")
+    }
+
+    fn probe_region_preview_list(values: &[String]) -> String {
+        if values.is_empty() {
+            return "none".to_string();
+        }
+        let shown = values.iter().take(8).cloned().collect::<Vec<_>>();
+        let suffix = if values.len() > shown.len() {
+            format!(" (+{} more)", values.len() - shown.len())
+        } else {
+            String::new()
+        };
+        format!("{}{}", shown.join(", "), suffix)
+    }
+
+    fn inspect_probe_region_output_for_current_path(&mut self) {
+        let Some(engine) = self.engine.clone() else {
+            self.op_status = "No engine attached".to_string();
+            return;
+        };
+        let output_dir = self.probe_region_output_dir.trim().to_string();
+        if output_dir.is_empty() {
+            self.op_status = "Probe-region output directory is empty".to_string();
+            self.cached_probe_region_output_inspection = None;
+            return;
+        }
+
+        let command = ShellCommand::ArraysInspectProbeRegionOutput {
+            output_dir: output_dir.clone(),
+        };
+        let outcome = {
+            let mut guard = engine.write().expect("Engine lock poisoned");
+            let options = ShellExecutionOptions::from_env();
+            execute_shell_command_with_options(&mut guard, &command, &options)
+        };
+        match outcome {
+            Ok(run) => {
+                let Some(value) = run.output.get("inspection").cloned() else {
+                    self.cached_probe_region_output_inspection = None;
+                    self.op_status =
+                        "Probe-region inspection completed without an inspection payload"
+                            .to_string();
+                    return;
+                };
+                match serde_json::from_value::<ProbeRegionOutputInspection>(value) {
+                    Ok(inspection) => {
+                        let ready_label = if inspection.projection_ready {
+                            "projection-ready"
+                        } else {
+                            "projection blocked"
+                        };
+                        self.op_status = format!(
+                            "Probe-region output inspected: {} row(s), {} feature(s), {ready_label}",
+                            inspection.row_count, inspection.feature_count
+                        );
+                        self.cached_probe_region_output_inspection = Some(inspection);
+                        self.save_engine_ops_state();
+                    }
+                    Err(err) => {
+                        self.cached_probe_region_output_inspection = None;
+                        self.op_status =
+                            format!("Could not decode probe-region inspection payload: {err}");
+                    }
+                }
+            }
+            Err(err) => {
+                self.cached_probe_region_output_inspection = None;
+                self.op_status = format!("Probe-region inspection failed: {err}");
+            }
+        }
+    }
+
+    fn render_probe_region_output_inspection_panel(&mut self, ui: &mut egui::Ui) {
+        ui.small(
+            egui::RichText::new(
+                "Inspects completed Affymetrix probe-region helper output; it does not run R, APT, downloads, or external analysis.",
+            )
+            .color(egui::Color32::from_rgb(100, 116, 139)),
+        );
+        ui.add_space(4.0);
+
+        let mut output_dir_changed = false;
+        ui.horizontal_wrapped(|ui| {
+            ui.label("output_dir");
+            if ui
+                .add_sized(
+                    [ui.available_width().min(360.0), 0.0],
+                    egui::TextEdit::singleline(&mut self.probe_region_output_dir),
+                )
+                .changed()
+            {
+                output_dir_changed = true;
+            }
+            if ui
+                .add_enabled(
+                    !self.probe_region_output_dir.trim().is_empty(),
+                    egui::Button::new("Inspect output"),
+                )
+                .on_hover_text(
+                    "Run arrays inspect-probe-region-output through the shared shell executor",
+                )
+                .clicked()
+            {
+                self.inspect_probe_region_output_for_current_path();
+            }
+        });
+        if output_dir_changed {
+            self.cached_probe_region_output_inspection = None;
+            self.save_engine_ops_state();
+        }
+
+        let Some(report) = self.cached_probe_region_output_inspection.as_ref() else {
+            ui.small("No inspected output cached yet.");
+            return;
+        };
+
+        ui.add_space(6.0);
+        ui.group(|ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.label(egui::RichText::new("Inspected output").strong());
+                let status_text = if report.usable {
+                    "usable"
+                } else {
+                    "not usable"
+                };
+                let status_color = if report.usable {
+                    egui::Color32::from_rgb(22, 101, 52)
+                } else {
+                    egui::Color32::from_rgb(185, 28, 28)
+                };
+                ui.small(egui::RichText::new(status_text).color(status_color));
+                let projection_text = if report.projection_ready {
+                    "projection metadata present"
+                } else {
+                    "projection metadata incomplete"
+                };
+                let projection_color = if report.projection_ready {
+                    egui::Color32::from_rgb(22, 101, 52)
+                } else {
+                    egui::Color32::from_rgb(180, 83, 9)
+                };
+                ui.small(egui::RichText::new(projection_text).color(projection_color));
+            });
+            ui.small(format!("output_dir: {}", report.output_dir));
+            ui.small(format!(
+                "rows: {} | columns: {} | features: {} | transcript clusters: {} | chromosomes: {}",
+                report.row_count,
+                report.column_count,
+                report.feature_count,
+                report.transcript_cluster_count,
+                report.chromosome_count
+            ));
+            ui.small(format!(
+                "backend: {} | platform: {} | package: {} | normalization: {}",
+                Self::probe_region_optional_label(&report.backend),
+                Self::probe_region_optional_label(&report.platform),
+                Self::probe_region_optional_label(&report.platform_package),
+                Self::probe_region_optional_label(&report.normalization)
+            ));
+            ui.small(format!(
+                "coordinate_system: {} | genome_build: {}",
+                Self::probe_region_optional_label(&report.coordinate_system),
+                Self::probe_region_optional_label(&report.genome_build)
+            ));
+            ui.small(format!(
+                "targets: {}",
+                Self::probe_region_preview_list(&report.target_levels)
+            ));
+            ui.small(format!(
+                "samples: {}",
+                Self::probe_region_preview_list(&report.sample_columns)
+            ));
+            ui.small(format!(
+                "condition summaries: {}",
+                Self::probe_region_preview_list(&report.condition_summary_columns)
+            ));
+            ui.small(format!(
+                "log2FC tracks: {}",
+                Self::probe_region_preview_list(&report.logfc_columns)
+            ));
+            ui.small(format!(
+                "genes: {}",
+                Self::probe_region_preview_list(&report.gene_symbols)
+            ));
+            ui.small(format!(
+                "chromosomes: {}",
+                Self::probe_region_preview_list(&report.chromosomes)
+            ));
+
+            if !report.projection_blockers.is_empty() {
+                ui.add_space(4.0);
+                ui.label(egui::RichText::new("Projection blockers").strong());
+                for blocker in &report.projection_blockers {
+                    ui.small(
+                        egui::RichText::new(blocker).color(egui::Color32::from_rgb(180, 83, 9)),
+                    );
+                }
+            }
+            if !report.warnings.is_empty() {
+                ui.add_space(4.0);
+                ui.label(egui::RichText::new("Warnings").strong());
+                for warning in &report.warnings {
+                    ui.small(
+                        egui::RichText::new(warning).color(egui::Color32::from_rgb(180, 83, 9)),
+                    );
+                }
+            }
+            if !report.errors.is_empty() {
+                ui.add_space(4.0);
+                ui.label(egui::RichText::new("Errors").strong());
+                for error in &report.errors {
+                    ui.small(
+                        egui::RichText::new(error).color(egui::Color32::from_rgb(185, 28, 28)),
+                    );
+                }
+            }
+
+            if !report.preview_rows.is_empty() {
+                ui.add_space(6.0);
+                ui.label(egui::RichText::new("Region preview").strong());
+                egui::ScrollArea::vertical()
+                    .id_salt(("probe_region_output_preview", report.output_dir.as_str()))
+                    .max_height(160.0)
+                    .show(ui, |ui| {
+                        egui::Grid::new((
+                            "probe_region_output_preview_grid",
+                            report.output_dir.as_str(),
+                        ))
+                        .striped(true)
+                        .num_columns(6)
+                        .show(ui, |ui| {
+                            ui.strong("chrom");
+                            ui.strong("start");
+                            ui.strong("stop");
+                            ui.strong("region");
+                            ui.strong("cluster");
+                            ui.strong("gene");
+                            ui.end_row();
+                            for row in &report.preview_rows {
+                                ui.small(&row.chromosome);
+                                ui.small(
+                                    row.start_1based
+                                        .map(|value| value.to_string())
+                                        .unwrap_or_else(|| "-".to_string()),
+                                );
+                                ui.small(
+                                    row.stop_1based
+                                        .map(|value| value.to_string())
+                                        .unwrap_or_else(|| "-".to_string()),
+                                );
+                                ui.small(&row.probeset_or_region_id);
+                                ui.small(&row.transcript_cluster_id);
+                                ui.small(&row.gene_symbol);
+                                ui.end_row();
+                            }
+                        });
+                    });
+            }
+        });
     }
 
     fn run_shell_command(&mut self) {
@@ -20890,6 +21165,7 @@ impl MainAreaDna {
                 .clone(),
             cutrun_regulatory_neighbor_window_bp: self.cutrun_regulatory_neighbor_window_bp.clone(),
             cutrun_regulatory_species_filters: self.cutrun_regulatory_species_filters.clone(),
+            probe_region_output_dir: self.probe_region_output_dir.clone(),
             tfbs_display_use_llr_bits: tfbs_display.use_llr_bits,
             tfbs_display_min_llr_bits: tfbs_display.min_llr_bits,
             tfbs_display_use_llr_quantile: tfbs_display.use_llr_quantile,
@@ -21146,11 +21422,17 @@ impl MainAreaDna {
                 s.cutrun_regulatory_neighbor_window_bp
             };
         self.cutrun_regulatory_species_filters = s.cutrun_regulatory_species_filters;
+        self.probe_region_output_dir = if s.probe_region_output_dir.trim().is_empty() {
+            "analysis/probe_regions".to_string()
+        } else {
+            s.probe_region_output_dir
+        };
         self.cached_restriction_site_scan = None;
         self.cached_tfbs_hit_scan = None;
         self.cached_tfbs_score_tracks = None;
         self.cached_tfbs_track_similarity = None;
         self.cached_cutrun_regulatory_support = None;
+        self.cached_probe_region_output_inspection = None;
         self.vcf_display_required_info_keys = s.vcf_display_required_info_keys;
         self.isoform_panel_path = s.isoform_panel_path;
         self.isoform_panel_id = s.isoform_panel_id;
