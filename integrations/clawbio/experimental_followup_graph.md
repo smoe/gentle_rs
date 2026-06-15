@@ -24,7 +24,7 @@ python3 integrations/clawbio/generate_experimental_followup_catalog_graph.py
 ```mermaid
 flowchart LR
   subgraph ORIGIN["1. Request origin"]
-    PROMPT["User prompt<br/>Examples: effect of this SNP, overexpress this gene"]
+    PROMPT["User prompt<br/>Examples: effect of this SNP, overexpress this gene,<br/>maximize protein yield"]
     GUI["Optional GUI/session context<br/>Selected sequence, feature, locus, project"]
     DATA["Optional uploaded data<br/>VCF row, expression table, splice event, pasted sequence"]
   end
@@ -51,7 +51,7 @@ flowchart LR
   end
 
   subgraph DECISION["6. Follow-up menu and gates"]
-    CANDIDATES["Follow-up candidates<br/>Reporter, overexpression, knockdown,<br/>CRISPRi/a, editing, RT-PCR/qPCR, protein gel"]
+    CANDIDATES["Follow-up candidates<br/>Reporter, protein-expression handoff,<br/>overexpression, knockdown, CRISPRi/a,<br/>editing, RT-PCR/qPCR, protein gel"]
     GATES["Confirmation gates<br/>Network predictors, reference prep,<br/>viral delivery, genome editing, planning-profile changes"]
     RESPONSE["ClawBio response<br/>Separate uncertainty-bearing evidence from<br/>deterministic GENtle artifacts and practical estimates"]
   end

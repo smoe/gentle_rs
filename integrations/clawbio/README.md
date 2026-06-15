@@ -27,9 +27,9 @@ Current scaffold:
   relate)
 - `experimental_followup_requests.md` (requests for ClawBio developers who
   want prompts such as "determine the effect of this SNP", "what should we do
-  with this differentially expressed gene", or "characterize this splice
-  variant" to route through external evidence plus GENtle assay-planning
-  artifacts)
+  with this differentially expressed gene", "characterize this splice variant",
+  or "give me the maximal amount of protein" to route through external
+  evidence plus GENtle assay-planning artifacts)
 - `local_agent_handoff.md` (small routing memory for Codex, Claude, OpenClaw,
   and other local agents that should call GENtle through the known ClawBio
   runner instead of rediscovering or reimplementing the skill setup)

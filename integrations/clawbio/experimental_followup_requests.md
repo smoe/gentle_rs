@@ -7,7 +7,8 @@ sequence-context, dbSNP, promoter, reporter, TFBS, splicing, isoform,
 routine-catalog, and planning-estimate routes. This note describes how ClawBio
 should orchestrate them for natural-language questions such as "determine the
 effect of this SNP", "what should we do with this differentially expressed
-gene", or "how do we characterize this splice variant".
+gene", "how do we characterize this splice variant", or "give me the maximal
+amount of protein".
 
 Companion file:
 `experimental_followup_request_catalog.json` carries the same planner-facing
@@ -28,8 +29,8 @@ The observation may be:
 - a splice isoform or exon-usage change,
 - a protein/domain change,
 - a pathway or gene-set hit,
-- a direct user request to overexpress, knock down, inhibit, or disrupt a
-  gene.
+- a direct user request to overexpress, knock down, inhibit, disrupt a gene, or
+  maximize recoverable protein production.
 
 For each case, ClawBio should:
 
@@ -56,6 +57,8 @@ pasted sequence plus intent language such as:
 - "what should we do with this differentially expressed gene"
 - "characterize this splice variant"
 - "overexpress this gene"
+- "give me the maximal amount of protein"
+- "maximize protein yield"
 - "knock down this gene"
 - "make a loss-of-function construct"
 - "design an assay for this regulatory variant"
@@ -83,6 +86,14 @@ follow-up actions:
   usage, or transcript-specific protein change.
 - `protein_context`: coding change, domain disruption, tag/fusion/isoform
   characterization, protein size/pI expectations.
+- `protein_product_intent`: explicit request to maximize recoverable protein
+  product rather than simply perturb expression in a cell.
+- `expression_route_context`: host, vector, secretion, solubility, folding,
+  toxicity, and tag constraints that decide which production route is plausible.
+- `local_capability_context`: available helper/vector records, instruments,
+  expression hosts, procurement delays, and planning-profile constraints.
+- `outsourcing_context`: user permission, vendor/service assumptions, and
+  external manufacturing review separated from construct generation.
 - `regulatory_context`: promoter, enhancer, TFBS, UTR, eQTL, or chromatin
   evidence.
 - `perturbation_intent`: explicit overexpression, knockdown, knockout,
@@ -163,6 +174,7 @@ Current GENtle/ClawBio scaffold examples already cover useful building blocks:
 - `examples/request_genomes_extract_gene_tp53_auto_prepare.json`
 - `examples/request_protocol_cartoon_gibson_svg.json`
 - `examples/request_protocol_cartoon_qpcr_svg.json`
+- `examples/request_planning_protein_expression_handoff.json`
 
 For a new rsID, the first generic path should adapt the dbSNP fetch request to
 the user's variant, then follow with sequence-context or graphics requests.
@@ -171,6 +183,13 @@ For a gene or isoform named from differential expression or splicing evidence,
 the first generic path should adapt a genome/gene extraction or Ensembl-gene
 fetch request, then follow with routine planning, qPCR/splicing/isoform, or
 protein-gel/2D-gel requests as appropriate.
+
+For an underspecified high-yield protein-production request, the first generic
+path should call `planning protein-expression-handoff` through
+`examples/request_planning_protein_expression_handoff.json`. This produces a
+read-only GENtle report with product context, route candidates, missing
+questions, and a GeneArt-style preflight scaffold. It should not create a
+construct, submit a vendor order, or choose a host without review.
 
 ## Requested Perturbation and Readout Menu
 
@@ -189,6 +208,18 @@ Expression increase or overexpression:
 - tagged or untagged expression constructs,
 - rescue experiment after knockdown or knockout,
 - protein gel / 2D-gel expectations for isoform or tag characterization.
+
+High-yield protein production:
+
+- read-only protein-expression handoff before construct generation,
+- route comparison between local expression routes and external service
+  handoff,
+- product identity, solubility, folding, PTM, secretion, toxicity, endotoxin,
+  purification tag, and scale questions,
+- explicit distinction between "make more protein in a biological system" and
+  "create a perturbation reagent for a cell-biology assay",
+- GeneArt-style preflight scaffold when outsourcing is allowed, while keeping
+  vendor submission outside GENtle V1.
 
 Expression decrease or knockdown:
 
@@ -254,6 +285,7 @@ GENtle already exposes:
 - `planning profile show`
 - `planning objective show`
 - `planning objective set JSON_OR_@FILE`
+- `planning protein-expression-handoff --objective '{"schema":"gentle.planning_objective.v1","biological_intent":"protein_expression_max_yield"}' --format json`
 
 Routine comparison payloads can include:
 
