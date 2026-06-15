@@ -175,6 +175,7 @@ Current GENtle/ClawBio scaffold examples already cover useful building blocks:
 - `examples/request_protocol_cartoon_gibson_svg.json`
 - `examples/request_protocol_cartoon_qpcr_svg.json`
 - `examples/request_planning_protein_expression_handoff.json`
+- `examples/request_services_geneart_protein_expression_quote.json`
 
 For a new rsID, the first generic path should adapt the dbSNP fetch request to
 the user's variant, then follow with sequence-context or graphics requests.
@@ -190,6 +191,10 @@ path should call `planning protein-expression-handoff` through
 read-only GENtle report with product context, route candidates, missing
 questions, and a GeneArt-style preflight scaffold. It should not create a
 construct, submit a vendor order, or choose a host without review.
+If the user explicitly allows outsourcing after reviewing those constraints,
+ClawBio can then adapt
+`examples/request_services_geneart_protein_expression_quote.json` to prepare a
+provider packet without submitting it.
 
 ## Requested Perturbation and Readout Menu
 

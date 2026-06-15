@@ -553,6 +553,11 @@
           "requires_adaptation": true
         },
         {
+          "path": "skills/gentle-cloning/examples/request_services_geneart_protein_expression_quote.json",
+          "purpose": "Prepare a synthetic GeneArt protein-expression quote packet after the user has reviewed outsourcing and product constraints; no provider submission is performed.",
+          "requires_adaptation": true
+        },
+        {
           "path": "skills/gentle-cloning/examples/request_workflow_tp73_isoform_protein_2d_gel.json",
           "purpose": "Inspect isoform protein size/pI expectations when product identity or isoform choice matters.",
           "requires_adaptation": true

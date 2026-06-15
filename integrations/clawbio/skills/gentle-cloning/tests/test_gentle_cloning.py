@@ -5645,6 +5645,10 @@ def test_experimental_followup_request_catalog_covers_core_intents_and_paths() -
         "skills/gentle-cloning/examples/request_planning_protein_expression_handoff.json"
         in protein_handoff_requests
     )
+    assert (
+        "skills/gentle-cloning/examples/request_services_geneart_protein_expression_quote.json"
+        in protein_handoff_requests
+    )
     protein_handoff_commands = {
         command["shell_line"]
         for command in intents["protein_expression_max_yield"]["gentle_shell_commands"]

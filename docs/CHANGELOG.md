@@ -20,7 +20,8 @@ Maintenance rule:
 - Routed high-yield protein-expression ClawBio intents such as "maximal amount
   of protein" to the read-only `planning protein-expression-handoff` request
   example and added the same scenario to the experimental follow-up catalog,
-  graph, and human guide, keeping skill discovery and intent dispatch aligned.
+  graph, and human guide, with a review-gated GeneArt protein-expression quote
+  packet as the downstream provider handoff.
 
 ## 2026-06-14
 
