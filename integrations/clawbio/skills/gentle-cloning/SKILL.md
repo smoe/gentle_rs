@@ -1076,6 +1076,7 @@ Current shared GENtle routes behind this capability:
 - `planning consult cloning --format json`
 - `planning consult cloning --objective '{"schema":"gentle.planning_objective.v1","biological_intent":"protein_expression_max_yield"}' --format json`
 - `planning protein-expression-handoff --objective '{"schema":"gentle.planning_objective.v1","biological_intent":"protein_expression_max_yield"}' --format json`
+  - example request: `examples/request_planning_protein_expression_handoff.json`
 - `macros template-import assets/cloning_patterns_catalog`
 - `macros template-run allele_paired_promoter_luciferase_reporter ... --validate-only`
 

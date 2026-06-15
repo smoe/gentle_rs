@@ -118,6 +118,7 @@ Tutorial numbers now describe the topic group first and the learning position se
 
 - `09.01` [Prepare a Metabion Handoff from Shared External-Service Contracts](./09-01_metabion_external_service_handoff_gui_cli.md) - guided GUI/CLI; status `manual/hybrid`; review `unreviewed` - [file feedback](../../.github/ISSUE_TEMPLATE/tutorial-confusion.md). Use this when: Safe handoff rehearsal for Metabion oligo and m-block requests through the shared provider catalog, preflight, and quote bundle contracts; no vendor submission.
 - `09.02` [Prepare a GeneArt Handoff from Shared External-Service Contracts](./09-02_geneart_external_service_handoff_gui_cli.md) - guided GUI/CLI; status `manual/hybrid`; review `unreviewed` - [file feedback](../../.github/ISSUE_TEMPLATE/tutorial-confusion.md). Use this when: Safe GeneArt cloned-gene and protein-expression quote-handoff rehearsal through the shared provider catalog, preflight, quote bundle, and return_spec contracts; no vendor submission.
+- `09.03` [Plan a High-Yield Protein-Expression Handoff](./09-03_protein_expression_handoff_cli.md) - guided CLI; status `manual/hybrid`; review `unreviewed` - [file feedback](../../.github/ISSUE_TEMPLATE/tutorial-confusion.md). Use this when: CLI/agent walkthrough for turning an underspecified high-yield protein-production request into a read-only GENtle handoff report with explicit chassis, route, missing-question, and GeneArt preflight scaffolding.
 
 ### Sequencing Confirmation & QC
 

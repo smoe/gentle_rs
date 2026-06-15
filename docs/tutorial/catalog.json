@@ -306,6 +306,31 @@
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
+      "id": "protein_expression_handoff_cli",
+      "title": "Plan a High-Yield Protein-Expression Handoff",
+      "path": "docs/tutorial/09-03_protein_expression_handoff_cli.md",
+      "group": "09",
+      "group_label": "External Services & Handoffs",
+      "group_order": 9,
+      "group_position": 3,
+      "decimal_id": "09.03",
+      "type": "cli_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "cli_first",
+        "agent_users",
+        "clawbio",
+        "cloning_planning",
+        "protein_workflows",
+        "synthetic_biology"
+      ],
+      "notes": "CLI/agent walkthrough for turning an underspecified high-yield protein-production request into a read-only GENtle handoff report with explicit chassis, route, missing-question, and GeneArt preflight scaffolding.",
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+    },
+    {
       "id": "simple_pcr_selection_gui",
       "title": "Simple PCR From a Selected Core Region",
       "path": "docs/tutorial/04-01_simple_pcr_selection_gui.md",

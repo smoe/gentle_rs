@@ -18,6 +18,8 @@ Maintenance rule:
   `gentle.protein_expression_handoff.v1` with product context, chassis/route
   candidates, high-yield missing questions, and a GeneArt protein-expression
   preflight scaffold.
+- Added tutorial `09.03` for using the protein-expression handoff route from
+  CLI/agent workflows, plus a ClawBio example request.
 
 ## 2026-06-13
 
