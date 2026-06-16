@@ -4038,6 +4038,8 @@ pub struct ProbeRegionOutputInspection {
     pub coordinate_system: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub genome_build: Option<String>,
+    #[serde(default, alias = "projection_maps")]
+    pub coordinate_projections: Vec<GenomeCoordinateProjectionSpec>,
     pub projection_ready: bool,
     pub projection_blockers: Vec<String>,
     pub target_levels: Vec<String>,

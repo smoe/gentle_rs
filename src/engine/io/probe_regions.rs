@@ -62,6 +62,7 @@ struct ProbeRegionPlotData {
     warnings: Vec<String>,
 }
 
+#[derive(Clone)]
 struct ProbeRegionProjectionRow {
     chromosome: String,
     start_1based: usize,
@@ -428,6 +429,7 @@ impl GentleEngine {
         let mut normalization = None;
         let mut coordinate_system = None;
         let mut genome_build = None;
+        let mut coordinate_projections = Vec::new();
         let mut target_levels = Vec::new();
         let mut artifact_paths = Vec::new();
         if normalized_matrix_manifest
@@ -448,6 +450,8 @@ impl GentleEngine {
                     coordinate_system = Self::probe_region_json_string(&value, "coordinate_system");
                     genome_build = Self::probe_region_json_string(&value, "genome_build")
                         .or_else(|| Self::probe_region_json_string(&value, "reference_genome_id"));
+                    coordinate_projections =
+                        Self::probe_region_json_coordinate_projections(&value);
                     target_levels = Self::probe_region_json_string_array(&value, "targets");
                     artifact_paths = Self::probe_region_json_string_array(&value, "artifacts");
                 }
@@ -486,6 +490,10 @@ impl GentleEngine {
                                 Self::probe_region_json_string(&value, "reference_genome_id")
                             });
                     }
+                    Self::probe_region_extend_unique_coordinate_projections(
+                        &mut coordinate_projections,
+                        Self::probe_region_json_coordinate_projections(&value),
+                    );
                     Self::probe_region_extend_unique(
                         &mut artifact_paths,
                         Self::probe_region_json_string_array(&value, "artifacts"),
@@ -549,6 +557,7 @@ impl GentleEngine {
             normalization,
             coordinate_system,
             genome_build,
+            coordinate_projections,
             projection_ready,
             projection_blockers,
             target_levels,
@@ -685,14 +694,50 @@ impl GentleEngine {
             ),
             cause_chain: vec![],
         })?;
-        let anchor_matches = coordinate_system.eq_ignore_ascii_case(&anchor.genome_id)
-            || genome_build.eq_ignore_ascii_case(&anchor.genome_id);
-        if !anchor_matches {
+        let anchor_matches =
+            Self::probe_region_output_supports_anchor(&coordinate_system, &genome_build, anchor);
+        let projection_spec = if anchor_matches {
+            None
+        } else {
+            Self::resolve_probe_region_coordinate_projection_spec(&inspection, anchor)
+        };
+        let projection_path = projection_spec
+            .map(|spec| Self::resolve_probe_region_output_path(output_dir, &spec.path));
+        let projection_blocks =
+            if let (Some(spec), Some(path)) = (projection_spec, &projection_path) {
+                Some(Self::load_genome_coordinate_projection_blocks(
+                    path,
+                    &spec.method,
+                    &spec.source_genome_id,
+                    &spec.target_genome_id,
+                )?)
+            } else {
+                None
+            };
+        if !anchor_matches && projection_blocks.is_none() {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!(
-                    "Probe-region output '{}' coordinate_system '{}' / genome_build '{}' is not compatible with sequence anchor genome_id '{}'",
-                    output_dir, coordinate_system, genome_build, anchor.genome_id
+                    "Probe-region output '{}' coordinate_system '{}' / genome_build '{}' is not compatible with sequence anchor genome_id '{}' (projection maps: {})",
+                    output_dir,
+                    coordinate_system,
+                    genome_build,
+                    anchor.genome_id,
+                    if inspection.coordinate_projections.is_empty() {
+                        "none".to_string()
+                    } else {
+                        inspection
+                            .coordinate_projections
+                            .iter()
+                            .map(|projection| {
+                                format!(
+                                    "{}->{}",
+                                    projection.source_genome_id, projection.target_genome_id
+                                )
+                            })
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    }
                 ),
                 cause_chain: vec![],
             });
@@ -777,7 +822,9 @@ impl GentleEngine {
                 .clone()
                 .unwrap_or_else(|| "not declared".to_string()),
             coordinate_system: coordinate_system.clone(),
-            coordinate_projection_used: false,
+            coordinate_projection_used: projection_blocks.is_some(),
+            coordinate_projection_method: projection_spec.map(|spec| spec.method.clone()),
+            coordinate_projection_path: projection_path.clone(),
             anchor_genome_id: anchor.genome_id.clone(),
             anchor_chromosome: anchor.chromosome.clone(),
             anchor_start_1based: anchor.start_1based,
@@ -794,7 +841,32 @@ impl GentleEngine {
         let mut pending_features = Vec::new();
         let mut grouped_values: BTreeMap<String, Vec<String>> = BTreeMap::new();
         let mut mismatch_counts: HashMap<String, usize> = HashMap::new();
-        'rows: for row in rows {
+        'rows: for mut row in rows {
+            let native_row = row.clone();
+            let projected_interval = if let Some(blocks) = projection_blocks.as_deref() {
+                match Self::project_genome_interval_with_blocks(
+                    blocks,
+                    &native_row.chromosome,
+                    native_row.start_1based,
+                    native_row.end_1based,
+                    native_row.strand,
+                ) {
+                    Some(projected) => {
+                        row.chromosome = projected.target_chrom.clone();
+                        row.start_1based = projected.target_start_1based;
+                        row.end_1based = projected.target_end_1based;
+                        row.strand = projected.target_strand;
+                        Some(projected)
+                    }
+                    None => {
+                        report.skipped_rows += selected_contrasts.len();
+                        report.skipped_projection_unmapped += selected_contrasts.len();
+                        continue;
+                    }
+                }
+            } else {
+                None
+            };
             if !Self::chromosomes_match(&row.chromosome, &anchor.chromosome) {
                 report.skipped_rows += selected_contrasts.len();
                 report.skipped_wrong_chromosome += selected_contrasts.len();
@@ -861,7 +933,9 @@ impl GentleEngine {
                     &inspection,
                     anchor,
                     contrast,
+                    &native_row,
                     &row,
+                    projected_interval.as_ref(),
                     logfc,
                     local_start_0based,
                     local_end_0based_exclusive,
@@ -912,6 +986,38 @@ impl GentleEngine {
         }
 
         Ok(report)
+    }
+
+    fn probe_region_output_supports_anchor(
+        coordinate_system: &str,
+        genome_build: &str,
+        anchor: &GenomeSequenceAnchor,
+    ) -> bool {
+        let anchor_id = anchor.genome_id.trim();
+        !anchor_id.is_empty()
+            && (coordinate_system.trim().eq_ignore_ascii_case(anchor_id)
+                || genome_build.trim().eq_ignore_ascii_case(anchor_id))
+    }
+
+    fn resolve_probe_region_coordinate_projection_spec<'a>(
+        inspection: &'a ProbeRegionOutputInspection,
+        anchor: &GenomeSequenceAnchor,
+    ) -> Option<&'a GenomeCoordinateProjectionSpec> {
+        let coordinate_system = inspection.coordinate_system.as_deref().unwrap_or("");
+        let genome_build = inspection.genome_build.as_deref().unwrap_or("");
+        inspection.coordinate_projections.iter().find(|projection| {
+            (Self::genome_build_tokens_match(&projection.source_genome_id, coordinate_system)
+                || Self::genome_build_tokens_match(&projection.source_genome_id, genome_build))
+                && Self::genome_build_tokens_match(&projection.target_genome_id, &anchor.genome_id)
+        })
+    }
+
+    fn resolve_probe_region_output_path(output_dir: &str, path: &str) -> String {
+        let path = Path::new(path);
+        if path.is_absolute() {
+            return path.to_string_lossy().to_string();
+        }
+        Path::new(output_dir).join(path).to_string_lossy().to_string()
     }
 
     fn normalize_probe_region_request(mut request: ProbeRegionRequest) -> ProbeRegionRequest {
@@ -1039,6 +1145,67 @@ impl GentleEngine {
             .unwrap_or_default()
     }
 
+    fn probe_region_json_alias_string(
+        value: &serde_json::Value,
+        keys: &[&str],
+    ) -> Option<String> {
+        keys.iter()
+            .find_map(|key| Self::probe_region_json_string(value, key))
+    }
+
+    fn probe_region_json_coordinate_projections(
+        value: &serde_json::Value,
+    ) -> Vec<GenomeCoordinateProjectionSpec> {
+        let mut out = Vec::new();
+        let mut seen = BTreeSet::new();
+        for key in ["coordinate_projections", "projection_maps"] {
+            let Some(items) = value.get(key).and_then(|items| items.as_array()) else {
+                continue;
+            };
+            for item in items {
+                let source_genome_id = Self::probe_region_json_alias_string(
+                    item,
+                    &["source_genome_id", "source_genome", "from_genome_id"],
+                )
+                .unwrap_or_default();
+                let target_genome_id = Self::probe_region_json_alias_string(
+                    item,
+                    &["target_genome_id", "target_genome", "to_genome_id"],
+                )
+                .unwrap_or_default();
+                let method = Self::probe_region_json_string(item, "method")
+                    .unwrap_or_else(|| "interval_map".to_string());
+                let path = Self::probe_region_json_alias_string(
+                    item,
+                    &["path", "projection_path", "map_path"],
+                )
+                .unwrap_or_default();
+                if source_genome_id.trim().is_empty()
+                    || target_genome_id.trim().is_empty()
+                    || path.trim().is_empty()
+                {
+                    continue;
+                }
+                let spec = GenomeCoordinateProjectionSpec {
+                    source_genome_id: source_genome_id.trim().to_string(),
+                    target_genome_id: target_genome_id.trim().to_string(),
+                    method: method.trim().to_string(),
+                    path: path.trim().to_string(),
+                };
+                let dedupe_key = format!(
+                    "{}\t{}\t{}",
+                    spec.source_genome_id.to_ascii_lowercase(),
+                    spec.target_genome_id.to_ascii_lowercase(),
+                    spec.path
+                );
+                if seen.insert(dedupe_key) {
+                    out.push(spec);
+                }
+            }
+        }
+        out
+    }
+
     fn probe_region_extend_unique(target: &mut Vec<String>, values: Vec<String>) {
         let mut seen = target
             .iter()
@@ -1047,6 +1214,34 @@ impl GentleEngine {
         for value in values {
             if seen.insert(value.to_ascii_lowercase()) {
                 target.push(value);
+            }
+        }
+    }
+
+    fn probe_region_extend_unique_coordinate_projections(
+        target: &mut Vec<GenomeCoordinateProjectionSpec>,
+        values: Vec<GenomeCoordinateProjectionSpec>,
+    ) {
+        let mut seen = target
+            .iter()
+            .map(|spec| {
+                format!(
+                    "{}\t{}\t{}",
+                    spec.source_genome_id.to_ascii_lowercase(),
+                    spec.target_genome_id.to_ascii_lowercase(),
+                    spec.path
+                )
+            })
+            .collect::<BTreeSet<_>>();
+        for spec in values {
+            let key = format!(
+                "{}\t{}\t{}",
+                spec.source_genome_id.to_ascii_lowercase(),
+                spec.target_genome_id.to_ascii_lowercase(),
+                spec.path
+            );
+            if seen.insert(key) {
+                target.push(spec);
             }
         }
     }
@@ -1604,7 +1799,9 @@ impl GentleEngine {
         inspection: &ProbeRegionOutputInspection,
         anchor: &GenomeSequenceAnchor,
         contrast: &str,
+        native_row: &ProbeRegionProjectionRow,
         row: &ProbeRegionProjectionRow,
+        projection: Option<&ProjectedGenomeInterval>,
         logfc: f64,
         local_start_0based: usize,
         local_end_0based_exclusive: usize,
@@ -1623,6 +1820,14 @@ impl GentleEngine {
             .as_deref()
             .unwrap_or("not declared");
         let genome_build = inspection.genome_build.as_deref().unwrap_or("not declared");
+        let assembly_check = if projection.is_some() {
+            "projected_from_native_coordinate_system"
+        } else {
+            "helper_output_coordinate_system_matches_anchor"
+        };
+        let projection_status = projection
+            .map(|projection| projection.status.as_str())
+            .unwrap_or("direct_helper_output_coordinate_match");
         let gene_label = row.gene_symbol.as_deref().unwrap_or("");
         let label_suffix = if gene_label.is_empty() {
             row.feature_id.as_str()
@@ -1690,11 +1895,11 @@ impl GentleEngine {
             ),
             (
                 "gentle_array_assembly_check".into(),
-                Some("helper_output_coordinate_system_matches_anchor".to_string()),
+                Some(assembly_check.to_string()),
             ),
             (
                 "gentle_array_projection_status".into(),
-                Some("direct_helper_output_coordinate_match".to_string()),
+                Some(projection_status.to_string()),
             ),
             ("gentle_array_contrast".into(), Some(contrast.to_string())),
             (
@@ -1714,17 +1919,23 @@ impl GentleEngine {
             ),
             (
                 "gentle_array_native_chromosome".into(),
-                Some(row.chromosome.clone()),
+                Some(native_row.chromosome.clone()),
             ),
             (
                 "gentle_array_native_start_1based".into(),
-                Some(row.start_1based.to_string()),
+                Some(native_row.start_1based.to_string()),
             ),
             (
                 "gentle_array_native_end_1based".into(),
-                Some(row.end_1based.to_string()),
+                Some(native_row.end_1based.to_string()),
             ),
         ];
+        if let Some(projection) = projection {
+            qualifiers.push((
+                "gentle_array_projection_method".into(),
+                Some(projection.method.clone()),
+            ));
+        }
         if !row.feature_id.trim().is_empty() {
             qualifiers.push(("feature_id".into(), Some(row.feature_id.clone())));
             qualifiers.push((
@@ -1739,7 +1950,7 @@ impl GentleEngine {
             qualifiers.push(("gene".into(), Some(value.clone())));
             qualifiers.push(("gene_symbol".into(), Some(value.clone())));
         }
-        if let Some(strand) = row.strand {
+        if let Some(strand) = native_row.strand {
             qualifiers.push(("array_strand".into(), Some(strand.to_string())));
         }
         if let Some(strand) = local_strand {

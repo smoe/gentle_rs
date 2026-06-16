@@ -149,7 +149,7 @@ impl GentleEngine {
             .collect()
     }
 
-    fn genome_build_tokens_match(left: &str, right: &str) -> bool {
+    pub(super) fn genome_build_tokens_match(left: &str, right: &str) -> bool {
         let left = Self::normalize_genome_build_token(left);
         let right = Self::normalize_genome_build_token(right);
         !left.is_empty() && left == right
@@ -282,7 +282,7 @@ impl GentleEngine {
         })
     }
 
-    fn load_genome_coordinate_projection_blocks(
+    pub(super) fn load_genome_coordinate_projection_blocks(
         projection_path: &str,
         default_method: &str,
         source_genome_id: &str,
@@ -351,7 +351,7 @@ impl GentleEngine {
         Ok(blocks)
     }
 
-    fn project_genome_interval_with_blocks(
+    pub(super) fn project_genome_interval_with_blocks(
         blocks: &[GenomeCoordinateProjectionBlock],
         chrom: &str,
         start_1based: usize,

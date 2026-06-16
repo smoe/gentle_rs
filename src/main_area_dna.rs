@@ -8300,6 +8300,28 @@ impl MainAreaDna {
                 Self::probe_region_optional_label(&report.coordinate_system),
                 Self::probe_region_optional_label(&report.genome_build)
             ));
+            if !report.coordinate_projections.is_empty() {
+                let projection_maps = report
+                    .coordinate_projections
+                    .iter()
+                    .map(|projection| {
+                        format!(
+                            "{}->{} ({})",
+                            projection.source_genome_id,
+                            projection.target_genome_id,
+                            if projection.method.trim().is_empty() {
+                                "interval_map"
+                            } else {
+                                projection.method.as_str()
+                            }
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                ui.small(format!(
+                    "projection maps: {}",
+                    Self::probe_region_preview_list(&projection_maps)
+                ));
+            }
             ui.small(format!(
                 "targets: {}",
                 Self::probe_region_preview_list(&report.target_levels)

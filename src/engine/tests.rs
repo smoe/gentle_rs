@@ -205,6 +205,62 @@ fn write_probe_region_projection_fixture(out: &Path) {
     .expect("probe-region provenance");
 }
 
+fn write_probe_region_projected_fixture(out: &Path) {
+    fs::create_dir(out).expect("probe-region projected fixture dir");
+    fs::write(
+        out.join("region_intensity_chrom_order.csv"),
+        concat!(
+            "chromosome,start,stop,strand,probeset_or_region_id,transcript_cluster_id,number_of_probes,gene_symbol,mean_log2_AdGFP,mean_log2_TAp73,log2FC_TAp73-AdGFP\n",
+            "chr1,1010,1030,+,PSR1,TC1,4,PATZ1,8.1,9.2,1.1\n",
+            "chr1,1060,1080,+,PSR2,TC1,4,PATZ1,7.8,7.9,0.1\n",
+            "chr2,1010,1030,+,PSR3,TC2,4,OTHER,6.0,6.7,0.7\n"
+        ),
+    )
+    .expect("probe-region projected table");
+    fs::write(
+        out.join("normalized_feature_matrix_manifest.json"),
+        r#"{
+  "schema": "gentle.probe_region_normalized_matrix_manifest.v1",
+  "platform": "Clariom_D_Human",
+  "platform_package": "pd.clariom.d.human",
+  "coordinate_system": "hg19",
+  "genome_build": "GRCh37",
+  "normalization": "rma",
+  "targets": ["probeset"],
+  "coordinate_projections": [
+    {
+      "source_genome_id": "hg19",
+      "target_genome_id": "hg38",
+      "method": "synthetic_interval_map",
+      "path": "hg19-to-hg38.tsv"
+    }
+  ],
+  "artifacts": []
+}"#,
+    )
+    .expect("probe-region projected manifest");
+    fs::write(
+        out.join("provenance.json"),
+        r#"{
+  "schema": "gentle.probe_region_backend_provenance.v1",
+  "backend": "r_oligo",
+  "coordinate_system": "hg19",
+  "genome_build": "GRCh37",
+  "normalization": "rma",
+  "artifacts": []
+}"#,
+    )
+    .expect("probe-region projected provenance");
+    fs::write(
+        out.join("hg19-to-hg38.tsv"),
+        concat!(
+            "source_genome_id\ttarget_genome_id\tsource_chrom\tsource_start_1based\tsource_end_1based\tsource_strand\ttarget_chrom\ttarget_start_1based\ttarget_end_1based\ttarget_strand\tmethod\n",
+            "hg19\thg38\tchr1\t1001\t1100\t+\tchr1\t2001\t2100\t+\tsynthetic_interval_map\n"
+        ),
+    )
+    .expect("probe-region projection map");
+}
+
 fn first_qualifier(feature: &gb_io::seq::Feature, key: &str) -> Option<String> {
     feature
         .qualifier_values(key)
@@ -467,6 +523,71 @@ fn project_probe_region_output_direct_anchor_materializes_array_features() {
             .contains("TAp73-AdGFP logFC=1.100")
     );
     assert_eq!(feature.location.find_bounds().unwrap(), (9, 30));
+}
+
+#[test]
+fn project_probe_region_output_uses_declared_coordinate_projection_map() {
+    let temp = tempdir().expect("tempdir");
+    let output_dir = temp.path().join("probe_regions_projected");
+    write_probe_region_projected_fixture(&output_dir);
+    let mut engine = microarray_anchored_engine_at("hg38", "chr1", 2001, 2100, "+");
+
+    let inspection = engine
+        .inspect_probe_region_output(&output_dir.to_string_lossy())
+        .expect("inspect projected probe-region helper output");
+    assert_eq!(inspection.coordinate_projections.len(), 1);
+    assert!(inspection.projection_ready);
+
+    let result = engine
+        .apply(Operation::ProjectProbeRegionOutput {
+            seq_id: "array_slice".to_string(),
+            output_dir: output_dir.to_string_lossy().to_string(),
+            contrasts: vec!["TAp73-AdGFP".to_string()],
+            min_abs_logfc: Some(0.5),
+            max_features: Some(10),
+            clear_existing: Some(true),
+        })
+        .expect("project probe-region helper output through coordinate map");
+    let report = result.microarray_projection.expect("projection report");
+    assert!(report.coordinate_projection_used);
+    assert_eq!(
+        report.coordinate_projection_method.as_deref(),
+        Some("synthetic_interval_map")
+    );
+    assert_eq!(report.coordinate_system, "hg19");
+    assert_eq!(report.anchor_genome_id, "hg38");
+    assert_eq!(report.imported_features, 1);
+    assert_eq!(report.skipped_filter, 1);
+    assert_eq!(report.skipped_projection_unmapped, 1);
+    assert_eq!(report.skipped_wrong_chromosome, 0);
+
+    let dna = engine.state().sequences.get("array_slice").unwrap();
+    let feature = dna
+        .features()
+        .iter()
+        .find(|feature| first_qualifier(feature, "feature_id").as_deref() == Some("PSR1"))
+        .expect("projected PSR1 feature");
+    assert_eq!(feature.location.find_bounds().unwrap(), (9, 30));
+    assert_eq!(
+        first_qualifier(feature, "gentle_array_assembly_check").as_deref(),
+        Some("projected_from_native_coordinate_system")
+    );
+    assert_eq!(
+        first_qualifier(feature, "gentle_array_projection_method").as_deref(),
+        Some("synthetic_interval_map")
+    );
+    assert_eq!(
+        first_qualifier(feature, "gentle_array_projection_status").as_deref(),
+        Some("mapped_unique_interval_block")
+    );
+    assert_eq!(
+        first_qualifier(feature, "gentle_array_native_start_1based").as_deref(),
+        Some("1010")
+    );
+    assert_eq!(
+        first_qualifier(feature, "genomic_start_1based").as_deref(),
+        Some("2010")
+    );
 }
 
 #[test]

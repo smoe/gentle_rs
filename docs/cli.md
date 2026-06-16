@@ -3628,17 +3628,20 @@ Tutorial companion:
     region table, optional `sample_table.tsv`, normalized matrix manifest,
     provenance JSON, sample/condition/logFC columns, chromosomes, gene symbols,
     bounded preview rows, row counts, feature counts, coordinate/build
-    declarations, projection-readiness blockers, and required-column problems.
+    declarations, declared coordinate projection maps, projection-readiness
+    blockers, and required-column problems.
 - `arrays render-probe-region-output-svg analysis/probe_regions analysis/probe_regions/probe_region_plot.svg`
   - Read-only deterministic SVG export for inspected helper output. The SVG
     plots `mean_log2_*` condition tracks in the upper panel and `log2FC_*`
     tracks in the lower panel, using the existing chromosome-ordered helper
     table and reporting projection blockers without running R/APT.
 - `arrays project-probe-region-output grch38_tp73 analysis/probe_regions --contrasts TAp73-AdGFP --min-abs-logfc 0.5`
-  - Projects direct-coordinate-compatible `log2FC_*` helper-output rows into
-    genome-anchored array features on the target sequence. The route refuses
-    projection unless the helper output declares `coordinate_system` or
-    `genome_build` compatible with the target sequence anchor.
+  - Projects direct-coordinate-compatible or explicitly mapped `log2FC_*`
+    helper-output rows into genome-anchored array features on the target
+    sequence. The route refuses projection unless the helper output declares
+    `coordinate_system`/`genome_build` compatible with the target sequence
+    anchor, or a `coordinate_projections[]`/`projection_maps[]` interval map
+    whose source and target builds match the helper output and anchor.
 - `resources sync-ucsc-rmsk INPUT.rmsk.txt_or_txt.gz [OUTPUT.rmsk.json] [--assembly DB] [--limit N]`
   - Normalizes the UCSC RepeatMasker `rmsk` table into
     `gentle.ucsc_rmsk_resource.v1`.

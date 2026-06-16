@@ -45,6 +45,9 @@ Maintenance rule:
 - Added first-class sequence-window controls for projecting inspected
   probe-region helper output into genome-anchored array features without
   leaving the Clariom D evidence panel.
+- Added explicit `coordinate_projections[]` / `projection_maps[]` support for
+  probe-region helper-output projection, reusing the existing interval-map
+  contract to preserve native and displayed array coordinates.
 
 ## 2026-06-14
 
