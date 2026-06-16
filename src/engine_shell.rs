@@ -1565,6 +1565,9 @@ pub enum ShellCommand {
         summary: String,
         annotation: String,
         output_dir: String,
+        metadata: Option<String>,
+        condition_column: Option<String>,
+        sample_column: Option<String>,
         platform: Option<String>,
         normalization: Option<String>,
         coordinate_system: Option<String>,
@@ -8220,15 +8223,21 @@ impl ShellCommand {
                 summary,
                 annotation,
                 output_dir,
+                metadata,
+                condition_column,
+                sample_column,
                 platform,
                 normalization,
                 coordinate_system,
                 genome_build,
             } => format!(
-                "import APT probe-region output summary='{}' annotation='{}' output_dir='{}' platform={} normalization={} coordinate_system={} genome_build={}",
+                "import APT probe-region output summary='{}' annotation='{}' output_dir='{}' metadata={} condition_column={} sample_column={} platform={} normalization={} coordinate_system={} genome_build={}",
                 summary,
                 annotation,
                 output_dir,
+                metadata.as_deref().unwrap_or("-"),
+                condition_column.as_deref().unwrap_or("-"),
+                sample_column.as_deref().unwrap_or("-"),
                 platform.as_deref().unwrap_or("-"),
                 normalization.as_deref().unwrap_or("-"),
                 coordinate_system.as_deref().unwrap_or("-"),
@@ -23747,13 +23756,16 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 "import-apt-probe-region-output" | "convert-apt-probe-region-output" => {
                     if tokens.len() < 5 {
                         return Err(
-                            "arrays import-apt-probe-region-output requires SUMMARY.tsv ANNOTATION.csv OUTPUT_DIR [--platform NAME] [--normalization NAME] [--coordinate-system ID] [--genome-build ID]"
+                            "arrays import-apt-probe-region-output requires SUMMARY.tsv ANNOTATION.csv OUTPUT_DIR [--metadata TSV] [--condition-column NAME] [--sample-column NAME] [--platform NAME] [--normalization NAME] [--coordinate-system ID] [--genome-build ID]"
                                 .to_string(),
                         );
                     }
                     let summary = tokens[2].clone();
                     let annotation = tokens[3].clone();
                     let output_dir = tokens[4].clone();
+                    let mut metadata = None;
+                    let mut condition_column = None;
+                    let mut sample_column = None;
                     let mut platform = None;
                     let mut normalization = None;
                     let mut coordinate_system = None;
@@ -23761,6 +23773,32 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     let mut idx = 5usize;
                     while idx < tokens.len() {
                         match tokens[idx].as_str() {
+                            "--metadata" | "--sample-metadata" => {
+                                idx += 1;
+                                if idx >= tokens.len() {
+                                    return Err("Missing TSV after --metadata".to_string());
+                                }
+                                metadata = Some(tokens[idx].clone());
+                                idx += 1;
+                            }
+                            "--condition-column" | "--condition_column" => {
+                                idx += 1;
+                                if idx >= tokens.len() {
+                                    return Err(
+                                        "Missing NAME after --condition-column".to_string()
+                                    );
+                                }
+                                condition_column = Some(tokens[idx].clone());
+                                idx += 1;
+                            }
+                            "--sample-column" | "--sample_column" => {
+                                idx += 1;
+                                if idx >= tokens.len() {
+                                    return Err("Missing NAME after --sample-column".to_string());
+                                }
+                                sample_column = Some(tokens[idx].clone());
+                                idx += 1;
+                            }
                             "--platform" => {
                                 idx += 1;
                                 if idx >= tokens.len() {
@@ -23806,6 +23844,9 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         summary,
                         annotation,
                         output_dir,
+                        metadata,
+                        condition_column,
+                        sample_column,
                         platform,
                         normalization,
                         coordinate_system,
@@ -29196,6 +29237,9 @@ fn execute_reference_and_track_command(
             summary,
             annotation,
             output_dir,
+            metadata,
+            condition_column,
+            sample_column,
             platform,
             normalization,
             coordinate_system,
@@ -29206,6 +29250,9 @@ fn execute_reference_and_track_command(
                     summary,
                     annotation,
                     output_dir,
+                    metadata.as_deref(),
+                    condition_column.as_deref(),
+                    sample_column.as_deref(),
                     platform.as_deref(),
                     normalization.as_deref(),
                     coordinate_system.as_deref(),

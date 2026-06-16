@@ -2374,8 +2374,11 @@ Microarray track projection notes:
   returns `gentle.probe_region_apt_import_report.v1` with an embedded
   `gentle.probe_region_output_inspection.v1`. It requires annotation columns
   for probeset/region id, chromosome, start, and stop, and accepts optional
-  strand, transcript-cluster, probe-count, and gene-symbol columns. It does not
-  run APT or infer coordinates from vendor files by itself.
+  strand, transcript-cluster, probe-count, and gene-symbol columns. Optional
+  `--metadata`, `--condition-column`, and `--sample-column` inputs match APT
+  sample columns to conditions and append `mean_log2_*`, `sd_log2_*`, and
+  default `log2FC_*` columns for native plotting/projection. It does not run
+  APT or infer coordinates from vendor files by itself.
 - `arrays render-probe-region-output-svg OUTPUT_DIR OUTPUT.svg` consumes the
   same completed helper directory and writes
   `gentle.probe_region_output_svg_export.v1` provenance for a deterministic

@@ -590,6 +590,12 @@ struct EngineOpsUiState {
     #[serde(default)]
     probe_region_apt_annotation_path: String,
     #[serde(default)]
+    probe_region_apt_metadata_path: String,
+    #[serde(default)]
+    probe_region_apt_condition_column: String,
+    #[serde(default)]
+    probe_region_apt_sample_column: String,
+    #[serde(default)]
     probe_region_apt_platform: String,
     #[serde(default)]
     probe_region_apt_normalization: String,
@@ -1359,6 +1365,9 @@ pub struct MainAreaDna {
     cutrun_regulatory_species_filters: String,
     probe_region_apt_summary_path: String,
     probe_region_apt_annotation_path: String,
+    probe_region_apt_metadata_path: String,
+    probe_region_apt_condition_column: String,
+    probe_region_apt_sample_column: String,
     probe_region_apt_platform: String,
     probe_region_apt_normalization: String,
     probe_region_apt_coordinate_system: String,
@@ -2045,6 +2054,9 @@ impl MainAreaDna {
             cutrun_regulatory_species_filters: String::new(),
             probe_region_apt_summary_path: String::new(),
             probe_region_apt_annotation_path: String::new(),
+            probe_region_apt_metadata_path: String::new(),
+            probe_region_apt_condition_column: "condition".to_string(),
+            probe_region_apt_sample_column: "file".to_string(),
             probe_region_apt_platform: "Clariom_D_Human".to_string(),
             probe_region_apt_normalization: "rma-sketch".to_string(),
             probe_region_apt_coordinate_system: "hg38".to_string(),
@@ -7876,6 +7888,11 @@ impl MainAreaDna {
             summary,
             annotation,
             output_dir: output_dir.clone(),
+            metadata: Self::optional_probe_region_text(&self.probe_region_apt_metadata_path),
+            condition_column: Self::optional_probe_region_text(
+                &self.probe_region_apt_condition_column,
+            ),
+            sample_column: Self::optional_probe_region_text(&self.probe_region_apt_sample_column),
             platform: Self::optional_probe_region_text(&self.probe_region_apt_platform),
             normalization: Self::optional_probe_region_text(&self.probe_region_apt_normalization),
             coordinate_system: Self::optional_probe_region_text(
@@ -8196,6 +8213,41 @@ impl MainAreaDna {
             }
         });
         ui.horizontal_wrapped(|ui| {
+            ui.label("metadata");
+            if ui
+                .add_sized(
+                    [ui.available_width().min(300.0), 0.0],
+                    egui::TextEdit::singleline(&mut self.probe_region_apt_metadata_path),
+                )
+                .on_hover_text(
+                    "Optional sample metadata table; matched samples get mean_log2_*/sd_log2_* and log2FC_* columns",
+                )
+                .changed()
+            {
+                import_fields_changed = true;
+            }
+            ui.label("condition column");
+            if ui
+                .add(
+                    egui::TextEdit::singleline(&mut self.probe_region_apt_condition_column)
+                        .desired_width(120.0),
+                )
+                .changed()
+            {
+                import_fields_changed = true;
+            }
+            ui.label("sample column");
+            if ui
+                .add(
+                    egui::TextEdit::singleline(&mut self.probe_region_apt_sample_column)
+                        .desired_width(120.0),
+                )
+                .changed()
+            {
+                import_fields_changed = true;
+            }
+        });
+        ui.horizontal_wrapped(|ui| {
             ui.label("platform");
             if ui
                 .add(
@@ -8263,11 +8315,13 @@ impl MainAreaDna {
         }
         if let Some(import) = self.cached_probe_region_apt_import.as_ref() {
             ui.small(format!(
-                "last import: {} written from {} summary row(s), {} annotation row(s), samples: {}",
+                "last import: {} written from {} summary row(s), {} annotation row(s), samples: {}, conditions: {}, logFC: {}",
                 import.written_row_count,
                 import.summary_row_count,
                 import.annotation_row_count,
-                Self::probe_region_preview_list(&import.sample_columns)
+                Self::probe_region_preview_list(&import.sample_columns),
+                Self::probe_region_preview_list(&import.condition_columns),
+                Self::probe_region_preview_list(&import.logfc_columns)
             ));
         }
 
@@ -21790,6 +21844,9 @@ impl MainAreaDna {
             cutrun_regulatory_species_filters: self.cutrun_regulatory_species_filters.clone(),
             probe_region_apt_summary_path: self.probe_region_apt_summary_path.clone(),
             probe_region_apt_annotation_path: self.probe_region_apt_annotation_path.clone(),
+            probe_region_apt_metadata_path: self.probe_region_apt_metadata_path.clone(),
+            probe_region_apt_condition_column: self.probe_region_apt_condition_column.clone(),
+            probe_region_apt_sample_column: self.probe_region_apt_sample_column.clone(),
             probe_region_apt_platform: self.probe_region_apt_platform.clone(),
             probe_region_apt_normalization: self.probe_region_apt_normalization.clone(),
             probe_region_apt_coordinate_system: self.probe_region_apt_coordinate_system.clone(),
@@ -22063,6 +22120,19 @@ impl MainAreaDna {
         self.cutrun_regulatory_species_filters = s.cutrun_regulatory_species_filters;
         self.probe_region_apt_summary_path = s.probe_region_apt_summary_path;
         self.probe_region_apt_annotation_path = s.probe_region_apt_annotation_path;
+        self.probe_region_apt_metadata_path = s.probe_region_apt_metadata_path;
+        self.probe_region_apt_condition_column =
+            if s.probe_region_apt_condition_column.trim().is_empty() {
+                "condition".to_string()
+            } else {
+                s.probe_region_apt_condition_column
+            };
+        self.probe_region_apt_sample_column = if s.probe_region_apt_sample_column.trim().is_empty()
+        {
+            "file".to_string()
+        } else {
+            s.probe_region_apt_sample_column
+        };
         self.probe_region_apt_platform = if s.probe_region_apt_platform.trim().is_empty() {
             "Clariom_D_Human".to_string()
         } else {

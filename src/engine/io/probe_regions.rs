@@ -93,6 +93,28 @@ struct ProbeRegionAptAnnotationRow {
     gene_symbol: String,
 }
 
+#[derive(Default)]
+struct ProbeRegionAptMetadataSummary {
+    path: String,
+    sample_column: String,
+    condition_column: String,
+    conditions: Vec<ProbeRegionAptConditionGroup>,
+    contrasts: Vec<ProbeRegionAptContrast>,
+    warnings: Vec<String>,
+}
+
+struct ProbeRegionAptConditionGroup {
+    label: String,
+    column_label: String,
+    sample_indices: Vec<usize>,
+}
+
+struct ProbeRegionAptContrast {
+    label: String,
+    numerator_index: usize,
+    denominator_index: usize,
+}
+
 impl GentleEngine {
     /// Build a reusable preflight plan for chromosome-ordered probe inspection.
     pub fn plan_probe_regions(&self, request: ProbeRegionRequest) -> ProbeRegionPlan {
@@ -361,6 +383,9 @@ impl GentleEngine {
         apt_summary_path: &str,
         annotation_path: &str,
         output_dir: &str,
+        metadata_path: Option<&str>,
+        condition_column: Option<&str>,
+        sample_column: Option<&str>,
         platform: Option<&str>,
         normalization: Option<&str>,
         coordinate_system: Option<&str>,
@@ -436,11 +461,16 @@ impl GentleEngine {
             ],
         )
         .unwrap_or(0);
-        let sample_columns = summary_headers
+        let sample_indices = summary_headers
             .iter()
             .enumerate()
             .filter(|(idx, header)| *idx != feature_idx && !header.trim().is_empty())
-            .map(|(_, header)| header.trim().to_string())
+            .map(|(idx, _)| idx)
+            .collect::<Vec<_>>();
+        let sample_columns = sample_indices
+            .iter()
+            .filter_map(|idx| summary_headers.get(*idx))
+            .map(|header| header.trim().to_string())
             .collect::<Vec<_>>();
         if sample_columns.is_empty() {
             return Err(EngineError {
@@ -449,6 +479,20 @@ impl GentleEngine {
                 cause_chain: vec![],
             });
         }
+        let metadata_summary = if let Some(path) =
+            metadata_path.map(str::trim).filter(|value| !value.is_empty())
+        {
+            let summary = Self::probe_region_apt_metadata_summary(
+                path,
+                condition_column,
+                sample_column,
+                &sample_columns,
+            )?;
+            warnings.extend(summary.warnings.iter().cloned());
+            Some(summary)
+        } else {
+            None
+        };
 
         let mut output_rows: Vec<Vec<String>> = Vec::new();
         let mut summary_row_count = 0usize;
@@ -480,11 +524,48 @@ impl GentleEngine {
                 annotation_row.number_of_probes.clone(),
                 annotation_row.gene_symbol.clone(),
             ];
-            for (idx, _) in summary_headers.iter().enumerate() {
-                if idx == feature_idx {
-                    continue;
+            let sample_values = sample_indices
+                .iter()
+                .map(|idx| record.get(*idx).unwrap_or("").trim().to_string())
+                .collect::<Vec<_>>();
+            for value in &sample_values {
+                row.push(value.clone());
+            }
+            if let Some(metadata) = metadata_summary.as_ref() {
+                let stats = metadata
+                    .conditions
+                    .iter()
+                    .map(|condition| {
+                        Self::probe_region_apt_condition_stats(
+                            &sample_values,
+                            &condition.sample_indices,
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                for stat in &stats {
+                    row.push(
+                        stat.map(|(mean, _)| Self::probe_region_format_number(mean))
+                            .unwrap_or_default(),
+                    );
+                    row.push(
+                        stat.map(|(_, sd)| Self::probe_region_format_number(sd))
+                            .unwrap_or_default(),
+                    );
                 }
-                row.push(record.get(idx).unwrap_or("").trim().to_string());
+                for contrast in &metadata.contrasts {
+                    let numerator = stats
+                        .get(contrast.numerator_index)
+                        .and_then(|value| value.map(|(mean, _)| mean));
+                    let denominator = stats
+                        .get(contrast.denominator_index)
+                        .and_then(|value| value.map(|(mean, _)| mean));
+                    row.push(
+                        numerator
+                            .zip(denominator)
+                            .map(|(num, den)| Self::probe_region_format_number(num - den))
+                            .unwrap_or_default(),
+                    );
+                }
             }
             output_rows.push(row);
         }
@@ -536,6 +617,15 @@ impl GentleEngine {
             "gene_symbol".to_string(),
         ];
         header.extend(sample_columns.iter().cloned());
+        if let Some(metadata) = metadata_summary.as_ref() {
+            for condition in &metadata.conditions {
+                header.push(format!("mean_log2_{}", condition.column_label));
+                header.push(format!("sd_log2_{}", condition.column_label));
+            }
+            for contrast in &metadata.contrasts {
+                header.push(format!("log2FC_{}", contrast.label));
+            }
+        }
         writer.write_record(&header).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write probe-region table header: {e}"),
@@ -563,6 +653,13 @@ impl GentleEngine {
             "coordinate_system": coordinate_system,
             "genome_build": genome_build,
             "normalization": normalization,
+            "metadata_path": metadata_summary.as_ref().map(|metadata| metadata.path.as_str()),
+            "condition_column": metadata_summary
+                .as_ref()
+                .map(|metadata| metadata.condition_column.as_str()),
+            "sample_column": metadata_summary
+                .as_ref()
+                .map(|metadata| metadata.sample_column.as_str()),
             "targets": ["probeset"],
             "artifacts": [
                 PROBE_REGION_TABLE_FILE
@@ -573,6 +670,13 @@ impl GentleEngine {
             "backend": "affymetrix_power_tools",
             "apt_summary_path": apt_summary_path,
             "annotation_path": annotation_path,
+            "metadata_path": metadata_summary.as_ref().map(|metadata| metadata.path.as_str()),
+            "condition_column": metadata_summary
+                .as_ref()
+                .map(|metadata| metadata.condition_column.as_str()),
+            "sample_column": metadata_summary
+                .as_ref()
+                .map(|metadata| metadata.sample_column.as_str()),
             "coordinate_system": coordinate_system,
             "genome_build": genome_build,
             "normalization": normalization,
@@ -621,6 +725,33 @@ impl GentleEngine {
             missing_annotation_count,
             skipped_invalid_count,
             sample_columns,
+            metadata_path: metadata_summary.as_ref().map(|metadata| metadata.path.clone()),
+            condition_column: metadata_summary
+                .as_ref()
+                .map(|metadata| metadata.condition_column.clone()),
+            sample_column: metadata_summary
+                .as_ref()
+                .map(|metadata| metadata.sample_column.clone()),
+            condition_columns: metadata_summary
+                .as_ref()
+                .map(|metadata| {
+                    metadata
+                        .conditions
+                        .iter()
+                        .map(|condition| condition.label.clone())
+                        .collect()
+                })
+                .unwrap_or_default(),
+            logfc_columns: metadata_summary
+                .as_ref()
+                .map(|metadata| {
+                    metadata
+                        .contrasts
+                        .iter()
+                        .map(|contrast| contrast.label.clone())
+                        .collect()
+                })
+                .unwrap_or_default(),
             warnings,
             inspection,
         })
@@ -1481,6 +1612,288 @@ impl GentleEngine {
             });
         }
         Ok(rows)
+    }
+
+    fn probe_region_apt_metadata_summary(
+        metadata_path: &str,
+        requested_condition_column: Option<&str>,
+        requested_sample_column: Option<&str>,
+        sample_columns: &[String],
+    ) -> Result<ProbeRegionAptMetadataSummary, EngineError> {
+        let mut reader = csv::ReaderBuilder::new()
+            .delimiter(Self::probe_region_metadata_delimiter(metadata_path))
+            .trim(csv::Trim::All)
+            .flexible(true)
+            .from_path(metadata_path)
+            .map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not open APT sample metadata '{metadata_path}': {e}"),
+                cause_chain: vec![],
+            })?;
+        let headers = reader
+            .headers()
+            .map_err(|e| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("Could not read APT sample metadata header '{metadata_path}': {e}"),
+                cause_chain: vec![],
+            })?
+            .iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        let sample_idx = Self::probe_region_metadata_column_index(
+            &headers,
+            requested_sample_column,
+            &[
+                "file",
+                "cel",
+                "cel_file",
+                "cel file",
+                "array data file",
+                "sample",
+                "sample_name",
+                "source name",
+            ],
+        )
+        .ok_or_else(|| EngineError {
+            code: ErrorCode::InvalidInput,
+            message: "APT sample metadata is missing a sample/CEL column".to_string(),
+            cause_chain: vec![],
+        })?;
+        let condition_idx = Self::probe_region_metadata_column_index(
+            &headers,
+            requested_condition_column,
+            &[
+                "condition",
+                "group",
+                "treatment",
+                "sample group",
+                "factor value condition",
+                "factor value treatment",
+                "characteristics condition",
+            ],
+        )
+        .ok_or_else(|| EngineError {
+            code: ErrorCode::InvalidInput,
+            message: "APT sample metadata is missing a condition/group column".to_string(),
+            cause_chain: vec![],
+        })?;
+        let (sample_lookup, mut warnings) = Self::probe_region_apt_sample_lookup(sample_columns);
+        let mut condition_samples: BTreeMap<String, BTreeSet<usize>> = BTreeMap::new();
+        let mut sample_conditions: BTreeMap<usize, String> = BTreeMap::new();
+        let mut unmatched_samples = Vec::new();
+        let mut row_count = 0usize;
+        for record in reader.records() {
+            let record = record.map_err(|e| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("Could not read APT sample metadata row: {e}"),
+                cause_chain: vec![],
+            })?;
+            row_count += 1;
+            let sample = record.get(sample_idx).unwrap_or("").trim();
+            let condition = record.get(condition_idx).unwrap_or("").trim();
+            if sample.is_empty() || condition.is_empty() {
+                continue;
+            }
+            let matched_idx = Self::probe_region_apt_sample_match_keys(sample)
+                .iter()
+                .find_map(|key| sample_lookup.get(key).copied());
+            let Some(sample_column_idx) = matched_idx else {
+                if unmatched_samples.len() < 8 {
+                    unmatched_samples.push(sample.to_string());
+                }
+                continue;
+            };
+            if let Some(previous) = sample_conditions.get(&sample_column_idx) {
+                if previous != condition {
+                    warnings.push(format!(
+                        "Sample '{}' appears with multiple conditions ('{}' and '{}'); keeping '{}'",
+                        sample, previous, condition, previous
+                    ));
+                    continue;
+                }
+            } else {
+                sample_conditions.insert(sample_column_idx, condition.to_string());
+            }
+            condition_samples
+                .entry(condition.to_string())
+                .or_default()
+                .insert(sample_column_idx);
+        }
+        if row_count == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("APT sample metadata '{metadata_path}' had no rows"),
+                cause_chain: vec![],
+            });
+        }
+        if !unmatched_samples.is_empty() {
+            warnings.push(format!(
+                "APT sample metadata rows did not match summary columns for: {}{}",
+                unmatched_samples.join(", "),
+                if unmatched_samples.len() >= 8 {
+                    " ..."
+                } else {
+                    ""
+                }
+            ));
+        }
+        if condition_samples.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "APT sample metadata '{metadata_path}' had no rows matching summary sample columns"
+                ),
+                cause_chain: vec![],
+            });
+        }
+
+        let mut used_labels: BTreeMap<String, usize> = BTreeMap::new();
+        let conditions = condition_samples
+            .into_iter()
+            .map(|(label, sample_set)| {
+                let base_label = Self::probe_region_apt_output_label(&label);
+                let count = used_labels.entry(base_label.clone()).or_insert(0);
+                *count += 1;
+                let column_label = if *count == 1 {
+                    base_label
+                } else {
+                    format!("{base_label}_{count}")
+                };
+                ProbeRegionAptConditionGroup {
+                    label,
+                    column_label,
+                    sample_indices: sample_set.into_iter().collect(),
+                }
+            })
+            .collect::<Vec<_>>();
+        let contrasts = if conditions.len() < 2 {
+            Vec::new()
+        } else {
+            let denominator = &conditions[0];
+            conditions
+                .iter()
+                .enumerate()
+                .skip(1)
+                .map(|(idx, numerator)| ProbeRegionAptContrast {
+                    label: format!(
+                        "{}-{}",
+                        numerator.column_label, denominator.column_label
+                    ),
+                    numerator_index: idx,
+                    denominator_index: 0,
+                })
+                .collect()
+        };
+
+        Ok(ProbeRegionAptMetadataSummary {
+            path: metadata_path.to_string(),
+            sample_column: headers.get(sample_idx).cloned().unwrap_or_default(),
+            condition_column: headers.get(condition_idx).cloned().unwrap_or_default(),
+            conditions,
+            contrasts,
+            warnings,
+        })
+    }
+
+    fn probe_region_apt_sample_lookup(
+        sample_columns: &[String],
+    ) -> (BTreeMap<String, usize>, Vec<String>) {
+        let mut lookup = BTreeMap::new();
+        let mut warnings = Vec::new();
+        for (idx, sample) in sample_columns.iter().enumerate() {
+            for key in Self::probe_region_apt_sample_match_keys(sample) {
+                if let Some(previous) = lookup.insert(key.clone(), idx)
+                    && previous != idx
+                {
+                    warnings.push(format!(
+                        "APT summary sample columns '{}' and '{}' share matching key '{}'; metadata matching will use the latter",
+                        sample_columns
+                            .get(previous)
+                            .map(String::as_str)
+                            .unwrap_or("<unknown>"),
+                        sample,
+                        key
+                    ));
+                }
+            }
+        }
+        (lookup, warnings)
+    }
+
+    fn probe_region_apt_sample_match_keys(value: &str) -> Vec<String> {
+        let trimmed = value.trim().trim_matches('"').trim_matches('\'');
+        if trimmed.is_empty() {
+            return Vec::new();
+        }
+        let basename = trimmed
+            .rsplit(['/', '\\'])
+            .next()
+            .unwrap_or(trimmed)
+            .trim();
+        let mut keys = Vec::new();
+        for candidate in [trimmed, basename] {
+            let lower = candidate.to_ascii_lowercase();
+            if !lower.is_empty() && !keys.contains(&lower) {
+                keys.push(lower.clone());
+            }
+            if let Some(stripped) = lower.strip_suffix(".cel")
+                && !stripped.is_empty()
+                && !keys.iter().any(|key| key == stripped)
+            {
+                keys.push(stripped.to_string());
+            }
+        }
+        keys
+    }
+
+    fn probe_region_apt_output_label(value: &str) -> String {
+        let mut out = String::new();
+        let mut last_was_separator = false;
+        for ch in value.trim().chars() {
+            if ch.is_ascii_alphanumeric() || ch == '-' || ch == '.' {
+                out.push(ch);
+                last_was_separator = false;
+            } else if !last_was_separator {
+                out.push('_');
+                last_was_separator = true;
+            }
+        }
+        let trimmed = out.trim_matches('_');
+        if trimmed.is_empty() {
+            "condition".to_string()
+        } else {
+            trimmed.to_string()
+        }
+    }
+
+    fn probe_region_apt_condition_stats(
+        sample_values: &[String],
+        sample_indices: &[usize],
+    ) -> Option<(f64, f64)> {
+        let values = sample_indices
+            .iter()
+            .filter_map(|idx| sample_values.get(*idx))
+            .filter_map(|value| value.trim().parse::<f64>().ok())
+            .filter(|value| value.is_finite())
+            .collect::<Vec<_>>();
+        if values.is_empty() {
+            return None;
+        }
+        let mean = values.iter().sum::<f64>() / values.len() as f64;
+        let sd = if values.len() > 1 {
+            let variance = values
+                .iter()
+                .map(|value| {
+                    let delta = value - mean;
+                    delta * delta
+                })
+                .sum::<f64>()
+                / (values.len() - 1) as f64;
+            variance.sqrt()
+        } else {
+            0.0
+        };
+        Some((mean, sd))
     }
 
     fn normalize_probe_region_request(mut request: ProbeRegionRequest) -> ProbeRegionRequest {

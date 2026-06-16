@@ -180,8 +180,8 @@ broad crate surgery that is not tied to the selected release story.
   probe/exon/junction constraints to identify compatible splice isoforms and
   rule out incompatible ones without hiding uncertain evidence.
 - Next array-evidence implementation pass: extend explicit APT imports with
-  metadata-derived condition summaries/logFC contrasts and optional probe-level
-  PM-coordinate output when annotation tables provide probe coordinates.
+  optional probe-level PM-coordinate output when annotation tables provide
+  probe coordinates.
 
 ## Phase D: Visualization And Workflow UX
 

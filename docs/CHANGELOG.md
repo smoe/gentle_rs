@@ -64,6 +64,9 @@ Maintenance rule:
 - Added `arrays import-apt-probe-region-output` to convert explicit APT summary
   output plus an explicit annotation/NetAffx coordinate table into GENtle's
   probe-region helper-output directory contract.
+- Extended explicit APT probe-region imports with optional sample metadata
+  matching that writes `mean_log2_*`, `sd_log2_*`, and default `log2FC_*`
+  tracks for native inspection, plotting, and projection.
 
 ## 2026-06-14
 

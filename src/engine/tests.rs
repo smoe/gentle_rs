@@ -710,6 +710,9 @@ fn import_apt_probe_region_output_writes_inspectable_helper_directory() {
             &summary.to_string_lossy(),
             &annotation.to_string_lossy(),
             &output_dir.to_string_lossy(),
+            None,
+            None,
+            None,
             Some("Clariom_D_Human"),
             Some("rma-sketch"),
             Some("hg38"),
@@ -739,6 +742,85 @@ fn import_apt_probe_region_output_writes_inspectable_helper_directory() {
     assert!(region_table.contains("chromosome,start,stop,strand,probeset_or_region_id"));
     assert!(region_table.contains("chr1,1010,1030,+,PSR1"));
     assert!(region_table.contains("chr1,1060,1080,+,PSR2"));
+}
+
+#[test]
+fn import_apt_probe_region_output_derives_metadata_condition_tracks() {
+    let tmp = tempdir().expect("tempdir");
+    let summary = tmp.path().join("apt.summary.tsv");
+    let annotation = tmp.path().join("annotation.csv");
+    let metadata = tmp.path().join("samples.csv");
+    let output_dir = tmp.path().join("probe_regions");
+    fs::write(
+        &summary,
+        concat!(
+            "probeset_id\tsample_a.CEL\tsample_b.CEL\n",
+            "PSR1\t8.1\t9.2\n",
+            "PSR2\t7.8\t7.9\n"
+        ),
+    )
+    .expect("APT summary");
+    fs::write(
+        &annotation,
+        concat!(
+            "probeset_id,chromosome,start,stop,strand,transcript_cluster_id,number_of_probes,gene_symbol\n",
+            "PSR1,chr1,1010,1030,+,TC1,4,PATZ1\n",
+            "PSR2,chr1,1060,1080,+,TC1,4,PATZ1\n"
+        ),
+    )
+    .expect("annotation");
+    fs::write(
+        &metadata,
+        concat!(
+            "file,condition\n",
+            "sample_a.CEL,AdGFP\n",
+            "sample_b.CEL,TAp73\n"
+        ),
+    )
+    .expect("metadata");
+
+    let report = GentleEngine::default()
+        .import_apt_probe_region_output(
+            &summary.to_string_lossy(),
+            &annotation.to_string_lossy(),
+            &output_dir.to_string_lossy(),
+            Some(&metadata.to_string_lossy()),
+            Some("condition"),
+            Some("file"),
+            Some("Clariom_D_Human"),
+            Some("rma-sketch"),
+            Some("hg38"),
+            Some("GRCh38"),
+        )
+        .expect("import explicit APT output with metadata");
+
+    assert_eq!(report.metadata_path.as_deref(), Some(metadata.to_str().unwrap()));
+    assert_eq!(report.condition_column.as_deref(), Some("condition"));
+    assert_eq!(report.sample_column.as_deref(), Some("file"));
+    assert_eq!(
+        report.condition_columns,
+        vec!["AdGFP".to_string(), "TAp73".to_string()]
+    );
+    assert_eq!(report.logfc_columns, vec!["TAp73-AdGFP".to_string()]);
+    assert_eq!(
+        report.inspection.condition_summary_columns,
+        vec![
+            "mean_log2_AdGFP".to_string(),
+            "sd_log2_AdGFP".to_string(),
+            "mean_log2_TAp73".to_string(),
+            "sd_log2_TAp73".to_string(),
+        ]
+    );
+    assert_eq!(
+        report.inspection.logfc_columns,
+        vec!["log2FC_TAp73-AdGFP".to_string()]
+    );
+    let table =
+        fs::read_to_string(output_dir.join("region_intensity_chrom_order.csv")).expect("table");
+    assert!(table.contains("mean_log2_AdGFP"));
+    assert!(table.contains("log2FC_TAp73-AdGFP"));
+    assert!(table.contains("PSR1,"));
+    assert!(table.contains(",8.1,9.2,8.100,0.000,9.200,0.000,1.100"));
 }
 
 #[test]

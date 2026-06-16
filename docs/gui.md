@@ -3018,7 +3018,8 @@ The `Help` menu now includes:
 - The sequence-window extended panel includes a native
   `Clariom D / probe-region evidence` inspector for completed
   `probe_regions_oligo.R` output directories and explicit APT summary +
-  annotation table imports. It uses the same shared
+  annotation table imports, with optional sample metadata columns to derive
+  condition means/SDs and default log2FC tracks. It uses the same shared
   `arrays import-apt-probe-region-output` and
   `arrays inspect-probe-region-output OUTPUT_DIR` contracts as the GUI shell,
   then previews helper outputs, sample/condition/logFC columns, chromosome/gene

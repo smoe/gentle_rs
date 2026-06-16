@@ -4093,6 +4093,11 @@ pub struct ProbeRegionAptImportReport {
     pub missing_annotation_count: usize,
     pub skipped_invalid_count: usize,
     pub sample_columns: Vec<String>,
+    pub metadata_path: Option<String>,
+    pub condition_column: Option<String>,
+    pub sample_column: Option<String>,
+    pub condition_columns: Vec<String>,
+    pub logfc_columns: Vec<String>,
     pub warnings: Vec<String>,
     pub inspection: ProbeRegionOutputInspection,
 }
