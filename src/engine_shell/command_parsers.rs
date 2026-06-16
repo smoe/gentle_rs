@@ -4439,7 +4439,7 @@ fn parse_oligo_order_rank_csv(raw: &str, flag: &str) -> Result<Vec<usize>, Strin
 fn parse_primers_oligo_order_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 3 {
         return Err(
-            "primers oligo-order requires create|from-primer-report|from-qpcr-report|list|show|export|review-dedup"
+            "primers oligo-order requires create|from-primer-report|from-qpcr-report|list|show|export|route|quote|review-dedup"
                 .to_string(),
         );
     }
@@ -4642,6 +4642,66 @@ fn parse_primers_oligo_order_command(tokens: &[String]) -> Result<ShellCommand, 
                 path: tokens[4].clone(),
             })
         }
+        "route" => {
+            if tokens.len() != 4 {
+                return Err("primers oligo-order route requires FORM_ID".to_string());
+            }
+            Ok(ShellCommand::PrimersOligoOrderRoute {
+                form_id: tokens[3].clone(),
+            })
+        }
+        "quote" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "primers oligo-order quote requires FORM_ID [--provider metabion|geneart] [--service-kind KIND] [--output-dir DIR]"
+                        .to_string(),
+                );
+            }
+            let form_id = tokens[3].clone();
+            let mut provider: Option<String> = None;
+            let mut service_kind: Option<String> = None;
+            let mut output_dir: Option<String> = None;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--provider" => {
+                        provider = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--provider",
+                            "primers oligo-order quote",
+                        )?);
+                    }
+                    "--service-kind" => {
+                        service_kind = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--service-kind",
+                            "primers oligo-order quote",
+                        )?);
+                    }
+                    "--output-dir" => {
+                        output_dir = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--output-dir",
+                            "primers oligo-order quote",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for primers oligo-order quote"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::PrimersOligoOrderQuote {
+                form_id,
+                provider,
+                service_kind,
+                output_dir,
+            })
+        }
         "review-dedup" => {
             if tokens.len() < 4 {
                 return Err(
@@ -4695,7 +4755,7 @@ fn parse_primers_oligo_order_command(tokens: &[String]) -> Result<ShellCommand, 
             })
         }
         other => Err(format!(
-            "Unknown primers oligo-order subcommand '{other}' (expected create|from-primer-report|from-qpcr-report|list|show|export|review-dedup)"
+            "Unknown primers oligo-order subcommand '{other}' (expected create|from-primer-report|from-qpcr-report|list|show|export|route|quote|review-dedup)"
         )),
     }
 }

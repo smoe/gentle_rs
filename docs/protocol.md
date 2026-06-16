@@ -6477,6 +6477,8 @@ Primer-design shell command family (implemented):
   - `primers oligo-order list`
   - `primers oligo-order show FORM_ID`
   - `primers oligo-order export FORM_ID OUTPUT.json`
+  - `primers oligo-order route FORM_ID`
+  - `primers oligo-order quote FORM_ID [--provider metabion|geneart] [--service-kind KIND] [--output-dir DIR]`
   - `primers oligo-order review-dedup FORM_ID [--reviewer NAME] [--duplicate-action keep-separate] [--note TEXT]`
 - `primers design` expects an operation payload whose root variant is
   `{"DesignPrimerPairs": {...}}`.
@@ -6593,6 +6595,22 @@ Primer-design shell command family (implemented):
     `duplicate_review.status` starts as `review_required`.
   - `review-dedup` marks duplicate review complete with the currently supported
     action `keep_separate`; it does not remove or merge any line item.
+  - `route` converts the reviewed or unreviewed form into a provider-neutral
+    `ExternalServiceDeliveryRouteRequest` whose `source_target.kind` is
+    `oligo_order_form`, carrying `form_id`, `line_items[]`, duplicate-review
+    metadata, duplicate groups, and sequence-reuse groups, then returns the
+    standard `gentle.external_service_delivery_route.v1` recommendation.
+  - `quote` builds a concrete `gentle.external_service_request.v1` from the
+    same order-form source target and delegates to the existing external-service
+    quote-handoff path. It refuses forms whose duplicate review is still
+    `review_required`; run `primers oligo-order review-dedup FORM_ID` first.
+    When provider or service kind is omitted, GENtle uses the delivery-route
+    recommendation. `--output-dir` writes the same JSON/CSV/Markdown bundle as
+    `services project-quote`.
+  - oligo-order quote bundles preserve neutral line-item fields such as
+    `line_id`, `line_no`, `name`, `role`, `sequence_5_to_3`, `length_nt`,
+    `modifications`, `scale`, `purification`, report/rank provenance, and
+    duplicate/reuse group hints for manual vendor-template transfer.
 - Response schemas:
   - `gentle.primer_seed_request.v1`
   - `gentle.qpcr_seed_request.v1`

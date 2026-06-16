@@ -2229,6 +2229,15 @@ Shared shell command:
     - `primers oligo-order list`
     - `primers oligo-order show FORM_ID`
     - `primers oligo-order export FORM_ID OUTPUT.json`
+    - `primers oligo-order route FORM_ID`
+      - classifies the stored form through the existing
+        `services delivery-route` logic using `source_target.kind =
+        oligo_order_form`
+    - `primers oligo-order quote FORM_ID [--provider metabion|geneart] [--service-kind KIND] [--output-dir DIR]`
+      - prepares the existing external-service quote handoff bundle from a
+        duplicate-reviewed order form; omitted provider/service kind values use
+        the route recommendation, and `--output-dir` writes the normalized
+        JSON/CSV/Markdown bundle files
     - `primers oligo-order review-dedup FORM_ID [--reviewer NAME] [--duplicate-action keep-separate] [--note TEXT]`
       - records review of exact procurement duplicates without merging or
         removing lines

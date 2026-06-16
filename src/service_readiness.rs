@@ -293,6 +293,17 @@ fn service_source_issue(service_kind: &str, source_target: &Value) -> Option<Str
                 "mutagenesis requests need a source sequence/template plus mutations, variants, or mutation_table in source_target".to_string()
             })
         }
+        "dna_oligo_single_tube" => {
+            let has_oligo_rows = source_target_has_nonempty_array(source_target, &["line_items", "oligos"]);
+            let has_source = value_string_for_key(
+                source_target,
+                &["sequence", "sequence_text", "dna_sequence", "sequence_5_to_3", "seq_id", "construct_id"],
+            )
+            .is_some();
+            (!has_oligo_rows && !has_source).then(|| {
+                "dna_oligo_single_tube requests need source_target.sequence, sequence_text, dna_sequence, sequence_5_to_3, seq_id, construct_id, line_items, or oligos".to_string()
+            })
+        }
         _ => value_string_for_key(
             source_target,
             &["sequence", "sequence_text", "dna_sequence", "seq_id", "construct_id"],
@@ -514,6 +525,17 @@ fn source_target_has_any_key(value: &Value, keys: &[&str]) -> bool {
         .unwrap_or(false)
 }
 
+fn source_target_has_nonempty_array(value: &Value, keys: &[&str]) -> bool {
+    value.as_object().is_some_and(|object| {
+        keys.iter().any(|key| {
+            object
+                .get(*key)
+                .and_then(Value::as_array)
+                .is_some_and(|items| !items.is_empty())
+        })
+    })
+}
+
 fn source_target_contains_construct_context(request: &ExternalServiceDeliveryRouteRequest) -> bool {
     request.vector_spec.is_some()
         || source_target_has_any_key(
@@ -539,6 +561,7 @@ fn source_target_sequences(value: &Value) -> Vec<String> {
         value,
         &[
             "sequence",
+            "sequence_5_to_3",
             "sequence_text",
             "dna_sequence",
             "protein_sequence",
@@ -555,6 +578,7 @@ fn source_target_sequences(value: &Value) -> Vec<String> {
                         item,
                         &[
                             "sequence",
+                            "sequence_5_to_3",
                             "sequence_text",
                             "dna_sequence",
                             "protein_sequence",
@@ -725,7 +749,8 @@ pub fn external_service_delivery_route(
         &request.source_target,
         &["protein_sequence", "amino_acid_sequence", "protein_seq_id"],
     );
-    let has_line_item_oligos = source_target_has_any_key(&request.source_target, &["oligos"]);
+    let has_line_item_oligos =
+        source_target_has_nonempty_array(&request.source_target, &["line_items", "oligos"]);
     let has_fragments = source_target_has_any_key(&request.source_target, &["fragments"]);
     let construct_context = source_target_contains_construct_context(&request);
     let dna_kind_hint = source_kind.contains("dna")
@@ -1153,31 +1178,166 @@ fn delivery_string(request: &ExternalServiceRequest, keys: &[&str], default: &st
         .to_string()
 }
 
-fn collect_source_line_items(request: &ExternalServiceRequest) -> Vec<BTreeMap<String, String>> {
-    let mut rows = vec![];
-    if let Some(items) = request
+fn line_item_value_string(value: &Value) -> Option<String> {
+    match value {
+        Value::Null => None,
+        Value::String(text) => (!text.trim().is_empty()).then(|| text.trim().to_string()),
+        Value::Number(number) => Some(number.to_string()),
+        Value::Bool(value) => Some(value.to_string()),
+        Value::Array(values) => (!values.is_empty())
+            .then(|| serde_json::to_string(values).unwrap_or_else(|_| "[]".to_string())),
+        Value::Object(map) => (!map.is_empty())
+            .then(|| serde_json::to_string(map).unwrap_or_else(|_| "{}".to_string())),
+    }
+}
+
+fn insert_line_item_value(row: &mut BTreeMap<String, String>, key: &str, value: Option<&Value>) {
+    if let Some(text) = value.and_then(line_item_value_string) {
+        row.insert(key.to_string(), text);
+    }
+}
+
+fn source_line_group_memberships(
+    source_target: &Value,
+    group_key: &str,
+) -> BTreeMap<String, Vec<String>> {
+    let mut memberships = BTreeMap::<String, Vec<String>>::new();
+    let Some(groups) = source_target
+        .as_object()
+        .and_then(|object| object.get(group_key))
+        .and_then(Value::as_array)
+    else {
+        return memberships;
+    };
+    for group in groups {
+        let Some(group_id) = string_from_value_keys(group, &["group_id", "id"]) else {
+            continue;
+        };
+        let Some(line_ids) = group.get("line_ids").and_then(Value::as_array) else {
+            continue;
+        };
+        for line_id in line_ids.iter().filter_map(Value::as_str) {
+            memberships
+                .entry(line_id.to_string())
+                .or_default()
+                .push(group_id.to_string());
+        }
+    }
+    for group_ids in memberships.values_mut() {
+        group_ids.sort();
+        group_ids.dedup();
+    }
+    memberships
+}
+
+fn line_item_sequence(item: &Value) -> Option<&str> {
+    string_from_value_keys(
+        item,
+        &[
+            "sequence_5_to_3",
+            "sequence",
+            "sequence_text",
+            "dna_sequence",
+        ],
+    )
+}
+
+fn collect_source_line_item_rows_from_array(
+    request: &ExternalServiceRequest,
+    array_key: &str,
+) -> Vec<BTreeMap<String, String>> {
+    let duplicate_groups =
+        source_line_group_memberships(&request.source_target, "duplicate_groups");
+    let reuse_groups =
+        source_line_group_memberships(&request.source_target, "sequence_reuse_groups");
+    let Some(items) = request
         .source_target
         .as_object()
-        .and_then(|object| object.get("line_items"))
+        .and_then(|object| object.get(array_key))
         .and_then(Value::as_array)
-    {
-        for (idx, item) in items.iter().enumerate() {
-            let mut row = BTreeMap::<String, String>::new();
-            let name = string_from_value_keys(item, &["name", "id", "label"])
-                .map(str::to_string)
-                .unwrap_or_else(|| format!("item_{}", idx + 1));
-            row.insert("name".to_string(), name);
-            if let Some(sequence) =
-                string_from_value_keys(item, &["sequence", "sequence_text", "dna_sequence"])
-            {
-                row.insert("sequence_5_to_3".to_string(), sequence.to_string());
-                row.insert("length_nt".to_string(), sequence.len().to_string());
-            }
-            if let Some(note) = string_from_value_keys(item, &["note", "description"]) {
-                row.insert("note".to_string(), note.to_string());
-            }
-            rows.push(row);
+    else {
+        return vec![];
+    };
+    let mut rows = vec![];
+    for (idx, item) in items.iter().enumerate() {
+        let mut row = BTreeMap::<String, String>::new();
+        let Some(object) = item.as_object() else {
+            continue;
+        };
+        for key in [
+            "line_id",
+            "line_no",
+            "name",
+            "role",
+            "sequence_5_to_3",
+            "length_nt",
+            "modifications",
+            "scale",
+            "purification",
+            "notes",
+            "note",
+            "description",
+            "report_id",
+            "report_schema",
+            "template",
+            "op_id",
+            "run_id",
+            "pair_rank",
+            "assay_rank",
+        ] {
+            insert_line_item_value(&mut row, key, object.get(key));
         }
+        let name = row
+            .get("name")
+            .cloned()
+            .unwrap_or_else(|| format!("item_{}", idx + 1));
+        row.insert("name".to_string(), name);
+        if let Some(sequence) = line_item_sequence(item) {
+            row.entry("sequence_5_to_3".to_string())
+                .or_insert_with(|| sequence.to_string());
+            row.entry("length_nt".to_string())
+                .or_insert_with(|| sequence.len().to_string());
+        }
+        if let Some(provenance) = object.get("provenance").and_then(Value::as_object) {
+            insert_line_item_value(&mut row, "provenance", object.get("provenance"));
+            for key in [
+                "source_kind",
+                "report_id",
+                "report_schema",
+                "template",
+                "op_id",
+                "run_id",
+                "pair_rank",
+                "assay_rank",
+            ] {
+                if !row.contains_key(key) {
+                    insert_line_item_value(&mut row, key, provenance.get(key));
+                }
+            }
+            insert_line_item_value(&mut row, "provenance_role", provenance.get("role"));
+            insert_line_item_value(
+                &mut row,
+                "source_coordinates_0based",
+                provenance.get("source_coordinates_0based"),
+            );
+        }
+        if let Some(line_id) = row.get("line_id").cloned() {
+            if let Some(groups) = duplicate_groups.get(&line_id) {
+                row.insert("duplicate_group_ids".to_string(), groups.join(";"));
+            }
+            if let Some(groups) = reuse_groups.get(&line_id) {
+                row.insert("sequence_reuse_group_ids".to_string(), groups.join(";"));
+            }
+        }
+        rows.push(row);
+    }
+    rows
+}
+
+fn collect_source_line_items(request: &ExternalServiceRequest) -> Vec<BTreeMap<String, String>> {
+    let mut rows = collect_source_line_item_rows_from_array(request, "line_items");
+    if rows.is_empty() {
+        rows = collect_source_line_item_rows_from_array(request, "oligos");
     }
     if rows.is_empty() {
         let mut row = BTreeMap::<String, String>::new();
@@ -1187,7 +1347,12 @@ fn collect_source_line_items(request: &ExternalServiceRequest) -> Vec<BTreeMap<S
         row.insert("name".to_string(), name.to_string());
         if let Some(sequence) = string_from_value_keys(
             &request.source_target,
-            &["sequence", "sequence_text", "dna_sequence"],
+            &[
+                "sequence_5_to_3",
+                "sequence",
+                "sequence_text",
+                "dna_sequence",
+            ],
         ) {
             row.insert("sequence_5_to_3".to_string(), sequence.to_string());
             row.insert("length_nt".to_string(), sequence.len().to_string());
@@ -1250,7 +1415,8 @@ fn normalized_service_line_items(
             );
             row.insert("service_kind".to_string(), request.service_kind.clone());
             row.insert("product_name".to_string(), product_name.clone());
-            row.insert("purification".to_string(), purification.clone());
+            row.entry("purification".to_string())
+                .or_insert_with(|| purification.clone());
             row.insert("delivery_form".to_string(), delivery_form.clone());
             row.insert("qc".to_string(), qc.clone());
             if let Some(yield_range) = request
@@ -1258,7 +1424,12 @@ fn normalized_service_line_items(
                 .as_ref()
                 .and_then(|value| string_from_value_keys(value, &["yield_range", "scale"]))
             {
-                row.insert("yield_range".to_string(), yield_range.to_string());
+                row.entry("scale".to_string())
+                    .or_insert_with(|| yield_range.to_string());
+                row.entry("yield_range".to_string())
+                    .or_insert_with(|| yield_range.to_string());
+            } else if let Some(scale) = row.get("scale").cloned() {
+                row.entry("yield_range".to_string()).or_insert(scale);
             }
             row
         })
@@ -3228,6 +3399,25 @@ mod tests {
             last_error: None,
             owner_pid: Some(12345),
         }
+    }
+
+    #[test]
+    fn service_source_issue_accepts_oligo_order_line_items() {
+        let source_target = json!({
+            "kind": "oligo_order_form",
+            "line_items": [
+                {
+                    "name": "demo_forward",
+                    "sequence_5_to_3": "ACGTACGTACGT",
+                    "scale": "25nmol",
+                    "purification": "desalted"
+                }
+            ]
+        });
+        assert_eq!(
+            service_source_issue("dna_oligo_single_tube", &source_target),
+            None
+        );
     }
 
     fn fake_dependency(

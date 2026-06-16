@@ -5584,6 +5584,30 @@ fn parse_primers_oligo_order_commands() {
         } if report_id == "qpcr_1" && assay_ranks == vec![1] && !include_probe
     ));
 
+    let route =
+        parse_shell_line("primers oligo-order route order_1").expect("parse oligo-order route");
+    assert!(matches!(
+        route,
+        ShellCommand::PrimersOligoOrderRoute { form_id } if form_id == "order_1"
+    ));
+
+    let quote = parse_shell_line(
+        "primers oligo-order quote order_1 --provider metabion --service-kind dna_oligo_single_tube --output-dir /tmp/order_bundle",
+    )
+    .expect("parse oligo-order quote");
+    assert!(matches!(
+        quote,
+        ShellCommand::PrimersOligoOrderQuote {
+            form_id,
+            provider,
+            service_kind,
+            output_dir,
+        } if form_id == "order_1"
+            && provider.as_deref() == Some("metabion")
+            && service_kind.as_deref() == Some("dna_oligo_single_tube")
+            && output_dir.as_deref() == Some("/tmp/order_bundle")
+    ));
+
     let review = parse_shell_line(
         "primers oligo-order review-dedup order_1 --reviewer codex --duplicate-action keep-separate --note checked",
     )
@@ -12206,6 +12230,18 @@ fn execute_primers_oligo_order_generic_create_groups_review_export_and_persists(
         3
     );
 
+    let blocked_quote = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersOligoOrderQuote {
+            form_id: "tp73_order_generic".to_string(),
+            provider: None,
+            service_kind: None,
+            output_dir: None,
+        },
+    )
+    .expect_err("unreviewed duplicate order should block quote handoff");
+    assert!(blocked_quote.contains("review-dedup tp73_order_generic"));
+
     let reviewed = execute_shell_command(
         &mut engine,
         &ShellCommand::PrimersOligoOrderReviewDedup {
@@ -12222,6 +12258,84 @@ fn execute_primers_oligo_order_generic_create_groups_review_export_and_persists(
         Some("reviewed")
     );
     assert_eq!(reviewed.output["line_count"].as_u64(), Some(3));
+
+    let quote_dir = tmp.path().join("oligo_quote_bundle");
+    let quote = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersOligoOrderQuote {
+            form_id: "tp73_order_generic".to_string(),
+            provider: Some("metabion".to_string()),
+            service_kind: Some("dna_oligo_single_tube".to_string()),
+            output_dir: Some(quote_dir.to_string_lossy().to_string()),
+        },
+    )
+    .expect("quote reviewed duplicate oligo order");
+    assert!(!quote.state_changed);
+    assert_eq!(
+        quote.output["schema"].as_str(),
+        Some("gentle.external_service_quote.v1")
+    );
+    assert_eq!(quote.output["quote_status"].as_str(), Some("handoff_ready"));
+    assert!(quote_dir.join("quote_report.json").is_file());
+    assert!(
+        quote_dir
+            .join("03_normalized_line_items_json.json")
+            .is_file()
+    );
+    assert!(quote_dir.join("04_normalized_line_items_csv.csv").is_file());
+    let inline_payloads = quote.output["service_ready_bundle"]["inline_payloads"]
+        .as_array()
+        .expect("inline payloads");
+    let normalized_json_text = inline_payloads
+        .iter()
+        .find(|payload| payload["payload_kind"].as_str() == Some("normalized_line_items_json"))
+        .and_then(|payload| payload["text"].as_str())
+        .expect("normalized line item JSON payload");
+    let normalized_rows: serde_json::Value =
+        serde_json::from_str(normalized_json_text).expect("normalized rows JSON");
+    let normalized_rows = normalized_rows.as_array().expect("normalized row array");
+    assert_eq!(normalized_rows.len(), 3);
+    assert_eq!(normalized_rows[0]["report_id"].as_str(), Some("manual_1"));
+    assert_eq!(
+        normalized_rows[0]["source_kind"].as_str(),
+        Some("generic_json")
+    );
+    assert!(
+        normalized_rows
+            .iter()
+            .filter(|row| row["sequence_5_to_3"].as_str() == Some("ACGTACGTACGT"))
+            .count()
+            >= 2,
+        "reviewed duplicate procurement rows stay separate"
+    );
+    assert!(normalized_rows.iter().any(|row| {
+        row["modifications"]
+            .as_str()
+            .is_some_and(|value| value.contains("5FAM"))
+    }));
+    assert!(normalized_rows.iter().any(|row| {
+        row["purification"]
+            .as_str()
+            .is_some_and(|value| value == "HPLC")
+    }));
+    assert!(normalized_rows.iter().any(|row| {
+        row["duplicate_group_ids"]
+            .as_str()
+            .is_some_and(|value| value.starts_with("dup_"))
+    }));
+    assert!(normalized_rows.iter().any(|row| {
+        row["sequence_reuse_group_ids"]
+            .as_str()
+            .is_some_and(|value| value.starts_with("reuse_"))
+    }));
+    let normalized_csv = inline_payloads
+        .iter()
+        .find(|payload| payload["payload_kind"].as_str() == Some("normalized_line_items_csv"))
+        .and_then(|payload| payload["text"].as_str())
+        .expect("normalized line item CSV payload");
+    assert!(normalized_csv.contains("5FAM"));
+    assert!(normalized_csv.contains("manual_1"));
+    assert!(normalized_csv.contains("duplicate_group_ids"));
 
     let exported = execute_shell_command(
         &mut engine,
@@ -12361,6 +12475,67 @@ fn execute_primers_oligo_order_from_primer_report_preserves_pair_provenance() {
                 .is_some_and(|ranges| !ranges.is_empty())
         );
     }
+
+    let route = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersOligoOrderRoute {
+            form_id: "tp73_primer_order".to_string(),
+        },
+    )
+    .expect("route primer-report oligo order");
+    assert!(!route.state_changed);
+    assert_eq!(
+        route.output["schema"].as_str(),
+        Some("gentle.external_service_delivery_route.v1")
+    );
+    assert_eq!(
+        route.output["recommended_provider"].as_str(),
+        Some("metabion")
+    );
+    assert_eq!(
+        route.output["recommended_service_kind"].as_str(),
+        Some("dna_oligo_single_tube")
+    );
+
+    let quote = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersOligoOrderQuote {
+            form_id: "tp73_primer_order".to_string(),
+            provider: None,
+            service_kind: None,
+            output_dir: None,
+        },
+    )
+    .expect("quote primer-report oligo order using route recommendation");
+    assert!(!quote.state_changed);
+    assert_eq!(
+        quote.output["schema"].as_str(),
+        Some("gentle.external_service_quote.v1")
+    );
+    assert_eq!(quote.output["provider"].as_str(), Some("metabion"));
+    assert_eq!(
+        quote.output["service_kind"].as_str(),
+        Some("dna_oligo_single_tube")
+    );
+    let normalized_payload = quote.output["service_ready_bundle"]["inline_payloads"]
+        .as_array()
+        .expect("inline payloads")
+        .iter()
+        .find(|payload| payload["payload_kind"].as_str() == Some("normalized_line_items_json"))
+        .and_then(|payload| payload["text"].as_str())
+        .expect("normalized line item JSON");
+    let normalized_rows: serde_json::Value =
+        serde_json::from_str(normalized_payload).expect("normalized rows JSON");
+    let rows = normalized_rows.as_array().expect("normalized row array");
+    assert_eq!(rows.len(), 2);
+    assert!(
+        rows.iter()
+            .all(|row| row["report_id"].as_str() == Some("tp73_primer_report_for_order"))
+    );
+    assert!(
+        rows.iter()
+            .all(|row| row["pair_rank"].as_str() == Some("1"))
+    );
 }
 
 #[test]

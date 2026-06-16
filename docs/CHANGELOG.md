@@ -17,6 +17,10 @@ Maintenance rule:
 - Added first-class sequence-window GUI controls for importing explicit APT
   probe-region summaries plus annotation tables into inspectable GENtle helper
   output, reusing the shared shell import/inspect/export/project contracts.
+- Added Phase B oligo order handoff routes: `primers oligo-order route` and
+  `quote` now reuse external-service delivery/quote contracts, block unreviewed
+  duplicate forms before quote handoff, and preserve oligo line-item
+  provenance/modification fields in normalized JSON/CSV bundles.
 
 ## 2026-06-15
 

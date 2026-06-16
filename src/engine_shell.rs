@@ -116,6 +116,11 @@ use crate::{
     },
     tf_motifs, ucsc_rmsk,
 };
+use gentle_protocol::{
+    EXTERNAL_SERVICE_DELIVERY_ROUTE_REQUEST_SCHEMA, EXTERNAL_SERVICE_REQUEST_SCHEMA,
+    ExternalServiceDeliveryRouteReport, ExternalServiceDeliveryRouteRequest,
+    ExternalServiceRequest,
+};
 #[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
 use objc2_app_kit::NSApplication;
 #[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
@@ -2172,6 +2177,15 @@ pub enum ShellCommand {
     PrimersOligoOrderExport {
         form_id: String,
         path: String,
+    },
+    PrimersOligoOrderRoute {
+        form_id: String,
+    },
+    PrimersOligoOrderQuote {
+        form_id: String,
+        provider: Option<String>,
+        service_kind: Option<String>,
+        output_dir: Option<String>,
     },
     PrimersOligoOrderReviewDedup {
         form_id: String,
@@ -9860,6 +9874,21 @@ impl ShellCommand {
             Self::PrimersOligoOrderExport { form_id, path } => {
                 format!("export stored oligo order form '{}' to '{}'", form_id, path)
             }
+            Self::PrimersOligoOrderRoute { form_id } => {
+                format!(
+                    "route stored oligo order form '{}' to an external-service handoff",
+                    form_id
+                )
+            }
+            Self::PrimersOligoOrderQuote {
+                form_id,
+                provider,
+                service_kind,
+                output_dir,
+            } => format!(
+                "prepare oligo order quote handoff for '{}' (provider={:?}, service_kind={:?}, output_dir={:?})",
+                form_id, provider, service_kind, output_dir
+            ),
             Self::PrimersOligoOrderReviewDedup { form_id, .. } => {
                 format!(
                     "mark oligo order duplicate review complete for '{}'",
@@ -12625,6 +12654,126 @@ where
     let loaded = parse_json_payload(raw)?;
     serde_json::from_str::<T>(loaded.trim())
         .map_err(|e| format!("Invalid {context} JSON payload: {e}"))
+}
+
+fn oligo_order_line_json(line: &crate::engine::OligoOrderLineItem) -> Value {
+    json!({
+        "line_id": line.line_id,
+        "line_no": line.line_no,
+        "name": line.name,
+        "role": line.role,
+        "sequence_5_to_3": line.sequence_5_to_3,
+        "sequence": line.sequence_5_to_3,
+        "length_nt": line.length_nt,
+        "modifications": line.modifications,
+        "scale": line.scale,
+        "purification": line.purification,
+        "notes": line.notes,
+        "provenance": line.provenance,
+        "source_kind": line.provenance.source_kind,
+        "report_id": line.provenance.report_id,
+        "report_schema": line.provenance.report_schema,
+        "template": line.provenance.template,
+        "op_id": line.provenance.op_id,
+        "run_id": line.provenance.run_id,
+        "pair_rank": line.provenance.pair_rank,
+        "assay_rank": line.provenance.assay_rank,
+        "source_coordinates_0based": line.provenance.source_coordinates_0based,
+    })
+}
+
+fn oligo_order_delivery_route_request(
+    form: &crate::engine::OligoOrderForm,
+) -> ExternalServiceDeliveryRouteRequest {
+    ExternalServiceDeliveryRouteRequest {
+        schema: EXTERNAL_SERVICE_DELIVERY_ROUTE_REQUEST_SCHEMA.to_string(),
+        source_target: json!({
+            "kind": "oligo_order_form",
+            "form_id": form.form_id,
+            "target_label": form.target_label,
+            "source_note": form.source_note,
+            "duplicate_review": form.duplicate_review,
+            "duplicate_groups": form.duplicate_groups,
+            "sequence_reuse_groups": form.sequence_reuse_groups,
+            "line_items": form
+                .line_items
+                .iter()
+                .map(oligo_order_line_json)
+                .collect::<Vec<_>>(),
+        }),
+        optimization_target: None,
+        vector_spec: None,
+        delivery_options: None,
+        commercial_context_ref: None,
+        return_spec: Default::default(),
+        request_metadata: Some(json!({
+            "source": "primers oligo-order",
+            "form_id": form.form_id,
+            "form_schema": form.schema,
+        })),
+    }
+}
+
+fn oligo_order_delivery_route_report(
+    form: &crate::engine::OligoOrderForm,
+) -> Result<
+    (
+        ExternalServiceDeliveryRouteRequest,
+        ExternalServiceDeliveryRouteReport,
+    ),
+    String,
+> {
+    let route_request = oligo_order_delivery_route_request(form);
+    let route_request_json = serde_json::to_string(&route_request)
+        .map_err(|e| format!("Could not serialize oligo order delivery route request: {e}"))?;
+    let route_report = service_readiness::external_service_delivery_route(&route_request_json)?;
+    Ok((route_request, route_report))
+}
+
+fn oligo_order_review_blocks_quote(form: &crate::engine::OligoOrderForm) -> bool {
+    form.duplicate_review.status == "review_required"
+}
+
+fn selected_oligo_order_service_request(
+    form: &crate::engine::OligoOrderForm,
+    provider: Option<&str>,
+    service_kind: Option<&str>,
+) -> Result<ExternalServiceRequest, String> {
+    let (route_request, route_report) = oligo_order_delivery_route_report(form)?;
+    let provider = provider
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .or(route_report.recommended_provider.clone())
+        .ok_or_else(|| {
+            format!(
+                "No provider was supplied and no delivery-route recommendation is available for oligo order form '{}'",
+                form.form_id
+            )
+        })?;
+    let service_kind = service_kind
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .or(route_report.recommended_service_kind.clone())
+        .ok_or_else(|| {
+            format!(
+                "No service kind was supplied and no delivery-route recommendation is available for oligo order form '{}'",
+                form.form_id
+            )
+        })?;
+    Ok(ExternalServiceRequest {
+        schema: EXTERNAL_SERVICE_REQUEST_SCHEMA.to_string(),
+        provider,
+        service_kind,
+        source_target: route_request.source_target,
+        optimization_target: route_request.optimization_target,
+        vector_spec: route_request.vector_spec,
+        delivery_options: route_request.delivery_options,
+        commercial_context_ref: route_request.commercial_context_ref,
+        return_spec: route_request.return_spec,
+        request_metadata: route_request.request_metadata,
+    })
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -31882,6 +32031,50 @@ fn execute_primers_command(
                 }),
             })
         }
+        ShellCommand::PrimersOligoOrderRoute { form_id } => {
+            let form = engine
+                .get_oligo_order_form(form_id)
+                .map_err(|e| e.to_string())?;
+            let (_, route_report) = oligo_order_delivery_route_report(&form)?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(route_report).map_err(|e| {
+                    format!("Could not serialize oligo order delivery route report: {e}")
+                })?,
+            })
+        }
+        ShellCommand::PrimersOligoOrderQuote {
+            form_id,
+            provider,
+            service_kind,
+            output_dir,
+        } => {
+            let form = engine
+                .get_oligo_order_form(form_id)
+                .map_err(|e| e.to_string())?;
+            if oligo_order_review_blocks_quote(&form) {
+                return Err(format!(
+                    "Oligo order form '{}' has duplicate groups that require review before quote handoff; run primers oligo-order review-dedup {}",
+                    form.form_id, form.form_id
+                ));
+            }
+            let request = selected_oligo_order_service_request(
+                &form,
+                provider.as_deref(),
+                service_kind.as_deref(),
+            )?;
+            let request_json = serde_json::to_string(&request)
+                .map_err(|e| format!("Could not serialize oligo order quote request: {e}"))?;
+            let mut report = service_readiness::external_service_project_quote(&request_json)?;
+            if let Some(output_dir) = output_dir.as_deref() {
+                service_readiness::write_external_service_quote_bundle(&mut report, output_dir)?;
+            }
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(report)
+                    .map_err(|e| format!("Could not serialize oligo order quote report: {e}"))?,
+            })
+        }
         ShellCommand::PrimersOligoOrderReviewDedup {
             form_id,
             reviewer,
@@ -36357,6 +36550,8 @@ fn execute_shell_command_with_options_dispatch(
             | ShellCommand::PrimersOligoOrderList
             | ShellCommand::PrimersOligoOrderShow { .. }
             | ShellCommand::PrimersOligoOrderExport { .. }
+            | ShellCommand::PrimersOligoOrderRoute { .. }
+            | ShellCommand::PrimersOligoOrderQuote { .. }
             | ShellCommand::PrimersOligoOrderReviewDedup { .. }
     ) {
         return execute_primers_command(engine, command, options);
@@ -38028,6 +38223,8 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::PrimersOligoOrderList
         | ShellCommand::PrimersOligoOrderShow { .. }
         | ShellCommand::PrimersOligoOrderExport { .. }
+        | ShellCommand::PrimersOligoOrderRoute { .. }
+        | ShellCommand::PrimersOligoOrderQuote { .. }
         | ShellCommand::PrimersOligoOrderReviewDedup { .. } => {
             execute_primers_command(engine, command, options)?
         }
