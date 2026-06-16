@@ -622,6 +622,64 @@ fn project_probe_region_output_rejects_anchor_coordinate_mismatch() {
 }
 
 #[test]
+fn probe_region_plan_builds_apt_suggested_command_for_library_directory() {
+    let temp = tempdir().expect("tempdir");
+    let library_dir = temp.path().join("apt_library");
+    fs::create_dir(&library_dir).expect("apt library dir");
+    let pgf = library_dir.join("Clariom_D_Human.pgf");
+    let clf = library_dir.join("Clariom_D_Human.clf");
+    let mps = library_dir.join("Clariom_D_Human.mps");
+    fs::write(&pgf, "# synthetic pgf placeholder\n").expect("pgf");
+    fs::write(&clf, "# synthetic clf placeholder\n").expect("clf");
+    fs::write(&mps, "# synthetic mps placeholder\n").expect("mps");
+    let cel_a = temp.path().join("sample_a.CEL");
+    let cel_b = temp.path().join("sample_b.CEL");
+    fs::write(&cel_a, "synthetic CEL placeholder\n").expect("cel a");
+    fs::write(&cel_b, "synthetic CEL placeholder\n").expect("cel b");
+
+    let plan = GentleEngine::default().plan_probe_regions(ProbeRegionRequest {
+        cel_paths: vec![
+            cel_a.to_string_lossy().to_string(),
+            cel_b.to_string_lossy().to_string(),
+        ],
+        genes: vec!["PATZ1".to_string()],
+        platform: Some("Clariom_D_Human".to_string()),
+        annotation_library_path: Some(library_dir.to_string_lossy().to_string()),
+        normalization: "rma".to_string(),
+        output_dir: Some(temp.path().join("apt_out").to_string_lossy().to_string()),
+        dry_run: true,
+        ..Default::default()
+    });
+    let apt = plan
+        .backend_candidates
+        .iter()
+        .find(|candidate| candidate.backend == "affymetrix_power_tools")
+        .expect("APT backend candidate");
+    assert!(
+        !apt.missing
+            .iter()
+            .any(|missing| missing.contains("PGF") || missing.contains("CLF"))
+    );
+    assert!(
+        apt.detail
+            .as_deref()
+            .unwrap_or_default()
+            .contains("Explicit Affymetrix Power Tools preflight")
+    );
+    let command = apt
+        .suggested_command
+        .as_deref()
+        .expect("APT suggested command");
+    assert!(command.contains("apt-probeset-summarize"));
+    assert!(command.contains("-a rma-sketch"));
+    assert!(command.contains(&pgf.to_string_lossy().to_string()));
+    assert!(command.contains(&clf.to_string_lossy().to_string()));
+    assert!(command.contains(&mps.to_string_lossy().to_string()));
+    assert!(command.contains(&cel_a.to_string_lossy().to_string()));
+    assert!(command.contains(&cel_b.to_string_lossy().to_string()));
+}
+
+#[test]
 fn project_microarray_track_uses_vendor_subset_on_tp73_genbank_anchor() {
     let mut engine = GentleEngine::default();
     engine

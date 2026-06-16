@@ -2342,7 +2342,11 @@ Microarray track projection notes:
   backend-candidate readiness, normalized platform hints, planned outputs, and
   local dependency checks. The `r_oligo` backend candidate includes the
   `scripts/probe_regions_oligo.R` helper path and, for explicit RMA/CEL
-  requests, a suggested command, but GENtle still does not run R, APT, package
+  requests, a suggested command. The `affymetrix_power_tools` candidate
+  recognizes user-supplied APT library directories/files containing at least
+  PGF and CLF files, includes an optional MPS/meta-probesets file when present,
+  and reports an explicit `apt-probeset-summarize -a rma-sketch ...` command
+  for direct user execution. GENtle still does not run R, APT, package
   installation, downloads, or CEL summarization implicitly.
 - For `Clariom_D_Human`, the probe-region preflight also reports the canonical
   local Thermo Fisher support ZIP paths in

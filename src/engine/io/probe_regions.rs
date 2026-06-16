@@ -74,6 +74,14 @@ struct ProbeRegionProjectionRow {
     logfc_values: BTreeMap<String, f64>,
 }
 
+#[derive(Default)]
+struct ProbeRegionAptLibraryPlan {
+    pgf_path: Option<String>,
+    clf_path: Option<String>,
+    mps_path: Option<String>,
+    source_detail: Option<String>,
+}
+
 impl GentleEngine {
     /// Build a reusable preflight plan for chromosome-ordered probe inspection.
     pub fn plan_probe_regions(&self, request: ProbeRegionRequest) -> ProbeRegionPlan {
@@ -2852,6 +2860,8 @@ impl GentleEngine {
             .as_ref()
             .is_some_and(|path| path.exists);
         let r_oligo_normalization_supported = normalization == "rma";
+        let apt_normalization_supported = normalization == "rma";
+        let apt_library = Self::probe_region_apt_library_plan(annotation_source);
 
         let mut r_missing = Vec::new();
         if !r_oligo_normalization_supported {
@@ -2878,11 +2888,20 @@ impl GentleEngine {
         }
 
         let mut apt_missing = Vec::new();
+        if !apt_normalization_supported {
+            apt_missing.push(format!("normalization=rma (requested {normalization})"));
+        }
         if !apt_present {
             apt_missing.push("apt-probeset-summarize command".to_string());
         }
         if !annotation_path_usable {
-            apt_missing.push("user-supplied APT/NetAffx annotation-library path".to_string());
+            apt_missing.push("user-supplied APT annotation-library path".to_string());
+        }
+        if apt_library.pgf_path.is_none() {
+            apt_missing.push("APT PGF library file".to_string());
+        }
+        if apt_library.clf_path.is_none() {
+            apt_missing.push("APT CLF library file".to_string());
         }
         if request.cel_paths.is_empty() {
             apt_missing.push("explicit CEL file paths".to_string());
@@ -2924,16 +2943,20 @@ impl GentleEngine {
                 },
                 required_inputs: vec![
                     "apt-probeset-summarize command".to_string(),
-                    "APT/NetAffx annotation-library path".to_string(),
+                    "normalization=rma".to_string(),
+                    "APT PGF library file".to_string(),
+                    "APT CLF library file".to_string(),
+                    "optional APT MPS/meta-probesets file".to_string(),
                     "explicit CEL file paths".to_string(),
                 ],
                 missing: apt_missing,
                 helper_script: None,
-                suggested_command: None,
-                detail: Some(
-                    "Useful when PGF/CLF/MPS or compatible vendor libraries are supplied"
-                        .to_string(),
+                suggested_command: Self::probe_region_apt_suggested_command(
+                    request,
+                    &apt_library,
+                    normalization,
                 ),
+                detail: Some(Self::probe_region_apt_backend_detail(&apt_library)),
             },
             ProbeRegionBackendCandidate {
                 backend: "plan_only".to_string(),
@@ -2947,6 +2970,112 @@ impl GentleEngine {
                 ),
             },
         ]
+    }
+
+    fn probe_region_apt_library_plan(
+        annotation_source: &ProbeRegionAnnotationSourcePlan,
+    ) -> ProbeRegionAptLibraryPlan {
+        let Some(path_status) = annotation_source.path.as_ref() else {
+            return ProbeRegionAptLibraryPlan::default();
+        };
+        if !path_status.exists {
+            return ProbeRegionAptLibraryPlan::default();
+        }
+        let path = Path::new(&path_status.path);
+        let mut plan = ProbeRegionAptLibraryPlan {
+            source_detail: Some(format!("APT library source: {}", path_status.path)),
+            ..Default::default()
+        };
+        if path.is_file() {
+            Self::probe_region_note_apt_library_file(&mut plan, path);
+            return plan;
+        }
+        if path.is_dir()
+            && let Ok(entries) = std::fs::read_dir(path)
+        {
+            let mut candidates = entries
+                .filter_map(Result::ok)
+                .map(|entry| entry.path())
+                .filter(|entry_path| entry_path.is_file())
+                .collect::<Vec<_>>();
+            candidates.sort();
+            for candidate in candidates {
+                Self::probe_region_note_apt_library_file(&mut plan, &candidate);
+            }
+        }
+        plan
+    }
+
+    fn probe_region_note_apt_library_file(plan: &mut ProbeRegionAptLibraryPlan, path: &Path) {
+        let ext = path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        let path_text = path.to_string_lossy().to_string();
+        match ext.as_str() {
+            "pgf" if plan.pgf_path.is_none() => plan.pgf_path = Some(path_text),
+            "clf" if plan.clf_path.is_none() => plan.clf_path = Some(path_text),
+            "mps" if plan.mps_path.is_none() => plan.mps_path = Some(path_text),
+            _ => {}
+        }
+    }
+
+    fn probe_region_apt_backend_detail(library: &ProbeRegionAptLibraryPlan) -> String {
+        let mut parts = vec![
+            "Explicit Affymetrix Power Tools preflight; GENtle reports the command but does not run APT implicitly".to_string(),
+        ];
+        if let Some(detail) = &library.source_detail {
+            parts.push(detail.clone());
+        }
+        if let Some(pgf) = &library.pgf_path {
+            parts.push(format!("PGF={pgf}"));
+        }
+        if let Some(clf) = &library.clf_path {
+            parts.push(format!("CLF={clf}"));
+        }
+        if let Some(mps) = &library.mps_path {
+            parts.push(format!("MPS={mps}"));
+        }
+        parts.join("; ")
+    }
+
+    fn probe_region_apt_suggested_command(
+        request: &ProbeRegionRequest,
+        library: &ProbeRegionAptLibraryPlan,
+        normalization: &str,
+    ) -> Option<String> {
+        if normalization != "rma" || request.cel_paths.is_empty() {
+            return None;
+        }
+        let pgf = library.pgf_path.as_ref()?;
+        let clf = library.clf_path.as_ref()?;
+        let output_dir = request
+            .output_dir
+            .clone()
+            .unwrap_or_else(|| "analysis/probe_regions/apt".to_string());
+        let mut args = vec![
+            "apt-probeset-summarize".to_string(),
+            "-a".to_string(),
+            "rma-sketch".to_string(),
+            "-p".to_string(),
+            pgf.clone(),
+            "-c".to_string(),
+            clf.clone(),
+        ];
+        if let Some(mps) = &library.mps_path {
+            args.push("-m".to_string());
+            args.push(mps.clone());
+        }
+        args.push("-o".to_string());
+        args.push(output_dir);
+        args.extend(request.cel_paths.iter().cloned());
+        Some(
+            args.iter()
+                .map(|arg| Self::probe_region_shell_quote(arg))
+                .collect::<Vec<_>>()
+                .join(" "),
+        )
     }
 
     fn probe_region_oligo_suggested_command(

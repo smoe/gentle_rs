@@ -179,8 +179,9 @@ broad crate surgery that is not tied to the selected release story.
   build, liftover, multi-hit, and ambiguity provenance, then use those mapped
   probe/exon/junction constraints to identify compatible splice isoforms and
   rule out incompatible ones without hiding uncertain evidence.
-- Next array-evidence implementation pass: add an Affymetrix Power Tools path
-  for user-supplied APT/NetAffx library inputs.
+- Next array-evidence implementation pass: consume explicit APT outputs into
+  GENtle's probe-region helper-output table contract, including NetAffx-derived
+  coordinate joins and provenance checks.
 
 ## Phase D: Visualization And Workflow UX
 

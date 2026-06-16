@@ -5229,9 +5229,11 @@ Notes:
   source checks, platform hints such as
   `Clariom_D_Human -> pd.clariom.d.human`, backend-candidate readiness for
   `r_oligo` and Affymetrix Power Tools, an advisory
-  `scripts/probe_regions_oligo.R` command for explicit RMA/CEL requests, and
-  local `Rscript` / APT / R-package dependency status; it does not run CEL
-  summarization itself and never downloads or installs missing files/packages.
+  `scripts/probe_regions_oligo.R` command for explicit RMA/CEL requests, an
+  advisory `apt-probeset-summarize -a rma-sketch` command when user-supplied
+  PGF/CLF and optional MPS files are detected, and local `Rscript` / APT /
+  R-package dependency status; it does not run CEL summarization itself and
+  never downloads or installs missing files/packages.
   For `Clariom_D_Human`, the same preflight reports the expected local Thermo
   Fisher na36 hg38 support ZIPs under
   `annotation_source.vendor_support_files[]`; place them manually in

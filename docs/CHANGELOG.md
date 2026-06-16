@@ -52,6 +52,9 @@ Maintenance rule:
 - Added explicit `coordinate_projections[]` / `projection_maps[]` support for
   probe-region helper-output projection, reusing the existing interval-map
   contract to preserve native and displayed array coordinates.
+- Added explicit Affymetrix Power Tools command planning to
+  `arrays probe-regions` when user-supplied PGF/CLF and optional MPS library
+  files are present.
 
 ## 2026-06-14
 
