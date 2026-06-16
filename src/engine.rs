@@ -379,6 +379,8 @@ pub const MICROARRAY_PROJECTION_REPORT_SCHEMA: &str = "gentle.microarray_project
 pub const PROBE_REGION_PLAN_SCHEMA: &str = "gentle.probe_region_plan.v1";
 pub const PROBE_REGION_OUTPUT_INSPECTION_SCHEMA: &str = "gentle.probe_region_output_inspection.v1";
 pub const PROBE_REGION_OUTPUT_SVG_EXPORT_SCHEMA: &str = "gentle.probe_region_output_svg_export.v1";
+pub const PROBE_REGION_APT_IMPORT_REPORT_SCHEMA: &str =
+    "gentle.probe_region_apt_import_report.v1";
 pub const GENOME_COORDINATE_PROJECTION_REPORT_SCHEMA: &str =
     "gentle.genome_coordinate_projection_report.v1";
 const MICROARRAY_TRACK_GENERATED_TAG: &str = "microarray_track_projection";

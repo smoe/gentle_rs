@@ -2075,6 +2075,7 @@ Shared shell command:
     - `arrays inspect-microarray-track MANIFEST`
     - `arrays project-microarray-track SEQ_ID MANIFEST [--contrasts CSV] [--level probeset] [--min-abs-logfc N] [--max-adj-p N] [--max-features N] [--clear-existing]`
     - `arrays inspect-probe-region-output OUTPUT_DIR`
+    - `arrays import-apt-probe-region-output SUMMARY.tsv ANNOTATION.csv OUTPUT_DIR [--platform NAME] [--normalization NAME] [--coordinate-system ID] [--genome-build ID]`
     - `arrays render-probe-region-output-svg OUTPUT_DIR OUTPUT.svg`
     - `arrays project-probe-region-output SEQ_ID OUTPUT_DIR [--contrasts CSV] [--min-abs-logfc N] [--max-features N] [--clear-existing]`
     - `arrays probe-regions (--cel PATH ... | --dataset ID) (--gene SYMBOL|--genes CSV|--locus LOCUS|--loci CSV|--transcript-cluster-id ID|--probeset-id ID ...) [--metadata PATH] [--platform NAME] [--annotation-library PATH] [--condition-column NAME] [--sample-column NAME] [--block-column NAME] [--paired-by-replicate-suffix] [--normalization rma|quantile-feature|none] [--plot] [--output DIR] [--cache-dir DIR] [--dry-run]`
@@ -3645,6 +3646,14 @@ Tutorial companion:
     bounded preview rows, row counts, feature counts, coordinate/build
     declarations, declared coordinate projection maps, projection-readiness
     blockers, and required-column problems.
+- `arrays import-apt-probe-region-output apt.summary.tsv annotation.csv analysis/probe_regions --platform Clariom_D_Human --normalization rma-sketch --coordinate-system hg38 --genome-build GRCh38`
+  - Converts explicit APT summary output plus an explicit annotation/NetAffx
+    coordinate table into GENtle's helper-output directory contract. The
+    annotation table must provide probeset/region id, chromosome, start, and
+    stop columns, with optional strand, transcript-cluster, probe-count, and
+    gene-symbol columns. GENtle writes `region_intensity_chrom_order.csv`,
+    `normalized_feature_matrix_manifest.json`, and `provenance.json`; it does
+    not run APT.
 - `arrays render-probe-region-output-svg analysis/probe_regions analysis/probe_regions/probe_region_plot.svg`
   - Read-only deterministic SVG export for inspected helper output. The SVG
     plots `mean_log2_*` condition tracks in the upper panel and `log2FC_*`

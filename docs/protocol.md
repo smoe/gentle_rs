@@ -2366,6 +2366,16 @@ Microarray track projection notes:
   `projection_ready`: output can be readable while genome-anchored projection
   remains blocked until the helper declares compatible coordinate-system and
   genome-build metadata.
+- `arrays import-apt-probe-region-output SUMMARY.tsv ANNOTATION.csv OUTPUT_DIR`
+  converts an explicit APT summary table plus an explicit annotation/NetAffx
+  coordinate table into the same helper-output directory contract. This route
+  writes `region_intensity_chrom_order.csv`,
+  `normalized_feature_matrix_manifest.json`, and `provenance.json`, then
+  returns `gentle.probe_region_apt_import_report.v1` with an embedded
+  `gentle.probe_region_output_inspection.v1`. It requires annotation columns
+  for probeset/region id, chromosome, start, and stop, and accepts optional
+  strand, transcript-cluster, probe-count, and gene-symbol columns. It does not
+  run APT or infer coordinates from vendor files by itself.
 - `arrays render-probe-region-output-svg OUTPUT_DIR OUTPUT.svg` consumes the
   same completed helper directory and writes
   `gentle.probe_region_output_svg_export.v1` provenance for a deterministic

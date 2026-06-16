@@ -4077,6 +4077,28 @@ pub struct ProbeRegionOutputSvgExport {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(default)]
+/// Deterministic import report for explicit APT output plus annotation tables.
+pub struct ProbeRegionAptImportReport {
+    pub schema: String,
+    pub apt_summary_path: String,
+    pub annotation_path: String,
+    pub output_dir: String,
+    pub platform: String,
+    pub normalization: String,
+    pub coordinate_system: String,
+    pub genome_build: String,
+    pub summary_row_count: usize,
+    pub annotation_row_count: usize,
+    pub written_row_count: usize,
+    pub missing_annotation_count: usize,
+    pub skipped_invalid_count: usize,
+    pub sample_columns: Vec<String>,
+    pub warnings: Vec<String>,
+    pub inspection: ProbeRegionOutputInspection,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
 /// Describes an explicit coordinate-projection map between two genome builds.
 pub struct GenomeCoordinateProjectionSpec {
     pub source_genome_id: String,

@@ -680,6 +680,68 @@ fn probe_region_plan_builds_apt_suggested_command_for_library_directory() {
 }
 
 #[test]
+fn import_apt_probe_region_output_writes_inspectable_helper_directory() {
+    let temp = tempdir().expect("tempdir");
+    let summary = temp.path().join("apt.summary.tsv");
+    let annotation = temp.path().join("annotation.csv");
+    let output_dir = temp.path().join("probe_regions_from_apt");
+    fs::write(
+        &summary,
+        concat!(
+            "probeset_id\tsample_a.CEL\tsample_b.CEL\n",
+            "PSR2\t7.8\t7.9\n",
+            "PSR1\t8.1\t9.2\n",
+            "MISSING\t1.0\t1.1\n"
+        ),
+    )
+    .expect("APT summary");
+    fs::write(
+        &annotation,
+        concat!(
+            "probeset_id,chromosome,start,stop,strand,transcript_cluster_id,number_of_probes,gene_symbol\n",
+            "PSR1,chr1,1010,1030,+,TC1,4,PATZ1\n",
+            "PSR2,chr1,1060,1080,+,TC1,4,PATZ1\n"
+        ),
+    )
+    .expect("annotation");
+
+    let report = GentleEngine::default()
+        .import_apt_probe_region_output(
+            &summary.to_string_lossy(),
+            &annotation.to_string_lossy(),
+            &output_dir.to_string_lossy(),
+            Some("Clariom_D_Human"),
+            Some("rma-sketch"),
+            Some("hg38"),
+            Some("GRCh38"),
+        )
+        .expect("import explicit APT output");
+    assert_eq!(report.schema, PROBE_REGION_APT_IMPORT_REPORT_SCHEMA);
+    assert_eq!(report.summary_row_count, 3);
+    assert_eq!(report.annotation_row_count, 2);
+    assert_eq!(report.written_row_count, 2);
+    assert_eq!(report.missing_annotation_count, 1);
+    assert_eq!(
+        report.sample_columns,
+        vec!["sample_a.CEL".to_string(), "sample_b.CEL".to_string()]
+    );
+    assert_eq!(report.inspection.row_count, 2);
+    assert!(report.inspection.usable);
+    assert_eq!(
+        report.inspection.backend.as_deref(),
+        Some("affymetrix_power_tools")
+    );
+    assert_eq!(report.inspection.coordinate_system.as_deref(), Some("hg38"));
+
+    let region_table =
+        fs::read_to_string(output_dir.join("region_intensity_chrom_order.csv"))
+            .expect("region table");
+    assert!(region_table.contains("chromosome,start,stop,strand,probeset_or_region_id"));
+    assert!(region_table.contains("chr1,1010,1030,+,PSR1"));
+    assert!(region_table.contains("chr1,1060,1080,+,PSR2"));
+}
+
+#[test]
 fn project_microarray_track_uses_vendor_subset_on_tp73_genbank_anchor() {
     let mut engine = GentleEngine::default();
     engine

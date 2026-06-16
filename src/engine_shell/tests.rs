@@ -6910,6 +6910,31 @@ fn parse_arrays_microarray_track_commands() {
             if output_dir == "analysis/probe_regions"
     ));
 
+    let import_apt_probe_output = parse_shell_line(
+        "arrays import-apt-probe-region-output apt.summary.tsv annotation.csv analysis/probe_regions --platform Clariom_D_Human --normalization rma-sketch --coordinate-system hg38 --genome-build GRCh38",
+    )
+    .expect("parse APT probe output import");
+    match import_apt_probe_output {
+        ShellCommand::ArraysImportAptProbeRegionOutput {
+            summary,
+            annotation,
+            output_dir,
+            platform,
+            normalization,
+            coordinate_system,
+            genome_build,
+        } => {
+            assert_eq!(summary, "apt.summary.tsv");
+            assert_eq!(annotation, "annotation.csv");
+            assert_eq!(output_dir, "analysis/probe_regions");
+            assert_eq!(platform.as_deref(), Some("Clariom_D_Human"));
+            assert_eq!(normalization.as_deref(), Some("rma-sketch"));
+            assert_eq!(coordinate_system.as_deref(), Some("hg38"));
+            assert_eq!(genome_build.as_deref(), Some("GRCh38"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
     let render_probe_output =
         parse_shell_line("arrays render-probe-region-output-svg analysis/probe_regions out.svg")
             .expect("parse render probe output svg");

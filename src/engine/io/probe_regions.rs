@@ -82,6 +82,17 @@ struct ProbeRegionAptLibraryPlan {
     source_detail: Option<String>,
 }
 
+struct ProbeRegionAptAnnotationRow {
+    chromosome: String,
+    start_1based: usize,
+    end_1based: usize,
+    strand: String,
+    feature_id: String,
+    transcript_cluster_id: String,
+    number_of_probes: String,
+    gene_symbol: String,
+}
+
 impl GentleEngine {
     /// Build a reusable preflight plan for chromosome-ordered probe inspection.
     pub fn plan_probe_regions(&self, request: ProbeRegionRequest) -> ProbeRegionPlan {
@@ -343,6 +354,276 @@ impl GentleEngine {
             errors,
             preflight_ok,
         }
+    }
+
+    pub fn import_apt_probe_region_output(
+        &self,
+        apt_summary_path: &str,
+        annotation_path: &str,
+        output_dir: &str,
+        platform: Option<&str>,
+        normalization: Option<&str>,
+        coordinate_system: Option<&str>,
+        genome_build: Option<&str>,
+    ) -> Result<ProbeRegionAptImportReport, EngineError> {
+        let apt_summary_path = apt_summary_path.trim();
+        let annotation_path = annotation_path.trim();
+        let output_dir = output_dir.trim();
+        if apt_summary_path.is_empty() || annotation_path.is_empty() || output_dir.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message:
+                    "APT probe-region import requires SUMMARY.tsv ANNOTATION.csv OUTPUT_DIR"
+                        .to_string(),
+                cause_chain: vec![],
+            });
+        }
+
+        let platform = platform
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("Affymetrix APT")
+            .to_string();
+        let normalization = normalization
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("rma-sketch")
+            .to_string();
+        let coordinate_system = coordinate_system
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("not_declared")
+            .to_string();
+        let genome_build = genome_build
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("not_declared")
+            .to_string();
+
+        let annotation = Self::probe_region_apt_annotation_rows(annotation_path)?;
+        let annotation_row_count = annotation.len();
+        let mut warnings = Vec::new();
+        let mut summary_reader = csv::ReaderBuilder::new()
+            .delimiter(Self::probe_region_metadata_delimiter(apt_summary_path))
+            .trim(csv::Trim::All)
+            .flexible(true)
+            .from_path(apt_summary_path)
+            .map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not open APT summary '{apt_summary_path}': {e}"),
+                cause_chain: vec![],
+            })?;
+        let summary_headers = summary_reader
+            .headers()
+            .map_err(|e| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("Could not read APT summary header '{apt_summary_path}': {e}"),
+                cause_chain: vec![],
+            })?
+            .iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        let feature_idx = Self::probe_region_metadata_column_index(
+            &summary_headers,
+            None,
+            &[
+                "probeset_id",
+                "probeset",
+                "probeset id",
+                "feature_id",
+                "probeset_or_region_id",
+                "id",
+            ],
+        )
+        .unwrap_or(0);
+        let sample_columns = summary_headers
+            .iter()
+            .enumerate()
+            .filter(|(idx, header)| *idx != feature_idx && !header.trim().is_empty())
+            .map(|(_, header)| header.trim().to_string())
+            .collect::<Vec<_>>();
+        if sample_columns.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("APT summary '{apt_summary_path}' has no sample columns"),
+                cause_chain: vec![],
+            });
+        }
+
+        let mut output_rows: Vec<Vec<String>> = Vec::new();
+        let mut summary_row_count = 0usize;
+        let mut missing_annotation_count = 0usize;
+        let mut skipped_invalid_count = 0usize;
+        for record in summary_reader.records() {
+            let record = record.map_err(|e| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("Could not read APT summary row: {e}"),
+                cause_chain: vec![],
+            })?;
+            summary_row_count += 1;
+            let feature_id = record.get(feature_idx).unwrap_or("").trim();
+            if feature_id.is_empty() {
+                skipped_invalid_count += 1;
+                continue;
+            }
+            let Some(annotation_row) = annotation.get(feature_id) else {
+                missing_annotation_count += 1;
+                continue;
+            };
+            let mut row = vec![
+                annotation_row.chromosome.clone(),
+                annotation_row.start_1based.to_string(),
+                annotation_row.end_1based.to_string(),
+                annotation_row.strand.clone(),
+                annotation_row.feature_id.clone(),
+                annotation_row.transcript_cluster_id.clone(),
+                annotation_row.number_of_probes.clone(),
+                annotation_row.gene_symbol.clone(),
+            ];
+            for (idx, _) in summary_headers.iter().enumerate() {
+                if idx == feature_idx {
+                    continue;
+                }
+                row.push(record.get(idx).unwrap_or("").trim().to_string());
+            }
+            output_rows.push(row);
+        }
+        output_rows.sort_by(|a, b| {
+            a[0].cmp(&b[0])
+                .then_with(|| {
+                    a[1].parse::<usize>()
+                        .unwrap_or(usize::MAX)
+                        .cmp(&b[1].parse::<usize>().unwrap_or(usize::MAX))
+                })
+                .then_with(|| a[4].cmp(&b[4]))
+        });
+
+        if missing_annotation_count > 0 {
+            warnings.push(format!(
+                "{} APT summary row(s) lacked matching annotation rows",
+                missing_annotation_count
+            ));
+        }
+        if skipped_invalid_count > 0 {
+            warnings.push(format!(
+                "{} APT summary row(s) were skipped because the probeset/region id was empty",
+                skipped_invalid_count
+            ));
+        }
+
+        std::fs::create_dir_all(output_dir).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not create APT probe-region output dir '{output_dir}': {e}"),
+            cause_chain: vec![],
+        })?;
+        let region_table_path = Path::new(output_dir).join(PROBE_REGION_TABLE_FILE);
+        let mut writer = csv::Writer::from_path(&region_table_path).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not create probe-region table '{}': {e}",
+                region_table_path.to_string_lossy()
+            ),
+            cause_chain: vec![],
+        })?;
+        let mut header = vec![
+            "chromosome".to_string(),
+            "start".to_string(),
+            "stop".to_string(),
+            "strand".to_string(),
+            "probeset_or_region_id".to_string(),
+            "transcript_cluster_id".to_string(),
+            "number_of_probes".to_string(),
+            "gene_symbol".to_string(),
+        ];
+        header.extend(sample_columns.iter().cloned());
+        writer.write_record(&header).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not write probe-region table header: {e}"),
+            cause_chain: vec![],
+        })?;
+        for row in &output_rows {
+            writer.write_record(row).map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not write probe-region row: {e}"),
+                cause_chain: vec![],
+            })?;
+        }
+        writer.flush().map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not flush probe-region table: {e}"),
+            cause_chain: vec![],
+        })?;
+
+        let manifest_path = Path::new(output_dir).join(PROBE_REGION_MATRIX_MANIFEST_FILE);
+        let provenance_path = Path::new(output_dir).join(PROBE_REGION_PROVENANCE_FILE);
+        let manifest = json!({
+            "schema": PROBE_REGION_MATRIX_MANIFEST_SCHEMA,
+            "platform": platform,
+            "platform_package": null,
+            "coordinate_system": coordinate_system,
+            "genome_build": genome_build,
+            "normalization": normalization,
+            "targets": ["probeset"],
+            "artifacts": [
+                PROBE_REGION_TABLE_FILE
+            ]
+        });
+        let provenance = json!({
+            "schema": PROBE_REGION_BACKEND_PROVENANCE_SCHEMA,
+            "backend": "affymetrix_power_tools",
+            "apt_summary_path": apt_summary_path,
+            "annotation_path": annotation_path,
+            "coordinate_system": coordinate_system,
+            "genome_build": genome_build,
+            "normalization": normalization,
+            "artifacts": [
+                PROBE_REGION_TABLE_FILE
+            ]
+        });
+        std::fs::write(
+            &manifest_path,
+            serde_json::to_string_pretty(&manifest).unwrap_or_else(|_| "{}".to_string()),
+        )
+        .map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not write normalized matrix manifest '{}': {e}",
+                manifest_path.to_string_lossy()
+            ),
+            cause_chain: vec![],
+        })?;
+        std::fs::write(
+            &provenance_path,
+            serde_json::to_string_pretty(&provenance).unwrap_or_else(|_| "{}".to_string()),
+        )
+        .map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not write probe-region provenance '{}': {e}",
+                provenance_path.to_string_lossy()
+            ),
+            cause_chain: vec![],
+        })?;
+
+        let inspection = self.inspect_probe_region_output(output_dir)?;
+        Ok(ProbeRegionAptImportReport {
+            schema: PROBE_REGION_APT_IMPORT_REPORT_SCHEMA.to_string(),
+            apt_summary_path: apt_summary_path.to_string(),
+            annotation_path: annotation_path.to_string(),
+            output_dir: output_dir.to_string(),
+            platform,
+            normalization,
+            coordinate_system,
+            genome_build,
+            summary_row_count,
+            annotation_row_count,
+            written_row_count: output_rows.len(),
+            missing_annotation_count,
+            skipped_invalid_count,
+            sample_columns,
+            warnings,
+            inspection,
+        })
     }
 
     /// Inspect outputs written by the explicit R/oligo probe-region helper.
@@ -1026,6 +1307,180 @@ impl GentleEngine {
             return path.to_string_lossy().to_string();
         }
         Path::new(output_dir).join(path).to_string_lossy().to_string()
+    }
+
+    fn probe_region_apt_annotation_rows(
+        annotation_path: &str,
+    ) -> Result<HashMap<String, ProbeRegionAptAnnotationRow>, EngineError> {
+        let mut reader = csv::ReaderBuilder::new()
+            .delimiter(Self::probe_region_metadata_delimiter(annotation_path))
+            .trim(csv::Trim::All)
+            .flexible(true)
+            .from_path(annotation_path)
+            .map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not open APT annotation table '{annotation_path}': {e}"),
+                cause_chain: vec![],
+            })?;
+        let headers = reader
+            .headers()
+            .map_err(|e| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Could not read APT annotation table header '{annotation_path}': {e}"
+                ),
+                cause_chain: vec![],
+            })?
+            .iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        let feature_idx = Self::probe_region_metadata_column_index(
+            &headers,
+            None,
+            &[
+                "probeset_or_region_id",
+                "probeset_id",
+                "probeset",
+                "feature_id",
+                "id",
+            ],
+        )
+        .ok_or_else(|| EngineError {
+            code: ErrorCode::InvalidInput,
+            message: "APT annotation table is missing probeset/feature id column".to_string(),
+            cause_chain: vec![],
+        })?;
+        let chromosome_idx =
+            Self::probe_region_metadata_column_index(&headers, None, &["chromosome", "chrom"])
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: "APT annotation table is missing chromosome column".to_string(),
+                    cause_chain: vec![],
+                })?;
+        let start_idx = Self::probe_region_metadata_column_index(
+            &headers,
+            None,
+            &["start", "start_1based", "genomic_start_1based"],
+        )
+        .ok_or_else(|| EngineError {
+            code: ErrorCode::InvalidInput,
+            message: "APT annotation table is missing start column".to_string(),
+            cause_chain: vec![],
+        })?;
+        let stop_idx = Self::probe_region_metadata_column_index(
+            &headers,
+            None,
+            &["stop", "end", "end_1based", "genomic_end_1based"],
+        )
+        .ok_or_else(|| EngineError {
+            code: ErrorCode::InvalidInput,
+            message: "APT annotation table is missing stop/end column".to_string(),
+            cause_chain: vec![],
+        })?;
+        let strand_idx =
+            Self::probe_region_metadata_column_index(&headers, None, &["strand", "orientation"]);
+        let transcript_idx = Self::probe_region_metadata_column_index(
+            &headers,
+            None,
+            &["transcript_cluster_id", "transcript_cluster"],
+        );
+        let number_of_probes_idx = Self::probe_region_metadata_column_index(
+            &headers,
+            None,
+            &["number_of_probes", "num_probes", "probe_count"],
+        );
+        let gene_idx =
+            Self::probe_region_metadata_column_index(&headers, None, &["gene_symbol", "gene"]);
+
+        let mut rows = HashMap::new();
+        for (line_offset, record) in reader.records().enumerate() {
+            let record = record.map_err(|e| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("Could not read APT annotation row: {e}"),
+                cause_chain: vec![],
+            })?;
+            let line_no = line_offset + 2;
+            let feature_id = record.get(feature_idx).unwrap_or("").trim().to_string();
+            if feature_id.is_empty() {
+                continue;
+            }
+            let start_1based = record
+                .get(start_idx)
+                .unwrap_or("")
+                .trim()
+                .parse::<usize>()
+                .map_err(|e| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Invalid APT annotation start coordinate on line {line_no}: {e}"
+                    ),
+                    cause_chain: vec![],
+                })?;
+            let end_1based = record
+                .get(stop_idx)
+                .unwrap_or("")
+                .trim()
+                .parse::<usize>()
+                .map_err(|e| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Invalid APT annotation stop coordinate on line {line_no}: {e}"
+                    ),
+                    cause_chain: vec![],
+                })?;
+            if start_1based == 0 || end_1based < start_1based {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Invalid APT annotation interval on line {line_no}: start={start_1based}, end={end_1based}"
+                    ),
+                    cause_chain: vec![],
+                });
+            }
+            rows.entry(feature_id.clone())
+                .or_insert_with(|| ProbeRegionAptAnnotationRow {
+                    chromosome: record
+                        .get(chromosome_idx)
+                        .unwrap_or("")
+                        .trim()
+                        .to_string(),
+                    start_1based,
+                    end_1based,
+                    strand: strand_idx
+                        .and_then(|idx| record.get(idx))
+                        .map(str::trim)
+                        .filter(|value| matches!(*value, "+" | "-"))
+                        .unwrap_or("+")
+                        .to_string(),
+                    feature_id,
+                    transcript_cluster_id: transcript_idx
+                        .and_then(|idx| record.get(idx))
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .unwrap_or("")
+                        .to_string(),
+                    number_of_probes: number_of_probes_idx
+                        .and_then(|idx| record.get(idx))
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .unwrap_or("")
+                        .to_string(),
+                    gene_symbol: gene_idx
+                        .and_then(|idx| record.get(idx))
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .unwrap_or("")
+                        .to_string(),
+                });
+        }
+        if rows.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("APT annotation table '{annotation_path}' had no usable rows"),
+                cause_chain: vec![],
+            });
+        }
+        Ok(rows)
     }
 
     fn normalize_probe_region_request(mut request: ProbeRegionRequest) -> ProbeRegionRequest {

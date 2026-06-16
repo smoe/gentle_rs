@@ -179,9 +179,9 @@ broad crate surgery that is not tied to the selected release story.
   build, liftover, multi-hit, and ambiguity provenance, then use those mapped
   probe/exon/junction constraints to identify compatible splice isoforms and
   rule out incompatible ones without hiding uncertain evidence.
-- Next array-evidence implementation pass: consume explicit APT outputs into
-  GENtle's probe-region helper-output table contract, including NetAffx-derived
-  coordinate joins and provenance checks.
+- Next array-evidence implementation pass: extend explicit APT imports with
+  metadata-derived condition summaries/logFC contrasts and optional probe-level
+  PM-coordinate output when annotation tables provide probe coordinates.
 
 ## Phase D: Visualization And Workflow UX
 

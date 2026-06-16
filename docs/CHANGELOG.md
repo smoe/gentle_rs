@@ -55,6 +55,9 @@ Maintenance rule:
 - Added explicit Affymetrix Power Tools command planning to
   `arrays probe-regions` when user-supplied PGF/CLF and optional MPS library
   files are present.
+- Added `arrays import-apt-probe-region-output` to convert explicit APT summary
+  output plus an explicit annotation/NetAffx coordinate table into GENtle's
+  probe-region helper-output directory contract.
 
 ## 2026-06-14
 

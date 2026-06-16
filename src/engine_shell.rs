@@ -1561,6 +1561,15 @@ pub enum ShellCommand {
     ArraysInspectProbeRegionOutput {
         output_dir: String,
     },
+    ArraysImportAptProbeRegionOutput {
+        summary: String,
+        annotation: String,
+        output_dir: String,
+        platform: Option<String>,
+        normalization: Option<String>,
+        coordinate_system: Option<String>,
+        genome_build: Option<String>,
+    },
     ArraysRenderProbeRegionOutputSvg {
         output_dir: String,
         output: String,
@@ -8207,6 +8216,24 @@ impl ShellCommand {
             Self::ArraysInspectProbeRegionOutput { output_dir } => {
                 format!("inspect probe-region helper output '{}'", output_dir)
             }
+            Self::ArraysImportAptProbeRegionOutput {
+                summary,
+                annotation,
+                output_dir,
+                platform,
+                normalization,
+                coordinate_system,
+                genome_build,
+            } => format!(
+                "import APT probe-region output summary='{}' annotation='{}' output_dir='{}' platform={} normalization={} coordinate_system={} genome_build={}",
+                summary,
+                annotation,
+                output_dir,
+                platform.as_deref().unwrap_or("-"),
+                normalization.as_deref().unwrap_or("-"),
+                coordinate_system.as_deref().unwrap_or("-"),
+                genome_build.as_deref().unwrap_or("-")
+            ),
             Self::ArraysRenderProbeRegionOutputSvg { output_dir, output } => {
                 format!(
                     "render probe-region helper output '{}' to SVG '{}'",
@@ -23578,7 +23605,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "arrays" => {
             if tokens.len() < 2 {
                 return Err(
-                    "arrays requires a subcommand: inspect-microarray-track, project-microarray-track, inspect-probe-region-output, render-probe-region-output-svg, project-probe-region-output, or probe-regions"
+                    "arrays requires a subcommand: inspect-microarray-track, project-microarray-track, inspect-probe-region-output, import-apt-probe-region-output, render-probe-region-output-svg, project-probe-region-output, or probe-regions"
                         .to_string(),
                 );
             }
@@ -23717,6 +23744,74 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         output_dir: tokens[2].clone(),
                     })
                 }
+                "import-apt-probe-region-output" | "convert-apt-probe-region-output" => {
+                    if tokens.len() < 5 {
+                        return Err(
+                            "arrays import-apt-probe-region-output requires SUMMARY.tsv ANNOTATION.csv OUTPUT_DIR [--platform NAME] [--normalization NAME] [--coordinate-system ID] [--genome-build ID]"
+                                .to_string(),
+                        );
+                    }
+                    let summary = tokens[2].clone();
+                    let annotation = tokens[3].clone();
+                    let output_dir = tokens[4].clone();
+                    let mut platform = None;
+                    let mut normalization = None;
+                    let mut coordinate_system = None;
+                    let mut genome_build = None;
+                    let mut idx = 5usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--platform" => {
+                                idx += 1;
+                                if idx >= tokens.len() {
+                                    return Err("Missing NAME after --platform".to_string());
+                                }
+                                platform = Some(tokens[idx].clone());
+                                idx += 1;
+                            }
+                            "--normalization" => {
+                                idx += 1;
+                                if idx >= tokens.len() {
+                                    return Err("Missing NAME after --normalization".to_string());
+                                }
+                                normalization = Some(tokens[idx].clone());
+                                idx += 1;
+                            }
+                            "--coordinate-system" | "--coordinate_system" => {
+                                idx += 1;
+                                if idx >= tokens.len() {
+                                    return Err(
+                                        "Missing ID after --coordinate-system".to_string()
+                                    );
+                                }
+                                coordinate_system = Some(tokens[idx].clone());
+                                idx += 1;
+                            }
+                            "--genome-build" | "--genome_build" => {
+                                idx += 1;
+                                if idx >= tokens.len() {
+                                    return Err("Missing ID after --genome-build".to_string());
+                                }
+                                genome_build = Some(tokens[idx].clone());
+                                idx += 1;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for arrays import-apt-probe-region-output"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::ArraysImportAptProbeRegionOutput {
+                        summary,
+                        annotation,
+                        output_dir,
+                        platform,
+                        normalization,
+                        coordinate_system,
+                        genome_build,
+                    })
+                }
                 "render-probe-region-output-svg"
                 | "plot-probe-region-output"
                 | "plot-probe-region-output-svg" => {
@@ -23817,7 +23912,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 }
                 "probe-regions" | "probe-region-plan" => parse_arrays_probe_regions_command(tokens),
                 other => Err(format!(
-                    "Unknown arrays subcommand '{other}' (expected inspect-microarray-track, project-microarray-track, inspect-probe-region-output, render-probe-region-output-svg, project-probe-region-output, or probe-regions)"
+                    "Unknown arrays subcommand '{other}' (expected inspect-microarray-track, project-microarray-track, inspect-probe-region-output, import-apt-probe-region-output, render-probe-region-output-svg, project-probe-region-output, or probe-regions)"
                 )),
             }
         }
@@ -24494,6 +24589,7 @@ fn is_reference_or_track_command(command: &ShellCommand) -> bool {
             | ShellCommand::ArraysInspectMicroarrayTrack { .. }
             | ShellCommand::ArraysProjectMicroarrayTrack { .. }
             | ShellCommand::ArraysInspectProbeRegionOutput { .. }
+            | ShellCommand::ArraysImportAptProbeRegionOutput { .. }
             | ShellCommand::ArraysRenderProbeRegionOutputSvg { .. }
             | ShellCommand::ArraysProjectProbeRegionOutput { .. }
             | ShellCommand::ArraysProbeRegions { .. }
@@ -29094,6 +29190,31 @@ fn execute_reference_and_track_command(
             Ok(ShellRunResult {
                 state_changed: false,
                 output: json!({ "inspection": inspection }),
+            })
+        }
+        ShellCommand::ArraysImportAptProbeRegionOutput {
+            summary,
+            annotation,
+            output_dir,
+            platform,
+            normalization,
+            coordinate_system,
+            genome_build,
+        } => {
+            let import = engine
+                .import_apt_probe_region_output(
+                    summary,
+                    annotation,
+                    output_dir,
+                    platform.as_deref(),
+                    normalization.as_deref(),
+                    coordinate_system.as_deref(),
+                    genome_build.as_deref(),
+                )
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({ "import": import }),
             })
         }
         ShellCommand::ArraysRenderProbeRegionOutputSvg { output_dir, output } => {
@@ -37010,6 +37131,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ArraysInspectMicroarrayTrack { .. }
         | ShellCommand::ArraysProjectMicroarrayTrack { .. }
         | ShellCommand::ArraysInspectProbeRegionOutput { .. }
+        | ShellCommand::ArraysImportAptProbeRegionOutput { .. }
         | ShellCommand::ArraysRenderProbeRegionOutputSvg { .. }
         | ShellCommand::ArraysProjectProbeRegionOutput { .. }
         | ShellCommand::ArraysProbeRegions { .. }
