@@ -4998,6 +4998,145 @@ pub struct PrimerDesignReportSummary {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// Source trace for one oligo-order line item.
+pub struct OligoOrderLineProvenance {
+    pub source_kind: String,
+    pub report_id: String,
+    pub report_schema: String,
+    pub template: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pair_rank: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assay_rank: Option<usize>,
+    pub role: String,
+    #[serde(default)]
+    pub source_coordinates_0based: Vec<SequenceRange0Based>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One preserved procurement row in an oligo order form.
+pub struct OligoOrderLineItem {
+    pub line_id: String,
+    pub line_no: usize,
+    pub name: String,
+    pub role: String,
+    pub sequence_5_to_3: String,
+    pub length_nt: usize,
+    #[serde(default)]
+    pub modifications: Vec<String>,
+    pub scale: String,
+    pub purification: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notes: Option<String>,
+    pub provenance: OligoOrderLineProvenance,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Exact procurement duplicate group. Creation never collapses these rows.
+pub struct OligoOrderDuplicateGroup {
+    pub group_id: String,
+    #[serde(default)]
+    pub line_ids: Vec<String>,
+    pub sequence_5_to_3: String,
+    #[serde(default)]
+    pub modifications: Vec<String>,
+    pub scale: String,
+    pub purification: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Same-sequence reuse group across different procurement settings.
+pub struct OligoOrderSequenceReuseGroup {
+    pub group_id: String,
+    #[serde(default)]
+    pub line_ids: Vec<String>,
+    pub sequence_5_to_3: String,
+    #[serde(default)]
+    pub procurement_tuple_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Explicit duplicate-review status for one order form.
+pub struct OligoOrderDuplicateReview {
+    pub status: String,
+    pub default_action: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reviewer: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reviewed_at_unix_ms: Option<u128>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// First-class, reviewable batch artifact for planned oligo procurement.
+pub struct OligoOrderForm {
+    pub schema: String,
+    pub form_id: String,
+    #[serde(default)]
+    pub target_label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_note: Option<String>,
+    pub created_at_unix_ms: u128,
+    pub updated_at_unix_ms: u128,
+    #[serde(default)]
+    pub line_items: Vec<OligoOrderLineItem>,
+    #[serde(default)]
+    pub duplicate_groups: Vec<OligoOrderDuplicateGroup>,
+    #[serde(default)]
+    pub sequence_reuse_groups: Vec<OligoOrderSequenceReuseGroup>,
+    pub duplicate_review: OligoOrderDuplicateReview,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Compact list row for persisted oligo order forms.
+pub struct OligoOrderFormSummary {
+    pub form_id: String,
+    #[serde(default)]
+    pub target_label: String,
+    pub created_at_unix_ms: u128,
+    pub updated_at_unix_ms: u128,
+    pub line_count: usize,
+    pub duplicate_group_count: usize,
+    pub sequence_reuse_group_count: usize,
+    pub duplicate_review_status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Generic JSON creation payload for a persisted oligo order form.
+pub struct OligoOrderFormCreateRequest {
+    pub schema: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub form_id: Option<String>,
+    #[serde(default)]
+    pub target_label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_note: Option<String>,
+    #[serde(default)]
+    pub line_items: Vec<OligoOrderLineItem>,
+    #[serde(default)]
+    pub scale: String,
+    #[serde(default)]
+    pub purification: String,
+    #[serde(default)]
+    pub modifications: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct RestrictionCloningSingleSiteSuggestion {
     pub enzyme: String,
     pub cut_position_0based: usize,

@@ -14,6 +14,10 @@ Maintenance rule:
 
 ## 2026-06-15
 
+- Added Phase A first-class oligo order forms under `primers oligo-order`,
+  with deterministic line ids, primer/qPCR report provenance, duplicate/reuse
+  grouping, review marking, list/show/export, and persistence inside the
+  existing primer-design report store.
 - Added the command-palette `Evidence Preparation` assistant for the TP73
   evidence-viewer proof path, reusing shared operations for local repeat,
   array, BED, TFBS, and proof-export preparation while keeping CEL/R/vendor

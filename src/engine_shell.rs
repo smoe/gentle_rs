@@ -50,9 +50,9 @@ use crate::{
         GenomeTrackSubscription, GentleEngine, GuideCandidate, GuideOligoExportFormat,
         GuideOligoPlateFormat, GuidePracticalFilterConfig, InlineSequenceTopology,
         LabAssistantInstructionsFormat, LineageMacroInstance, LineageMacroPortBinding,
-        MacroInstanceStatus, Operation, OperationProgress, PLANNING_CLONING_CONSULTATION_SCHEMA,
-        PLANNING_ESTIMATE_SCHEMA, PLANNING_OBJECTIVE_SCHEMA, PLANNING_PROFILE_SCHEMA,
-        PLANNING_SUGGESTION_SCHEMA, PLANNING_SYNC_STATUS_SCHEMA,
+        MacroInstanceStatus, OligoOrderFormCreateRequest, Operation, OperationProgress,
+        PLANNING_CLONING_CONSULTATION_SCHEMA, PLANNING_ESTIMATE_SCHEMA, PLANNING_OBJECTIVE_SCHEMA,
+        PLANNING_PROFILE_SCHEMA, PLANNING_SUGGESTION_SCHEMA, PLANNING_SYNC_STATUS_SCHEMA,
         PRIMER_DESIGN_REPORTS_METADATA_KEY, PROTEIN_EXPRESSION_HANDOFF_SCHEMA,
         PairwiseAlignmentMode, PlanningCloningConsultation, PlanningCloningHelperVectorSummary,
         PlanningCloningHostProfileSummary, PlanningCloningLocalConstraint,
@@ -2132,6 +2132,40 @@ pub enum ShellCommand {
     PrimersExportQpcrReport {
         report_id: String,
         path: String,
+    },
+    PrimersOligoOrderCreate {
+        request_json: String,
+    },
+    PrimersOligoOrderFromPrimerReport {
+        report_id: String,
+        pair_ranks: Vec<usize>,
+        form_id: Option<String>,
+        scale: Option<String>,
+        purification: Option<String>,
+        modifications: Vec<String>,
+    },
+    PrimersOligoOrderFromQpcrReport {
+        report_id: String,
+        assay_ranks: Vec<usize>,
+        include_probe: bool,
+        form_id: Option<String>,
+        scale: Option<String>,
+        purification: Option<String>,
+        modifications: Vec<String>,
+    },
+    PrimersOligoOrderList,
+    PrimersOligoOrderShow {
+        form_id: String,
+    },
+    PrimersOligoOrderExport {
+        form_id: String,
+        path: String,
+    },
+    PrimersOligoOrderReviewDedup {
+        form_id: String,
+        reviewer: Option<String>,
+        duplicate_action: Option<String>,
+        note: Option<String>,
     },
     DotplotCompute {
         seq_id: String,
@@ -9762,6 +9796,40 @@ impl ShellCommand {
                 "export stored qPCR-design report '{}' to '{}'",
                 report_id, path
             ),
+            Self::PrimersOligoOrderCreate { request_json } => format!(
+                "create oligo order form from JSON request payload (len={})",
+                request_json.len()
+            ),
+            Self::PrimersOligoOrderFromPrimerReport {
+                report_id,
+                pair_ranks,
+                ..
+            } => format!(
+                "create oligo order form from primer report '{}' pair rank(s) {:?}",
+                report_id, pair_ranks
+            ),
+            Self::PrimersOligoOrderFromQpcrReport {
+                report_id,
+                assay_ranks,
+                include_probe,
+                ..
+            } => format!(
+                "create oligo order form from qPCR report '{}' assay rank(s) {:?} (include_probe={})",
+                report_id, assay_ranks, include_probe
+            ),
+            Self::PrimersOligoOrderList => "list stored oligo order forms".to_string(),
+            Self::PrimersOligoOrderShow { form_id } => {
+                format!("show stored oligo order form '{}'", form_id)
+            }
+            Self::PrimersOligoOrderExport { form_id, path } => {
+                format!("export stored oligo order form '{}' to '{}'", form_id, path)
+            }
+            Self::PrimersOligoOrderReviewDedup { form_id, .. } => {
+                format!(
+                    "mark oligo order duplicate review complete for '{}'",
+                    form_id
+                )
+            }
             Self::DotplotCompute {
                 seq_id,
                 reference_seq_id,
@@ -31489,6 +31557,198 @@ fn execute_primers_command(
                 }),
             })
         }
+        ShellCommand::PrimersOligoOrderCreate { request_json } => {
+            let json_text = parse_json_payload(request_json)?;
+            let request: OligoOrderFormCreateRequest =
+                serde_json::from_str(&json_text).map_err(|e| {
+                    format!(
+                        "Invalid primers oligo-order create request JSON: {} (expected OligoOrderFormCreateRequest payload)",
+                        e
+                    )
+                })?;
+            let before = engine
+                .state()
+                .metadata
+                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+                .cloned();
+            let form = engine
+                .create_oligo_order_form_from_request(request)
+                .map_err(|e| e.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+                .cloned();
+            Ok(ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "schema": "gentle.oligo_order_form_create_result.v1",
+                    "form_id": form.form_id,
+                    "line_count": form.line_items.len(),
+                    "duplicate_group_count": form.duplicate_groups.len(),
+                    "sequence_reuse_group_count": form.sequence_reuse_groups.len(),
+                    "form": form,
+                }),
+            })
+        }
+        ShellCommand::PrimersOligoOrderFromPrimerReport {
+            report_id,
+            pair_ranks,
+            form_id,
+            scale,
+            purification,
+            modifications,
+        } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+                .cloned();
+            let form = engine
+                .create_oligo_order_form_from_primer_report(
+                    report_id,
+                    pair_ranks,
+                    form_id.as_deref(),
+                    scale.as_deref(),
+                    purification.as_deref(),
+                    modifications,
+                )
+                .map_err(|e| e.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+                .cloned();
+            Ok(ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "schema": "gentle.oligo_order_form_create_result.v1",
+                    "source_kind": "primer_report",
+                    "report_id": report_id,
+                    "form_id": form.form_id,
+                    "line_count": form.line_items.len(),
+                    "duplicate_group_count": form.duplicate_groups.len(),
+                    "sequence_reuse_group_count": form.sequence_reuse_groups.len(),
+                    "form": form,
+                }),
+            })
+        }
+        ShellCommand::PrimersOligoOrderFromQpcrReport {
+            report_id,
+            assay_ranks,
+            include_probe,
+            form_id,
+            scale,
+            purification,
+            modifications,
+        } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+                .cloned();
+            let form = engine
+                .create_oligo_order_form_from_qpcr_report(
+                    report_id,
+                    assay_ranks,
+                    *include_probe,
+                    form_id.as_deref(),
+                    scale.as_deref(),
+                    purification.as_deref(),
+                    modifications,
+                )
+                .map_err(|e| e.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+                .cloned();
+            Ok(ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "schema": "gentle.oligo_order_form_create_result.v1",
+                    "source_kind": "qpcr_report",
+                    "report_id": report_id,
+                    "include_probe": include_probe,
+                    "form_id": form.form_id,
+                    "line_count": form.line_items.len(),
+                    "duplicate_group_count": form.duplicate_groups.len(),
+                    "sequence_reuse_group_count": form.sequence_reuse_groups.len(),
+                    "form": form,
+                }),
+            })
+        }
+        ShellCommand::PrimersOligoOrderList => {
+            let forms = engine.list_oligo_order_forms();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.oligo_order_form_list.v1",
+                    "form_count": forms.len(),
+                    "forms": forms,
+                }),
+            })
+        }
+        ShellCommand::PrimersOligoOrderShow { form_id } => {
+            let form = engine
+                .get_oligo_order_form(form_id)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "form": form,
+                }),
+            })
+        }
+        ShellCommand::PrimersOligoOrderExport { form_id, path } => {
+            let form = engine
+                .export_oligo_order_form(form_id, path)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.oligo_order_form_export.v1",
+                    "form_id": form.form_id,
+                    "path": path,
+                    "line_count": form.line_items.len(),
+                }),
+            })
+        }
+        ShellCommand::PrimersOligoOrderReviewDedup {
+            form_id,
+            reviewer,
+            duplicate_action,
+            note,
+        } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+                .cloned();
+            let form = engine
+                .review_oligo_order_form_duplicates(
+                    form_id,
+                    reviewer.as_deref(),
+                    duplicate_action.as_deref(),
+                    note.as_deref(),
+                )
+                .map_err(|e| e.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+                .cloned();
+            Ok(ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "schema": "gentle.oligo_order_duplicate_review.v1",
+                    "form_id": form.form_id,
+                    "duplicate_review": form.duplicate_review,
+                    "line_count": form.line_items.len(),
+                    "form": form,
+                }),
+            })
+        }
         _ => unreachable!("non-primers command passed to primers helper"),
     }
 }
@@ -35923,6 +36183,13 @@ fn execute_shell_command_with_options_dispatch(
             | ShellCommand::PrimersListQpcrReports
             | ShellCommand::PrimersShowQpcrReport { .. }
             | ShellCommand::PrimersExportQpcrReport { .. }
+            | ShellCommand::PrimersOligoOrderCreate { .. }
+            | ShellCommand::PrimersOligoOrderFromPrimerReport { .. }
+            | ShellCommand::PrimersOligoOrderFromQpcrReport { .. }
+            | ShellCommand::PrimersOligoOrderList
+            | ShellCommand::PrimersOligoOrderShow { .. }
+            | ShellCommand::PrimersOligoOrderExport { .. }
+            | ShellCommand::PrimersOligoOrderReviewDedup { .. }
     ) {
         return execute_primers_command(engine, command, options);
     }
@@ -37585,7 +37852,14 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::PrimersExportReport { .. }
         | ShellCommand::PrimersListQpcrReports
         | ShellCommand::PrimersShowQpcrReport { .. }
-        | ShellCommand::PrimersExportQpcrReport { .. } => {
+        | ShellCommand::PrimersExportQpcrReport { .. }
+        | ShellCommand::PrimersOligoOrderCreate { .. }
+        | ShellCommand::PrimersOligoOrderFromPrimerReport { .. }
+        | ShellCommand::PrimersOligoOrderFromQpcrReport { .. }
+        | ShellCommand::PrimersOligoOrderList
+        | ShellCommand::PrimersOligoOrderShow { .. }
+        | ShellCommand::PrimersOligoOrderExport { .. }
+        | ShellCommand::PrimersOligoOrderReviewDedup { .. } => {
             execute_primers_command(engine, command, options)?
         }
         ShellCommand::SeqTraceImport { .. }

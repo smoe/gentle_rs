@@ -5541,6 +5541,68 @@ fn parse_primers_design_qpcr_with_backend_overrides() {
 }
 
 #[test]
+fn parse_primers_oligo_order_commands() {
+    let create = parse_shell_line("primers oligo-order create @oligos.json")
+        .expect("parse oligo-order create");
+    assert!(matches!(
+        create,
+        ShellCommand::PrimersOligoOrderCreate { request_json } if request_json == "@oligos.json"
+    ));
+
+    let from_primer = parse_shell_line(
+        "primers oligo-order from-primer-report rpt_1 --pair-rank 1,2 --form-id order_1 --scale 25nmol --purification HPLC --modification 5phos --modification internal-biotin",
+    )
+    .expect("parse oligo-order from-primer-report");
+    assert!(matches!(
+        from_primer,
+        ShellCommand::PrimersOligoOrderFromPrimerReport {
+            report_id,
+            pair_ranks,
+            form_id,
+            scale,
+            purification,
+            modifications,
+        } if report_id == "rpt_1"
+            && pair_ranks == vec![1, 2]
+            && form_id.as_deref() == Some("order_1")
+            && scale.as_deref() == Some("25nmol")
+            && purification.as_deref() == Some("HPLC")
+            && modifications == vec!["5phos".to_string(), "internal-biotin".to_string()]
+    ));
+
+    let from_qpcr = parse_shell_line(
+        "primers oligo-order from-qpcr-report qpcr_1 --assay-rank 1 --include-probe false",
+    )
+    .expect("parse oligo-order from-qpcr-report");
+    assert!(matches!(
+        from_qpcr,
+        ShellCommand::PrimersOligoOrderFromQpcrReport {
+            report_id,
+            assay_ranks,
+            include_probe,
+            ..
+        } if report_id == "qpcr_1" && assay_ranks == vec![1] && !include_probe
+    ));
+
+    let review = parse_shell_line(
+        "primers oligo-order review-dedup order_1 --reviewer codex --duplicate-action keep-separate --note checked",
+    )
+    .expect("parse oligo-order review-dedup");
+    assert!(matches!(
+        review,
+        ShellCommand::PrimersOligoOrderReviewDedup {
+            form_id,
+            reviewer,
+            duplicate_action,
+            note,
+        } if form_id == "order_1"
+            && reviewer.as_deref() == Some("codex")
+            && duplicate_action.as_deref() == Some("keep-separate")
+            && note.as_deref() == Some("checked")
+    ));
+}
+
+#[test]
 fn parse_primers_specificity_saved_report_and_explicit_pair() {
     let saved = parse_shell_line(
         "primers specificity primer_report_1 --pair-rank 2 --target-genome GRCh38.p14 --max-target-amplicon-bp 800 --max-hits-per-primer 250 --path specificity.json",
@@ -6974,17 +7036,21 @@ fn execute_arrays_inspect_microarray_track_returns_manifest() {
         Some("gentle.microarray_track_manifest.v1")
     );
     assert_eq!(manifest["coordinate_system"].as_str(), Some("hg38"));
-    assert!(manifest["supported_genome_ids"]
-        .as_array()
-        .expect("supported genome ids")
-        .iter()
-        .any(|value| value.as_str() == Some("GRCh38.p14")));
+    assert!(
+        manifest["supported_genome_ids"]
+            .as_array()
+            .expect("supported genome ids")
+            .iter()
+            .any(|value| value.as_str() == Some("GRCh38.p14"))
+    );
     assert_eq!(manifest["contrasts"][0]["row_count"].as_u64(), Some(3));
     assert_eq!(manifest["contrasts"][1]["row_count"].as_u64(), Some(2));
-    assert!(manifest["warnings"][0]
-        .as_str()
-        .unwrap_or_default()
-        .contains("contrast statistics are synthetic"));
+    assert!(
+        manifest["warnings"][0]
+            .as_str()
+            .unwrap_or_default()
+            .contains("contrast statistics are synthetic")
+    );
 }
 
 #[test]
@@ -11937,6 +12003,336 @@ fn execute_primers_design_list_show_export() {
 }
 
 #[test]
+fn execute_primers_oligo_order_generic_create_groups_review_export_and_persists() {
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let tmp = tempdir().expect("tempdir");
+    let export_path = tmp.path().join("oligo_order.json");
+    let state_path = tmp.path().join("project.gentle.json");
+    let request = serde_json::json!({
+        "form_id": "tp73_order_generic",
+        "target_label": "TP73",
+        "source_note": "synthetic generic order request",
+        "line_items": [
+            {
+                "name": "TP73_dup_a",
+                "role": "forward",
+                "sequence_5_to_3": "acgtacgtacgt",
+                "modifications": [],
+                "scale": "25nmol",
+                "purification": "desalted",
+                "provenance": {
+                    "source_kind": "generic_json",
+                    "report_id": "manual_1",
+                    "report_schema": "manual.test",
+                    "template": "tpl",
+                    "role": "forward"
+                }
+            },
+            {
+                "name": "TP73_dup_b",
+                "role": "reverse",
+                "sequence_5_to_3": "ACGTACGTACGT",
+                "modifications": [],
+                "scale": "25nmol",
+                "purification": "desalted",
+                "provenance": {
+                    "source_kind": "generic_json",
+                    "report_id": "manual_1",
+                    "report_schema": "manual.test",
+                    "template": "tpl",
+                    "role": "reverse"
+                }
+            },
+            {
+                "name": "TP73_reuse_mod",
+                "role": "probe",
+                "sequence_5_to_3": "ACGTACGTACGT",
+                "modifications": ["5FAM"],
+                "scale": "100nmol",
+                "purification": "HPLC",
+                "provenance": {
+                    "source_kind": "generic_json",
+                    "report_id": "manual_1",
+                    "report_schema": "manual.test",
+                    "template": "tpl",
+                    "role": "probe"
+                }
+            }
+        ]
+    })
+    .to_string();
+
+    let created = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersOligoOrderCreate {
+            request_json: request,
+        },
+    )
+    .expect("create generic oligo order");
+    assert!(created.state_changed);
+    assert_eq!(
+        created.output["form"]["schema"].as_str(),
+        Some("gentle.oligo_order_form.v1")
+    );
+    assert_eq!(created.output["line_count"].as_u64(), Some(3));
+    assert_eq!(created.output["duplicate_group_count"].as_u64(), Some(1));
+    assert_eq!(
+        created.output["sequence_reuse_group_count"].as_u64(),
+        Some(1)
+    );
+    assert_eq!(
+        created.output["form"]["duplicate_review"]["status"].as_str(),
+        Some("review_required")
+    );
+    assert_ne!(
+        created.output["form"]["line_items"][0]["line_id"],
+        created.output["form"]["line_items"][1]["line_id"],
+        "exact duplicate procurement lines stay separate"
+    );
+
+    let reuse_only_request = serde_json::json!({
+        "form_id": "tp73_order_reuse_only",
+        "target_label": "TP73",
+        "line_items": [
+            {
+                "name": "TP73_reuse_plain",
+                "role": "forward",
+                "sequence_5_to_3": "TTGGAATTCCGG",
+                "modifications": [],
+                "scale": "25nmol",
+                "purification": "desalted",
+                "provenance": {
+                    "source_kind": "generic_json",
+                    "report_id": "manual_2",
+                    "report_schema": "manual.test",
+                    "template": "tpl",
+                    "role": "forward"
+                }
+            },
+            {
+                "name": "TP73_reuse_hplc",
+                "role": "probe",
+                "sequence_5_to_3": "TTGGAATTCCGG",
+                "modifications": ["5FAM"],
+                "scale": "100nmol",
+                "purification": "HPLC",
+                "provenance": {
+                    "source_kind": "generic_json",
+                    "report_id": "manual_2",
+                    "report_schema": "manual.test",
+                    "template": "tpl",
+                    "role": "probe"
+                }
+            }
+        ]
+    })
+    .to_string();
+    let reuse_only = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersOligoOrderCreate {
+            request_json: reuse_only_request,
+        },
+    )
+    .expect("create reuse-only oligo order");
+    assert!(reuse_only.state_changed);
+    assert_eq!(reuse_only.output["duplicate_group_count"].as_u64(), Some(0));
+    assert_eq!(
+        reuse_only.output["sequence_reuse_group_count"].as_u64(),
+        Some(1)
+    );
+    assert_eq!(
+        reuse_only.output["form"]["duplicate_review"]["status"].as_str(),
+        Some("not_required")
+    );
+
+    let listed = execute_shell_command(&mut engine, &ShellCommand::PrimersOligoOrderList)
+        .expect("list oligo orders");
+    assert!(!listed.state_changed);
+    assert_eq!(
+        listed.output["schema"].as_str(),
+        Some("gentle.oligo_order_form_list.v1")
+    );
+    assert_eq!(listed.output["form_count"].as_u64(), Some(2));
+    let listed_form_ids = listed.output["forms"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|form| form["form_id"].as_str().unwrap_or_default())
+        .collect::<Vec<_>>();
+    assert!(listed_form_ids.contains(&"tp73_order_generic"));
+    assert!(listed_form_ids.contains(&"tp73_order_reuse_only"));
+
+    let shown = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersOligoOrderShow {
+            form_id: "tp73_order_generic".to_string(),
+        },
+    )
+    .expect("show oligo order");
+    assert!(!shown.state_changed);
+    assert_eq!(
+        shown.output["form"]["line_items"].as_array().unwrap().len(),
+        3
+    );
+
+    let reviewed = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersOligoOrderReviewDedup {
+            form_id: "tp73_order_generic".to_string(),
+            reviewer: Some("codex".to_string()),
+            duplicate_action: Some("keep-separate".to_string()),
+            note: Some("visual review complete".to_string()),
+        },
+    )
+    .expect("review duplicates");
+    assert!(reviewed.state_changed);
+    assert_eq!(
+        reviewed.output["duplicate_review"]["status"].as_str(),
+        Some("reviewed")
+    );
+    assert_eq!(reviewed.output["line_count"].as_u64(), Some(3));
+
+    let exported = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersOligoOrderExport {
+            form_id: "tp73_order_generic".to_string(),
+            path: export_path.to_string_lossy().to_string(),
+        },
+    )
+    .expect("export oligo order");
+    assert!(!exported.state_changed);
+    assert_eq!(
+        exported.output["schema"].as_str(),
+        Some("gentle.oligo_order_form_export.v1")
+    );
+    let export_text = fs::read_to_string(&export_path).expect("read exported order");
+    assert!(export_text.contains("gentle.oligo_order_form.v1"));
+
+    engine
+        .state()
+        .save_to_path(&state_path.to_string_lossy())
+        .expect("save project");
+    let loaded_state =
+        ProjectState::load_from_path(&state_path.to_string_lossy()).expect("load project");
+    let mut loaded_engine = GentleEngine::from_state(loaded_state);
+    let loaded = execute_shell_command(
+        &mut loaded_engine,
+        &ShellCommand::PrimersOligoOrderShow {
+            form_id: "tp73_order_generic".to_string(),
+        },
+    )
+    .expect("show persisted oligo order");
+    assert_eq!(
+        loaded.output["form"]["duplicate_review"]["status"].as_str(),
+        Some("reviewed")
+    );
+    assert_eq!(
+        loaded.output["form"]["line_items"]
+            .as_array()
+            .unwrap()
+            .len(),
+        3
+    );
+}
+
+#[test]
+fn execute_primers_oligo_order_from_primer_report_preserves_pair_provenance() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "tpl".to_string(),
+        DNAsequence::from_sequence(
+            "ACGTTGCATGTCAGTACGATCGTACGTAGCTAGTCGATCGTACGATCGTAGCTAGCATCGATGCTAGCTAGTACGTAGCATCGATCGTAGCTAGCATGCTAGCTAGTCGATCGATCGTACGATCG",
+        )
+        .expect("sequence"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let request = serde_json::to_string(&Operation::DesignPrimerPairs {
+        template: "tpl".to_string(),
+        roi_start_0based: 30,
+        roi_end_0based: 70,
+        forward: crate::engine::PrimerDesignSideConstraint {
+            min_length: 20,
+            max_length: 20,
+            location_0based: Some(5),
+            start_0based: None,
+            end_0based: None,
+            min_tm_c: 40.0,
+            max_tm_c: 90.0,
+            min_gc_fraction: 0.0,
+            max_gc_fraction: 1.0,
+            max_anneal_hits: 10,
+            ..Default::default()
+        },
+        reverse: crate::engine::PrimerDesignSideConstraint {
+            min_length: 20,
+            max_length: 20,
+            location_0based: Some(90),
+            start_0based: None,
+            end_0based: None,
+            min_tm_c: 40.0,
+            max_tm_c: 90.0,
+            min_gc_fraction: 0.0,
+            max_gc_fraction: 1.0,
+            max_anneal_hits: 10,
+            ..Default::default()
+        },
+        min_amplicon_bp: 40,
+        max_amplicon_bp: 150,
+        pair_constraints: crate::engine::PrimerDesignPairConstraint::default(),
+        max_tm_delta_c: Some(100.0),
+        max_pairs: Some(10),
+        report_id: Some("tp73_primer_report_for_order".to_string()),
+    })
+    .expect("serialize primer design request");
+    execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersDesign {
+            request_json: request,
+            backend: Some(PrimerDesignBackend::Internal),
+            primer3_executable: None,
+        },
+    )
+    .expect("design primer report");
+
+    let created = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersOligoOrderFromPrimerReport {
+            report_id: "tp73_primer_report_for_order".to_string(),
+            pair_ranks: vec![1],
+            form_id: Some("tp73_primer_order".to_string()),
+            scale: Some("25nmol".to_string()),
+            purification: Some("desalted".to_string()),
+            modifications: vec![],
+        },
+    )
+    .expect("create primer-report order");
+    assert!(created.state_changed);
+    assert_eq!(created.output["line_count"].as_u64(), Some(2));
+    let lines = created.output["form"]["line_items"].as_array().unwrap();
+    let roles = lines
+        .iter()
+        .map(|line| line["role"].as_str().unwrap_or_default())
+        .collect::<Vec<_>>();
+    assert_eq!(roles, vec!["forward", "reverse"]);
+    for line in lines {
+        assert_eq!(
+            line["provenance"]["source_kind"].as_str(),
+            Some("primer_report")
+        );
+        assert_eq!(
+            line["provenance"]["report_id"].as_str(),
+            Some("tp73_primer_report_for_order")
+        );
+        assert_eq!(line["provenance"]["pair_rank"].as_u64(), Some(1));
+        assert!(
+            line["provenance"]["source_coordinates_0based"]
+                .as_array()
+                .is_some_and(|ranges| !ranges.is_empty())
+        );
+    }
+}
+
+#[test]
 fn execute_primers_prepare_restriction_cloning_returns_saved_report() {
     let mut state = ProjectState::default();
     state.sequences.insert(
@@ -13782,6 +14178,114 @@ fn execute_primers_design_qpcr_list_show_export() {
     );
     let text = fs::read_to_string(&export_path).expect("read export");
     assert!(text.contains("gentle.qpcr_design_report.v1"));
+}
+
+#[test]
+fn execute_primers_oligo_order_from_qpcr_report_includes_probe_by_default() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "tpl".to_string(),
+        DNAsequence::from_sequence(
+            "GGGGGGGGGGGGGGGGGGGGCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCAAAAAAAAAAAAAAAAAAAATTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
+        )
+        .expect("sequence"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let request = serde_json::to_string(&Operation::DesignQpcrAssays {
+        template: "tpl".to_string(),
+        roi_start_0based: 30,
+        roi_end_0based: 70,
+        forward: crate::engine::PrimerDesignSideConstraint {
+            min_length: 20,
+            max_length: 20,
+            location_0based: Some(5),
+            start_0based: None,
+            end_0based: None,
+            min_tm_c: 40.0,
+            max_tm_c: 90.0,
+            min_gc_fraction: 0.0,
+            max_gc_fraction: 1.0,
+            max_anneal_hits: 100,
+            ..Default::default()
+        },
+        reverse: crate::engine::PrimerDesignSideConstraint {
+            min_length: 20,
+            max_length: 20,
+            location_0based: Some(60),
+            start_0based: None,
+            end_0based: None,
+            min_tm_c: 40.0,
+            max_tm_c: 90.0,
+            min_gc_fraction: 0.0,
+            max_gc_fraction: 1.0,
+            max_anneal_hits: 100,
+            ..Default::default()
+        },
+        probe: crate::engine::PrimerDesignSideConstraint {
+            min_length: 20,
+            max_length: 20,
+            location_0based: Some(35),
+            start_0based: None,
+            end_0based: None,
+            min_tm_c: 40.0,
+            max_tm_c: 90.0,
+            min_gc_fraction: 0.0,
+            max_gc_fraction: 1.0,
+            max_anneal_hits: 100,
+            ..Default::default()
+        },
+        min_amplicon_bp: 40,
+        max_amplicon_bp: 130,
+        pair_constraints: crate::engine::PrimerDesignPairConstraint::default(),
+        max_tm_delta_c: Some(50.0),
+        max_probe_tm_delta_c: Some(50.0),
+        max_assays: Some(10),
+        transcript_targeting: None,
+        report_id: Some("tp73_qpcr_report_for_order".to_string()),
+    })
+    .expect("serialize qPCR design request");
+    execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersDesignQpcr {
+            request_json: request,
+            backend: Some(PrimerDesignBackend::Internal),
+            primer3_executable: None,
+        },
+    )
+    .expect("design qPCR report");
+
+    let created = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersOligoOrderFromQpcrReport {
+            report_id: "tp73_qpcr_report_for_order".to_string(),
+            assay_ranks: vec![1],
+            include_probe: true,
+            form_id: Some("tp73_qpcr_order".to_string()),
+            scale: None,
+            purification: None,
+            modifications: vec![],
+        },
+    )
+    .expect("create qPCR order");
+    assert!(created.state_changed);
+    assert_eq!(created.output["line_count"].as_u64(), Some(3));
+    let lines = created.output["form"]["line_items"].as_array().unwrap();
+    let roles = lines
+        .iter()
+        .map(|line| line["role"].as_str().unwrap_or_default())
+        .collect::<Vec<_>>();
+    assert_eq!(roles, vec!["forward", "reverse", "probe"]);
+    for line in lines {
+        assert_eq!(
+            line["provenance"]["source_kind"].as_str(),
+            Some("qpcr_report")
+        );
+        assert_eq!(
+            line["provenance"]["report_id"].as_str(),
+            Some("tp73_qpcr_report_for_order")
+        );
+        assert_eq!(line["provenance"]["assay_rank"].as_u64(), Some(1));
+    }
 }
 
 #[test]

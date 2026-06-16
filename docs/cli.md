@@ -2216,6 +2216,21 @@ Shared shell command:
       - persisted qPCR report output now includes `best_assay_summary` plus
         machine-readable `best_assay_probe_placement`
     - `primers export-qpcr-report REPORT_ID OUTPUT.json`
+    - `primers oligo-order create REQUEST_JSON_OR_@FILE`
+      - creates and persists a first-class `gentle.oligo_order_form.v1` from
+        supplied line items; duplicate line items are kept and reported
+    - `primers oligo-order from-primer-report REPORT_ID --pair-rank N[,N...] [--form-id ID] [--scale TEXT] [--purification TEXT] [--modification TEXT ...]`
+      - expands each selected primer pair into forward/reverse order lines with
+        report-rank provenance
+    - `primers oligo-order from-qpcr-report REPORT_ID --assay-rank N[,N...] [--include-probe true|false] [--form-id ID] [--scale TEXT] [--purification TEXT] [--modification TEXT ...]`
+      - expands each selected qPCR assay into forward/reverse/probe order lines
+        by default
+    - `primers oligo-order list`
+    - `primers oligo-order show FORM_ID`
+    - `primers oligo-order export FORM_ID OUTPUT.json`
+    - `primers oligo-order review-dedup FORM_ID [--reviewer NAME] [--duplicate-action keep-separate] [--note TEXT]`
+      - records review of exact procurement duplicates without merging or
+        removing lines
     - `dotplot compute SEQ_ID [--reference-seq REF_SEQ_ID] [--start N] [--end N] [--ref-start N] [--ref-end N] [--mode self_forward|self_reverse_complement|pair_forward|pair_reverse_complement] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]`
     - `dotplot overlay-compute OWNER_SEQ_ID [--reference-seq REF_SEQ_ID] --query-spec JSON_OR_@FILE [--query-spec JSON_OR_@FILE ...] [--ref-start N] [--ref-end N] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]`
     - `dotplot list [SEQ_ID]`

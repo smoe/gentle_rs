@@ -72,6 +72,7 @@ use rayon::join;
 use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sha1::{Digest, Sha1};
 use std::{
     cell::Cell,
     cmp::Ordering,
@@ -315,6 +316,7 @@ pub const PRIMER_DESIGN_REPORTS_METADATA_KEY: &str = "primer_design_reports";
 const PRIMER_DESIGN_REPORTS_SCHEMA: &str = "gentle.primer_design_reports.v1";
 const PRIMER_DESIGN_REPORT_SCHEMA: &str = "gentle.primer_design_report.v1";
 const QPCR_DESIGN_REPORT_SCHEMA: &str = "gentle.qpcr_design_report.v1";
+const OLIGO_ORDER_FORM_SCHEMA: &str = "gentle.oligo_order_form.v1";
 const CDNA_ASSAY_TEST_REPORT_SCHEMA: &str = "gentle.cdna_assay_test_report.v1";
 const CDNA_ASSAY_TRANSCRIPT_MAP_SCHEMA: &str = "gentle.cdna_assay_transcript_map.v1";
 const CDNA_ASSAY_PRODUCT_MATERIALIZATION_SCHEMA: &str =
@@ -2187,6 +2189,7 @@ struct PrimerDesignStore {
     reports: HashMap<String, PrimerDesignReport>,
     qpcr_reports: HashMap<String, QpcrDesignReport>,
     restriction_cloning_handoffs: HashMap<String, RestrictionCloningPcrHandoffReport>,
+    oligo_order_forms: HashMap<String, OligoOrderForm>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -10201,6 +10204,7 @@ impl GentleEngine {
         if store.reports.is_empty()
             && store.qpcr_reports.is_empty()
             && store.restriction_cloning_handoffs.is_empty()
+            && store.oligo_order_forms.is_empty()
         {
             self.state
                 .metadata
@@ -10879,6 +10883,626 @@ impl GentleEngine {
             cause_chain: vec![],
         })?;
         Ok(report)
+    }
+
+    fn normalize_oligo_order_form_id(raw: &str) -> Result<String, EngineError> {
+        Self::normalize_primer_design_report_id(raw)
+    }
+
+    fn default_oligo_scale(raw: Option<&str>) -> String {
+        raw.map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("25nmol")
+            .to_string()
+    }
+
+    fn default_oligo_purification(raw: Option<&str>) -> String {
+        raw.map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("desalted")
+            .to_string()
+    }
+
+    fn normalize_oligo_sequence(raw: &str) -> String {
+        raw.chars()
+            .filter(|ch| !ch.is_whitespace())
+            .map(|ch| {
+                let up = ch.to_ascii_uppercase();
+                if up == 'U' { 'T' } else { up }
+            })
+            .collect()
+    }
+
+    fn normalize_oligo_modifications(values: &[String]) -> Vec<String> {
+        values
+            .iter()
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string)
+            .collect()
+    }
+
+    fn oligo_procurement_key(line: &OligoOrderLineItem) -> String {
+        format!(
+            "{}\u{1f}{}\u{1f}{}\u{1f}{}",
+            Self::normalize_oligo_sequence(&line.sequence_5_to_3),
+            line.modifications.join("\u{1e}"),
+            line.scale.trim(),
+            line.purification.trim()
+        )
+    }
+
+    fn oligo_sequence_reuse_key(line: &OligoOrderLineItem) -> String {
+        Self::normalize_oligo_sequence(&line.sequence_5_to_3)
+    }
+
+    fn short_sha1_id(prefix: &str, raw: &str) -> String {
+        let digest = Sha1::digest(raw.as_bytes());
+        format!("{prefix}_{:x}", digest)[..(prefix.len() + 1 + 16)].to_string()
+    }
+
+    fn deterministic_oligo_line_id(form_id: &str, line: &OligoOrderLineItem) -> String {
+        let provenance = &line.provenance;
+        let rank = provenance
+            .pair_rank
+            .map(|rank| format!("pair:{rank}"))
+            .or_else(|| provenance.assay_rank.map(|rank| format!("assay:{rank}")))
+            .unwrap_or_else(|| "rank:-".to_string());
+        let raw = format!(
+            "{}\n{}\n{}\n{}\n{}\n{}",
+            form_id,
+            provenance.source_kind.trim(),
+            provenance.report_id.trim(),
+            rank,
+            provenance.role.trim(),
+            Self::oligo_procurement_key(line)
+        );
+        Self::short_sha1_id("oli", &raw)
+    }
+
+    fn deterministic_oligo_group_id(prefix: &str, form_id: &str, key: &str) -> String {
+        Self::short_sha1_id(prefix, &format!("{form_id}\n{key}"))
+    }
+
+    fn finalize_oligo_order_form(
+        &self,
+        mut form: OligoOrderForm,
+    ) -> Result<OligoOrderForm, EngineError> {
+        let form_id = Self::normalize_oligo_order_form_id(&form.form_id)?;
+        form.form_id = form_id.clone();
+        form.schema = OLIGO_ORDER_FORM_SCHEMA.to_string();
+        if form.created_at_unix_ms == 0 {
+            form.created_at_unix_ms = Self::now_unix_ms();
+        }
+        form.updated_at_unix_ms = Self::now_unix_ms();
+
+        let mut seen_line_ids = HashMap::<String, usize>::new();
+        for (idx, line) in form.line_items.iter_mut().enumerate() {
+            line.line_no = idx + 1;
+            line.sequence_5_to_3 = Self::normalize_oligo_sequence(&line.sequence_5_to_3);
+            if line.sequence_5_to_3.is_empty() {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!("Oligo order line {} has an empty sequence", idx + 1),
+                    cause_chain: vec![],
+                });
+            }
+            line.length_nt = line.sequence_5_to_3.len();
+            line.modifications = Self::normalize_oligo_modifications(&line.modifications);
+            if line.scale.trim().is_empty() {
+                line.scale = Self::default_oligo_scale(None);
+            }
+            if line.purification.trim().is_empty() {
+                line.purification = Self::default_oligo_purification(None);
+            }
+            if line.role.trim().is_empty() {
+                line.role = "oligo".to_string();
+            }
+            if line.provenance.role.trim().is_empty() {
+                line.provenance.role = line.role.clone();
+            }
+            if line.provenance.source_kind.trim().is_empty() {
+                line.provenance.source_kind = "generic_json".to_string();
+            }
+            if line.name.trim().is_empty() {
+                line.name = format!("{}_{}", form_id, line.role);
+            }
+            let base_id = Self::deterministic_oligo_line_id(&form_id, line);
+            let count = seen_line_ids.entry(base_id.clone()).or_insert(0);
+            *count += 1;
+            line.line_id = if *count == 1 {
+                base_id
+            } else {
+                format!("{base_id}_{}", *count)
+            };
+        }
+
+        let mut duplicate_by_key = HashMap::<String, Vec<String>>::new();
+        for line in &form.line_items {
+            duplicate_by_key
+                .entry(Self::oligo_procurement_key(line))
+                .or_default()
+                .push(line.line_id.clone());
+        }
+        let mut duplicate_groups = duplicate_by_key
+            .into_iter()
+            .filter_map(|(key, mut line_ids)| {
+                if line_ids.len() < 2 {
+                    return None;
+                }
+                line_ids.sort();
+                let line = form
+                    .line_items
+                    .iter()
+                    .find(|candidate| candidate.line_id == line_ids[0])?;
+                Some(OligoOrderDuplicateGroup {
+                    group_id: Self::deterministic_oligo_group_id("dup", &form_id, &key),
+                    line_ids,
+                    sequence_5_to_3: line.sequence_5_to_3.clone(),
+                    modifications: line.modifications.clone(),
+                    scale: line.scale.clone(),
+                    purification: line.purification.clone(),
+                })
+            })
+            .collect::<Vec<_>>();
+        duplicate_groups.sort_by(|left, right| left.group_id.cmp(&right.group_id));
+        form.duplicate_groups = duplicate_groups;
+
+        let mut reuse_by_sequence = HashMap::<String, Vec<&OligoOrderLineItem>>::new();
+        for line in &form.line_items {
+            reuse_by_sequence
+                .entry(Self::oligo_sequence_reuse_key(line))
+                .or_default()
+                .push(line);
+        }
+        let mut sequence_reuse_groups = reuse_by_sequence
+            .into_iter()
+            .filter_map(|(sequence, lines)| {
+                let procurement_tuple_count = lines
+                    .iter()
+                    .map(|line| Self::oligo_procurement_key(line))
+                    .collect::<BTreeSet<_>>()
+                    .len();
+                if procurement_tuple_count < 2 {
+                    return None;
+                }
+                let mut line_ids = lines
+                    .iter()
+                    .map(|line| line.line_id.clone())
+                    .collect::<Vec<_>>();
+                line_ids.sort();
+                Some(OligoOrderSequenceReuseGroup {
+                    group_id: Self::deterministic_oligo_group_id("reuse", &form_id, &sequence),
+                    line_ids,
+                    sequence_5_to_3: sequence,
+                    procurement_tuple_count,
+                })
+            })
+            .collect::<Vec<_>>();
+        sequence_reuse_groups.sort_by(|left, right| left.group_id.cmp(&right.group_id));
+        form.sequence_reuse_groups = sequence_reuse_groups;
+
+        if form.duplicate_review.status.trim().is_empty()
+            || form.duplicate_review.status == "not_required"
+            || form.duplicate_review.status == "review_required"
+        {
+            form.duplicate_review.status = if form.duplicate_groups.is_empty() {
+                "not_required".to_string()
+            } else {
+                "review_required".to_string()
+            };
+        }
+        if form.duplicate_review.default_action.trim().is_empty() {
+            form.duplicate_review.default_action = "keep_separate".to_string();
+        }
+        Ok(form)
+    }
+
+    pub fn create_oligo_order_form_from_request(
+        &mut self,
+        request: OligoOrderFormCreateRequest,
+    ) -> Result<OligoOrderForm, EngineError> {
+        let form_id = request
+            .form_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("oligo_order_form");
+        let form_id = Self::normalize_oligo_order_form_id(form_id)?;
+        let default_scale = Self::default_oligo_scale(Some(&request.scale));
+        let default_purification = Self::default_oligo_purification(Some(&request.purification));
+        let default_modifications = Self::normalize_oligo_modifications(&request.modifications);
+        let mut line_items = request.line_items;
+        for line in &mut line_items {
+            if line.scale.trim().is_empty() {
+                line.scale = default_scale.clone();
+            }
+            if line.purification.trim().is_empty() {
+                line.purification = default_purification.clone();
+            }
+            if line.modifications.is_empty() {
+                line.modifications = default_modifications.clone();
+            }
+        }
+        let form = self.finalize_oligo_order_form(OligoOrderForm {
+            form_id,
+            target_label: request.target_label.trim().to_string(),
+            source_note: request.source_note,
+            line_items,
+            duplicate_review: OligoOrderDuplicateReview {
+                default_action: "keep_separate".to_string(),
+                ..OligoOrderDuplicateReview::default()
+            },
+            ..OligoOrderForm::default()
+        })?;
+        let mut store = self.read_primer_design_store();
+        store
+            .oligo_order_forms
+            .insert(form.form_id.clone(), form.clone());
+        self.write_primer_design_store(store)?;
+        Ok(form)
+    }
+
+    fn primer_order_line(
+        report: &PrimerDesignReport,
+        pair: &PrimerDesignPairRecord,
+        role: &str,
+        primer: &PrimerDesignPrimerRecord,
+        scale: &str,
+        purification: &str,
+        modifications: &[String],
+    ) -> OligoOrderLineItem {
+        OligoOrderLineItem {
+            line_id: String::new(),
+            line_no: 0,
+            name: format!("{}_pair{}_{}", report.report_id, pair.rank, role),
+            role: role.to_string(),
+            sequence_5_to_3: primer.sequence.clone(),
+            length_nt: primer.sequence.len(),
+            modifications: modifications.to_vec(),
+            scale: scale.to_string(),
+            purification: purification.to_string(),
+            notes: None,
+            provenance: OligoOrderLineProvenance {
+                source_kind: "primer_report".to_string(),
+                report_id: report.report_id.clone(),
+                report_schema: report.schema.clone(),
+                template: report.template.clone(),
+                op_id: report.op_id.clone(),
+                run_id: report.run_id.clone(),
+                pair_rank: Some(pair.rank),
+                role: role.to_string(),
+                source_coordinates_0based: vec![SequenceRange0Based {
+                    start_0based: primer.start_0based,
+                    end_0based_exclusive: primer.end_0based_exclusive,
+                }],
+                ..OligoOrderLineProvenance::default()
+            },
+        }
+    }
+
+    pub fn create_oligo_order_form_from_primer_report(
+        &mut self,
+        report_id: &str,
+        pair_ranks: &[usize],
+        form_id: Option<&str>,
+        scale: Option<&str>,
+        purification: Option<&str>,
+        modifications: &[String],
+    ) -> Result<OligoOrderForm, EngineError> {
+        let report = self.get_primer_design_report(report_id)?;
+        let form_id = form_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string)
+            .unwrap_or_else(|| format!("{}_oligo_order", report.report_id));
+        let form_id = Self::normalize_oligo_order_form_id(&form_id)?;
+        let scale = Self::default_oligo_scale(scale);
+        let purification = Self::default_oligo_purification(purification);
+        let modifications = Self::normalize_oligo_modifications(modifications);
+        let mut line_items = Vec::new();
+        for rank in pair_ranks {
+            let pair = report
+                .pairs
+                .iter()
+                .find(|pair| pair.rank == *rank)
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Primer report '{}' has no pair with rank {}",
+                        report.report_id, rank
+                    ),
+                    cause_chain: vec![],
+                })?;
+            line_items.push(Self::primer_order_line(
+                &report,
+                pair,
+                "forward",
+                &pair.forward,
+                &scale,
+                &purification,
+                &modifications,
+            ));
+            line_items.push(Self::primer_order_line(
+                &report,
+                pair,
+                "reverse",
+                &pair.reverse,
+                &scale,
+                &purification,
+                &modifications,
+            ));
+        }
+        let form = self.finalize_oligo_order_form(OligoOrderForm {
+            form_id,
+            target_label: report.template.clone(),
+            source_note: Some(format!("Created from primer report '{}'", report.report_id)),
+            line_items,
+            duplicate_review: OligoOrderDuplicateReview {
+                default_action: "keep_separate".to_string(),
+                ..OligoOrderDuplicateReview::default()
+            },
+            ..OligoOrderForm::default()
+        })?;
+        let mut store = self.read_primer_design_store();
+        store
+            .oligo_order_forms
+            .insert(form.form_id.clone(), form.clone());
+        self.write_primer_design_store(store)?;
+        Ok(form)
+    }
+
+    fn qpcr_order_line(
+        report: &QpcrDesignReport,
+        assay: &QpcrAssayRecord,
+        role: &str,
+        primer: &PrimerDesignPrimerRecord,
+        source_ranges_0based: Vec<SequenceRange0Based>,
+        scale: &str,
+        purification: &str,
+        modifications: &[String],
+    ) -> OligoOrderLineItem {
+        OligoOrderLineItem {
+            line_id: String::new(),
+            line_no: 0,
+            name: format!("{}_assay{}_{}", report.report_id, assay.rank, role),
+            role: role.to_string(),
+            sequence_5_to_3: primer.sequence.clone(),
+            length_nt: primer.sequence.len(),
+            modifications: modifications.to_vec(),
+            scale: scale.to_string(),
+            purification: purification.to_string(),
+            notes: None,
+            provenance: OligoOrderLineProvenance {
+                source_kind: "qpcr_report".to_string(),
+                report_id: report.report_id.clone(),
+                report_schema: report.schema.clone(),
+                template: report.template.clone(),
+                op_id: report.op_id.clone(),
+                run_id: report.run_id.clone(),
+                assay_rank: Some(assay.rank),
+                role: role.to_string(),
+                source_coordinates_0based: source_ranges_0based,
+                ..OligoOrderLineProvenance::default()
+            },
+        }
+    }
+
+    pub fn create_oligo_order_form_from_qpcr_report(
+        &mut self,
+        report_id: &str,
+        assay_ranks: &[usize],
+        include_probe: bool,
+        form_id: Option<&str>,
+        scale: Option<&str>,
+        purification: Option<&str>,
+        modifications: &[String],
+    ) -> Result<OligoOrderForm, EngineError> {
+        let report = self.get_qpcr_design_report(report_id)?;
+        let form_id = form_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string)
+            .unwrap_or_else(|| format!("{}_oligo_order", report.report_id));
+        let form_id = Self::normalize_oligo_order_form_id(&form_id)?;
+        let scale = Self::default_oligo_scale(scale);
+        let purification = Self::default_oligo_purification(purification);
+        let modifications = Self::normalize_oligo_modifications(modifications);
+        let mut line_items = Vec::new();
+        for rank in assay_ranks {
+            let assay = report
+                .assays
+                .iter()
+                .find(|assay| assay.rank == *rank)
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "qPCR report '{}' has no assay with rank {}",
+                        report.report_id, rank
+                    ),
+                    cause_chain: vec![],
+                })?;
+            let context = assay.transcript_context.as_ref();
+            line_items.push(Self::qpcr_order_line(
+                &report,
+                assay,
+                "forward",
+                &assay.forward,
+                context
+                    .map(|ctx| ctx.forward_source_ranges_0based.clone())
+                    .filter(|ranges| !ranges.is_empty())
+                    .unwrap_or_else(|| {
+                        vec![SequenceRange0Based {
+                            start_0based: assay.forward.start_0based,
+                            end_0based_exclusive: assay.forward.end_0based_exclusive,
+                        }]
+                    }),
+                &scale,
+                &purification,
+                &modifications,
+            ));
+            line_items.push(Self::qpcr_order_line(
+                &report,
+                assay,
+                "reverse",
+                &assay.reverse,
+                context
+                    .map(|ctx| ctx.reverse_source_ranges_0based.clone())
+                    .filter(|ranges| !ranges.is_empty())
+                    .unwrap_or_else(|| {
+                        vec![SequenceRange0Based {
+                            start_0based: assay.reverse.start_0based,
+                            end_0based_exclusive: assay.reverse.end_0based_exclusive,
+                        }]
+                    }),
+                &scale,
+                &purification,
+                &modifications,
+            ));
+            if include_probe {
+                line_items.push(Self::qpcr_order_line(
+                    &report,
+                    assay,
+                    "probe",
+                    &assay.probe,
+                    context
+                        .map(|ctx| ctx.probe_source_ranges_0based.clone())
+                        .filter(|ranges| !ranges.is_empty())
+                        .unwrap_or_else(|| {
+                            vec![SequenceRange0Based {
+                                start_0based: assay.probe.start_0based,
+                                end_0based_exclusive: assay.probe.end_0based_exclusive,
+                            }]
+                        }),
+                    &scale,
+                    &purification,
+                    &modifications,
+                ));
+            }
+        }
+        let form = self.finalize_oligo_order_form(OligoOrderForm {
+            form_id,
+            target_label: report.template.clone(),
+            source_note: Some(format!("Created from qPCR report '{}'", report.report_id)),
+            line_items,
+            duplicate_review: OligoOrderDuplicateReview {
+                default_action: "keep_separate".to_string(),
+                ..OligoOrderDuplicateReview::default()
+            },
+            ..OligoOrderForm::default()
+        })?;
+        let mut store = self.read_primer_design_store();
+        store
+            .oligo_order_forms
+            .insert(form.form_id.clone(), form.clone());
+        self.write_primer_design_store(store)?;
+        Ok(form)
+    }
+
+    pub fn list_oligo_order_forms(&self) -> Vec<OligoOrderFormSummary> {
+        let store = self.read_primer_design_store();
+        let mut ids = store.oligo_order_forms.keys().cloned().collect::<Vec<_>>();
+        ids.sort();
+        ids.into_iter()
+            .filter_map(|id| store.oligo_order_forms.get(&id))
+            .map(|form| OligoOrderFormSummary {
+                form_id: form.form_id.clone(),
+                target_label: form.target_label.clone(),
+                created_at_unix_ms: form.created_at_unix_ms,
+                updated_at_unix_ms: form.updated_at_unix_ms,
+                line_count: form.line_items.len(),
+                duplicate_group_count: form.duplicate_groups.len(),
+                sequence_reuse_group_count: form.sequence_reuse_groups.len(),
+                duplicate_review_status: form.duplicate_review.status.clone(),
+            })
+            .collect()
+    }
+
+    pub fn get_oligo_order_form(&self, form_id: &str) -> Result<OligoOrderForm, EngineError> {
+        let form_id = Self::normalize_oligo_order_form_id(form_id)?;
+        self.read_primer_design_store()
+            .oligo_order_forms
+            .get(&form_id)
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Oligo order form '{}' not found", form_id),
+                cause_chain: vec![],
+            })
+    }
+
+    pub fn export_oligo_order_form(
+        &self,
+        form_id: &str,
+        path: &str,
+    ) -> Result<OligoOrderForm, EngineError> {
+        let form = self.get_oligo_order_form(form_id)?;
+        let text = serde_json::to_string_pretty(&form).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!(
+                "Could not serialize oligo order form '{}': {e}",
+                form.form_id
+            ),
+            cause_chain: vec![],
+        })?;
+        std::fs::write(path, text).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not write oligo order form to '{path}': {e}"),
+            cause_chain: vec![],
+        })?;
+        Ok(form)
+    }
+
+    pub fn review_oligo_order_form_duplicates(
+        &mut self,
+        form_id: &str,
+        reviewer: Option<&str>,
+        duplicate_action: Option<&str>,
+        note: Option<&str>,
+    ) -> Result<OligoOrderForm, EngineError> {
+        let form_id = Self::normalize_oligo_order_form_id(form_id)?;
+        let mut store = self.read_primer_design_store();
+        let mut form = store
+            .oligo_order_forms
+            .get(&form_id)
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Oligo order form '{}' not found", form_id),
+                cause_chain: vec![],
+            })?;
+        let action = duplicate_action
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("keep-separate");
+        let normalized_action = action.replace('-', "_");
+        if normalized_action != "keep_separate" {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Unsupported oligo duplicate review action '{}'; Phase A only supports keep-separate",
+                    action
+                ),
+                cause_chain: vec![],
+            });
+        }
+        form.duplicate_review.status = "reviewed".to_string();
+        form.duplicate_review.default_action = "keep_separate".to_string();
+        form.duplicate_review.reviewer = reviewer
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string);
+        form.duplicate_review.note = note
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string);
+        form.duplicate_review.reviewed_at_unix_ms = Some(Self::now_unix_ms());
+        form.updated_at_unix_ms = Self::now_unix_ms();
+        store
+            .oligo_order_forms
+            .insert(form.form_id.clone(), form.clone());
+        self.write_primer_design_store(store)?;
+        Ok(form)
     }
 
     pub fn list_restriction_cloning_pcr_handoffs(
