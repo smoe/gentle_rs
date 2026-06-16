@@ -4419,14 +4419,296 @@ fn parse_cdna_assay_test_options(
     Ok(options)
 }
 
+fn parse_oligo_order_rank_csv(raw: &str, flag: &str) -> Result<Vec<usize>, String> {
+    let ranks = split_csv_tokens_with_empty_error(raw)?
+        .into_iter()
+        .map(|token| {
+            let rank = parse_usize_option_value(&token, flag)?;
+            if rank == 0 {
+                return Err(format!("{flag} ranks must be >= 1"));
+            }
+            Ok(rank)
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    if ranks.is_empty() {
+        return Err(format!("{flag} requires at least one rank"));
+    }
+    Ok(ranks)
+}
+
+fn parse_primers_oligo_order_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 3 {
+        return Err(
+            "primers oligo-order requires create|from-primer-report|from-qpcr-report|list|show|export|review-dedup"
+                .to_string(),
+        );
+    }
+    match tokens[2].as_str() {
+        "create" => {
+            if tokens.len() != 4 {
+                return Err("primers oligo-order create requires REQUEST_JSON_OR_@FILE".to_string());
+            }
+            Ok(ShellCommand::PrimersOligoOrderCreate {
+                request_json: tokens[3].clone(),
+            })
+        }
+        "from-primer-report" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "primers oligo-order from-primer-report requires REPORT_ID --pair-rank N[,N...] [--form-id ID] [--scale TEXT] [--purification TEXT] [--modification TEXT ...]"
+                        .to_string(),
+                );
+            }
+            let report_id = tokens[3].clone();
+            let mut pair_ranks: Option<Vec<usize>> = None;
+            let mut form_id: Option<String> = None;
+            let mut scale: Option<String> = None;
+            let mut purification: Option<String> = None;
+            let mut modifications = Vec::<String>::new();
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--pair-rank" | "--pair-ranks" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "primers oligo-order from-primer-report",
+                        )?;
+                        pair_ranks = Some(parse_oligo_order_rank_csv(&raw, &flag)?);
+                    }
+                    "--form-id" => {
+                        form_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--form-id",
+                            "primers oligo-order from-primer-report",
+                        )?);
+                    }
+                    "--scale" => {
+                        scale = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--scale",
+                            "primers oligo-order from-primer-report",
+                        )?);
+                    }
+                    "--purification" => {
+                        purification = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--purification",
+                            "primers oligo-order from-primer-report",
+                        )?);
+                    }
+                    "--modification" => {
+                        modifications.push(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--modification",
+                            "primers oligo-order from-primer-report",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for primers oligo-order from-primer-report"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::PrimersOligoOrderFromPrimerReport {
+                report_id,
+                pair_ranks: pair_ranks.ok_or_else(|| {
+                    "primers oligo-order from-primer-report requires --pair-rank N[,N...]"
+                        .to_string()
+                })?,
+                form_id,
+                scale,
+                purification,
+                modifications,
+            })
+        }
+        "from-qpcr-report" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "primers oligo-order from-qpcr-report requires REPORT_ID --assay-rank N[,N...] [--include-probe true|false] [--form-id ID] [--scale TEXT] [--purification TEXT] [--modification TEXT ...]"
+                        .to_string(),
+                );
+            }
+            let report_id = tokens[3].clone();
+            let mut assay_ranks: Option<Vec<usize>> = None;
+            let mut include_probe = true;
+            let mut form_id: Option<String> = None;
+            let mut scale: Option<String> = None;
+            let mut purification: Option<String> = None;
+            let mut modifications = Vec::<String>::new();
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--assay-rank" | "--assay-ranks" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "primers oligo-order from-qpcr-report",
+                        )?;
+                        assay_ranks = Some(parse_oligo_order_rank_csv(&raw, &flag)?);
+                    }
+                    "--include-probe" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--include-probe",
+                            "primers oligo-order from-qpcr-report",
+                        )?;
+                        include_probe = parse_bool_binding(&raw).ok_or_else(|| {
+                            format!("Invalid --include-probe value '{raw}', expected true|false")
+                        })?;
+                    }
+                    "--form-id" => {
+                        form_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--form-id",
+                            "primers oligo-order from-qpcr-report",
+                        )?);
+                    }
+                    "--scale" => {
+                        scale = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--scale",
+                            "primers oligo-order from-qpcr-report",
+                        )?);
+                    }
+                    "--purification" => {
+                        purification = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--purification",
+                            "primers oligo-order from-qpcr-report",
+                        )?);
+                    }
+                    "--modification" => {
+                        modifications.push(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--modification",
+                            "primers oligo-order from-qpcr-report",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for primers oligo-order from-qpcr-report"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::PrimersOligoOrderFromQpcrReport {
+                report_id,
+                assay_ranks: assay_ranks.ok_or_else(|| {
+                    "primers oligo-order from-qpcr-report requires --assay-rank N[,N...]"
+                        .to_string()
+                })?,
+                include_probe,
+                form_id,
+                scale,
+                purification,
+                modifications,
+            })
+        }
+        "list" => {
+            if tokens.len() != 3 {
+                return Err("primers oligo-order list takes no extra arguments".to_string());
+            }
+            Ok(ShellCommand::PrimersOligoOrderList)
+        }
+        "show" => {
+            if tokens.len() != 4 {
+                return Err("primers oligo-order show requires FORM_ID".to_string());
+            }
+            Ok(ShellCommand::PrimersOligoOrderShow {
+                form_id: tokens[3].clone(),
+            })
+        }
+        "export" => {
+            if tokens.len() != 5 {
+                return Err("primers oligo-order export requires FORM_ID OUTPUT.json".to_string());
+            }
+            Ok(ShellCommand::PrimersOligoOrderExport {
+                form_id: tokens[3].clone(),
+                path: tokens[4].clone(),
+            })
+        }
+        "review-dedup" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "primers oligo-order review-dedup requires FORM_ID [--reviewer NAME] [--duplicate-action keep-separate] [--note TEXT]"
+                        .to_string(),
+                );
+            }
+            let form_id = tokens[3].clone();
+            let mut reviewer: Option<String> = None;
+            let mut duplicate_action: Option<String> = None;
+            let mut note: Option<String> = None;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--reviewer" => {
+                        reviewer = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--reviewer",
+                            "primers oligo-order review-dedup",
+                        )?);
+                    }
+                    "--duplicate-action" => {
+                        duplicate_action = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--duplicate-action",
+                            "primers oligo-order review-dedup",
+                        )?);
+                    }
+                    "--note" => {
+                        note = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--note",
+                            "primers oligo-order review-dedup",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for primers oligo-order review-dedup"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::PrimersOligoOrderReviewDedup {
+                form_id,
+                reviewer,
+                duplicate_action,
+                note,
+            })
+        }
+        other => Err(format!(
+            "Unknown primers oligo-order subcommand '{other}' (expected create|from-primer-report|from-qpcr-report|list|show|export|review-dedup)"
+        )),
+    }
+}
+
 pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "primers requires a subcommand: design, design-qpcr, specificity, test-cdna-pcr, test-cdna-qpcr, test-cdna-qpcr-fasta, screen-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report"
+            "primers requires a subcommand: design, design-qpcr, specificity, test-cdna-pcr, test-cdna-qpcr, test-cdna-qpcr-fasta, screen-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report, oligo-order"
                 .to_string(),
         );
     }
     match tokens[1].as_str() {
+        "oligo-order" => parse_primers_oligo_order_command(tokens),
         "design" => {
             if tokens.len() < 3 {
                 return Err(
@@ -5241,7 +5523,7 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
             })
         }
         other => Err(format!(
-            "Unknown primers subcommand '{other}' (expected design, design-qpcr, specificity, test-cdna-pcr, test-cdna-qpcr, transcript-qpcr-panel, test-cdna-qpcr-fasta, screen-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report)"
+            "Unknown primers subcommand '{other}' (expected design, design-qpcr, specificity, test-cdna-pcr, test-cdna-qpcr, transcript-qpcr-panel, test-cdna-qpcr-fasta, screen-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report, oligo-order)"
         )),
     }
 }

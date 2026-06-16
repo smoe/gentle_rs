@@ -6447,6 +6447,13 @@ Primer-design shell command family (implemented):
   - `primers list-qpcr-reports`
   - `primers show-qpcr-report REPORT_ID`
   - `primers export-qpcr-report REPORT_ID OUTPUT.json`
+  - `primers oligo-order create REQUEST_JSON_OR_@FILE`
+  - `primers oligo-order from-primer-report REPORT_ID --pair-rank N[,N...] [--form-id ID] [--scale TEXT] [--purification TEXT] [--modification TEXT ...]`
+  - `primers oligo-order from-qpcr-report REPORT_ID --assay-rank N[,N...] [--include-probe true|false] [--form-id ID] [--scale TEXT] [--purification TEXT] [--modification TEXT ...]`
+  - `primers oligo-order list`
+  - `primers oligo-order show FORM_ID`
+  - `primers oligo-order export FORM_ID OUTPUT.json`
+  - `primers oligo-order review-dedup FORM_ID [--reviewer NAME] [--duplicate-action keep-separate] [--note TEXT]`
 - `primers design` expects an operation payload whose root variant is
   `{"DesignPrimerPairs": {...}}`.
 - `primers design-qpcr` accepts either:
@@ -6540,6 +6547,28 @@ Primer-design shell command family (implemented):
   - `left_to_core_label` / `right_to_core_label`
   - `flanks_core_cleanly`
   - `tm_delta_c` and score
+- `primers oligo-order` persists first-class order forms inside
+  `ProjectState.metadata["primer_design_reports"].oligo_order_forms` without
+  changing the surrounding store schema (`gentle.primer_design_reports.v1`).
+  Individual forms carry schema `gentle.oligo_order_form.v1`.
+  - `create` accepts a generic `OligoOrderFormCreateRequest` JSON payload with
+    `form_id?`, `target_label?`, `source_note?`, and `line_items[]`.
+  - `from-primer-report` expands each requested pair rank into forward and
+    reverse line items with source report, rank, role, template, operation/run,
+    and source-coordinate provenance when available.
+  - `from-qpcr-report` expands each requested assay rank into forward, reverse,
+    and probe line items by default; `--include-probe false` suppresses the
+    probe line.
+  - line ids are deterministic hashes of form id, source kind/report/rank/role,
+    and the normalized procurement tuple. They are not UUIDs and do not use
+    time or randomness.
+  - creation never merges duplicate line items. `duplicate_groups[]` records
+    exact procurement duplicates keyed by `sequence_5_to_3 + modifications +
+    scale + purification`; `sequence_reuse_groups[]` records same-sequence
+    reuse with different procurement tuples. When duplicate groups exist,
+    `duplicate_review.status` starts as `review_required`.
+  - `review-dedup` marks duplicate review complete with the currently supported
+    action `keep_separate`; it does not remove or merge any line item.
 - Response schemas:
   - `gentle.primer_seed_request.v1`
   - `gentle.qpcr_seed_request.v1`
@@ -6547,9 +6576,34 @@ Primer-design shell command family (implemented):
   - `gentle.primer_design_report_list.v1`
   - `gentle.qpcr_design_report.v1`
   - `gentle.qpcr_design_report_list.v1`
+  - `gentle.oligo_order_form.v1`
+  - `gentle.oligo_order_form_list.v1`
+  - `gentle.oligo_order_form_create_result.v1`
+  - `gentle.oligo_order_form_export.v1`
+  - `gentle.oligo_order_duplicate_review.v1`
   - `gentle.restriction_cloning_pcr_handoff.v1`
   - `gentle.restriction_cloning_pcr_handoff_seed.v1`
   - `gentle.restriction_cloning_vector_enzyme_suggestions.v1`
+- `gentle.oligo_order_form.v1` payload fields:
+  - `form_id`, `target_label`, optional `source_note`
+  - `created_at_unix_ms`, `updated_at_unix_ms`
+  - `line_items[]`
+    - `line_id`, `line_no`, `name`, `role`, `sequence_5_to_3`, `length_nt`
+    - `modifications[]`, `scale`, `purification`, optional `notes`
+    - `provenance`
+      - `source_kind`, `report_id`, `report_schema`, `template`
+      - optional `op_id`, `run_id`, `pair_rank`, `assay_rank`
+      - `role`, `source_coordinates_0based[]`
+  - `duplicate_groups[]`
+    - `group_id`, `line_ids[]`, `sequence_5_to_3`, `modifications[]`,
+      `scale`, `purification`
+  - `sequence_reuse_groups[]`
+    - `group_id`, `line_ids[]`, `sequence_5_to_3`,
+      `procurement_tuple_count`
+  - `duplicate_review`
+    - `status` (`not_required`, `review_required`, or `reviewed`)
+    - `default_action` (`keep_separate` in Phase A)
+    - optional `reviewer`, `reviewed_at_unix_ms`, `note`
 - `gentle.primer_seed_request.v1` payload fields:
   - `template`
   - `source` (`kind=feature|splicing`, `feature_id`, and splicing metadata when available)
