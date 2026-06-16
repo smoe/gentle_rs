@@ -12,6 +12,12 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-06-16
+
+- Added first-class sequence-window GUI controls for importing explicit APT
+  probe-region summaries plus annotation tables into inspectable GENtle helper
+  output, reusing the shared shell import/inspect/export/project contracts.
+
 ## 2026-06-15
 
 - Added Phase A first-class oligo order forms under `primers oligo-order`,

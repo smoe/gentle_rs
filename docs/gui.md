@@ -3017,8 +3017,10 @@ The `Help` menu now includes:
   auto-downloaded by GENtle.
 - The sequence-window extended panel includes a native
   `Clariom D / probe-region evidence` inspector for completed
-  `probe_regions_oligo.R` output directories. It uses the same shared
-  `arrays inspect-probe-region-output OUTPUT_DIR` contract as the GUI shell,
+  `probe_regions_oligo.R` output directories and explicit APT summary +
+  annotation table imports. It uses the same shared
+  `arrays import-apt-probe-region-output` and
+  `arrays inspect-probe-region-output OUTPUT_DIR` contracts as the GUI shell,
   then previews helper outputs, sample/condition/logFC columns, chromosome/gene
   coverage, coordinate/build declarations, projection blockers, and a bounded
   chromosome-ordered row preview. The same panel can export a deterministic

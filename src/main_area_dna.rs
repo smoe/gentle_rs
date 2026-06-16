@@ -107,7 +107,7 @@ use crate::{
         OpResult, Operation, OperationProgress, PairwiseAlignmentMode, PcrPrimerSpec,
         PrimerDesignBackend, PrimerDesignBaseLock, PrimerDesignPairConstraint,
         PrimerDesignProgress, PrimerDesignReport, PrimerDesignSideConstraint,
-        PrimerSpecificityPolicy, ProbeRegionOutputInspection,
+        PrimerSpecificityPolicy, ProbeRegionAptImportReport, ProbeRegionOutputInspection,
         PromoterEvidenceMatrixReport, PromoterEvidenceMatrixRow, PromoterReporterCandidateSet,
         PromoterWindowCollapseMode, ProtocolCartoonPreviewTelemetry, QpcrDesignReport,
         QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting, QpcrTranscriptTargetingMode,
@@ -585,6 +585,18 @@ struct EngineOpsUiState {
     cutrun_regulatory_neighbor_window_bp: String,
     #[serde(default)]
     cutrun_regulatory_species_filters: String,
+    #[serde(default)]
+    probe_region_apt_summary_path: String,
+    #[serde(default)]
+    probe_region_apt_annotation_path: String,
+    #[serde(default)]
+    probe_region_apt_platform: String,
+    #[serde(default)]
+    probe_region_apt_normalization: String,
+    #[serde(default)]
+    probe_region_apt_coordinate_system: String,
+    #[serde(default)]
+    probe_region_apt_genome_build: String,
     #[serde(default)]
     probe_region_output_dir: String,
     #[serde(default)]
@@ -1345,6 +1357,12 @@ pub struct MainAreaDna {
     cutrun_regulatory_promoter_end_0based_exclusive: String,
     cutrun_regulatory_neighbor_window_bp: String,
     cutrun_regulatory_species_filters: String,
+    probe_region_apt_summary_path: String,
+    probe_region_apt_annotation_path: String,
+    probe_region_apt_platform: String,
+    probe_region_apt_normalization: String,
+    probe_region_apt_coordinate_system: String,
+    probe_region_apt_genome_build: String,
     probe_region_output_dir: String,
     probe_region_svg_output_path: String,
     probe_region_projection_seq_id: String,
@@ -1353,6 +1371,7 @@ pub struct MainAreaDna {
     probe_region_projection_max_features: String,
     probe_region_projection_clear_existing: bool,
     cached_cutrun_regulatory_support: Option<CutRunRegulatorySupportReport>,
+    cached_probe_region_apt_import: Option<ProbeRegionAptImportReport>,
     cached_probe_region_output_inspection: Option<ProbeRegionOutputInspection>,
     cached_probe_region_projection: Option<MicroarrayProjectionReport>,
     cached_restriction_site_scan: Option<RestrictionSiteScanReport>,
@@ -2024,6 +2043,12 @@ impl MainAreaDna {
             cutrun_regulatory_promoter_end_0based_exclusive: String::new(),
             cutrun_regulatory_neighbor_window_bp: default_cutrun_neighbor_window_bp_text(),
             cutrun_regulatory_species_filters: String::new(),
+            probe_region_apt_summary_path: String::new(),
+            probe_region_apt_annotation_path: String::new(),
+            probe_region_apt_platform: "Clariom_D_Human".to_string(),
+            probe_region_apt_normalization: "rma-sketch".to_string(),
+            probe_region_apt_coordinate_system: "hg38".to_string(),
+            probe_region_apt_genome_build: "GRCh38".to_string(),
             probe_region_output_dir: "analysis/probe_regions".to_string(),
             probe_region_svg_output_path: "analysis/probe_regions/probe_region_plot.svg"
                 .to_string(),
@@ -2033,6 +2058,7 @@ impl MainAreaDna {
             probe_region_projection_max_features: default_probe_region_projection_max_features_text(),
             probe_region_projection_clear_existing: false,
             cached_cutrun_regulatory_support: None,
+            cached_probe_region_apt_import: None,
             cached_probe_region_output_inspection: None,
             cached_probe_region_projection: None,
             cached_restriction_site_scan: None,
@@ -7816,6 +7842,104 @@ impl MainAreaDna {
         format!("{}{}", shown.join(", "), suffix)
     }
 
+    fn optional_probe_region_text(value: &str) -> Option<String> {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    }
+
+    fn import_apt_probe_region_output_for_current_paths(&mut self) {
+        let Some(engine) = self.engine.clone() else {
+            self.op_status = "No engine attached".to_string();
+            return;
+        };
+        let summary = self.probe_region_apt_summary_path.trim().to_string();
+        let annotation = self.probe_region_apt_annotation_path.trim().to_string();
+        let output_dir = self.probe_region_output_dir.trim().to_string();
+        if summary.is_empty() {
+            self.op_status = "APT summary path is empty".to_string();
+            return;
+        }
+        if annotation.is_empty() {
+            self.op_status = "APT annotation path is empty".to_string();
+            return;
+        }
+        if output_dir.is_empty() {
+            self.op_status = "Probe-region output directory is empty".to_string();
+            return;
+        }
+
+        let command = ShellCommand::ArraysImportAptProbeRegionOutput {
+            summary,
+            annotation,
+            output_dir: output_dir.clone(),
+            platform: Self::optional_probe_region_text(&self.probe_region_apt_platform),
+            normalization: Self::optional_probe_region_text(&self.probe_region_apt_normalization),
+            coordinate_system: Self::optional_probe_region_text(
+                &self.probe_region_apt_coordinate_system,
+            ),
+            genome_build: Self::optional_probe_region_text(&self.probe_region_apt_genome_build),
+        };
+        let outcome = {
+            let mut guard = engine.write().expect("Engine lock poisoned");
+            let options = ShellExecutionOptions::from_env();
+            execute_shell_command_with_options(&mut guard, &command, &options)
+        };
+        match outcome {
+            Ok(run) => {
+                let Some(value) = run.output.get("import").cloned() else {
+                    self.cached_probe_region_apt_import = None;
+                    self.cached_probe_region_output_inspection = None;
+                    self.cached_probe_region_projection = None;
+                    self.op_status =
+                        "APT probe-region import completed without an import payload".to_string();
+                    return;
+                };
+                match serde_json::from_value::<ProbeRegionAptImportReport>(value) {
+                    Ok(import) => {
+                        let warning_suffix = if import.warnings.is_empty() {
+                            String::new()
+                        } else {
+                            format!(
+                                "; warnings: {}",
+                                Self::probe_region_preview_list(&import.warnings)
+                            )
+                        };
+                        self.cached_probe_region_output_inspection =
+                            Some(import.inspection.clone());
+                        self.cached_probe_region_projection = None;
+                        self.op_status = format!(
+                            "APT probe-region output imported to '{}' ({} written, {} missing annotation, {} skipped{})",
+                            output_dir,
+                            import.written_row_count,
+                            import.missing_annotation_count,
+                            import.skipped_invalid_count,
+                            warning_suffix
+                        );
+                        self.cached_probe_region_apt_import = Some(import);
+                        self.save_engine_ops_state();
+                    }
+                    Err(err) => {
+                        self.cached_probe_region_apt_import = None;
+                        self.cached_probe_region_output_inspection = None;
+                        self.cached_probe_region_projection = None;
+                        self.op_status =
+                            format!("Could not decode APT import payload: {err}");
+                    }
+                }
+            }
+            Err(err) => {
+                self.cached_probe_region_apt_import = None;
+                self.cached_probe_region_output_inspection = None;
+                self.cached_probe_region_projection = None;
+                self.op_status = format!("APT probe-region import failed: {err}");
+            }
+        }
+    }
+
     fn inspect_probe_region_output_for_current_path(&mut self) {
         let Some(engine) = self.engine.clone() else {
             self.op_status = "No engine attached".to_string();
@@ -8041,6 +8165,115 @@ impl MainAreaDna {
         );
         ui.add_space(4.0);
 
+        ui.label(egui::RichText::new("Import APT summary").strong());
+        let mut import_fields_changed = false;
+        ui.horizontal_wrapped(|ui| {
+            ui.label("summary_tsv");
+            if ui
+                .add_sized(
+                    [ui.available_width().min(420.0), 0.0],
+                    egui::TextEdit::singleline(&mut self.probe_region_apt_summary_path),
+                )
+                .on_hover_text("APT probeset-summary table; GENtle imports it but does not run APT")
+                .changed()
+            {
+                import_fields_changed = true;
+            }
+        });
+        ui.horizontal_wrapped(|ui| {
+            ui.label("annotation_csv");
+            if ui
+                .add_sized(
+                    [ui.available_width().min(420.0), 0.0],
+                    egui::TextEdit::singleline(&mut self.probe_region_apt_annotation_path),
+                )
+                .on_hover_text(
+                    "Annotation/NetAffx-style table with probeset id, chromosome, start, and stop columns",
+                )
+                .changed()
+            {
+                import_fields_changed = true;
+            }
+        });
+        ui.horizontal_wrapped(|ui| {
+            ui.label("platform");
+            if ui
+                .add(
+                    egui::TextEdit::singleline(&mut self.probe_region_apt_platform)
+                        .desired_width(150.0),
+                )
+                .changed()
+            {
+                import_fields_changed = true;
+            }
+            ui.label("normalization");
+            if ui
+                .add(
+                    egui::TextEdit::singleline(&mut self.probe_region_apt_normalization)
+                        .desired_width(110.0),
+                )
+                .changed()
+            {
+                import_fields_changed = true;
+            }
+            ui.label("coordinate system");
+            if ui
+                .add(
+                    egui::TextEdit::singleline(&mut self.probe_region_apt_coordinate_system)
+                        .desired_width(90.0),
+                )
+                .changed()
+            {
+                import_fields_changed = true;
+            }
+            ui.label("genome build");
+            if ui
+                .add(
+                    egui::TextEdit::singleline(&mut self.probe_region_apt_genome_build)
+                        .desired_width(90.0),
+                )
+                .changed()
+            {
+                import_fields_changed = true;
+            }
+        });
+        ui.horizontal_wrapped(|ui| {
+            if ui
+                .add_enabled(
+                    !self.probe_region_apt_summary_path.trim().is_empty()
+                        && !self.probe_region_apt_annotation_path.trim().is_empty()
+                        && !self.probe_region_output_dir.trim().is_empty(),
+                    egui::Button::new("Import APT output"),
+                )
+                .on_hover_text(
+                    "Convert explicit APT summary + annotation files into GENtle's inspectable probe-region output directory",
+                )
+                .clicked()
+            {
+                self.import_apt_probe_region_output_for_current_paths();
+            }
+            ui.small(
+                egui::RichText::new("External APT execution stays manual.")
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+        });
+        if import_fields_changed {
+            self.cached_probe_region_apt_import = None;
+            self.save_engine_ops_state();
+        }
+        if let Some(import) = self.cached_probe_region_apt_import.as_ref() {
+            ui.small(format!(
+                "last import: {} written from {} summary row(s), {} annotation row(s), samples: {}",
+                import.written_row_count,
+                import.summary_row_count,
+                import.annotation_row_count,
+                Self::probe_region_preview_list(&import.sample_columns)
+            ));
+        }
+
+        ui.add_space(4.0);
+        ui.separator();
+        ui.label(egui::RichText::new("Inspect completed output").strong());
         let mut output_dir_changed = false;
         ui.horizontal_wrapped(|ui| {
             ui.label("output_dir");
@@ -8067,6 +8300,7 @@ impl MainAreaDna {
             }
         });
         if output_dir_changed {
+            self.cached_probe_region_apt_import = None;
             self.cached_probe_region_output_inspection = None;
             self.cached_probe_region_projection = None;
             self.save_engine_ops_state();
@@ -21554,6 +21788,12 @@ impl MainAreaDna {
                 .clone(),
             cutrun_regulatory_neighbor_window_bp: self.cutrun_regulatory_neighbor_window_bp.clone(),
             cutrun_regulatory_species_filters: self.cutrun_regulatory_species_filters.clone(),
+            probe_region_apt_summary_path: self.probe_region_apt_summary_path.clone(),
+            probe_region_apt_annotation_path: self.probe_region_apt_annotation_path.clone(),
+            probe_region_apt_platform: self.probe_region_apt_platform.clone(),
+            probe_region_apt_normalization: self.probe_region_apt_normalization.clone(),
+            probe_region_apt_coordinate_system: self.probe_region_apt_coordinate_system.clone(),
+            probe_region_apt_genome_build: self.probe_region_apt_genome_build.clone(),
             probe_region_output_dir: self.probe_region_output_dir.clone(),
             probe_region_svg_output_path: self.probe_region_svg_output_path.clone(),
             probe_region_projection_seq_id: self.probe_region_projection_seq_id.clone(),
@@ -21819,8 +22059,32 @@ impl MainAreaDna {
                 default_cutrun_neighbor_window_bp_text()
             } else {
                 s.cutrun_regulatory_neighbor_window_bp
-            };
+        };
         self.cutrun_regulatory_species_filters = s.cutrun_regulatory_species_filters;
+        self.probe_region_apt_summary_path = s.probe_region_apt_summary_path;
+        self.probe_region_apt_annotation_path = s.probe_region_apt_annotation_path;
+        self.probe_region_apt_platform = if s.probe_region_apt_platform.trim().is_empty() {
+            "Clariom_D_Human".to_string()
+        } else {
+            s.probe_region_apt_platform
+        };
+        self.probe_region_apt_normalization = if s.probe_region_apt_normalization.trim().is_empty()
+        {
+            "rma-sketch".to_string()
+        } else {
+            s.probe_region_apt_normalization
+        };
+        self.probe_region_apt_coordinate_system =
+            if s.probe_region_apt_coordinate_system.trim().is_empty() {
+                "hg38".to_string()
+            } else {
+                s.probe_region_apt_coordinate_system
+            };
+        self.probe_region_apt_genome_build = if s.probe_region_apt_genome_build.trim().is_empty() {
+            "GRCh38".to_string()
+        } else {
+            s.probe_region_apt_genome_build
+        };
         self.probe_region_output_dir = if s.probe_region_output_dir.trim().is_empty() {
             "analysis/probe_regions".to_string()
         } else {
@@ -21851,6 +22115,7 @@ impl MainAreaDna {
         self.cached_tfbs_score_tracks = None;
         self.cached_tfbs_track_similarity = None;
         self.cached_cutrun_regulatory_support = None;
+        self.cached_probe_region_apt_import = None;
         self.cached_probe_region_output_inspection = None;
         self.cached_probe_region_projection = None;
         self.vcf_display_required_info_keys = s.vcf_display_required_info_keys;
