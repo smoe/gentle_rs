@@ -1110,7 +1110,7 @@ fn write_shell_prepared_cache_install(root: &Path, genome_id: &str) -> std::path
 fn install_fake_primer3(path: &Path, fixture_path: &Path) -> String {
     let script_path = path.join("fake_primer3.sh");
     let script = format!(
-        "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then\n  echo \"primer3_core synthetic-fixture 2.6.1\"\n  exit 0\nfi\ncat \"{}\"\n",
+        "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then\n  echo \"primer3_core synthetic-fixture 2.6.1\"\n  exit 0\nfi\ncat >/dev/null\ncat \"{}\"\n",
         fixture_path.display()
     );
     std::fs::write(&script_path, script).expect("write fake primer3");
