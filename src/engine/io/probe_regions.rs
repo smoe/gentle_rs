@@ -11,6 +11,7 @@ const PROBE_REGION_IMPLEMENTATION_STATUS: &str =
     "stage_1_preflight_only_no_cel_summarization_backend";
 const PROBE_REGION_OLIGO_HELPER: &str = "scripts/probe_regions_oligo.R";
 const PROBE_REGION_TABLE_FILE: &str = "region_intensity_chrom_order.csv";
+const PROBE_REGION_PROBE_TABLE_FILE: &str = "probe_intensity_chrom_order.csv";
 const PROBE_REGION_SAMPLE_TABLE_FILE: &str = "sample_table.tsv";
 const PROBE_REGION_MATRIX_MANIFEST_FILE: &str = "normalized_feature_matrix_manifest.json";
 const PROBE_REGION_PROVENANCE_FILE: &str = "provenance.json";
@@ -37,6 +38,13 @@ struct ProbeRegionTableSummary {
     preview_rows: Vec<ProbeRegionOutputPreviewRow>,
     required_columns_missing: Vec<String>,
     warnings: Vec<String>,
+}
+
+#[derive(Default)]
+struct ProbeRegionProbeTableSummary {
+    row_count: usize,
+    parent_feature_count: usize,
+    required_columns_missing: Vec<String>,
 }
 
 #[derive(Clone)]
@@ -91,6 +99,25 @@ struct ProbeRegionAptAnnotationRow {
     transcript_cluster_id: String,
     number_of_probes: String,
     gene_symbol: String,
+}
+
+#[derive(Default)]
+struct ProbeRegionAptAnnotationTable {
+    regions: HashMap<String, ProbeRegionAptAnnotationRow>,
+    probes: Vec<ProbeRegionAptProbeAnnotationRow>,
+}
+
+struct ProbeRegionAptProbeAnnotationRow {
+    chromosome: String,
+    start_1based: usize,
+    end_1based: usize,
+    strand: String,
+    parent_feature_id: String,
+    transcript_cluster_id: String,
+    gene_symbol: String,
+    probe_id: String,
+    x: String,
+    y: String,
 }
 
 #[derive(Default)]
@@ -426,7 +453,7 @@ impl GentleEngine {
             .to_string();
 
         let annotation = Self::probe_region_apt_annotation_rows(annotation_path)?;
-        let annotation_row_count = annotation.len();
+        let annotation_row_count = annotation.regions.len();
         let mut warnings = Vec::new();
         let mut summary_reader = csv::ReaderBuilder::new()
             .delimiter(Self::probe_region_metadata_delimiter(apt_summary_path))
@@ -495,6 +522,7 @@ impl GentleEngine {
         };
 
         let mut output_rows: Vec<Vec<String>> = Vec::new();
+        let mut output_value_rows: BTreeMap<String, Vec<String>> = BTreeMap::new();
         let mut summary_row_count = 0usize;
         let mut missing_annotation_count = 0usize;
         let mut skipped_invalid_count = 0usize;
@@ -510,7 +538,7 @@ impl GentleEngine {
                 skipped_invalid_count += 1;
                 continue;
             }
-            let Some(annotation_row) = annotation.get(feature_id) else {
+            let Some(annotation_row) = annotation.regions.get(feature_id) else {
                 missing_annotation_count += 1;
                 continue;
             };
@@ -528,6 +556,7 @@ impl GentleEngine {
                 .iter()
                 .map(|idx| record.get(*idx).unwrap_or("").trim().to_string())
                 .collect::<Vec<_>>();
+            let mut value_row = sample_values.clone();
             for value in &sample_values {
                 row.push(value.clone());
             }
@@ -543,14 +572,16 @@ impl GentleEngine {
                     })
                     .collect::<Vec<_>>();
                 for stat in &stats {
-                    row.push(
-                        stat.map(|(mean, _)| Self::probe_region_format_number(mean))
-                            .unwrap_or_default(),
-                    );
-                    row.push(
-                        stat.map(|(_, sd)| Self::probe_region_format_number(sd))
-                            .unwrap_or_default(),
-                    );
+                    let mean = stat
+                        .map(|(mean, _)| Self::probe_region_format_number(mean))
+                        .unwrap_or_default();
+                    let sd = stat
+                        .map(|(_, sd)| Self::probe_region_format_number(sd))
+                        .unwrap_or_default();
+                    row.push(mean.clone());
+                    row.push(sd.clone());
+                    value_row.push(mean);
+                    value_row.push(sd);
                 }
                 for contrast in &metadata.contrasts {
                     let numerator = stats
@@ -559,14 +590,15 @@ impl GentleEngine {
                     let denominator = stats
                         .get(contrast.denominator_index)
                         .and_then(|value| value.map(|(mean, _)| mean));
-                    row.push(
-                        numerator
-                            .zip(denominator)
-                            .map(|(num, den)| Self::probe_region_format_number(num - den))
-                            .unwrap_or_default(),
-                    );
+                    let logfc = numerator
+                        .zip(denominator)
+                        .map(|(num, den)| Self::probe_region_format_number(num - den))
+                        .unwrap_or_default();
+                    row.push(logfc.clone());
+                    value_row.push(logfc);
                 }
             }
+            output_value_rows.insert(feature_id.to_string(), value_row);
             output_rows.push(row);
         }
         output_rows.sort_by(|a, b| {
@@ -606,6 +638,7 @@ impl GentleEngine {
             ),
             cause_chain: vec![],
         })?;
+        let mut value_header = sample_columns.clone();
         let mut header = vec![
             "chromosome".to_string(),
             "start".to_string(),
@@ -619,11 +652,17 @@ impl GentleEngine {
         header.extend(sample_columns.iter().cloned());
         if let Some(metadata) = metadata_summary.as_ref() {
             for condition in &metadata.conditions {
-                header.push(format!("mean_log2_{}", condition.column_label));
-                header.push(format!("sd_log2_{}", condition.column_label));
+                let mean_header = format!("mean_log2_{}", condition.column_label);
+                let sd_header = format!("sd_log2_{}", condition.column_label);
+                header.push(mean_header.clone());
+                header.push(sd_header.clone());
+                value_header.push(mean_header);
+                value_header.push(sd_header);
             }
             for contrast in &metadata.contrasts {
-                header.push(format!("log2FC_{}", contrast.label));
+                let logfc_header = format!("log2FC_{}", contrast.label);
+                header.push(logfc_header.clone());
+                value_header.push(logfc_header);
             }
         }
         writer.write_record(&header).map_err(|e| EngineError {
@@ -644,8 +683,96 @@ impl GentleEngine {
             cause_chain: vec![],
         })?;
 
+        let mut probe_row_count = 0usize;
+        if !annotation.probes.is_empty() {
+            let probe_table_path = Path::new(output_dir).join(PROBE_REGION_PROBE_TABLE_FILE);
+            let mut probe_writer = csv::Writer::from_path(&probe_table_path).map_err(|e| {
+                EngineError {
+                    code: ErrorCode::Io,
+                    message: format!(
+                        "Could not create probe-coordinate table '{}': {e}",
+                        probe_table_path.to_string_lossy()
+                    ),
+                    cause_chain: vec![],
+                }
+            })?;
+            let mut probe_header = vec![
+                "chromosome".to_string(),
+                "start".to_string(),
+                "stop".to_string(),
+                "strand".to_string(),
+                "probe_id".to_string(),
+                "x".to_string(),
+                "y".to_string(),
+                "parent_probeset_or_region_id".to_string(),
+                "transcript_cluster_id".to_string(),
+                "gene_symbol".to_string(),
+                "intensity_source".to_string(),
+            ];
+            probe_header.extend(value_header.iter().cloned());
+            probe_writer.write_record(&probe_header).map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not write probe-coordinate table header: {e}"),
+                cause_chain: vec![],
+            })?;
+            let mut probes = annotation.probes.iter().collect::<Vec<_>>();
+            probes.sort_by(|a, b| {
+                a.chromosome
+                    .cmp(&b.chromosome)
+                    .then(a.start_1based.cmp(&b.start_1based))
+                    .then(a.end_1based.cmp(&b.end_1based))
+                    .then(a.probe_id.cmp(&b.probe_id))
+            });
+            let mut skipped_probe_rows = 0usize;
+            for probe in probes {
+                let Some(values) = output_value_rows.get(&probe.parent_feature_id) else {
+                    skipped_probe_rows += 1;
+                    continue;
+                };
+                let mut row = vec![
+                    probe.chromosome.clone(),
+                    probe.start_1based.to_string(),
+                    probe.end_1based.to_string(),
+                    probe.strand.clone(),
+                    probe.probe_id.clone(),
+                    probe.x.clone(),
+                    probe.y.clone(),
+                    probe.parent_feature_id.clone(),
+                    probe.transcript_cluster_id.clone(),
+                    probe.gene_symbol.clone(),
+                    "parent_probeset_summary".to_string(),
+                ];
+                row.extend(values.iter().cloned());
+                probe_writer.write_record(&row).map_err(|e| EngineError {
+                    code: ErrorCode::Io,
+                    message: format!("Could not write probe-coordinate row: {e}"),
+                    cause_chain: vec![],
+                })?;
+                probe_row_count += 1;
+            }
+            probe_writer.flush().map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not flush probe-coordinate table: {e}"),
+                cause_chain: vec![],
+            })?;
+            warnings.push(
+                "probe_intensity_chrom_order.csv uses parent probeset-summary intensities; true PM probe intensities require probe-level intensity input"
+                    .to_string(),
+            );
+            if skipped_probe_rows > 0 {
+                warnings.push(format!(
+                    "{} probe-coordinate annotation row(s) were skipped because their parent probeset was absent from the imported APT summary",
+                    skipped_probe_rows
+                ));
+            }
+        }
+
         let manifest_path = Path::new(output_dir).join(PROBE_REGION_MATRIX_MANIFEST_FILE);
         let provenance_path = Path::new(output_dir).join(PROBE_REGION_PROVENANCE_FILE);
+        let mut artifacts = vec![PROBE_REGION_TABLE_FILE.to_string()];
+        if probe_row_count > 0 {
+            artifacts.push(PROBE_REGION_PROBE_TABLE_FILE.to_string());
+        }
         let manifest = json!({
             "schema": PROBE_REGION_MATRIX_MANIFEST_SCHEMA,
             "platform": platform,
@@ -661,9 +788,7 @@ impl GentleEngine {
                 .as_ref()
                 .map(|metadata| metadata.sample_column.as_str()),
             "targets": ["probeset"],
-            "artifacts": [
-                PROBE_REGION_TABLE_FILE
-            ]
+            "artifacts": artifacts.clone()
         });
         let provenance = json!({
             "schema": PROBE_REGION_BACKEND_PROVENANCE_SCHEMA,
@@ -680,9 +805,12 @@ impl GentleEngine {
             "coordinate_system": coordinate_system,
             "genome_build": genome_build,
             "normalization": normalization,
-            "artifacts": [
-                PROBE_REGION_TABLE_FILE
-            ]
+            "probe_intensity_source": if probe_row_count > 0 {
+                Some("parent_probeset_summary")
+            } else {
+                None
+            },
+            "artifacts": artifacts
         });
         std::fs::write(
             &manifest_path,
@@ -724,6 +852,7 @@ impl GentleEngine {
             written_row_count: output_rows.len(),
             missing_annotation_count,
             skipped_invalid_count,
+            probe_row_count,
             sample_columns,
             metadata_path: metadata_summary.as_ref().map(|metadata| metadata.path.clone()),
             condition_column: metadata_summary
@@ -773,12 +902,15 @@ impl GentleEngine {
 
         let output_path = Path::new(output_dir);
         let region_table_path = output_path.join(PROBE_REGION_TABLE_FILE);
+        let probe_table_path = output_path.join(PROBE_REGION_PROBE_TABLE_FILE);
         let sample_table_path = output_path.join(PROBE_REGION_SAMPLE_TABLE_FILE);
         let manifest_path = output_path.join(PROBE_REGION_MATRIX_MANIFEST_FILE);
         let provenance_path = output_path.join(PROBE_REGION_PROVENANCE_FILE);
 
         let region_table =
             Self::probe_region_file_status(&region_table_path.to_string_lossy(), "region_table");
+        let probe_table =
+            Self::probe_region_optional_file_status(&probe_table_path, "probe_table");
         let sample_table =
             Self::probe_region_optional_file_status(&sample_table_path, "sample_table");
         let normalized_matrix_manifest =
@@ -941,6 +1073,21 @@ impl GentleEngine {
                 .iter()
                 .map(|column| format!("Probe-region table is missing required column '{column}'")),
         );
+        let probe_table_summary =
+            if probe_table.as_ref().is_some_and(|status| status.exists && status.is_file) {
+                match Self::inspect_probe_region_probe_table(&probe_table_path) {
+                    Ok(summary) => summary,
+                    Err(err) => {
+                        errors.push(format!("Could not parse probe-coordinate table: {err}"));
+                        ProbeRegionProbeTableSummary::default()
+                    }
+                }
+            } else {
+                ProbeRegionProbeTableSummary::default()
+            };
+        errors.extend(probe_table_summary.required_columns_missing.iter().map(|column| {
+            format!("Probe-coordinate table is missing required column '{column}'")
+        }));
 
         let mut projection_blockers = Vec::new();
         if coordinate_system.is_none() {
@@ -968,6 +1115,7 @@ impl GentleEngine {
             output_dir: output_dir.to_string(),
             usable: errors.is_empty(),
             region_table,
+            probe_table,
             sample_table,
             normalized_matrix_manifest,
             provenance,
@@ -984,6 +1132,8 @@ impl GentleEngine {
             artifact_paths,
             row_count: table_summary.row_count,
             column_count: table_summary.column_count,
+            probe_row_count: probe_table_summary.row_count,
+            probe_parent_feature_count: probe_table_summary.parent_feature_count,
             feature_count: table_summary.feature_count,
             transcript_cluster_count: table_summary.transcript_cluster_count,
             chromosome_count: table_summary.chromosome_count,
@@ -1442,7 +1592,7 @@ impl GentleEngine {
 
     fn probe_region_apt_annotation_rows(
         annotation_path: &str,
-    ) -> Result<HashMap<String, ProbeRegionAptAnnotationRow>, EngineError> {
+    ) -> Result<ProbeRegionAptAnnotationTable, EngineError> {
         let mut reader = csv::ReaderBuilder::new()
             .delimiter(Self::probe_region_metadata_delimiter(annotation_path))
             .trim(csv::Trim::All)
@@ -1522,8 +1672,55 @@ impl GentleEngine {
         );
         let gene_idx =
             Self::probe_region_metadata_column_index(&headers, None, &["gene_symbol", "gene"]);
+        let probe_id_idx = Self::probe_region_metadata_column_index(
+            &headers,
+            None,
+            &["probe_id", "probeid", "probe", "pm_probe_id"],
+        );
+        let probe_chromosome_idx = Self::probe_region_metadata_column_index(
+            &headers,
+            None,
+            &["probe_chromosome", "probe_chrom", "pm_chromosome", "pm_chrom"],
+        );
+        let probe_start_idx = Self::probe_region_metadata_column_index(
+            &headers,
+            None,
+            &[
+                "probe_start",
+                "probe_start_1based",
+                "probe_genomic_start_1based",
+                "pm_start",
+                "pm_start_1based",
+            ],
+        );
+        let probe_stop_idx = Self::probe_region_metadata_column_index(
+            &headers,
+            None,
+            &[
+                "probe_stop",
+                "probe_end",
+                "probe_stop_1based",
+                "probe_end_1based",
+                "probe_genomic_end_1based",
+                "pm_stop",
+                "pm_end",
+                "pm_stop_1based",
+                "pm_end_1based",
+            ],
+        );
+        let probe_x_idx = Self::probe_region_metadata_column_index(
+            &headers,
+            None,
+            &["x", "probe_x", "x_coord", "x_coordinate", "feature_x"],
+        );
+        let probe_y_idx = Self::probe_region_metadata_column_index(
+            &headers,
+            None,
+            &["y", "probe_y", "y_coord", "y_coordinate", "feature_y"],
+        );
 
         let mut rows = HashMap::new();
+        let mut probes = Vec::new();
         for (line_offset, record) in reader.records().enumerate() {
             let record = record.map_err(|e| EngineError {
                 code: ErrorCode::InvalidInput,
@@ -1568,41 +1765,111 @@ impl GentleEngine {
                     cause_chain: vec![],
                 });
             }
+            let chromosome = record
+                .get(chromosome_idx)
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            let strand = strand_idx
+                .and_then(|idx| record.get(idx))
+                .map(str::trim)
+                .filter(|value| matches!(*value, "+" | "-"))
+                .unwrap_or("+")
+                .to_string();
+            let transcript_cluster_id = transcript_idx
+                .and_then(|idx| record.get(idx))
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .unwrap_or("")
+                .to_string();
+            let number_of_probes = number_of_probes_idx
+                .and_then(|idx| record.get(idx))
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .unwrap_or("")
+                .to_string();
+            let gene_symbol = gene_idx
+                .and_then(|idx| record.get(idx))
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .unwrap_or("")
+                .to_string();
             rows.entry(feature_id.clone())
                 .or_insert_with(|| ProbeRegionAptAnnotationRow {
-                    chromosome: record
-                        .get(chromosome_idx)
-                        .unwrap_or("")
-                        .trim()
-                        .to_string(),
+                    chromosome: chromosome.clone(),
                     start_1based,
                     end_1based,
-                    strand: strand_idx
-                        .and_then(|idx| record.get(idx))
-                        .map(str::trim)
-                        .filter(|value| matches!(*value, "+" | "-"))
-                        .unwrap_or("+")
-                        .to_string(),
-                    feature_id,
-                    transcript_cluster_id: transcript_idx
-                        .and_then(|idx| record.get(idx))
-                        .map(str::trim)
-                        .filter(|value| !value.is_empty())
-                        .unwrap_or("")
-                        .to_string(),
-                    number_of_probes: number_of_probes_idx
-                        .and_then(|idx| record.get(idx))
-                        .map(str::trim)
-                        .filter(|value| !value.is_empty())
-                        .unwrap_or("")
-                        .to_string(),
-                    gene_symbol: gene_idx
-                        .and_then(|idx| record.get(idx))
-                        .map(str::trim)
-                        .filter(|value| !value.is_empty())
-                        .unwrap_or("")
-                        .to_string(),
+                    strand: strand.clone(),
+                    feature_id: feature_id.clone(),
+                    transcript_cluster_id: transcript_cluster_id.clone(),
+                    number_of_probes: number_of_probes.clone(),
+                    gene_symbol: gene_symbol.clone(),
                 });
+            if let (Some(probe_id_idx), Some(probe_start_idx), Some(probe_stop_idx)) =
+                (probe_id_idx, probe_start_idx, probe_stop_idx)
+            {
+                let probe_id = record.get(probe_id_idx).unwrap_or("").trim();
+                if !probe_id.is_empty() {
+                    let probe_start_1based = record
+                        .get(probe_start_idx)
+                        .unwrap_or("")
+                        .trim()
+                        .parse::<usize>()
+                        .map_err(|e| EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "Invalid APT probe start coordinate on line {line_no}: {e}"
+                            ),
+                            cause_chain: vec![],
+                        })?;
+                    let probe_end_1based = record
+                        .get(probe_stop_idx)
+                        .unwrap_or("")
+                        .trim()
+                        .parse::<usize>()
+                        .map_err(|e| EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "Invalid APT probe stop coordinate on line {line_no}: {e}"
+                            ),
+                            cause_chain: vec![],
+                        })?;
+                    if probe_start_1based == 0 || probe_end_1based < probe_start_1based {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "Invalid APT probe interval on line {line_no}: start={probe_start_1based}, end={probe_end_1based}"
+                            ),
+                            cause_chain: vec![],
+                        });
+                    }
+                    probes.push(ProbeRegionAptProbeAnnotationRow {
+                        chromosome: probe_chromosome_idx
+                            .and_then(|idx| record.get(idx))
+                            .map(str::trim)
+                            .filter(|value| !value.is_empty())
+                            .unwrap_or(&chromosome)
+                            .to_string(),
+                        start_1based: probe_start_1based,
+                        end_1based: probe_end_1based,
+                        strand: strand.clone(),
+                        parent_feature_id: feature_id.clone(),
+                        transcript_cluster_id: transcript_cluster_id.clone(),
+                        gene_symbol: gene_symbol.clone(),
+                        probe_id: probe_id.to_string(),
+                        x: probe_x_idx
+                            .and_then(|idx| record.get(idx))
+                            .map(str::trim)
+                            .unwrap_or("")
+                            .to_string(),
+                        y: probe_y_idx
+                            .and_then(|idx| record.get(idx))
+                            .map(str::trim)
+                            .unwrap_or("")
+                            .to_string(),
+                    });
+                }
+            }
         }
         if rows.is_empty() {
             return Err(EngineError {
@@ -1611,7 +1878,10 @@ impl GentleEngine {
                 cause_chain: vec![],
             });
         }
-        Ok(rows)
+        Ok(ProbeRegionAptAnnotationTable {
+            regions: rows,
+            probes,
+        })
     }
 
     fn probe_region_apt_metadata_summary(
@@ -2165,6 +2435,97 @@ impl GentleEngine {
             }
         }
         Ok(sample_ids)
+    }
+
+    fn inspect_probe_region_probe_table(
+        path: &Path,
+    ) -> Result<ProbeRegionProbeTableSummary, String> {
+        let mut reader = csv::ReaderBuilder::new()
+            .trim(csv::Trim::All)
+            .from_path(path)
+            .map_err(|e| format!("could not open '{}': {e}", path.to_string_lossy()))?;
+        let headers = reader
+            .headers()
+            .map_err(|e| format!("could not read header: {e}"))?
+            .iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        let chromosome_idx =
+            Self::probe_region_metadata_column_index(&headers, None, &["chromosome", "chrom"]);
+        let start_idx =
+            Self::probe_region_metadata_column_index(&headers, None, &["start", "start_1based"]);
+        let stop_idx = Self::probe_region_metadata_column_index(
+            &headers,
+            None,
+            &["stop", "end", "end_1based"],
+        );
+        let probe_idx =
+            Self::probe_region_metadata_column_index(&headers, None, &["probe_id", "probe"]);
+        let parent_idx = Self::probe_region_metadata_column_index(
+            &headers,
+            None,
+            &["parent_probeset_or_region_id", "parent_probeset_id", "probeset_id"],
+        );
+        let mut required_columns_missing = Vec::new();
+        if chromosome_idx.is_none() {
+            required_columns_missing.push("chromosome".to_string());
+        }
+        if start_idx.is_none() {
+            required_columns_missing.push("start".to_string());
+        }
+        if stop_idx.is_none() {
+            required_columns_missing.push("stop".to_string());
+        }
+        if probe_idx.is_none() {
+            required_columns_missing.push("probe_id".to_string());
+        }
+        if parent_idx.is_none() {
+            required_columns_missing.push("parent_probeset_or_region_id".to_string());
+        }
+        if !required_columns_missing.is_empty() {
+            return Ok(ProbeRegionProbeTableSummary {
+                required_columns_missing,
+                ..Default::default()
+            });
+        }
+
+        let chromosome_idx = chromosome_idx.unwrap_or_default();
+        let start_idx = start_idx.unwrap_or_default();
+        let stop_idx = stop_idx.unwrap_or_default();
+        let parent_idx = parent_idx.unwrap_or_default();
+        let mut row_count = 0usize;
+        let mut parents = BTreeSet::new();
+        for record in reader.records() {
+            let record = record.map_err(|e| format!("could not read probe row: {e}"))?;
+            row_count += 1;
+            let chromosome = record.get(chromosome_idx).unwrap_or("").trim();
+            let start = record
+                .get(start_idx)
+                .unwrap_or("")
+                .trim()
+                .parse::<usize>()
+                .map_err(|e| format!("invalid probe start on row {}: {e}", row_count + 1))?;
+            let stop = record
+                .get(stop_idx)
+                .unwrap_or("")
+                .trim()
+                .parse::<usize>()
+                .map_err(|e| format!("invalid probe stop on row {}: {e}", row_count + 1))?;
+            if chromosome.is_empty() || start == 0 || stop < start {
+                return Err(format!(
+                    "invalid probe interval on row {}: {chromosome}:{start}-{stop}",
+                    row_count + 1
+                ));
+            }
+            if let Some(parent) = record.get(parent_idx).map(str::trim).filter(|v| !v.is_empty()) {
+                parents.insert(parent.to_string());
+            }
+        }
+        Ok(ProbeRegionProbeTableSummary {
+            row_count,
+            parent_feature_count: parents.len(),
+            required_columns_missing,
+        })
     }
 
     fn inspect_probe_region_table(

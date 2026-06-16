@@ -67,6 +67,9 @@ Maintenance rule:
 - Extended explicit APT probe-region imports with optional sample metadata
   matching that writes `mean_log2_*`, `sd_log2_*`, and default `log2FC_*`
   tracks for native inspection, plotting, and projection.
+- Added optional `probe_intensity_chrom_order.csv` output for explicit APT
+  imports when annotation rows provide PM probe coordinates, marking values as
+  parent probeset-summary intensities until true PM intensity input is supplied.
 
 ## 2026-06-14
 

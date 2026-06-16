@@ -698,9 +698,10 @@ fn import_apt_probe_region_output_writes_inspectable_helper_directory() {
     fs::write(
         &annotation,
         concat!(
-            "probeset_id,chromosome,start,stop,strand,transcript_cluster_id,number_of_probes,gene_symbol\n",
-            "PSR1,chr1,1010,1030,+,TC1,4,PATZ1\n",
-            "PSR2,chr1,1060,1080,+,TC1,4,PATZ1\n"
+            "probeset_id,chromosome,start,stop,strand,transcript_cluster_id,number_of_probes,gene_symbol,probe_id,probe_start,probe_stop,x,y\n",
+            "PSR1,chr1,1010,1030,+,TC1,4,PATZ1,probe_1,1011,1028,10,20\n",
+            "PSR1,chr1,1010,1030,+,TC1,4,PATZ1,probe_2,1012,1029,11,20\n",
+            "PSR2,chr1,1060,1080,+,TC1,4,PATZ1,probe_3,1061,1078,12,21\n"
         ),
     )
     .expect("annotation");
@@ -763,9 +764,10 @@ fn import_apt_probe_region_output_derives_metadata_condition_tracks() {
     fs::write(
         &annotation,
         concat!(
-            "probeset_id,chromosome,start,stop,strand,transcript_cluster_id,number_of_probes,gene_symbol\n",
-            "PSR1,chr1,1010,1030,+,TC1,4,PATZ1\n",
-            "PSR2,chr1,1060,1080,+,TC1,4,PATZ1\n"
+            "probeset_id,chromosome,start,stop,strand,transcript_cluster_id,number_of_probes,gene_symbol,probe_id,probe_start,probe_stop,x,y\n",
+            "PSR1,chr1,1010,1030,+,TC1,4,PATZ1,probe_1,1011,1028,10,20\n",
+            "PSR1,chr1,1010,1030,+,TC1,4,PATZ1,probe_2,1012,1029,11,20\n",
+            "PSR2,chr1,1060,1080,+,TC1,4,PATZ1,probe_3,1061,1078,12,21\n"
         ),
     )
     .expect("annotation");
@@ -802,6 +804,11 @@ fn import_apt_probe_region_output_derives_metadata_condition_tracks() {
         vec!["AdGFP".to_string(), "TAp73".to_string()]
     );
     assert_eq!(report.logfc_columns, vec!["TAp73-AdGFP".to_string()]);
+    assert_eq!(report.probe_row_count, 3);
+    assert!(report.warnings.iter().any(|warning| warning
+        .contains("parent probeset-summary intensities")));
+    assert_eq!(report.inspection.probe_row_count, 3);
+    assert_eq!(report.inspection.probe_parent_feature_count, 2);
     assert_eq!(
         report.inspection.condition_summary_columns,
         vec![
@@ -821,6 +828,11 @@ fn import_apt_probe_region_output_derives_metadata_condition_tracks() {
     assert!(table.contains("log2FC_TAp73-AdGFP"));
     assert!(table.contains("PSR1,"));
     assert!(table.contains(",8.1,9.2,8.100,0.000,9.200,0.000,1.100"));
+    let probe_table =
+        fs::read_to_string(output_dir.join("probe_intensity_chrom_order.csv")).expect("probes");
+    assert!(probe_table.contains("parent_probeset_summary"));
+    assert!(probe_table.contains("probe_1"));
+    assert!(probe_table.contains("probe_3"));
 }
 
 #[test]

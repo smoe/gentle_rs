@@ -7929,9 +7929,10 @@ impl MainAreaDna {
                             Some(import.inspection.clone());
                         self.cached_probe_region_projection = None;
                         self.op_status = format!(
-                            "APT probe-region output imported to '{}' ({} written, {} missing annotation, {} skipped{})",
+                            "APT probe-region output imported to '{}' ({} region rows, {} probe rows, {} missing annotation, {} skipped{})",
                             output_dir,
                             import.written_row_count,
+                            import.probe_row_count,
                             import.missing_annotation_count,
                             import.skipped_invalid_count,
                             warning_suffix
@@ -8315,8 +8316,9 @@ impl MainAreaDna {
         }
         if let Some(import) = self.cached_probe_region_apt_import.as_ref() {
             ui.small(format!(
-                "last import: {} written from {} summary row(s), {} annotation row(s), samples: {}, conditions: {}, logFC: {}",
+                "last import: {} region row(s), {} probe row(s), {} summary row(s), {} annotation row(s), samples: {}, conditions: {}, logFC: {}",
                 import.written_row_count,
+                import.probe_row_count,
                 import.summary_row_count,
                 import.annotation_row_count,
                 Self::probe_region_preview_list(&import.sample_columns),
@@ -8569,9 +8571,11 @@ impl MainAreaDna {
             });
             ui.small(format!("output_dir: {}", report.output_dir));
             ui.small(format!(
-                "rows: {} | columns: {} | features: {} | transcript clusters: {} | chromosomes: {}",
+                "rows: {} | columns: {} | probe rows: {} | probe parents: {} | features: {} | transcript clusters: {} | chromosomes: {}",
                 report.row_count,
                 report.column_count,
+                report.probe_row_count,
+                report.probe_parent_feature_count,
                 report.feature_count,
                 report.transcript_cluster_count,
                 report.chromosome_count

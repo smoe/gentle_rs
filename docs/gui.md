@@ -3019,7 +3019,10 @@ The `Help` menu now includes:
   `Clariom D / probe-region evidence` inspector for completed
   `probe_regions_oligo.R` output directories and explicit APT summary +
   annotation table imports, with optional sample metadata columns to derive
-  condition means/SDs and default log2FC tracks. It uses the same shared
+  condition means/SDs and default log2FC tracks. When explicit PM probe
+  coordinates are present in the annotation table, the same import can also
+  write and inspect a probe-coordinate table whose values are labeled as
+  parent probeset-summary intensities. It uses the same shared
   `arrays import-apt-probe-region-output` and
   `arrays inspect-probe-region-output OUTPUT_DIR` contracts as the GUI shell,
   then previews helper outputs, sample/condition/logFC columns, chromosome/gene

@@ -2377,8 +2377,15 @@ Microarray track projection notes:
   strand, transcript-cluster, probe-count, and gene-symbol columns. Optional
   `--metadata`, `--condition-column`, and `--sample-column` inputs match APT
   sample columns to conditions and append `mean_log2_*`, `sd_log2_*`, and
-  default `log2FC_*` columns for native plotting/projection. It does not run
-  APT or infer coordinates from vendor files by itself.
+  default `log2FC_*` columns for native plotting/projection. When the
+  annotation table also declares `probe_id` plus explicit PM probe
+  `probe_start`/`probe_stop` coordinate columns, GENtle writes
+  `probe_intensity_chrom_order.csv` with probe coordinates, x/y feature
+  positions when present, parent probeset ids, and the same sample/derived
+  value columns. Those probe rows are marked as
+  `parent_probeset_summary` intensity source; true PM probe intensities still
+  require probe-level intensity input. It does not run APT or infer
+  coordinates from vendor files by itself.
 - `arrays render-probe-region-output-svg OUTPUT_DIR OUTPUT.svg` consumes the
   same completed helper directory and writes
   `gentle.probe_region_output_svg_export.v1` provenance for a deterministic

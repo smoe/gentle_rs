@@ -179,9 +179,10 @@ broad crate surgery that is not tied to the selected release story.
   build, liftover, multi-hit, and ambiguity provenance, then use those mapped
   probe/exon/junction constraints to identify compatible splice isoforms and
   rule out incompatible ones without hiding uncertain evidence.
-- Next array-evidence implementation pass: extend explicit APT imports with
-  optional probe-level PM-coordinate output when annotation tables provide
-  probe coordinates.
+- Next array-evidence implementation pass: add true PM probe-intensity input
+  support for workflows that can provide probe-level intensity matrices, so
+  `probe_intensity_chrom_order.csv` no longer needs to carry only parent
+  probeset-summary values.
 
 ## Phase D: Visualization And Workflow UX
 

@@ -4021,6 +4021,8 @@ pub struct ProbeRegionOutputInspection {
     pub usable: bool,
     pub region_table: ProbeRegionFileStatus,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub probe_table: Option<ProbeRegionFileStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sample_table: Option<ProbeRegionFileStatus>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub normalized_matrix_manifest: Option<ProbeRegionFileStatus>,
@@ -4046,6 +4048,8 @@ pub struct ProbeRegionOutputInspection {
     pub artifact_paths: Vec<String>,
     pub row_count: usize,
     pub column_count: usize,
+    pub probe_row_count: usize,
+    pub probe_parent_feature_count: usize,
     pub feature_count: usize,
     pub transcript_cluster_count: usize,
     pub chromosome_count: usize,
@@ -4092,6 +4096,7 @@ pub struct ProbeRegionAptImportReport {
     pub written_row_count: usize,
     pub missing_annotation_count: usize,
     pub skipped_invalid_count: usize,
+    pub probe_row_count: usize,
     pub sample_columns: Vec<String>,
     pub metadata_path: Option<String>,
     pub condition_column: Option<String>,

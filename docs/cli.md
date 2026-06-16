@@ -3653,7 +3653,11 @@ Tutorial companion:
     stop columns, with optional strand, transcript-cluster, probe-count, and
     gene-symbol columns. When optional metadata is supplied, matching sample
     rows add `mean_log2_*`, `sd_log2_*`, and default `log2FC_*` columns to the
-    imported region table. GENtle writes `region_intensity_chrom_order.csv`,
+    imported region table. If annotation rows also include `probe_id` and
+    PM probe `probe_start`/`probe_stop` coordinates, GENtle also writes
+    `probe_intensity_chrom_order.csv` with parent-probeset summary intensities
+    explicitly marked as `parent_probeset_summary`. GENtle writes
+    `region_intensity_chrom_order.csv`,
     `normalized_feature_matrix_manifest.json`, and `provenance.json`; it does
     not run APT.
 - `arrays render-probe-region-output-svg analysis/probe_regions analysis/probe_regions/probe_region_plot.svg`
