@@ -214,7 +214,11 @@ def test_demo_writes_expected_artifacts(tmp_path: Path) -> None:
     assert payload["schema"] == "gentle.clawbio_skill_result.v1"
     assert payload["status"] in ("ok", "degraded_demo")
     assert payload["stdout_json"] is None
-    assert payload["chat_summary_lines"] is None
+    assert payload["chat_summary_lines"] == [
+        "Generated a deterministic GENtle protocol cartoon for a two-fragment Gibson assembly.",
+        "The ClawBio demo now starts with a graphical export so the first reply can show an actual figure instead of only listing commands.",
+        "Best-first preview artifact: generated/artifacts/gibson.two_fragment.protocol.png",
+    ]
     assert payload["request"]["mode"] == "shell"
     assert (
         payload["request"]["shell_line"]
