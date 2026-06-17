@@ -376,6 +376,8 @@ const GENOME_BIGWIG_TRACK_GENERATED_TAG: &str = "genome_bigwig_track";
 const GENOME_VCF_TRACK_GENERATED_TAG: &str = "genome_vcf_track";
 pub const MICROARRAY_TRACK_MANIFEST_SCHEMA: &str = "gentle.microarray_track_manifest.v1";
 pub const MICROARRAY_PROJECTION_REPORT_SCHEMA: &str = "gentle.microarray_projection_report.v1";
+pub const PROBE_REGION_EVIDENCE_INTERPRETATION_SCHEMA: &str =
+    "gentle.probe_region_evidence_interpretation.v1";
 pub const PROBE_REGION_PLAN_SCHEMA: &str = "gentle.probe_region_plan.v1";
 pub const PROBE_REGION_OUTPUT_INSPECTION_SCHEMA: &str = "gentle.probe_region_output_inspection.v1";
 pub const PROBE_REGION_OUTPUT_SVG_EXPORT_SCHEMA: &str = "gentle.probe_region_output_svg_export.v1";
@@ -2966,6 +2968,17 @@ pub enum Operation {
         max_features: Option<usize>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         clear_existing: Option<bool>,
+    },
+    InterpretProbeRegionEvidence {
+        seq_id: SeqId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        gene_label: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        level: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        min_abs_logfc: Option<f64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
     },
     ProjectGenomeInterval {
         source_genome_id: String,

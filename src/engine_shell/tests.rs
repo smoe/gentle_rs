@@ -7002,6 +7002,27 @@ fn parse_arrays_microarray_track_commands() {
         }
         other => panic!("unexpected command: {other:?}"),
     }
+
+    let interpret_probe_evidence = parse_shell_line(
+        "arrays interpret-probe-region-evidence array_slice --gene PATZ1 --level pm_probe --min-abs-logfc 0.5 --path report.json",
+    )
+    .expect("parse probe-region interpretation");
+    match interpret_probe_evidence {
+        ShellCommand::ArraysInterpretProbeRegionEvidence {
+            seq_id,
+            gene_label,
+            level,
+            min_abs_logfc,
+            path,
+        } => {
+            assert_eq!(seq_id, "array_slice");
+            assert_eq!(gene_label.as_deref(), Some("PATZ1"));
+            assert_eq!(level.as_deref(), Some("pm_probe"));
+            assert_eq!(min_abs_logfc, Some(0.5));
+            assert_eq!(path.as_deref(), Some("report.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
 }
 
 #[test]

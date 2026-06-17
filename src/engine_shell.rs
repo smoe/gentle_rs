@@ -1593,6 +1593,13 @@ pub enum ShellCommand {
         max_features: Option<usize>,
         clear_existing: bool,
     },
+    ArraysInterpretProbeRegionEvidence {
+        seq_id: String,
+        gene_label: Option<String>,
+        level: Option<String>,
+        min_abs_logfc: Option<f64>,
+        path: Option<String>,
+    },
     ArraysProbeRegions {
         cel_paths: Vec<String>,
         dataset: Option<String>,
@@ -8295,6 +8302,22 @@ impl ShellCommand {
                     .map(|value| value.to_string())
                     .unwrap_or_else(|| "-".to_string()),
                 clear_existing
+            ),
+            Self::ArraysInterpretProbeRegionEvidence {
+                seq_id,
+                gene_label,
+                level,
+                min_abs_logfc,
+                path,
+            } => format!(
+                "interpret projected probe-region evidence on '{}' (gene={}, level={}, min_abs_logfc={}, path={})",
+                seq_id,
+                gene_label.as_deref().unwrap_or("all"),
+                level.as_deref().unwrap_or("all"),
+                min_abs_logfc
+                    .map(|value| format!("{value:.3}"))
+                    .unwrap_or_else(|| "-".to_string()),
+                path.as_deref().unwrap_or("-")
             ),
             Self::ArraysProbeRegions {
                 cel_paths,
@@ -23772,7 +23795,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "arrays" => {
             if tokens.len() < 2 {
                 return Err(
-                    "arrays requires a subcommand: inspect-microarray-track, project-microarray-track, inspect-probe-region-output, import-apt-probe-region-output, render-probe-region-output-svg, project-probe-region-output, or probe-regions"
+                    "arrays requires a subcommand: inspect-microarray-track, project-microarray-track, inspect-probe-region-output, import-apt-probe-region-output, render-probe-region-output-svg, project-probe-region-output, interpret-probe-region-evidence, or probe-regions"
                         .to_string(),
                 );
             }
@@ -24147,9 +24170,86 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         clear_existing,
                     })
                 }
+                "interpret-probe-region-evidence" | "interpret-probe-region-output" => {
+                    if tokens.len() < 3 {
+                        return Err(
+                            "arrays interpret-probe-region-evidence requires SEQ_ID [--gene LABEL] [--level all|probe_region|pm_probe] [--min-abs-logfc N] [--path FILE]"
+                                .to_string(),
+                        );
+                    }
+                    let seq_id = tokens[2].trim().to_string();
+                    if seq_id.is_empty() {
+                        return Err(
+                            "arrays interpret-probe-region-evidence SEQ_ID must not be empty"
+                                .to_string(),
+                        );
+                    }
+                    let mut gene_label = None;
+                    let mut level = None;
+                    let mut min_abs_logfc = None;
+                    let mut path = None;
+                    let mut idx = 3usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--gene" | "--gene-label" | "--gene_label" => {
+                                idx += 1;
+                                if idx >= tokens.len() {
+                                    return Err("Missing LABEL after --gene".to_string());
+                                }
+                                gene_label = Some(tokens[idx].clone());
+                                idx += 1;
+                            }
+                            "--level" | "--evidence-level" | "--evidence_level" => {
+                                idx += 1;
+                                if idx >= tokens.len() {
+                                    return Err("Missing LEVEL after --level".to_string());
+                                }
+                                level = Some(tokens[idx].clone());
+                                idx += 1;
+                            }
+                            "--min-abs-logfc" | "--min-abs-logFC" => {
+                                idx += 1;
+                                if idx >= tokens.len() {
+                                    return Err("Missing N after --min-abs-logfc".to_string());
+                                }
+                                let raw = tokens[idx].clone();
+                                let value = raw.parse::<f64>().map_err(|e| {
+                                    format!("Invalid --min-abs-logfc value '{raw}': {e}")
+                                })?;
+                                if !value.is_finite() || value < 0.0 {
+                                    return Err(
+                                        "--min-abs-logfc must be a finite value >= 0".to_string()
+                                    );
+                                }
+                                min_abs_logfc = Some(value);
+                                idx += 1;
+                            }
+                            "--path" | "--output" => {
+                                idx += 1;
+                                if idx >= tokens.len() {
+                                    return Err("Missing FILE after --path".to_string());
+                                }
+                                path = Some(tokens[idx].clone());
+                                idx += 1;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for arrays interpret-probe-region-evidence"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::ArraysInterpretProbeRegionEvidence {
+                        seq_id,
+                        gene_label,
+                        level,
+                        min_abs_logfc,
+                        path,
+                    })
+                }
                 "probe-regions" | "probe-region-plan" => parse_arrays_probe_regions_command(tokens),
                 other => Err(format!(
-                    "Unknown arrays subcommand '{other}' (expected inspect-microarray-track, project-microarray-track, inspect-probe-region-output, import-apt-probe-region-output, render-probe-region-output-svg, project-probe-region-output, or probe-regions)"
+                    "Unknown arrays subcommand '{other}' (expected inspect-microarray-track, project-microarray-track, inspect-probe-region-output, import-apt-probe-region-output, render-probe-region-output-svg, project-probe-region-output, interpret-probe-region-evidence, or probe-regions)"
                 )),
             }
         }
@@ -24829,6 +24929,7 @@ fn is_reference_or_track_command(command: &ShellCommand) -> bool {
             | ShellCommand::ArraysImportAptProbeRegionOutput { .. }
             | ShellCommand::ArraysRenderProbeRegionOutputSvg { .. }
             | ShellCommand::ArraysProjectProbeRegionOutput { .. }
+            | ShellCommand::ArraysInterpretProbeRegionEvidence { .. }
             | ShellCommand::ArraysProbeRegions { .. }
             | ShellCommand::TracksTrackedList
             | ShellCommand::TracksTrackedAdd { .. }
@@ -29497,6 +29598,27 @@ fn execute_reference_and_track_command(
                 !op_result.created_seq_ids.is_empty() || !op_result.changed_seq_ids.is_empty();
             Ok(ShellRunResult {
                 state_changed,
+                output: json!({ "result": op_result }),
+            })
+        }
+        ShellCommand::ArraysInterpretProbeRegionEvidence {
+            seq_id,
+            gene_label,
+            level,
+            min_abs_logfc,
+            path,
+        } => {
+            let op_result = engine
+                .apply(Operation::InterpretProbeRegionEvidence {
+                    seq_id: seq_id.clone(),
+                    gene_label: gene_label.clone(),
+                    level: level.clone(),
+                    min_abs_logfc: *min_abs_logfc,
+                    path: path.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
                 output: json!({ "result": op_result }),
             })
         }
@@ -37429,6 +37551,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ArraysImportAptProbeRegionOutput { .. }
         | ShellCommand::ArraysRenderProbeRegionOutputSvg { .. }
         | ShellCommand::ArraysProjectProbeRegionOutput { .. }
+        | ShellCommand::ArraysInterpretProbeRegionEvidence { .. }
         | ShellCommand::ArraysProbeRegions { .. }
         | ShellCommand::TracksTrackedList
         | ShellCommand::TracksTrackedAdd { .. }

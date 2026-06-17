@@ -593,6 +593,104 @@ fn project_probe_region_output_pm_probe_level_materializes_true_probe_features()
 }
 
 #[test]
+fn interpret_probe_region_evidence_preserves_shared_transcript_ambiguity() {
+    let temp = tempdir().expect("tempdir");
+    let output_dir = temp.path().join("probe_regions");
+    write_probe_region_projection_fixture(&output_dir);
+    let mut engine = microarray_anchored_engine("hg38", "+");
+
+    engine
+        .apply(Operation::ProjectProbeRegionOutput {
+            seq_id: "array_slice".to_string(),
+            output_dir: output_dir.to_string_lossy().to_string(),
+            contrasts: vec!["TAp73-AdGFP".to_string()],
+            level: Some("pm_probe".to_string()),
+            min_abs_logfc: Some(0.5),
+            max_features: Some(10),
+            clear_existing: Some(true),
+        })
+        .expect("project PM probe helper output");
+
+    let dna = engine
+        .state_mut()
+        .sequences
+        .get_mut("array_slice")
+        .expect("array slice");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(10, 28),
+            gb_io::seq::Location::simple_range(60, 80),
+        ]),
+        qualifiers: vec![
+            ("gene".into(), Some("PATZ1".to_string())),
+            ("transcript_id".into(), Some("PATZ1-201".to_string())),
+            ("label".into(), Some("PATZ1-201".to_string())),
+            ("strand".into(), Some("+".to_string())),
+        ],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(10, 28),
+            gb_io::seq::Location::simple_range(70, 90),
+        ]),
+        qualifiers: vec![
+            ("gene".into(), Some("PATZ1".to_string())),
+            ("transcript_id".into(), Some("PATZ1-202".to_string())),
+            ("label".into(), Some("PATZ1-202".to_string())),
+            ("strand".into(), Some("+".to_string())),
+        ],
+    });
+
+    let report_path = temp.path().join("probe_region_interpretation.json");
+    let result = engine
+        .apply(Operation::InterpretProbeRegionEvidence {
+            seq_id: "array_slice".to_string(),
+            gene_label: Some("PATZ1".to_string()),
+            level: Some("pm_probe".to_string()),
+            min_abs_logfc: Some(0.5),
+            path: Some(report_path.to_string_lossy().to_string()),
+        })
+        .expect("interpret projected probe-region evidence");
+    assert!(report_path.exists());
+    let report = result
+        .probe_region_evidence_interpretation
+        .expect("interpretation report");
+    assert_eq!(report.schema, PROBE_REGION_EVIDENCE_INTERPRETATION_SCHEMA);
+    assert_eq!(report.level, "pm_probe");
+    assert_eq!(report.array_feature_count, 1);
+    assert_eq!(report.transcript_count, 2);
+    assert_eq!(report.evidence_rows.len(), 1);
+    let row = &report.evidence_rows[0];
+    assert_eq!(row.feature_id, "probe_1");
+    assert_eq!(row.parent_feature_id.as_deref(), Some("PSR1"));
+    assert_eq!(row.mapping_status, "shared_exon_overlap");
+    assert_eq!(row.relationship, "compatible_with_exon_geometry");
+    assert_eq!(
+        row.overlapping_transcript_ids,
+        vec!["PATZ1-201".to_string(), "PATZ1-202".to_string()]
+    );
+    assert!(row
+        .ambiguity_tags
+        .iter()
+        .any(|tag| tag == "shared_transcript_overlap"));
+    assert!(row
+        .ambiguity_tags
+        .iter()
+        .any(|tag| tag == "multi_hit_not_assessed"));
+    assert!(row
+        .ambiguity_tags
+        .iter()
+        .any(|tag| tag == "isoform_support_not_inferred"));
+    assert!(report.transcript_rows.iter().all(|tx| {
+        tx.shared_evidence_count == 1
+            && tx.unique_evidence_count == 0
+            && tx.relationship_summary == "only_shared_compatible_evidence"
+    }));
+}
+
+#[test]
 fn project_probe_region_output_uses_declared_coordinate_projection_map() {
     let temp = tempdir().expect("tempdir");
     let output_dir = temp.path().join("probe_regions_projected");

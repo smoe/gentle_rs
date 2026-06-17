@@ -84,6 +84,39 @@ struct ProbeRegionProjectionRow {
     logfc_values: BTreeMap<String, f64>,
 }
 
+#[derive(Clone)]
+struct ProbeRegionProjectedEvidence {
+    evidence_id: String,
+    level: String,
+    feature_id: String,
+    parent_feature_id: Option<String>,
+    intensity_source: Option<String>,
+    chromosome: Option<String>,
+    start_1based: Option<usize>,
+    end_1based: Option<usize>,
+    strand: Option<String>,
+    logfc: Option<f64>,
+    assembly_check: Option<String>,
+    ranges_0based: Vec<(usize, usize)>,
+}
+
+struct ProbeRegionTranscriptModel {
+    transcript_id: String,
+    gene: Option<String>,
+    label: Option<String>,
+    strand: Option<String>,
+    exon_ranges_0based: Vec<(usize, usize)>,
+    span_0based: Option<(usize, usize)>,
+}
+
+#[derive(Default)]
+struct ProbeRegionTranscriptEvidenceCounts {
+    compatible: usize,
+    constraining: usize,
+    shared: usize,
+    unique: usize,
+}
+
 #[derive(Default)]
 struct ProbeRegionAptLibraryPlan {
     pgf_path: Option<String>,
@@ -1657,6 +1690,476 @@ impl GentleEngine {
         }
 
         Ok(report)
+    }
+
+    pub(super) fn interpret_probe_region_evidence(
+        dna: &DNAsequence,
+        seq_id: &str,
+        gene_label: Option<&str>,
+        level: Option<&str>,
+        min_abs_logfc: Option<f64>,
+    ) -> Result<ProbeRegionEvidenceInterpretationReport, EngineError> {
+        if let Some(threshold) = min_abs_logfc
+            && (!threshold.is_finite() || threshold < 0.0)
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "InterpretProbeRegionEvidence min_abs_logfc must be >= 0".to_string(),
+                cause_chain: vec![],
+            });
+        }
+        let level = Self::probe_region_interpretation_level(level)?;
+        let gene_label = gene_label
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+        let mut warnings = Vec::new();
+        let evidence = Self::projected_probe_region_evidence(dna, &level, min_abs_logfc);
+        let transcripts = Self::probe_region_transcript_models(dna, gene_label.as_deref());
+
+        if evidence.is_empty() {
+            warnings.push(
+                "No projected probe-region array features matched the requested interpretation filter"
+                    .to_string(),
+            );
+        }
+        if transcripts.is_empty() {
+            warnings.push(
+                "No transcript/exon models matched the requested gene filter; evidence is reported without transcript compatibility calls"
+                    .to_string(),
+            );
+        }
+
+        let mut transcript_counts = transcripts
+            .iter()
+            .map(|tx| {
+                (
+                    tx.transcript_id.clone(),
+                    ProbeRegionTranscriptEvidenceCounts::default(),
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        let mut rows = Vec::new();
+        for item in &evidence {
+            let mut overlapping_transcripts = Vec::new();
+            let mut overlapping_exon_count = 0usize;
+            let mut span_overlaps = Vec::new();
+            for tx in &transcripts {
+                let exon_hits = tx
+                    .exon_ranges_0based
+                    .iter()
+                    .filter(|range| {
+                        item.ranges_0based.iter().any(|evidence_range| {
+                            Self::probe_region_ranges_overlap(*range, evidence_range)
+                        })
+                    })
+                    .count();
+                if exon_hits > 0 {
+                    overlapping_exon_count += exon_hits;
+                    overlapping_transcripts.push(tx.transcript_id.clone());
+                } else if let Some(span) = tx.span_0based
+                    && item.ranges_0based.iter().any(|range| {
+                        Self::probe_region_ranges_overlap(&span, range)
+                    })
+                {
+                    span_overlaps.push(tx.transcript_id.clone());
+                }
+            }
+            overlapping_transcripts.sort();
+            overlapping_transcripts.dedup();
+            span_overlaps.sort();
+            span_overlaps.dedup();
+
+            let mapping_status = if transcripts.is_empty() {
+                "no_transcript_models"
+            } else if overlapping_transcripts.len() > 1 {
+                "shared_exon_overlap"
+            } else if overlapping_transcripts.len() == 1 && overlapping_exon_count > 1 {
+                "unique_multi_exon_overlap"
+            } else if overlapping_transcripts.len() == 1 {
+                "unique_exon_overlap"
+            } else if !span_overlaps.is_empty() {
+                "no_exon_overlap_inside_transcript_span"
+            } else {
+                "no_transcript_overlap"
+            }
+            .to_string();
+            let relationship = if transcripts.is_empty() {
+                "no_transcript_models"
+            } else if !overlapping_transcripts.is_empty() {
+                "compatible_with_exon_geometry"
+            } else if !span_overlaps.is_empty() {
+                "constrains_by_non_exonic_overlap"
+            } else {
+                "unmapped_to_transcript_models"
+            }
+            .to_string();
+
+            let mut ambiguity_tags = BTreeSet::from([
+                "multi_hit_not_assessed".to_string(),
+                "probe_sequence_alignment_not_assessed".to_string(),
+                "isoform_support_not_inferred".to_string(),
+            ]);
+            if overlapping_transcripts.len() > 1 {
+                ambiguity_tags.insert("shared_transcript_overlap".to_string());
+            }
+            if item.parent_feature_id.is_some() {
+                ambiguity_tags.insert("parent_probeset_context".to_string());
+            }
+            if item.intensity_source.as_deref() == Some("probe_level_input") {
+                ambiguity_tags.insert("pm_probe_input".to_string());
+            }
+            if item.assembly_check.as_deref() == Some("projected_from_native_coordinate_system") {
+                ambiguity_tags.insert("coordinate_projection_used".to_string());
+            }
+            if transcripts.is_empty() {
+                ambiguity_tags.insert("no_transcript_models".to_string());
+            }
+            if !span_overlaps.is_empty() && overlapping_transcripts.is_empty() {
+                ambiguity_tags.insert("non_exonic_transcript_span_overlap".to_string());
+            }
+
+            for tx_id in &overlapping_transcripts {
+                if let Some(counts) = transcript_counts.get_mut(tx_id) {
+                    counts.compatible += 1;
+                    if overlapping_transcripts.len() > 1 {
+                        counts.shared += 1;
+                    } else {
+                        counts.unique += 1;
+                    }
+                }
+            }
+            for tx_id in &span_overlaps {
+                if let Some(counts) = transcript_counts.get_mut(tx_id) {
+                    counts.constraining += 1;
+                }
+            }
+
+            rows.push(ProbeRegionEvidenceMappingRow {
+                evidence_id: item.evidence_id.clone(),
+                level: item.level.clone(),
+                feature_id: item.feature_id.clone(),
+                parent_feature_id: item.parent_feature_id.clone(),
+                intensity_source: item.intensity_source.clone(),
+                chromosome: item.chromosome.clone(),
+                start_1based: item.start_1based,
+                end_1based: item.end_1based,
+                strand: item.strand.clone(),
+                logfc: item.logfc,
+                overlapping_transcript_ids: overlapping_transcripts,
+                overlapping_exon_count,
+                mapping_status,
+                ambiguity_tags: ambiguity_tags.into_iter().collect(),
+                relationship,
+            });
+        }
+
+        let total_evidence = evidence.len();
+        let transcript_rows = transcripts
+            .iter()
+            .map(|tx| {
+                let counts = transcript_counts
+                    .remove(&tx.transcript_id)
+                    .unwrap_or_default();
+                let unmapped = total_evidence.saturating_sub(counts.compatible + counts.constraining);
+                let relationship_summary = if counts.unique > 0 {
+                    "has_unique_compatible_evidence"
+                } else if counts.shared > 0 {
+                    "only_shared_compatible_evidence"
+                } else if counts.constraining > 0 {
+                    "has_non_exonic_constraining_evidence"
+                } else {
+                    "no_mapped_evidence"
+                }
+                .to_string();
+                ProbeRegionEvidenceTranscriptRow {
+                    transcript_id: tx.transcript_id.clone(),
+                    gene: tx.gene.clone(),
+                    label: tx.label.clone(),
+                    strand: tx.strand.clone(),
+                    exon_count: tx.exon_ranges_0based.len(),
+                    compatible_evidence_count: counts.compatible,
+                    constraining_evidence_count: counts.constraining,
+                    shared_evidence_count: counts.shared,
+                    unique_evidence_count: counts.unique,
+                    unmapped_evidence_count: unmapped,
+                    relationship_summary,
+                }
+            })
+            .collect::<Vec<_>>();
+
+        Ok(ProbeRegionEvidenceInterpretationReport {
+            schema: PROBE_REGION_EVIDENCE_INTERPRETATION_SCHEMA.to_string(),
+            seq_id: seq_id.to_string(),
+            gene_label,
+            level,
+            min_abs_logfc,
+            array_feature_count: evidence.len(),
+            transcript_count: transcripts.len(),
+            evidence_rows: rows,
+            transcript_rows,
+            warnings,
+        })
+    }
+
+    fn probe_region_interpretation_level(level: Option<&str>) -> Result<String, EngineError> {
+        let normalized = level
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("all")
+            .replace('-', "_")
+            .to_ascii_lowercase();
+        match normalized.as_str() {
+            "all" | "*" => Ok("all".to_string()),
+            "probe_region" | "region" | "probeset" | "probeset_region" | "psr" => {
+                Ok("probe_region".to_string())
+            }
+            "pm_probe" | "probe" | "probe_level" | "pm" => Ok("pm_probe".to_string()),
+            other => Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "InterpretProbeRegionEvidence level '{other}' is not supported; use all, probe_region, or pm_probe"
+                ),
+                cause_chain: vec![],
+            }),
+        }
+    }
+
+    fn projected_probe_region_evidence(
+        dna: &DNAsequence,
+        level: &str,
+        min_abs_logfc: Option<f64>,
+    ) -> Vec<ProbeRegionProjectedEvidence> {
+        let mut out = Vec::new();
+        for (idx, feature) in dna.features().iter().enumerate() {
+            if Self::probe_region_first_qualifier(feature, &["gentle_track_source"]).as_deref()
+                != Some("Array")
+                || Self::probe_region_first_qualifier(feature, &["gentle_array_dataset"]).as_deref()
+                    != Some("probe_region_output")
+            {
+                continue;
+            }
+            let feature_level = Self::probe_region_first_qualifier(feature, &["gentle_array_level"])
+                .unwrap_or_else(|| "probe_region".to_string());
+            if level != "all" && feature_level != level {
+                continue;
+            }
+            let logfc =
+                Self::probe_region_first_qualifier(feature, &["logFC", "score"]).and_then(|value| {
+                    value.trim().parse::<f64>().ok().filter(|value| value.is_finite())
+                });
+            if let Some(threshold) = min_abs_logfc
+                && logfc.map(|value| value.abs() < threshold).unwrap_or(true)
+            {
+                continue;
+            }
+            let mut ranges = Vec::new();
+            collect_location_ranges_usize(&feature.location, &mut ranges);
+            if ranges.is_empty() {
+                continue;
+            }
+            let feature_id = Self::probe_region_first_qualifier(
+                feature,
+                &["gentle_array_feature_id", "feature_id", "label"],
+            )
+            .unwrap_or_else(|| format!("array_feature_{idx}"));
+            let contrast = Self::probe_region_first_qualifier(feature, &["gentle_array_contrast"]);
+            let evidence_id = contrast
+                .as_deref()
+                .map(|contrast| format!("{feature_id}:{contrast}"))
+                .unwrap_or_else(|| feature_id.clone());
+            let (local_start, local_end) = Self::probe_region_range_span(&ranges)
+                .unwrap_or((0, 0));
+            out.push(ProbeRegionProjectedEvidence {
+                evidence_id,
+                level: feature_level,
+                feature_id,
+                parent_feature_id: Self::probe_region_first_qualifier(
+                    feature,
+                    &["gentle_array_parent_feature_id"],
+                ),
+                intensity_source: Self::probe_region_first_qualifier(
+                    feature,
+                    &["gentle_array_intensity_source"],
+                ),
+                chromosome: Self::probe_region_first_qualifier(feature, &["chromosome"]),
+                start_1based: Self::probe_region_first_qualifier(
+                    feature,
+                    &["genomic_start_1based", "start_1based"],
+                )
+                .and_then(|value| value.parse::<usize>().ok())
+                .or_else(|| Some(local_start + 1)),
+                end_1based: Self::probe_region_first_qualifier(
+                    feature,
+                    &["genomic_end_1based", "end_1based"],
+                )
+                .and_then(|value| value.parse::<usize>().ok())
+                .or_else(|| Some(local_end)),
+                strand: Self::probe_region_first_qualifier(feature, &["strand", "array_strand"]),
+                logfc,
+                assembly_check: Self::probe_region_first_qualifier(
+                    feature,
+                    &["gentle_array_assembly_check"],
+                ),
+                ranges_0based: ranges,
+            });
+        }
+        out
+    }
+
+    fn probe_region_transcript_models(
+        dna: &DNAsequence,
+        gene_label: Option<&str>,
+    ) -> Vec<ProbeRegionTranscriptModel> {
+        let mut exon_ranges_by_transcript: BTreeMap<String, Vec<(usize, usize)>> = BTreeMap::new();
+        for feature in dna.features() {
+            if !feature.kind.eq_ignore_ascii_case("exon") {
+                continue;
+            }
+            let mut ranges = Vec::new();
+            collect_location_ranges_usize(&feature.location, &mut ranges);
+            if ranges.is_empty() {
+                continue;
+            }
+            for transcript_id in Self::probe_region_feature_text_values(
+                feature,
+                &["transcript_id", "Parent", "parent", "transcript"],
+            ) {
+                exon_ranges_by_transcript
+                    .entry(transcript_id)
+                    .or_default()
+                    .extend(ranges.iter().copied());
+            }
+        }
+
+        let mut out = Vec::new();
+        let mut seen = BTreeSet::new();
+        for (idx, feature) in dna.features().iter().enumerate() {
+            if !Self::probe_region_is_transcript_feature(feature) {
+                continue;
+            }
+            if !Self::probe_region_feature_matches_gene(feature, gene_label) {
+                continue;
+            }
+            let transcript_id = Self::probe_region_first_qualifier(
+                feature,
+                &[
+                    "transcript_id",
+                    "transcript",
+                    "transcript_cluster_id",
+                    "ID",
+                    "id",
+                    "Name",
+                    "label",
+                ],
+            )
+            .unwrap_or_else(|| format!("transcript_{idx}"));
+            if !seen.insert(transcript_id.clone()) {
+                continue;
+            }
+            let mut ranges = Vec::new();
+            collect_location_ranges_usize(&feature.location, &mut ranges);
+            if ranges.len() <= 1
+                && let Some(exon_ranges) = exon_ranges_by_transcript.get(&transcript_id)
+            {
+                ranges = exon_ranges.clone();
+            }
+            if ranges.is_empty() {
+                continue;
+            }
+            ranges.sort();
+            ranges.dedup();
+            out.push(ProbeRegionTranscriptModel {
+                transcript_id,
+                gene: Self::probe_region_first_qualifier(
+                    feature,
+                    &["gene", "gene_symbol", "gene_name", "gene_id"],
+                ),
+                label: Self::probe_region_first_qualifier(feature, &["label", "Name"]),
+                strand: Self::probe_region_first_qualifier(feature, &["strand"]),
+                span_0based: Self::probe_region_range_span(&ranges),
+                exon_ranges_0based: ranges,
+            });
+        }
+        out
+    }
+
+    fn probe_region_is_transcript_feature(feature: &gb_io::seq::Feature) -> bool {
+        matches!(
+            feature.kind.to_ascii_lowercase().as_str(),
+            "mrna" | "transcript" | "ncrna" | "misc_rna" | "rrna" | "trna"
+        )
+    }
+
+    fn probe_region_feature_matches_gene(
+        feature: &gb_io::seq::Feature,
+        gene_label: Option<&str>,
+    ) -> bool {
+        let Some(requested) = gene_label.map(str::trim).filter(|value| !value.is_empty()) else {
+            return true;
+        };
+        let requested_lower = requested.to_ascii_lowercase();
+        let values = Self::probe_region_feature_text_values(
+            feature,
+            &[
+                "gene",
+                "gene_symbol",
+                "gene_name",
+                "gene_id",
+                "label",
+                "Name",
+                "transcript_id",
+                "transcript",
+            ],
+        );
+        values.iter().any(|value| {
+            let lower = value.to_ascii_lowercase();
+            lower == requested_lower || lower.contains(&requested_lower)
+        })
+    }
+
+    fn probe_region_feature_text_values(
+        feature: &gb_io::seq::Feature,
+        keys: &[&str],
+    ) -> Vec<String> {
+        let mut out = Vec::new();
+        let mut seen = BTreeSet::new();
+        for key in keys {
+            for value in feature.qualifier_values(key) {
+                for part in value
+                    .split([',', ';'])
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                {
+                    if seen.insert(part.to_ascii_lowercase()) {
+                        out.push(part.to_string());
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    fn probe_region_first_qualifier(
+        feature: &gb_io::seq::Feature,
+        keys: &[&str],
+    ) -> Option<String> {
+        keys.iter().find_map(|key| {
+            feature
+                .qualifier_values(key)
+                .find(|value| !value.trim().is_empty())
+                .map(|value| value.trim().to_string())
+        })
+    }
+
+    fn probe_region_ranges_overlap(left: &(usize, usize), right: &(usize, usize)) -> bool {
+        left.0 < right.1 && right.0 < left.1
+    }
+
+    fn probe_region_range_span(ranges: &[(usize, usize)]) -> Option<(usize, usize)> {
+        let start = ranges.iter().map(|(start, _)| *start).min()?;
+        let end = ranges.iter().map(|(_, end)| *end).max()?;
+        Some((start, end))
     }
 
     fn probe_region_output_supports_anchor(

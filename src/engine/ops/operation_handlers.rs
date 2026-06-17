@@ -16282,6 +16282,7 @@ impl GentleEngine {
             read_acquisition_report: None,
             cutrun_dataset_projection: None,
             microarray_projection: None,
+            probe_region_evidence_interpretation: None,
             genome_coordinate_projection: None,
             rna_read_gene_support_summary: None,
             rna_read_gene_support_audit: None,
@@ -19407,6 +19408,62 @@ impl GentleEngine {
                         report.skipped_rows
                     ));
                     result.microarray_projection = Some(report);
+                }
+                Operation::InterpretProbeRegionEvidence {
+                    seq_id,
+                    gene_label,
+                    level,
+                    min_abs_logfc,
+                    path,
+                } => {
+                    let dna = self
+                        .state
+                        .sequences
+                        .get(&seq_id)
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!("Sequence '{seq_id}' not found"),
+                            cause_chain: vec![],
+                        })?;
+                    let report = Self::interpret_probe_region_evidence(
+                        dna,
+                        &seq_id,
+                        gene_label.as_deref(),
+                        level.as_deref(),
+                        min_abs_logfc,
+                    )?;
+                    if let Some(path) = path
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                    {
+                        let text = serde_json::to_string_pretty(&report).map_err(|e| {
+                            EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: format!(
+                                    "Could not serialize probe-region interpretation report: {e}"
+                                ),
+                                cause_chain: vec![],
+                            }
+                        })?;
+                        std::fs::write(path, text).map_err(|e| EngineError {
+                            code: ErrorCode::Io,
+                            message: format!(
+                                "Could not write probe-region interpretation report '{path}': {e}"
+                            ),
+                            cause_chain: vec![],
+                        })?;
+                    }
+                    result.warnings.extend(report.warnings.clone());
+                    result.messages.push(format!(
+                        "Interpreted {} projected probe-region feature(s) on '{}' against {} transcript model(s) (level={}, gene={})",
+                        report.array_feature_count,
+                        seq_id,
+                        report.transcript_count,
+                        report.level,
+                        report.gene_label.as_deref().unwrap_or("all")
+                    ));
+                    result.probe_region_evidence_interpretation = Some(report);
                 }
                 Operation::ProjectGenomeInterval {
                     source_genome_id,

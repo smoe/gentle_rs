@@ -3693,6 +3693,8 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub microarray_projection: Option<MicroarrayProjectionReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub probe_region_evidence_interpretation: Option<ProbeRegionEvidenceInterpretationReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub genome_coordinate_projection: Option<GenomeCoordinateProjectionReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rna_read_gene_support_summary: Option<RnaReadGeneSupportSummary>,
@@ -4109,6 +4111,76 @@ pub struct ProbeRegionAptImportReport {
     pub logfc_columns: Vec<String>,
     pub warnings: Vec<String>,
     pub inspection: ProbeRegionOutputInspection,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// Ambiguity-preserving interpretation of projected probe-region evidence.
+///
+/// This report deliberately stops short of isoform support claims. It compares
+/// already-projected array features with transcript/exon geometry and records
+/// compatibility, constraints, and unresolved ambiguity for downstream review.
+pub struct ProbeRegionEvidenceInterpretationReport {
+    pub schema: String,
+    pub seq_id: SeqId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_label: Option<String>,
+    pub level: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_abs_logfc: Option<f64>,
+    pub array_feature_count: usize,
+    pub transcript_count: usize,
+    pub evidence_rows: Vec<ProbeRegionEvidenceMappingRow>,
+    pub transcript_rows: Vec<ProbeRegionEvidenceTranscriptRow>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// One projected array feature interpreted against transcript/exon geometry.
+pub struct ProbeRegionEvidenceMappingRow {
+    pub evidence_id: String,
+    pub level: String,
+    pub feature_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_feature_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intensity_source: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chromosome: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub start_1based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end_1based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub strand: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub logfc: Option<f64>,
+    pub overlapping_transcript_ids: Vec<String>,
+    pub overlapping_exon_count: usize,
+    pub mapping_status: String,
+    pub ambiguity_tags: Vec<String>,
+    pub relationship: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// Per-transcript view of projected array evidence geometry.
+pub struct ProbeRegionEvidenceTranscriptRow {
+    pub transcript_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub strand: Option<String>,
+    pub exon_count: usize,
+    pub compatible_evidence_count: usize,
+    pub constraining_evidence_count: usize,
+    pub shared_evidence_count: usize,
+    pub unique_evidence_count: usize,
+    pub unmapped_evidence_count: usize,
+    pub relationship_summary: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]

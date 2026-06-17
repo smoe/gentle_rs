@@ -11390,6 +11390,7 @@ Error: `{err}`"
                 read_acquisition_report: None,
                 cutrun_dataset_projection: None,
                 microarray_projection: None,
+                probe_region_evidence_interpretation: None,
                 genome_coordinate_projection: None,
                 rna_read_gene_support_summary: None,
                 rna_read_gene_support_audit: None,
