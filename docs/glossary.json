@@ -1724,7 +1724,7 @@
          ],
          "path": "gene-sets promoter-cohort",
          "summary": "Build strand-aware promoter windows for a resolved gene set using the shared promoter/TSS resolver and default 1000 bp upstream / 200 bp downstream geometry.",
-         "usage": "gene-sets promoter-cohort GENOME_ID [--resolution RESOLUTION.json|--group GROUP_ID|--members A,B|--go GO:NNNNNNN|--neighbors GENE --flank-genes N|--random-size N --seed N] [--upstream-bp N] [--downstream-bp N] [--catalog PATH] [--genome-catalog PATH] [--output OUTPUT.json]"
+         "usage": "gene-sets promoter-cohort GENOME_ID [--resolution RESOLUTION.json|--group GROUP_ID|--members A,B|--go GO:NNNNNNN|--neighbors GENE --flank-genes N|--random-size N --seed N] [--relationship manual|co-regulated|anti-co-regulated] [--upstream-bp N] [--downstream-bp N] [--catalog PATH] [--genome-catalog PATH] [--output OUTPUT.json]"
       },
       {
          "aliases": [
@@ -2630,7 +2630,7 @@
          ],
          "path": "cutrun gene-set-regulatory-support",
          "summary": "Score prepared CUT&RUN datasets and saved read reports against a gene-set promoter cohort while reporting evaluated and unevaluated members separately.",
-         "usage": "cutrun gene-set-regulatory-support GENOME_ID [--promoter-cohort COHORT.json|--resolution RESOLUTION.json|--group GROUP_ID|--members A,B|--go GO:NNNNNNN] [--dataset DATASET_ID]... [--read-report REPORT_ID]... [--upstream-bp N] [--downstream-bp N] [--path OUTPUT.json]"
+         "usage": "cutrun gene-set-regulatory-support GENOME_ID [--promoter-cohort COHORT.json|--resolution RESOLUTION.json|--group GROUP_ID|--members A,B|--go GO:NNNNNNN] [--relationship manual|co-regulated|anti-co-regulated] [--dataset DATASET_ID]... [--read-report REPORT_ID]... [--upstream-bp N] [--downstream-bp N] [--path OUTPUT.json]"
       },
       {
          "aliases": [],

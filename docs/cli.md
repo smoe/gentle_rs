@@ -180,7 +180,8 @@ Catalog path note:
       windows
   - `cutrun gene-set-regulatory-support` scores prepared datasets and saved
     read reports across a gene-set promoter cohort and reports evaluated versus
-    unevaluated members separately.
+    unevaluated members separately; optional `--relationship` records a
+    declared expectation and emits non-blocking relationship flags.
 
 ## ClawBio/OpenClaw skill scaffold
 
@@ -1864,7 +1865,7 @@ cargo run --bin gentle_cli -- cutrun export-coverage tp53_cutrun_reads exports/t
 cargo run --bin gentle_cli -- cutrun export-coverage tp53_cutrun_reads exports/tp53_cutrun.cuts.tsv --kind cut_sites
 cargo run --bin gentle_cli -- cutrun export-coverage tp53_cutrun_reads exports/tp53_cutrun.fragments.tsv --kind fragments
 cargo run --bin gentle_cli -- cutrun inspect-regulatory-support grch38_tp53 --dataset toy_ctcf --read-report tp53_cutrun_reads --neighbor-window-bp 150 --species-filter human --path exports/tp53_cutrun.regulatory_support.json
-cargo run --bin gentle_cli -- cutrun gene-set-regulatory-support "Human GRCh38 Ensembl 116" --group regulation_of_alternative_splicing --dataset toy_ctcf --path exports/splicing_genes.cutrun_support.json
+cargo run --bin gentle_cli -- cutrun gene-set-regulatory-support "Human GRCh38 Ensembl 116" --group regulation_of_alternative_splicing --relationship co-regulated --dataset toy_ctcf --path exports/splicing_genes.cutrun_support.json
 cargo run --bin gentle_cli -- helpers list
 cargo run --bin gentle_cli -- helpers validate-catalog
 cargo run --bin gentle_cli -- helpers update-ensembl-specs --catalog assets/helper_genomes.json --output-catalog exports/helper_genomes.updated.json
@@ -2030,7 +2031,7 @@ Shared shell command:
     - `gene-groups doctor [--catalog PATH] [--output OUTPUT.json]`
     - `gene-groups draft --description TEXT [--member SYMBOL] [--candidate SYMBOL=EVIDENCE] [--go GO:NNNNNNN] [--output GROUP.json]`
     - `gene-sets resolve [GROUP_ID|--group GROUP_ID|--members A,B|--go GO:NNNNNNN|--neighbors GENE --flank-genes N|--random-size N --seed N] [--genome GENOME_ID] [--output OUTPUT.json]`
-    - `gene-sets promoter-cohort GENOME_ID [--resolution RESOLUTION.json|--group GROUP_ID|--members A,B|--go GO:NNNNNNN] [--output OUTPUT.json]`
+    - `gene-sets promoter-cohort GENOME_ID [--resolution RESOLUTION.json|--group GROUP_ID|--members A,B|--go GO:NNNNNNN] [--relationship manual|co-regulated|anti-co-regulated] [--output OUTPUT.json]`
     - `resources benchmark-jaspar [--random-length N] [--seed N] [--output OUTPUT.json]`
     - `resources list-jaspar [--filter TOKEN] [--limit N] [--fetch-remote] [--output OUTPUT.json]`
     - `resources inspect-jaspar MOTIF [--random-length N] [--seed N] [--fetch-remote] [--output OUTPUT.json]`
@@ -3840,7 +3841,10 @@ Tutorial companion:
   - `gene-groups resolve` identifies a catalog entry; `gene-sets resolve`
     expands genes, applies curation/member gating, deduplicates resolved
     identities, and records provenance/warnings.
-- `gene-sets promoter-cohort GENOME_ID [--resolution RESOLUTION.json|--group GROUP_ID|--members A,B|--go GO:NNNNNNN|--neighbors GENE --flank-genes N|--random-size N --seed N] [--upstream-bp N] [--downstream-bp N] [--catalog PATH] [--genome-catalog PATH] [--output OUTPUT.json]`
+- `gene-sets promoter-cohort GENOME_ID [--resolution RESOLUTION.json|--group GROUP_ID|--members A,B|--go GO:NNNNNNN|--neighbors GENE --flank-genes N|--random-size N --seed N] [--relationship manual|co-regulated|anti-co-regulated] [--upstream-bp N] [--downstream-bp N] [--catalog PATH] [--genome-catalog PATH] [--output OUTPUT.json]`
+  - `--relationship` records a user-declared expectation for downstream
+    evidence inspection; it does not claim the genes are co-regulated or
+    anti-co-regulated.
   - Builds promoter windows for the resolved set using the shared promoter/TSS
     resolver and the default 1000 upstream / 200 downstream geometry.
   - V1 stays offline-first: GO resolves only from local `external_mappings`,

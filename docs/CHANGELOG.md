@@ -18,6 +18,10 @@ Maintenance rule:
   product-readiness summaries for stored DNA/protein sequences, including CDS
   annotation count, start/stop/internal-stop sanity, ambiguity counts, and
   review-specific missing questions.
+- Added optional gene-set promoter-cohort relationship expectations
+  (`manual`, `co_regulated`, `anti_co_regulated`) to promoter cohort and
+  CUT&RUN aggregate reports, with non-blocking expectation flags and
+  `--relationship` shell parsing.
 - Added Promoter design GUI parity for promoter expression evidence and
   cached CUT&RUN regulatory-support reports, additive four-state TFBS support
   status, and promoter cohort comparison; `genomes promoter-cohort-comparison`

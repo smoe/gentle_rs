@@ -50,11 +50,10 @@ pub use gene_groups::{
 pub use gene_sets::{
     GENE_SET_CUTRUN_REGULATORY_SUPPORT_SCHEMA, GENE_SET_PROMOTER_COHORT_SCHEMA,
     GENE_SET_RESOLUTION_SCHEMA, GeneSetCohortRelationship, GeneSetCohortRelationshipFlag,
-    GeneSetCutRunEvaluationState, GeneSetCutRunMemberSupport,
-    GeneSetCutRunRegulatorySupportReport, GeneSetCutRunSupportAggregate,
-    GeneSetPromoterCohortReport, GeneSetPromoterWindow, GeneSetProvenanceRow,
-    GeneSetRandomProvenance, GeneSetRequest, GeneSetResolutionReport, GeneSetResolvedMember,
-    GeneSetUnresolvedMember,
+    GeneSetCutRunEvaluationState, GeneSetCutRunMemberSupport, GeneSetCutRunRegulatorySupportReport,
+    GeneSetCutRunSupportAggregate, GeneSetPromoterCohortReport, GeneSetPromoterWindow,
+    GeneSetProvenanceRow, GeneSetRandomProvenance, GeneSetRequest, GeneSetResolutionReport,
+    GeneSetResolvedMember, GeneSetUnresolvedMember,
 };
 pub use reporter::{
     PortBindingStatus, REPORTER_CATALOG_REPORT_SCHEMA, REPORTER_CATALOG_SCHEMA,

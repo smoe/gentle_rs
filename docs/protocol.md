@@ -738,7 +738,7 @@ Current shared-shell routes:
 
 ```bash
 gentle_cli shell 'gene-sets resolve [GROUP_ID|--group GROUP_ID|--members A,B|--go GO:NNNNNNN|--neighbors GENE --flank-genes N|--random-size N --seed N] [--genome GENOME_ID] [--catalog PATH] [--genome-catalog PATH] [--allow-draft] [--allow-deprecated] [--output OUTPUT.json]'
-gentle_cli shell 'gene-sets promoter-cohort GENOME_ID [--resolution RESOLUTION.json|--group GROUP_ID|--members A,B|--go GO:NNNNNNN|--neighbors GENE --flank-genes N|--random-size N --seed N] [--upstream-bp N] [--downstream-bp N] [--catalog PATH] [--genome-catalog PATH] [--output OUTPUT.json]'
+gentle_cli shell 'gene-sets promoter-cohort GENOME_ID [--resolution RESOLUTION.json|--group GROUP_ID|--members A,B|--go GO:NNNNNNN|--neighbors GENE --flank-genes N|--random-size N --seed N] [--relationship manual|co-regulated|anti-co-regulated] [--upstream-bp N] [--downstream-bp N] [--catalog PATH] [--genome-catalog PATH] [--output OUTPUT.json]'
 ```
 
 Resolution notes:
@@ -754,6 +754,11 @@ Resolution notes:
   anchor.
 - duplicate collapse prefers resolved `gene_id`, then normalized symbol, and
   keeps merge provenance auditable.
+- `--relationship` records a user-declared expectation (`manual`,
+  `co_regulated`, or `anti_co_regulated`) on the cohort. It is not a computed
+  verdict about regulation; downstream evidence reports can surface
+  expectation-consistent or divergent CUT&RUN/TFBS signals as non-blocking
+  flags.
 - existing jq recipes that approximate membership with `.status // "included"`
   may silently drop or miss draft-member warnings; the engine now reports draft
   members explicitly in gene-set resolution warnings.
@@ -2405,7 +2410,10 @@ Current draft operations:
   - `cutrun gene-set-regulatory-support` consumes a resolved gene-set promoter
     cohort or enough local inputs to build one, scores only prepared datasets
     and saved read reports, and keeps `evaluated` and `unevaluated` member
-    states separate so set-level fractions use evaluated members only.
+    states separate so set-level fractions use evaluated members only. The
+    optional `--relationship manual|co-regulated|anti-co-regulated` flag echoes
+    the declared cohort expectation and emits relationship flags/warnings
+    without gating the report.
 
 Microarray track projection notes:
 

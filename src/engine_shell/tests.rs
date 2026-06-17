@@ -17,14 +17,15 @@ use crate::engine::{
     BIGWIG_TO_BEDGRAPH_ENV_BIN, CdnaAssayTranscriptMapCoordinateMode, CdnaAssayTranscriptOrder,
     ConstructObjective, ConstructRole, Container, ContainerKind, CutRunAlignConfig,
     CutRunCoverageKind, CutRunInputFormat, CutRunReadLayout, CutRunSeedFilterConfig, DisplayTarget,
-    EditableStatus, ExonSkipReturnKind, InlineSequenceTopology, PrimerDesignProgress,
-    PromoterCohortKind, PromoterTfbsGeneQuery, ProteinExternalOpinionSource, ProteinFeatureFilter,
-    QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargetingMode, Rack, RackAuthoringTemplate,
-    RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset, RackOccupant,
-    RackPhysicalTemplateKind, RackPlacementEntry, RackProfileKind, RackProfileSnapshot,
-    ReadAcquisitionAnalysisFormat, ReadAcquisitionReadLayout, RepeatEnvironmentGeometryMode,
-    RestrictionCloningPcrHandoffMode, RnaReadAlignConfig, RnaReadInterpretationHit,
-    RnaReadInterpretationReport, RnaReadMappingHit, RnaReadOriginClass, SequenceOrigin,
+    EditableStatus, ExonSkipReturnKind, GeneSetCohortRelationship, InlineSequenceTopology,
+    PrimerDesignProgress, PromoterCohortKind, PromoterTfbsGeneQuery,
+    ProteinExternalOpinionSource, ProteinFeatureFilter, QpcrTranscriptSpecificityEvidence,
+    QpcrTranscriptTargetingMode, Rack, RackAuthoringTemplate, RackCarrierLabelPreset,
+    RackFillDirection, RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind,
+    RackPlacementEntry, RackProfileKind, RackProfileSnapshot, ReadAcquisitionAnalysisFormat,
+    ReadAcquisitionReadLayout, RepeatEnvironmentGeometryMode, RestrictionCloningPcrHandoffMode,
+    RnaReadAlignConfig, RnaReadInterpretationHit, RnaReadInterpretationReport,
+    RnaReadMappingHit, RnaReadOriginClass, SequenceOrigin,
     SequenceScanTarget, TfThresholdOverride, TfbsScoreTrackCorrelationSignalSource,
     TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric,
 };
@@ -251,6 +252,7 @@ fn sample_value_for_usage_token(flag: &str, token: &str) -> String {
         "--profile" => "nanopore_cdna_v1".to_string(),
         "--pwm-mapping" => "strict_same_length".to_string(),
         "--ranking-metric" => "raw_pearson".to_string(),
+        "--relationship" => "co-regulated".to_string(),
         "--report-mode" => "seed_passed_only".to_string(),
         "--return" => "genbank".to_string(),
         "--scale" => "linear".to_string(),
@@ -14057,7 +14059,7 @@ fn parse_gene_sets_resolve_and_promoter_cohort_commands() {
     }
 
     let cohort = parse_shell_line(
-        "gene-sets promoter-cohort ToyGenome --neighbors TP53 --flank-genes 2 --exclude-anchor --upstream-bp 500 --downstream-bp 100 --output cohort.json",
+        "gene-sets promoter-cohort ToyGenome --neighbors TP53 --flank-genes 2 --exclude-anchor --relationship anti-co-regulated --upstream-bp 500 --downstream-bp 100 --output cohort.json",
     )
     .expect("parse gene-sets promoter-cohort");
     match cohort {
@@ -14080,7 +14082,7 @@ fn parse_gene_sets_resolve_and_promoter_cohort_commands() {
             assert_eq!(anchor, "TP53");
             assert_eq!(flank_gene_count, Some(2));
             assert!(exclude_anchor);
-            assert_eq!(relationship, GeneSetCohortRelationship::Unspecified);
+            assert_eq!(relationship, GeneSetCohortRelationship::AntiCoRegulated);
             assert_eq!(upstream_bp, 500);
             assert_eq!(downstream_bp, 100);
             assert_eq!(output.as_deref(), Some("cohort.json"));
@@ -14092,7 +14094,7 @@ fn parse_gene_sets_resolve_and_promoter_cohort_commands() {
 #[test]
 fn parse_cutrun_gene_set_regulatory_support_command() {
     let cmd = parse_shell_line(
-        "cutrun gene-set-regulatory-support ToyGenome --group regulation_of_alternative_splicing --relationship co_regulated --dataset toy_ctcf --read-report toy_reads --upstream-bp 700 --downstream-bp 150 --neighbor-window-bp 77 --allow-deprecated --path support.json",
+        "cutrun gene-set-regulatory-support ToyGenome --group regulation_of_alternative_splicing --relationship co-regulated --dataset toy_ctcf --read-report toy_reads --upstream-bp 700 --downstream-bp 150 --neighbor-window-bp 77 --allow-deprecated --path support.json",
     )
     .expect("parse CUT&RUN gene-set-regulatory-support");
     match cmd {

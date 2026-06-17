@@ -3056,6 +3056,23 @@ fn gene_set_cutrun_promoter_cohort(
     }
 }
 
+fn gene_set_cutrun_member_support(
+    symbol: &str,
+    strongest_support_strength: Option<&str>,
+) -> GeneSetCutRunMemberSupport {
+    GeneSetCutRunMemberSupport {
+        member_dedup_key: format!("symbol:{}", symbol.to_ascii_lowercase()),
+        symbol: symbol.to_string(),
+        evaluation_state: GeneSetCutRunEvaluationState::Evaluated,
+        chromosome: "chr1".to_string(),
+        promoter_start_1based: 1,
+        promoter_end_1based: 100,
+        support_window_count: usize::from(strongest_support_strength.is_some()),
+        strongest_support_strength: strongest_support_strength.map(str::to_string),
+        ..GeneSetCutRunMemberSupport::default()
+    }
+}
+
 fn gene_set_cutrun_window(
     symbol: &str,
     start_1based: usize,
@@ -3078,6 +3095,62 @@ fn gene_set_cutrun_window(
         used_fuzzy_gene_match: false,
         ..GeneSetPromoterWindow::default()
     }
+}
+
+#[test]
+fn gene_set_cutrun_relationship_flags_co_regulated_divergence() {
+    let rows = vec![
+        gene_set_cutrun_member_support("AgreeA", Some("strong")),
+        gene_set_cutrun_member_support("AgreeB", Some("strong")),
+        gene_set_cutrun_member_support("Divergent", None),
+    ];
+    let flags = GentleEngine::gene_set_cutrun_relationship_flags(
+        GeneSetCohortRelationship::CoRegulated,
+        &rows,
+    );
+    assert_eq!(flags.len(), 1);
+    assert_eq!(flags[0].flag_kind, "unexpected_divergence");
+    assert_eq!(flags[0].member_symbols, vec!["Divergent"]);
+    assert!(flags[0].detail.contains("co_regulated"));
+}
+
+#[test]
+fn gene_set_cutrun_relationship_flags_anti_co_regulated_concordance() {
+    let rows = vec![
+        gene_set_cutrun_member_support("DivergentA", Some("strong")),
+        gene_set_cutrun_member_support("DivergentB", None),
+        gene_set_cutrun_member_support("ConcordantA", Some("moderate")),
+        gene_set_cutrun_member_support("ConcordantB", Some("moderate")),
+    ];
+    let flags = GentleEngine::gene_set_cutrun_relationship_flags(
+        GeneSetCohortRelationship::AntiCoRegulated,
+        &rows,
+    );
+    assert_eq!(flags.len(), 1);
+    assert_eq!(flags[0].flag_kind, "unexpected_concordance");
+    assert_eq!(
+        flags[0].member_symbols,
+        vec!["ConcordantA", "ConcordantB"]
+    );
+    assert!(flags[0].detail.contains("anti_co_regulated"));
+}
+
+#[test]
+fn gene_set_cutrun_relationship_flags_manual_unspecified_are_empty() {
+    let rows = vec![
+        gene_set_cutrun_member_support("A", Some("strong")),
+        gene_set_cutrun_member_support("B", None),
+    ];
+    assert!(GentleEngine::gene_set_cutrun_relationship_flags(
+        GeneSetCohortRelationship::Manual,
+        &rows,
+    )
+    .is_empty());
+    assert!(GentleEngine::gene_set_cutrun_relationship_flags(
+        GeneSetCohortRelationship::Unspecified,
+        &rows,
+    )
+    .is_empty());
 }
 
 #[test]

@@ -4314,6 +4314,114 @@ impl GentleEngine {
         Ok(intervals)
     }
 
+    fn gene_set_cutrun_relationship_evidence_class(
+        row: &GeneSetCutRunMemberSupport,
+    ) -> Option<&'static str> {
+        if row.evaluation_state != GeneSetCutRunEvaluationState::Evaluated {
+            return None;
+        }
+        match row.strongest_support_strength.as_deref() {
+            Some("strong") => Some("strong_support"),
+            Some(_) => Some("support_detected"),
+            None if row.support_window_count > 0 => Some("support_detected"),
+            None => Some("no_support_detected"),
+        }
+    }
+
+    pub(crate) fn gene_set_cutrun_relationship_flags(
+        relationship: GeneSetCohortRelationship,
+        member_support: &[GeneSetCutRunMemberSupport],
+    ) -> Vec<GeneSetCohortRelationshipFlag> {
+        if matches!(
+            relationship,
+            GeneSetCohortRelationship::Unspecified | GeneSetCohortRelationship::Manual
+        ) {
+            return vec![];
+        }
+
+        let mut groups = Vec::<(&'static str, Vec<&GeneSetCutRunMemberSupport>)>::new();
+        for row in member_support {
+            let Some(class) = Self::gene_set_cutrun_relationship_evidence_class(row) else {
+                continue;
+            };
+            if let Some((_, rows)) = groups.iter_mut().find(|(candidate, _)| *candidate == class) {
+                rows.push(row);
+            } else {
+                groups.push((class, vec![row]));
+            }
+        }
+        if groups.len() < 2 {
+            return vec![];
+        }
+
+        fn relationship_flag(
+            flag_kind: &str,
+            evidence_class: &str,
+            rows: &[&GeneSetCutRunMemberSupport],
+            detail: String,
+        ) -> GeneSetCohortRelationshipFlag {
+            GeneSetCohortRelationshipFlag {
+                flag_kind: flag_kind.to_string(),
+                evidence_kind: format!("cutrun_{evidence_class}"),
+                member_symbols: rows.iter().map(|row| row.symbol.clone()).collect(),
+                member_dedup_keys: rows
+                    .iter()
+                    .map(|row| row.member_dedup_key.clone())
+                    .collect(),
+                detail,
+            }
+        }
+
+        match relationship {
+            GeneSetCohortRelationship::CoRegulated => {
+                let max_group_size = groups
+                    .iter()
+                    .map(|(_, rows)| rows.len())
+                    .max()
+                    .unwrap_or_default();
+                groups
+                    .into_iter()
+                    .filter(|(_, rows)| rows.len() < max_group_size)
+                    .map(|(class, rows)| {
+                        let symbols = rows
+                            .iter()
+                            .map(|row| row.symbol.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        relationship_flag(
+                            "unexpected_divergence",
+                            class,
+                            &rows,
+                            format!(
+                                "Declared co_regulated expectation found divergent CUT&RUN support class '{class}' for: {symbols}"
+                            ),
+                        )
+                    })
+                    .collect()
+            }
+            GeneSetCohortRelationship::AntiCoRegulated => groups
+                .into_iter()
+                .filter(|(_, rows)| rows.len() > 1)
+                .map(|(class, rows)| {
+                    let symbols = rows
+                        .iter()
+                        .map(|row| row.symbol.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    relationship_flag(
+                        "unexpected_concordance",
+                        class,
+                        &rows,
+                        format!(
+                            "Declared anti_co_regulated expectation found concordant CUT&RUN support class '{class}' for: {symbols}"
+                        ),
+                    )
+                })
+                .collect(),
+            GeneSetCohortRelationship::Unspecified | GeneSetCohortRelationship::Manual => vec![],
+        }
+    }
+
     pub fn inspect_cutrun_gene_set_regulatory_support(
         &self,
         promoter_cohort: GeneSetPromoterCohortReport,
@@ -4503,7 +4611,15 @@ impl GentleEngine {
             .map(|row| row.support_window_count)
             .sum::<usize>();
         let relationship = promoter_cohort.relationship;
-        let relationship_flags = promoter_cohort.relationship_flags.clone();
+        let mut relationship_flags = promoter_cohort.relationship_flags.clone();
+        let cutrun_relationship_flags =
+            Self::gene_set_cutrun_relationship_flags(relationship, &member_support);
+        warnings.extend(
+            cutrun_relationship_flags
+                .iter()
+                .map(|flag| flag.detail.clone()),
+        );
+        relationship_flags.extend(cutrun_relationship_flags);
         Ok(GeneSetCutRunRegulatorySupportReport {
             schema: GENE_SET_CUTRUN_REGULATORY_SUPPORT_SCHEMA.to_string(),
             generated_at_unix_ms: Self::now_unix_ms(),
