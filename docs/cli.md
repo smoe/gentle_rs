@@ -2082,6 +2082,7 @@ Shared shell command:
     - `arrays import-apt-probe-region-output SUMMARY.tsv ANNOTATION.csv OUTPUT_DIR [--metadata PATH] [--condition-column NAME] [--sample-column NAME] [--probe-intensity PATH] [--probe-id-column NAME] [--platform NAME] [--normalization NAME] [--coordinate-system ID] [--genome-build ID]`
     - `arrays render-probe-region-output-svg OUTPUT_DIR OUTPUT.svg`
     - `arrays project-probe-region-output SEQ_ID OUTPUT_DIR [--contrasts CSV] [--level probe_region|pm_probe] [--min-abs-logfc N] [--max-features N] [--clear-existing]`
+    - `arrays interpret-probe-region-evidence SEQ_ID [--gene LABEL] [--level all|probe_region|pm_probe] [--min-abs-logfc N] [--path FILE]`
     - `arrays probe-regions (--cel PATH ... | --dataset ID) (--gene SYMBOL|--genes CSV|--locus LOCUS|--loci CSV|--transcript-cluster-id ID|--probeset-id ID ...) [--metadata PATH] [--platform NAME] [--annotation-library PATH] [--condition-column NAME] [--sample-column NAME] [--block-column NAME] [--paired-by-replicate-suffix] [--normalization rma|quantile-feature|none] [--plot] [--output DIR] [--cache-dir DIR] [--dry-run]`
     - `macros run [--transactional] [--file PATH | SCRIPT_OR_@FILE]`
     - `macros instance-list`
@@ -3713,6 +3714,13 @@ Tutorial companion:
     sequence anchor, or a `coordinate_projections[]`/`projection_maps[]`
     interval map whose source and target builds match the helper output and
     anchor.
+- `arrays interpret-probe-region-evidence grch38_tp73 --gene TP73 --level pm_probe --min-abs-logfc 0.5 --path analysis/probe_regions/tp73_interpretation.json`
+  - Compares projected probe/probeset-region array features with the
+    sequence's transcript/exon annotations and writes
+    `gentle.probe_region_evidence_interpretation.v1`. The report preserves
+    shared-transcript overlaps, parent probeset context, probe sequence
+    multi-hit-not-assessed status, and coordinate-projection ambiguity rather
+    than converting array intervals directly into isoform support calls.
 - `resources sync-ucsc-rmsk INPUT.rmsk.txt_or_txt.gz [OUTPUT.rmsk.json] [--assembly DB] [--limit N]`
   - Normalizes the UCSC RepeatMasker `rmsk` table into
     `gentle.ucsc_rmsk_resource.v1`.
@@ -5304,8 +5312,13 @@ Notes:
 - `arrays project-probe-region-output SEQ_ID OUTPUT_DIR` projects selected or
   all `log2FC_*` helper-output rows into genome-anchored array features when
   the helper output's declared `coordinate_system` or `genome_build` directly
-  matches the sequence anchor genome id. Liftover/projection-map support for
-  helper output remains a follow-up.
+  matches the sequence anchor genome id, or when a declared
+  `coordinate_projections[]`/`projection_maps[]` interval map bridges the
+  helper-output build to the anchor build.
+- `arrays interpret-probe-region-evidence SEQ_ID` reads those projected
+  features back from the sequence and summarizes transcript/exon geometry
+  compatibility as a read-only report. It does not run R/APT and does not claim
+  isoform support until probe/probeset-to-transcript ambiguity has been audited.
 - The built-in genome catalog includes both `Human GRCh38 Ensembl 116` and
   `Human GRCh37 Ensembl 87` (`hg19`/`GRCh37.p13` aliases), so direct native
   extraction can use either build when the corresponding cache has been

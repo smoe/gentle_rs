@@ -2428,6 +2428,14 @@ Microarray track projection notes:
   `coordinate_projections[]`/`projection_maps[]` interval-map entry whose
   source matches the helper coordinate/build and whose target matches the
   anchor genome id.
+- `arrays interpret-probe-region-evidence SEQ_ID` emits
+  `gentle.probe_region_evidence_interpretation.v1` by comparing already
+  projected `probe_region_output` array features with transcript/exon geometry
+  on the target sequence. Optional `--gene LABEL`, `--level all|probe_region|pm_probe`,
+  `--min-abs-logfc N`, and `--path FILE` filter/export the read-only report.
+  The report records mapping status, overlap transcript ids, ambiguity tags,
+  and per-transcript compatible/constraining counts; it explicitly does not
+  infer isoform support, probe uniqueness, or biological validation.
 - manifests may also include `coordinate_projections[]` entries with
   `source_genome_id`, `target_genome_id`, `method`, and `path`. These paths
   point at tab-delimited interval maps for build-to-build projection, currently

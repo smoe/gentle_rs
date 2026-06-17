@@ -27,6 +27,10 @@ Maintenance rule:
 - Added `--level pm_probe` projection for probe-region helper outputs, so true
   PM probe rows marked `probe_level_input` can become genome-anchored array
   features without promoting parent-summary fallback rows.
+- Added `arrays interpret-probe-region-evidence` /
+  `InterpretProbeRegionEvidence` to compare projected probe/probeset-region
+  array features with transcript/exon geometry while preserving shared
+  transcript, multi-hit, and coordinate-projection ambiguity.
 
 ## 2026-06-16
 

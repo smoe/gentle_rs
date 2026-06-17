@@ -177,10 +177,13 @@ broad crate surgery that is not tied to the selected release story.
   layer beyond the current prepared-track projection. Current explicit APT
   imports can preserve supplied PM probe-level intensity matrices in
   `probe_intensity_chrom_order.csv` and project rows marked
-  `probe_level_input` into genome-anchored array features; future work should
-  use those mapped probe oligos/probesets with explicit build, liftover,
-  multi-hit, and ambiguity provenance to identify compatible splice isoforms
-  and rule out incompatible ones without hiding uncertain evidence.
+  `probe_level_input` into genome-anchored array features. The first read-only
+  `InterpretProbeRegionEvidence` report now compares projected array features
+  with transcript/exon geometry and records shared transcript, parent probeset,
+  multi-hit-not-assessed, and coordinate-projection ambiguity. Future work
+  should add explicit probe/probeset-to-exon/junction/transcript mapping and
+  audited interpretation scores before identifying compatible splice isoforms
+  or ruling out incompatible ones.
 
 ## Phase D: Visualization And Workflow UX
 
