@@ -196,6 +196,7 @@ an agent has selected a deterministic operation.
 - `construct-reasoning build-protein-dna-handoff`
 - `construct-reasoning export-graph`
 - `cutrun export-coverage`
+- `cutrun gene-set-regulatory-support`
 - `cutrun inspect-regulatory-support`
 - `cutrun interpret`
 - `cutrun list`
@@ -236,6 +237,8 @@ an agent has selected a deterministic operation.
 - `gene-groups list`
 - `gene-groups resolve`
 - `gene-groups show`
+- `gene-sets promoter-cohort`
+- `gene-sets resolve`
 - `genomes blast`
 - `genomes blast-track`
 - `genomes extend-anchor`
