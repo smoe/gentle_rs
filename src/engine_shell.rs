@@ -11690,6 +11690,111 @@ fn quote_shell_arg(raw: &str) -> String {
     }
 }
 
+pub(crate) fn arrays_shell_command_to_line(cmd: &ShellCommand) -> Option<String> {
+    fn push_option(tokens: &mut Vec<String>, flag: &str, value: &str) {
+        tokens.push(flag.to_string());
+        tokens.push(value.to_string());
+    }
+
+    fn render(tokens: Vec<String>) -> String {
+        tokens
+            .iter()
+            .map(|token| quote_shell_arg(token))
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    match cmd {
+        ShellCommand::ArraysProbeRegions {
+            cel_paths,
+            dataset,
+            metadata_path,
+            genes,
+            loci,
+            transcript_cluster_ids,
+            probeset_ids,
+            platform,
+            annotation_library_path,
+            condition_column,
+            sample_column,
+            block_column,
+            paired_by_replicate_suffix,
+            plot,
+            normalization,
+            output_dir,
+            cache_dir,
+            dry_run,
+        } => {
+            let mut tokens = vec!["arrays".to_string(), "probe-regions".to_string()];
+            for cel_path in cel_paths {
+                push_option(&mut tokens, "--cel", cel_path);
+            }
+            if let Some(dataset) = dataset {
+                push_option(&mut tokens, "--dataset", dataset);
+            }
+            if let Some(metadata_path) = metadata_path {
+                push_option(&mut tokens, "--metadata", metadata_path);
+            }
+            for gene in genes {
+                push_option(&mut tokens, "--gene", gene);
+            }
+            for locus in loci {
+                push_option(&mut tokens, "--locus", locus);
+            }
+            for transcript_cluster_id in transcript_cluster_ids {
+                push_option(
+                    &mut tokens,
+                    "--transcript-cluster-id",
+                    transcript_cluster_id,
+                );
+            }
+            for probeset_id in probeset_ids {
+                push_option(&mut tokens, "--probeset-id", probeset_id);
+            }
+            if let Some(platform) = platform {
+                push_option(&mut tokens, "--platform", platform);
+            }
+            if let Some(annotation_library_path) = annotation_library_path {
+                push_option(&mut tokens, "--annotation-library", annotation_library_path);
+            }
+            if let Some(condition_column) = condition_column {
+                push_option(&mut tokens, "--condition-column", condition_column);
+            }
+            if let Some(sample_column) = sample_column {
+                push_option(&mut tokens, "--sample-column", sample_column);
+            }
+            if let Some(block_column) = block_column {
+                push_option(&mut tokens, "--block-column", block_column);
+            }
+            if *paired_by_replicate_suffix {
+                tokens.push("--paired-by-replicate-suffix".to_string());
+            }
+            if *plot {
+                tokens.push("--plot".to_string());
+            }
+            if normalization != "rma" {
+                push_option(&mut tokens, "--normalization", normalization);
+            }
+            if let Some(output_dir) = output_dir {
+                push_option(&mut tokens, "--output", output_dir);
+            }
+            if let Some(cache_dir) = cache_dir {
+                push_option(&mut tokens, "--cache-dir", cache_dir);
+            }
+            if *dry_run {
+                tokens.push("--dry-run".to_string());
+            }
+            Some(render(tokens))
+        }
+        ShellCommand::ArraysInspectProbeRegionOutput { output_dir } => Some(render(vec![
+            "arrays".to_string(),
+            "inspect-probe-region-output".to_string(),
+            output_dir.clone(),
+        ])),
+        _ => None,
+    }
+}
+
 fn effective_cache_cleanup_roots(scope: CacheCleanupScope, cache_dirs: &[String]) -> Vec<String> {
     if cache_dirs.is_empty() {
         default_cache_cleanup_roots(scope)

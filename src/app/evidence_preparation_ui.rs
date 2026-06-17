@@ -801,7 +801,10 @@ impl GENtleApp {
     }
 
     pub(super) fn evidence_probe_regions_dry_run_command(&self) -> String {
-        "arrays probe-regions --dataset E-MTAB-14704 --gene TP73 --platform Clariom_D_Human --output analysis/probe_regions --dry-run".to_string()
+        crate::engine_shell::arrays_shell_command_to_line(
+            &self.evidence_probe_regions_shell_command(),
+        )
+        .expect("probe-region preflight command is renderable")
     }
 
     pub(super) fn evidence_probe_regions_r_command(&self) -> String {
@@ -809,12 +812,10 @@ impl GENtleApp {
     }
 
     pub(super) fn evidence_probe_regions_inspect_command(&self) -> String {
-        format!(
-            "arrays inspect-probe-region-output {}",
-            self.evidence_preparation_panel
-                .probe_region_output_dir
-                .trim()
+        crate::engine_shell::arrays_shell_command_to_line(
+            &self.evidence_probe_regions_inspect_shell_command(),
         )
+        .expect("probe-region inspect command is renderable")
     }
 
     fn evidence_repeat_command(&self) -> String {
@@ -974,6 +975,123 @@ mod tests {
                 panic!("copyable command should parse: {command}\n{error}")
             });
         }
+    }
+
+    fn assert_probe_region_command_eq(parsed: &ShellCommand, expected: &ShellCommand, line: &str) {
+        match (parsed, expected) {
+            (
+                ShellCommand::ArraysInspectProbeRegionOutput { output_dir },
+                ShellCommand::ArraysInspectProbeRegionOutput {
+                    output_dir: expected_output_dir,
+                },
+            ) => assert_eq!(output_dir, expected_output_dir, "rendered line: {line}"),
+            (
+                ShellCommand::ArraysProbeRegions {
+                    cel_paths,
+                    dataset,
+                    metadata_path,
+                    genes,
+                    loci,
+                    transcript_cluster_ids,
+                    probeset_ids,
+                    platform,
+                    annotation_library_path,
+                    condition_column,
+                    sample_column,
+                    block_column,
+                    paired_by_replicate_suffix,
+                    plot,
+                    normalization,
+                    output_dir,
+                    cache_dir,
+                    dry_run,
+                },
+                ShellCommand::ArraysProbeRegions {
+                    cel_paths: expected_cel_paths,
+                    dataset: expected_dataset,
+                    metadata_path: expected_metadata_path,
+                    genes: expected_genes,
+                    loci: expected_loci,
+                    transcript_cluster_ids: expected_transcript_cluster_ids,
+                    probeset_ids: expected_probeset_ids,
+                    platform: expected_platform,
+                    annotation_library_path: expected_annotation_library_path,
+                    condition_column: expected_condition_column,
+                    sample_column: expected_sample_column,
+                    block_column: expected_block_column,
+                    paired_by_replicate_suffix: expected_paired_by_replicate_suffix,
+                    plot: expected_plot,
+                    normalization: expected_normalization,
+                    output_dir: expected_output_dir,
+                    cache_dir: expected_cache_dir,
+                    dry_run: expected_dry_run,
+                },
+            ) => {
+                assert_eq!(cel_paths, expected_cel_paths, "rendered line: {line}");
+                assert_eq!(dataset, expected_dataset, "rendered line: {line}");
+                assert_eq!(
+                    metadata_path, expected_metadata_path,
+                    "rendered line: {line}"
+                );
+                assert_eq!(genes, expected_genes, "rendered line: {line}");
+                assert_eq!(loci, expected_loci, "rendered line: {line}");
+                assert_eq!(
+                    transcript_cluster_ids, expected_transcript_cluster_ids,
+                    "rendered line: {line}"
+                );
+                assert_eq!(probeset_ids, expected_probeset_ids, "rendered line: {line}");
+                assert_eq!(platform, expected_platform, "rendered line: {line}");
+                assert_eq!(
+                    annotation_library_path, expected_annotation_library_path,
+                    "rendered line: {line}"
+                );
+                assert_eq!(
+                    condition_column, expected_condition_column,
+                    "rendered line: {line}"
+                );
+                assert_eq!(
+                    sample_column, expected_sample_column,
+                    "rendered line: {line}"
+                );
+                assert_eq!(block_column, expected_block_column, "rendered line: {line}");
+                assert_eq!(
+                    paired_by_replicate_suffix, expected_paired_by_replicate_suffix,
+                    "rendered line: {line}"
+                );
+                assert_eq!(plot, expected_plot, "rendered line: {line}");
+                assert_eq!(
+                    normalization, expected_normalization,
+                    "rendered line: {line}"
+                );
+                assert_eq!(output_dir, expected_output_dir, "rendered line: {line}");
+                assert_eq!(cache_dir, expected_cache_dir, "rendered line: {line}");
+                assert_eq!(dry_run, expected_dry_run, "rendered line: {line}");
+            }
+            _ => panic!(
+                "unexpected rendered command shape: {line}\nparsed={parsed:?}\nexpected={expected:?}"
+            ),
+        }
+    }
+
+    #[test]
+    fn evidence_probe_region_copyable_commands_match_executed_commands() {
+        let mut app = GENtleApp::default();
+        app.evidence_preparation_panel.probe_region_output_dir =
+            "analysis/custom probe regions".to_string();
+
+        let preflight = app.evidence_probe_regions_dry_run_command();
+        assert_probe_region_command_eq(
+            &parse_shell_line(&preflight).expect("parse rendered preflight command"),
+            &app.evidence_probe_regions_shell_command(),
+            &preflight,
+        );
+
+        let inspect = app.evidence_probe_regions_inspect_command();
+        assert_probe_region_command_eq(
+            &parse_shell_line(&inspect).expect("parse rendered inspect command"),
+            &app.evidence_probe_regions_inspect_shell_command(),
+            &inspect,
+        );
     }
 
     #[test]

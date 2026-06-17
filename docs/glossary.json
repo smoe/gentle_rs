@@ -2693,6 +2693,21 @@
       },
       {
          "aliases": [
+            "arrays inspect-probe-regions-output",
+            "arrays inspect-probe-output"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "arrays inspect-probe-region-output",
+         "summary": "Inspect explicit probe-region helper output without changing state.",
+         "usage": "arrays inspect-probe-region-output OUTPUT_DIR"
+      },
+      {
+         "aliases": [
             "arrays project-track"
          ],
          "engine_operations": [

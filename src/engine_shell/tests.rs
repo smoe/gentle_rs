@@ -7096,6 +7096,166 @@ fn parse_arrays_probe_regions_command() {
     }
 }
 
+fn assert_arrays_probe_region_command_eq(
+    parsed: &ShellCommand,
+    expected: &ShellCommand,
+    line: &str,
+) {
+    match (parsed, expected) {
+        (
+            ShellCommand::ArraysInspectProbeRegionOutput { output_dir },
+            ShellCommand::ArraysInspectProbeRegionOutput {
+                output_dir: expected_output_dir,
+            },
+        ) => assert_eq!(output_dir, expected_output_dir, "rendered line: {line}"),
+        (
+            ShellCommand::ArraysProbeRegions {
+                cel_paths,
+                dataset,
+                metadata_path,
+                genes,
+                loci,
+                transcript_cluster_ids,
+                probeset_ids,
+                platform,
+                annotation_library_path,
+                condition_column,
+                sample_column,
+                block_column,
+                paired_by_replicate_suffix,
+                plot,
+                normalization,
+                output_dir,
+                cache_dir,
+                dry_run,
+            },
+            ShellCommand::ArraysProbeRegions {
+                cel_paths: expected_cel_paths,
+                dataset: expected_dataset,
+                metadata_path: expected_metadata_path,
+                genes: expected_genes,
+                loci: expected_loci,
+                transcript_cluster_ids: expected_transcript_cluster_ids,
+                probeset_ids: expected_probeset_ids,
+                platform: expected_platform,
+                annotation_library_path: expected_annotation_library_path,
+                condition_column: expected_condition_column,
+                sample_column: expected_sample_column,
+                block_column: expected_block_column,
+                paired_by_replicate_suffix: expected_paired_by_replicate_suffix,
+                plot: expected_plot,
+                normalization: expected_normalization,
+                output_dir: expected_output_dir,
+                cache_dir: expected_cache_dir,
+                dry_run: expected_dry_run,
+            },
+        ) => {
+            assert_eq!(cel_paths, expected_cel_paths, "rendered line: {line}");
+            assert_eq!(dataset, expected_dataset, "rendered line: {line}");
+            assert_eq!(
+                metadata_path, expected_metadata_path,
+                "rendered line: {line}"
+            );
+            assert_eq!(genes, expected_genes, "rendered line: {line}");
+            assert_eq!(loci, expected_loci, "rendered line: {line}");
+            assert_eq!(
+                transcript_cluster_ids, expected_transcript_cluster_ids,
+                "rendered line: {line}"
+            );
+            assert_eq!(probeset_ids, expected_probeset_ids, "rendered line: {line}");
+            assert_eq!(platform, expected_platform, "rendered line: {line}");
+            assert_eq!(
+                annotation_library_path, expected_annotation_library_path,
+                "rendered line: {line}"
+            );
+            assert_eq!(
+                condition_column, expected_condition_column,
+                "rendered line: {line}"
+            );
+            assert_eq!(
+                sample_column, expected_sample_column,
+                "rendered line: {line}"
+            );
+            assert_eq!(block_column, expected_block_column, "rendered line: {line}");
+            assert_eq!(
+                paired_by_replicate_suffix, expected_paired_by_replicate_suffix,
+                "rendered line: {line}"
+            );
+            assert_eq!(plot, expected_plot, "rendered line: {line}");
+            assert_eq!(
+                normalization, expected_normalization,
+                "rendered line: {line}"
+            );
+            assert_eq!(output_dir, expected_output_dir, "rendered line: {line}");
+            assert_eq!(cache_dir, expected_cache_dir, "rendered line: {line}");
+            assert_eq!(dry_run, expected_dry_run, "rendered line: {line}");
+        }
+        _ => panic!(
+            "unexpected round-trip shape for rendered line: {line}\nparsed={parsed:?}\nexpected={expected:?}"
+        ),
+    }
+}
+
+#[test]
+fn arrays_probe_region_shell_lines_round_trip() {
+    let commands = [
+        ShellCommand::ArraysInspectProbeRegionOutput {
+            output_dir: "analysis/probe regions".to_string(),
+        },
+        ShellCommand::ArraysProbeRegions {
+            cel_paths: vec![
+                "samples/sample 1.CEL".to_string(),
+                "samples/sample 2.CEL".to_string(),
+            ],
+            dataset: None,
+            metadata_path: Some("metadata/sample sheet.tsv".to_string()),
+            genes: vec!["TP73".to_string(), "FUS".to_string()],
+            loci: vec!["chr1:100-200".to_string()],
+            transcript_cluster_ids: vec!["TC010".to_string()],
+            probeset_ids: vec!["PSR1".to_string(), "PSR2".to_string()],
+            platform: Some("Clariom D Human".to_string()),
+            annotation_library_path: Some("annotation libraries/NetAffx".to_string()),
+            condition_column: Some("condition".to_string()),
+            sample_column: Some("file name".to_string()),
+            block_column: Some("batch".to_string()),
+            paired_by_replicate_suffix: true,
+            plot: true,
+            normalization: "rma-sketch".to_string(),
+            output_dir: Some("analysis/probe regions".to_string()),
+            cache_dir: Some("analysis/cache dir".to_string()),
+            dry_run: true,
+        },
+        ShellCommand::ArraysProbeRegions {
+            cel_paths: vec![],
+            dataset: Some("E-MTAB-14704".to_string()),
+            metadata_path: None,
+            genes: vec!["TP73".to_string()],
+            loci: vec![],
+            transcript_cluster_ids: vec![],
+            probeset_ids: vec![],
+            platform: Some("Clariom_D_Human".to_string()),
+            annotation_library_path: None,
+            condition_column: None,
+            sample_column: None,
+            block_column: None,
+            paired_by_replicate_suffix: false,
+            plot: false,
+            normalization: "rma".to_string(),
+            output_dir: Some("analysis/probe_regions".to_string()),
+            cache_dir: None,
+            dry_run: true,
+        },
+    ];
+
+    for command in commands {
+        let line = arrays_shell_command_to_line(&command).expect("render arrays command");
+        let parsed = parse_shell_line(&line).unwrap_or_else(|error| {
+            panic!("rendered arrays command should parse: {line}\n{error}")
+        });
+        assert_arrays_probe_region_command_eq(&parsed, &command, &line);
+    }
+}
+
 #[test]
 fn execute_arrays_inspect_microarray_track_returns_manifest() {
     let mut engine = GentleEngine::default();

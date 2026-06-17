@@ -1849,6 +1849,7 @@ cargo run --bin gentle_cli -- arrays project-microarray-track grch38_tp73 data/p
 cargo run --bin gentle_cli -- arrays probe-regions --cel sample1.CEL --cel sample2.CEL --metadata samples.tsv --gene PATZ1 --gene TP73 --platform Clariom_D_Human --annotation-library path/to/NetAffx_or_APT_library --condition-column condition --sample-column file --normalization rma --plot --output analysis/probe_regions --dry-run
 cargo run --bin gentle_cli -- arrays probe-regions --dataset E-MTAB-14704 --gene PATZ1 --gene FUS --gene MDM2 --paired-by-replicate-suffix --platform Clariom_D_Human --plot --dry-run
 cargo run --bin gentle_cli -- arrays probe-regions --dataset E-MTAB-14704 --gene TP73 --platform Clariom_D_Human --dry-run
+cargo run --bin gentle_cli -- arrays inspect-probe-region-output analysis/probe_regions
 cargo run --bin gentle_cli -- cutrun list --catalog assets/cutrun.json --filter CTCF
 cargo run --bin gentle_cli -- cutrun status toy_ctcf --catalog assets/cutrun.json --cache-dir data/cutrun
 cargo run --bin gentle_cli -- cutrun prepare toy_ctcf --catalog assets/cutrun.json --cache-dir data/cutrun
