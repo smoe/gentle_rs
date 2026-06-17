@@ -734,6 +734,7 @@ Included first-run bootstrap requests:
 - `examples/request_services_metabion_mblock_quote.json`
 - `examples/request_services_geneart_cloned_gene_preflight.json`
 - `examples/request_services_geneart_cloned_gene_quote.json`
+- `examples/request_services_geneart_protein_expression_preflight.json`
 - `examples/request_services_geneart_protein_expression_quote.json`
 - `examples/request_services_telegram_guide.json`
 - `examples/request_services_telegram_guide_{readiness,gene_context,tfbs,inline_dna,cloning,isoforms,follow_up}.json`
