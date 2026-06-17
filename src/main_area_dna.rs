@@ -109,8 +109,9 @@ use crate::{
         PrimerDesignBackend, PrimerDesignBaseLock, PrimerDesignPairConstraint,
         PrimerDesignProgress, PrimerDesignReport, PrimerDesignSideConstraint,
         PrimerSpecificityPolicy, ProbeRegionAptImportReport, ProbeRegionOutputInspection,
-        PromoterEvidenceMatrixReport, PromoterEvidenceMatrixRow, PromoterReporterCandidateSet,
-        PromoterWindowCollapseMode, ProtocolCartoonPreviewTelemetry, QpcrDesignReport,
+        PromoterEvidenceMatrixReport, PromoterEvidenceMatrixRow, PromoterExpressionEvidenceInput,
+        PromoterExpressionEvidenceReport, PromoterReporterCandidateSet, PromoterWindowCollapseMode,
+        ProtocolCartoonPreviewTelemetry, QpcrDesignReport,
         QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting, QpcrTranscriptTargetingMode,
         RenderSvgMode, RestrictionCloningPcrHandoffMode, RestrictionCloningPcrHandoffReport,
         RestrictionCloningPcrHandoffSeedRequest, RestrictionCloningVectorEnzymeSuggestions,
@@ -1653,6 +1654,9 @@ struct VariantFollowupUiState {
     cached_alternative_promoter_comparison: Option<AlternativePromoterComparisonReport>,
     cached_promoter_evidence_matrix: Option<PromoterEvidenceMatrixReport>,
     cached_isoform_promoter_comparison: Option<IsoformPromoterComparisonReport>,
+    promoter_expression_rows_json: String,
+    promoter_expression_source_label: String,
+    cached_promoter_expression_evidence: Option<PromoterExpressionEvidenceReport>,
     cached_candidates: Option<PromoterReporterCandidateSet>,
 }
 
@@ -1699,6 +1703,9 @@ impl Default for VariantFollowupUiState {
             cached_alternative_promoter_comparison: None,
             cached_promoter_evidence_matrix: None,
             cached_isoform_promoter_comparison: None,
+            promoter_expression_rows_json: "[]".to_string(),
+            promoter_expression_source_label: "GUI pasted expression evidence".to_string(),
+            cached_promoter_expression_evidence: None,
             cached_candidates: None,
         }
     }

@@ -18,12 +18,13 @@ use crate::{
         FlexibilityModel, FlexibilityTrack, GentleEngine, LinearSequenceLetterLayoutMode, OpResult,
         Operation, PairwiseAlignmentMode, PrimerDesignBackend, PrimerDesignPairConstraint,
         PrimerDesignProgress, PrimerDesignSideConstraint, ProjectState,
-        PromoterReporterCandidateSet, ProtocolCartoonPreviewTelemetry,
-        QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting, QpcrTranscriptTargetingMode,
-        RestrictionCloningPcrHandoffMode, RestrictionEnzymeDisplayMode, RnaReadAlignmentEffect,
-        RnaReadAlignmentInspection, RnaReadAlignmentInspectionRow, RnaReadHitSelection,
-        RnaReadInputFormat, RnaReadInterpretProgress, RnaReadInterpretationHit,
-        RnaReadInterpretationProfile, RnaReadInterpretationReport,
+        PromoterExpressionEvidenceInput, PromoterReporterCandidateSet,
+        ProtocolCartoonPreviewTelemetry, QpcrTranscriptSpecificityEvidence,
+        QpcrTranscriptTargeting, QpcrTranscriptTargetingMode, RestrictionCloningPcrHandoffMode,
+        RestrictionEnzymeDisplayMode, RnaReadAlignmentEffect, RnaReadAlignmentInspection,
+        RnaReadAlignmentInspectionRow, RnaReadHitSelection, RnaReadInputFormat,
+        RnaReadInterpretProgress, RnaReadInterpretationHit, RnaReadInterpretationProfile,
+        RnaReadInterpretationReport,
         RnaReadInterpretationReportSummary, RnaReadIsoformSupportRow, RnaReadIsoformTriageBin,
         RnaReadMappingHit, RnaReadOriginMode, RnaReadReportMode, RnaReadScoreDensityVariant,
         RnaReadSeedFilterConfig, SequenceAlignmentReport, SequenceGenomeAnchorSummary,
@@ -8938,6 +8939,71 @@ fn use_variant_followup_isoform_promoter_group_retargets_promoter_design_span() 
         "status was: {}",
         area.op_status
     );
+}
+
+#[test]
+fn variant_followup_promoter_expression_evidence_runs_shared_op_and_caches_report() {
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(2500)).expect("sequence");
+    for (transcript_id, transcript_label, start) in [
+        ("ENSTTP73A", "TP73-201", 1200_i64),
+        ("ENSTTP73B", "TP73-202", 1200_i64),
+    ] {
+        dna.features_mut().push(Feature {
+            kind: "mRNA".into(),
+            location: Location::simple_range(start, start + 500),
+            qualifiers: vec![
+                ("gene".into(), Some("TP73".to_string())),
+                ("transcript_id".into(), Some(transcript_id.to_string())),
+                ("label".into(), Some(transcript_label.to_string())),
+            ],
+        });
+    }
+
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("tp73_expression_gui".to_string(), dna.clone());
+    let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+    let mut area = MainAreaDna::new(dna, Some("tp73_expression_gui".to_string()), Some(engine));
+    area.variant_followup_ui.source_seq_id = "tp73_expression_gui".to_string();
+    area.variant_followup_ui.gene_label = "TP73".to_string();
+    area.variant_followup_ui.promoter_upstream_bp = "200".to_string();
+    area.variant_followup_ui.promoter_downstream_bp = "50".to_string();
+    area.variant_followup_ui.promoter_expression_source_label =
+        "synthetic expression table".to_string();
+    area.variant_followup_ui.promoter_expression_rows_json =
+        serde_json::to_string(&vec![
+            PromoterExpressionEvidenceInput {
+                transcript_id: Some("ENSTTP73A".to_string()),
+                sample_id: Some("case_1".to_string()),
+                condition: Some("case".to_string()),
+                value: 10.0,
+                unit: Some("TPM".to_string()),
+                source: Some("synthetic RNA-seq".to_string()),
+                ..PromoterExpressionEvidenceInput::default()
+            },
+            PromoterExpressionEvidenceInput {
+                transcript_id: Some("ENSTUNRELATED".to_string()),
+                value: 99.0,
+                unit: Some("TPM".to_string()),
+                ..PromoterExpressionEvidenceInput::default()
+            },
+        ])
+        .expect("serialize expression rows");
+
+    area.summarize_variant_followup_promoter_expression_evidence();
+
+    let report = area
+        .variant_followup_ui
+        .cached_promoter_expression_evidence
+        .as_ref()
+        .expect("cached promoter expression evidence report");
+    assert_eq!(report.promoter_group_count, 1);
+    assert_eq!(report.supplied_expression_record_count, 2);
+    assert_eq!(report.assigned_expression_record_count, 1);
+    assert_eq!(report.unassigned_expression_records.len(), 1);
+    assert_eq!(report.rows[0].mean_value, Some(10.0));
+    assert_eq!(report.expression_source_label, "synthetic expression table");
 }
 
 #[test]

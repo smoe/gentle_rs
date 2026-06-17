@@ -22331,6 +22331,7 @@ fn test_inspect_cutrun_regulatory_support_classifies_supported_and_unsupported_t
     );
 
     let supported_feature_start = supported_prefix.len();
+    let motif_poor_feature_start = supported_prefix.len() + sp1_consensus.len() + 2;
     let unsupported_feature_start =
         supported_prefix.len() + sp1_consensus.len() + filler.len() + unsupported_prefix.len();
 
@@ -22353,6 +22354,11 @@ fn test_inspect_cutrun_regulatory_support_classifies_supported_and_unsupported_t
             cutrun_test_tfbs_feature(
                 supported_feature_start,
                 supported_feature_start + sp1_consensus.len(),
+                "SP1",
+            ),
+            cutrun_test_tfbs_feature(
+                motif_poor_feature_start,
+                motif_poor_feature_start + sp1_consensus.len(),
                 "SP1",
             ),
             cutrun_test_tfbs_feature(
@@ -22409,23 +22415,70 @@ fn test_inspect_cutrun_regulatory_support_classifies_supported_and_unsupported_t
         confirmed.confirmation_status,
         CutRunRegulatoryTfbsConfirmationStatus::Confirmed
     );
+    assert_eq!(
+        confirmed.support_status,
+        CutRunRegulatoryTfbsConfirmationStatus::Confirmed
+    );
     assert_eq!(confirmed.local_start_0based, supported_feature_start);
     assert_eq!(
         confirmed.strongest_support_strength,
         Some(CutRunSupportStrength::Strong)
     );
 
-    let unconfirmed = report
+    let motif_poor = report
         .unconfirmed_tfbs_rows
-        .first()
-        .expect("unconfirmed TFBS row");
+        .iter()
+        .find(|row| row.local_start_0based == motif_poor_feature_start)
+        .expect("motif-poor TFBS row");
     assert_eq!(
-        unconfirmed.confirmation_status,
+        motif_poor.confirmation_status,
         CutRunRegulatoryTfbsConfirmationStatus::Unconfirmed
     );
-    assert_eq!(unconfirmed.local_start_0based, unsupported_feature_start);
-    assert!(unconfirmed.strongest_support_window_id.is_none());
-    assert!(unconfirmed.strongest_support_strength.is_none());
+    assert_eq!(
+        motif_poor.support_status,
+        CutRunRegulatoryTfbsConfirmationStatus::MotifPoor
+    );
+
+    let nearby = report
+        .unconfirmed_tfbs_rows
+        .iter()
+        .find(|row| row.local_start_0based == unsupported_feature_start)
+        .expect("nearby TFBS row");
+    assert_eq!(
+        nearby.confirmation_status,
+        CutRunRegulatoryTfbsConfirmationStatus::Unconfirmed
+    );
+    assert_eq!(
+        nearby.support_status,
+        CutRunRegulatoryTfbsConfirmationStatus::Nearby
+    );
+    assert!(nearby.strongest_support_window_id.is_some());
+    assert_eq!(
+        nearby.strongest_support_strength,
+        Some(CutRunSupportStrength::Strong)
+    );
+
+    let absent_report = engine
+        .inspect_cutrun_regulatory_support(
+            "toy_cutrun_roi",
+            &[],
+            std::slice::from_ref(&report_id),
+            None,
+            None,
+            1,
+            &[],
+        )
+        .expect("inspect CUT&RUN regulatory support with narrow neighbor window");
+    let absent = absent_report
+        .unconfirmed_tfbs_rows
+        .iter()
+        .find(|row| row.local_start_0based == unsupported_feature_start)
+        .expect("absent TFBS row");
+    assert_eq!(
+        absent.support_status,
+        CutRunRegulatoryTfbsConfirmationStatus::Absent
+    );
+    assert!(absent.strongest_support_window_id.is_none());
 }
 
 #[test]

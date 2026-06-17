@@ -574,7 +574,9 @@ Behavior notes:
 - `SummarizePromoterExpressionEvidence` accepts expression rows as external
   evidence with transcript/gene/promoter labels plus optional artifact paths.
   GENtle assigns them to promoter groups and reports unassigned rows, but it
-  does not infer causality or perform normalization
+  does not infer causality or perform normalization; GUI consumers display the
+  same report as promoter-associated sequence evidence rather than a validation
+  verdict
 - `ExportPromoterArtifactManifest` is a lightweight component index, not a
   narrative bundle. It records which JSON/SVG artifacts exist and whether
   required components are missing so downstream tools can compose their own
@@ -2303,7 +2305,12 @@ Current draft operations:
       and/or saved `read_report_ids`
     - strong support windows can be derived from saved V2 read reports alone,
       from prepared signal-only evidence, or from prepared peak evidence
-    - theoretical TFBS rows are split into `confirmed` vs `unconfirmed`
+    - theoretical TFBS rows keep the legacy `confirmed_tfbs_rows` /
+      `unconfirmed_tfbs_rows` split for existing consumers; each row also
+      carries additive `support_status` with
+      `confirmed|nearby|absent|motif_poor` so UIs can distinguish overlapping
+      strong occupancy, nearby occupancy, no nearby occupancy, and weak/no
+      motif sequence contexts without changing the old row vectors
     - motif-absent strong windows are reported separately and classified as
       `context_supported_by_other_motifs` or `motif_poor_supported`
     - if the assayed target factor cannot be resolved to a local motif, strong

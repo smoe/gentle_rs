@@ -14,6 +14,9 @@ Maintenance rule:
 
 ## 2026-06-17
 
+- Added Promoter design GUI parity for promoter expression evidence and
+  surfaced cached CUT&RUN regulatory-support reports with additive four-state
+  TFBS support status while preserving legacy confirmed/unconfirmed rows.
 - Added portable construct-reasoning inspection actions for repeat/similarity
   dotplot handoffs, carrying deterministic action ids and driving evidence ids
   in the graph payload instead of deriving GUI buttons from labels.

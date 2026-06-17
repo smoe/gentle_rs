@@ -4810,6 +4810,18 @@ Tutorial projects:
     - `Export evidence matrix JSON...` writes the cached
       `gentle.promoter_evidence_matrix.v1` payload through the same engine
       operation instead of serializing a GUI-only table
+  - the same window now also exposes pasted or loaded promoter expression rows
+    through the shared `SummarizePromoterExpressionEvidence` route:
+    - the table reports assigned/unassigned expression rows per promoter group,
+      mean/max values, units, conditions, and match evidence
+    - text in the panel deliberately frames expression as association evidence,
+      not promoter causation or wet-lab validation
+    - `Export expression JSON...` reruns the same shared operation with an
+      output path, keeping GUI and shell artifacts identical in shape
+  - the same window can show the cached CUT&RUN regulatory-support report next
+    to promoter summaries; the TFBS table displays the additive four-state
+    `support_status` (`confirmed`, `nearby`, `absent`, `motif-poor`) while the
+    engine report still preserves the legacy confirmed/unconfirmed row vectors
   - the same window now also exposes `Export TF score tracks SVG...`, which
     goes through the shared `RenderTfbsScoreTracksSvg` engine route instead of a
     GUI-only painter and can therefore reproduce the same stacked figure style

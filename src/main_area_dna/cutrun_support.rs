@@ -30,6 +30,21 @@ impl MainAreaDna {
         match status {
             CutRunRegulatoryTfbsConfirmationStatus::Confirmed => "confirmed",
             CutRunRegulatoryTfbsConfirmationStatus::Unconfirmed => "unconfirmed",
+            CutRunRegulatoryTfbsConfirmationStatus::Nearby => "nearby",
+            CutRunRegulatoryTfbsConfirmationStatus::Absent => "absent",
+            CutRunRegulatoryTfbsConfirmationStatus::MotifPoor => "motif-poor",
+        }
+    }
+
+    pub(super) fn cutrun_tfbs_row_support_status(
+        row: &crate::engine::CutRunRegulatoryTfbsRow,
+    ) -> CutRunRegulatoryTfbsConfirmationStatus {
+        if row.support_status == CutRunRegulatoryTfbsConfirmationStatus::Unconfirmed
+            && row.confirmation_status == CutRunRegulatoryTfbsConfirmationStatus::Confirmed
+        {
+            CutRunRegulatoryTfbsConfirmationStatus::Confirmed
+        } else {
+            row.support_status
         }
     }
 
@@ -358,7 +373,7 @@ impl MainAreaDna {
                                     row.strand
                                 ));
                                 ui.small(Self::cutrun_tfbs_confirmation_label(
-                                    row.confirmation_status,
+                                    Self::cutrun_tfbs_row_support_status(row),
                                 ));
                                 ui.small(
                                     row.strongest_support_strength

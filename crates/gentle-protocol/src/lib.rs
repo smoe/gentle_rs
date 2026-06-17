@@ -7718,6 +7718,9 @@ pub enum CutRunRegulatoryTfbsConfirmationStatus {
     #[default]
     Unconfirmed,
     Confirmed,
+    Nearby,
+    Absent,
+    MotifPoor,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -7790,6 +7793,7 @@ pub struct CutRunRegulatoryTfbsRow {
     pub genomic_end_1based: usize,
     pub strand: String,
     pub confirmation_status: CutRunRegulatoryTfbsConfirmationStatus,
+    pub support_status: CutRunRegulatoryTfbsConfirmationStatus,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub strongest_support_window_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -9228,6 +9232,7 @@ mod dotplot_and_concatemer_setting_tests {
         DotplotMode, DotplotOverlayAnchorExonRef, DotplotOverlayResolvedAnchorSeries,
         DotplotOverlayXAxisMode, DotplotQuerySeries, DotplotView, RestrictionSiteExpertView,
         RnaReadConcatemerInspectionSettings, RnaReadMappedIsoformSupportRow,
+        CutRunRegulatoryTfbsConfirmationStatus, CutRunRegulatoryTfbsRow,
     };
 
     #[test]
@@ -9251,6 +9256,32 @@ mod dotplot_and_concatemer_setting_tests {
         assert_eq!(
             DotplotOverlayXAxisMode::RightAlignedBp.query_coordinate_at_fraction(0.82, 0, 8, 12),
             Some(5)
+        );
+    }
+
+    #[test]
+    fn cutrun_tfbs_row_deserializes_old_two_state_payload_without_support_status() {
+        let row: CutRunRegulatoryTfbsRow = serde_json::from_value(serde_json::json!({
+            "feature_id": 7,
+            "feature_label": "SP1 site",
+            "local_start_0based": 10,
+            "local_end_0based_exclusive": 20,
+            "genomic_start_1based": 110,
+            "genomic_end_1based": 119,
+            "strand": "+",
+            "confirmation_status": "confirmed",
+            "overlapping_peak_count": 1,
+            "supporting_fragment_count": 2,
+            "cut_site_count": 4
+        }))
+        .expect("deserialize old CUT&RUN TFBS row");
+        assert_eq!(
+            row.confirmation_status,
+            CutRunRegulatoryTfbsConfirmationStatus::Confirmed
+        );
+        assert_eq!(
+            row.support_status,
+            CutRunRegulatoryTfbsConfirmationStatus::Unconfirmed
         );
     }
 

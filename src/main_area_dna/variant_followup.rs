@@ -305,6 +305,9 @@ impl MainAreaDna {
             cached_alternative_promoter_comparison: None,
             cached_promoter_evidence_matrix: None,
             cached_isoform_promoter_comparison: None,
+            promoter_expression_rows_json: "[]".to_string(),
+            promoter_expression_source_label: "GUI pasted expression evidence".to_string(),
+            cached_promoter_expression_evidence: None,
             cached_candidates: None,
         };
         Ok(())
@@ -997,6 +1000,182 @@ impl MainAreaDna {
         );
         if let Some(report) = result.and_then(|row| row.promoter_evidence_matrix) {
             self.variant_followup_ui.cached_promoter_evidence_matrix = Some(report);
+        }
+    }
+
+    fn parse_variant_followup_promoter_expression_rows(
+        raw: &str,
+    ) -> Result<Vec<PromoterExpressionEvidenceInput>, String> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return Ok(vec![]);
+        }
+        let value = serde_json::from_str::<serde_json::Value>(trimmed)
+            .map_err(|err| format!("Invalid promoter expression evidence JSON: {err}"))?;
+        if value.is_array() {
+            serde_json::from_value::<Vec<PromoterExpressionEvidenceInput>>(value)
+                .map_err(|err| format!("Invalid promoter expression evidence row array: {err}"))
+        } else {
+            serde_json::from_value::<PromoterExpressionEvidenceInput>(value)
+                .map(|row| vec![row])
+                .map_err(|err| format!("Invalid promoter expression evidence row: {err}"))
+        }
+    }
+
+    fn load_variant_followup_promoter_expression_json(&mut self) {
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("JSON", &["json"])
+            .pick_file()
+        else {
+            self.op_status = "Promoter expression evidence load canceled".to_string();
+            return;
+        };
+        match std::fs::read_to_string(&path) {
+            Ok(text) => {
+                self.variant_followup_ui.promoter_expression_rows_json = text;
+                self.variant_followup_ui.cached_promoter_expression_evidence = None;
+                self.op_status = format!(
+                    "Loaded promoter expression evidence JSON from '{}'",
+                    path.display()
+                );
+            }
+            Err(err) => {
+                self.op_status = format!(
+                    "Could not read promoter expression evidence JSON '{}': {err}",
+                    path.display()
+                );
+            }
+        }
+    }
+
+    pub(super) fn summarize_variant_followup_promoter_expression_evidence(&mut self) {
+        let input = match self.variant_followup_input_seq_id() {
+            Ok(value) => value,
+            Err(err) => {
+                self.op_status = err;
+                return;
+            }
+        };
+        let promoter_upstream_bp = match Self::parse_positive_usize_text(
+            &self.variant_followup_ui.promoter_upstream_bp,
+            "promoter upstream bp",
+        ) {
+            Ok(value) => value,
+            Err(err) => {
+                self.op_status = err;
+                return;
+            }
+        };
+        let promoter_downstream_bp = match Self::parse_positive_usize_text(
+            &self.variant_followup_ui.promoter_downstream_bp,
+            "promoter downstream bp",
+        ) {
+            Ok(value) => value,
+            Err(err) => {
+                self.op_status = err;
+                return;
+            }
+        };
+        let expression_rows = match Self::parse_variant_followup_promoter_expression_rows(
+            &self.variant_followup_ui.promoter_expression_rows_json,
+        ) {
+            Ok(rows) => rows,
+            Err(err) => {
+                self.op_status = err;
+                return;
+            }
+        };
+        let result = self.apply_operation_with_feedback_and_result(
+            Operation::SummarizePromoterExpressionEvidence {
+                input,
+                gene_label: Self::variant_followup_optional_text(
+                    &self.variant_followup_ui.gene_label,
+                ),
+                transcript_id: Self::variant_followup_optional_text(
+                    &self.variant_followup_ui.transcript_id,
+                ),
+                promoter_upstream_bp,
+                promoter_downstream_bp,
+                expression_rows,
+                expression_source_label: Self::variant_followup_optional_text(
+                    &self.variant_followup_ui.promoter_expression_source_label,
+                ),
+                path: None,
+            },
+        );
+        if let Some(report) = result.and_then(|row| row.promoter_expression_evidence) {
+            self.variant_followup_ui.cached_promoter_expression_evidence = Some(report);
+        }
+    }
+
+    fn export_variant_followup_promoter_expression_evidence_json(&mut self) {
+        let input = match self.variant_followup_input_seq_id() {
+            Ok(value) => value,
+            Err(err) => {
+                self.op_status = err;
+                return;
+            }
+        };
+        let promoter_upstream_bp = match Self::parse_positive_usize_text(
+            &self.variant_followup_ui.promoter_upstream_bp,
+            "promoter upstream bp",
+        ) {
+            Ok(value) => value,
+            Err(err) => {
+                self.op_status = err;
+                return;
+            }
+        };
+        let promoter_downstream_bp = match Self::parse_positive_usize_text(
+            &self.variant_followup_ui.promoter_downstream_bp,
+            "promoter downstream bp",
+        ) {
+            Ok(value) => value,
+            Err(err) => {
+                self.op_status = err;
+                return;
+            }
+        };
+        let expression_rows = match Self::parse_variant_followup_promoter_expression_rows(
+            &self.variant_followup_ui.promoter_expression_rows_json,
+        ) {
+            Ok(rows) => rows,
+            Err(err) => {
+                self.op_status = err;
+                return;
+            }
+        };
+        let default_name = format!(
+            "{}_promoter_expression_evidence.json",
+            Self::sanitize_export_name_component(&input, "promoter_design")
+        );
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name(&default_name)
+            .save_file()
+        else {
+            self.op_status = "Promoter expression evidence export canceled".to_string();
+            return;
+        };
+        let result = self.apply_operation_with_feedback_and_result(
+            Operation::SummarizePromoterExpressionEvidence {
+                input,
+                gene_label: Self::variant_followup_optional_text(
+                    &self.variant_followup_ui.gene_label,
+                ),
+                transcript_id: Self::variant_followup_optional_text(
+                    &self.variant_followup_ui.transcript_id,
+                ),
+                promoter_upstream_bp,
+                promoter_downstream_bp,
+                expression_rows,
+                expression_source_label: Self::variant_followup_optional_text(
+                    &self.variant_followup_ui.promoter_expression_source_label,
+                ),
+                path: Some(path.display().to_string()),
+            },
+        );
+        if let Some(report) = result.and_then(|row| row.promoter_expression_evidence) {
+            self.variant_followup_ui.cached_promoter_expression_evidence = Some(report);
         }
     }
 
@@ -3521,6 +3700,130 @@ impl MainAreaDna {
         }
     }
 
+    fn render_variant_followup_promoter_expression_summary(&mut self, ui: &mut egui::Ui) {
+        let Some(report) = self
+            .variant_followup_ui
+            .cached_promoter_expression_evidence
+            .as_ref()
+        else {
+            ui.small(
+                egui::RichText::new(
+                    "No promoter expression evidence cached yet. Paste or load expression rows, then run `Summarize expression evidence`. Expression rows are treated as association evidence, not causal proof.",
+                )
+                .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+            return;
+        };
+        ui.group(|ui| {
+            ui.label(egui::RichText::new("Promoter expression evidence").strong());
+            ui.small(
+                egui::RichText::new(format!(
+                    "{} promoter group(s), {} supplied expression row(s), {} assigned; source: {}",
+                    report.promoter_group_count,
+                    report.supplied_expression_record_count,
+                    report.assigned_expression_record_count,
+                    report.expression_source_label
+                ))
+                .color(egui::Color32::from_rgb(71, 85, 105)),
+            );
+            ui.small(
+                egui::RichText::new(
+                    "Interpretation: expression evidence is associated with promoter candidates; it does not establish promoter causation by itself.",
+                )
+                .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+            for warning in &report.warnings {
+                ui.small(
+                    egui::RichText::new(warning).color(egui::Color32::from_rgb(180, 83, 9)),
+                );
+            }
+            if !report.unassigned_expression_records.is_empty() {
+                ui.collapsing("Unassigned expression rows", |ui| {
+                    for row in report.unassigned_expression_records.iter().take(12) {
+                        ui.small(format!(
+                            "{} / {} / {} = {:.3}{}",
+                            row.gene_label.as_deref().unwrap_or("-"),
+                            row.transcript_id.as_deref().unwrap_or("-"),
+                            row.condition.as_deref().unwrap_or("-"),
+                            row.value,
+                            row.unit
+                                .as_deref()
+                                .map(|unit| format!(" {unit}"))
+                                .unwrap_or_default()
+                        ));
+                    }
+                });
+            }
+            if report.rows.is_empty() {
+                ui.small("No promoter groups received assigned expression rows.");
+                return;
+            }
+            egui::ScrollArea::vertical()
+                .id_salt((
+                    "variant_followup_promoter_expression_scroll",
+                    report.seq_id.as_str(),
+                ))
+                .max_height(220.0)
+                .show(ui, |ui| {
+                    egui::Grid::new((
+                        "variant_followup_promoter_expression_grid",
+                        report.seq_id.as_str(),
+                    ))
+                    .num_columns(7)
+                    .striped(true)
+                    .show(ui, |ui| {
+                        ui.small(egui::RichText::new("promoter").strong());
+                        ui.small(egui::RichText::new("records").strong());
+                        ui.small(egui::RichText::new("mean").strong());
+                        ui.small(egui::RichText::new("max").strong());
+                        ui.small(egui::RichText::new("unit").strong());
+                        ui.small(egui::RichText::new("conditions").strong());
+                        ui.small(egui::RichText::new("matched by").strong());
+                        ui.end_row();
+                        for row in &report.rows {
+                            ui.small(row.label.as_str()).on_hover_text(format!(
+                                "{}\n{}",
+                                row.transcript_ids.join(", "),
+                                row.interpretation
+                            ));
+                            ui.small(row.expression_record_count.to_string());
+                            ui.monospace(
+                                row.mean_value
+                                    .map(|value| format!("{value:.3}"))
+                                    .unwrap_or_else(|| "-".to_string()),
+                            );
+                            ui.monospace(
+                                row.max_value
+                                    .map(|value| format!("{value:.3}"))
+                                    .unwrap_or_else(|| "-".to_string()),
+                            );
+                            ui.small(row.unit.as_deref().unwrap_or("-"));
+                            let condition_label = if row.conditions.is_empty() {
+                                "-".to_string()
+                            } else {
+                                row.conditions.join(", ")
+                            };
+                            ui.small(condition_label);
+                            let matched_by = row
+                                .records
+                                .iter()
+                                .flat_map(|record| record.matched_by.iter().cloned())
+                                .collect::<BTreeSet<_>>()
+                                .into_iter()
+                                .collect::<Vec<_>>();
+                            let matched_by_label = if matched_by.is_empty() {
+                                "-".to_string()
+                            } else {
+                                matched_by.join(", ")
+                            };
+                            ui.small(matched_by_label);
+                            ui.end_row();
+                        }
+                    });
+                });
+        });
+    }
+
     fn render_variant_followup_isoform_promoter_comparison_summary(&mut self, ui: &mut egui::Ui) {
         let mut use_group: Option<(IsoformPromoterComparisonGroup, usize, usize)> = None;
         let Some(report) = self
@@ -4046,6 +4349,49 @@ impl MainAreaDna {
             });
             ui.end_row();
 
+            ui.label("Expression evidence");
+            ui.vertical(|ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("source");
+                    if ui
+                        .text_edit_singleline(
+                            &mut self.variant_followup_ui.promoter_expression_source_label,
+                        )
+                        .changed()
+                    {
+                        self.variant_followup_ui.cached_promoter_expression_evidence = None;
+                    }
+                    if ui
+                        .small_button("Load JSON...")
+                        .on_hover_text(
+                            "Load one promoter expression evidence JSON row or an array of rows.",
+                        )
+                        .clicked()
+                    {
+                        self.load_variant_followup_promoter_expression_json();
+                    }
+                });
+                if ui
+                    .add(
+                        egui::TextEdit::multiline(
+                            &mut self.variant_followup_ui.promoter_expression_rows_json,
+                        )
+                        .desired_rows(3)
+                        .desired_width(520.0),
+                    )
+                    .changed()
+                {
+                    self.variant_followup_ui.cached_promoter_expression_evidence = None;
+                }
+                ui.small(
+                    egui::RichText::new(
+                        "Paste `PromoterExpressionEvidenceInput` JSON. Rows are summarized as expression association evidence, not functional validation.",
+                    )
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+                );
+            });
+            ui.end_row();
+
             ui.label("TFBS focus half-window bp");
             if ui
                 .text_edit_singleline(&mut self.variant_followup_ui.tfbs_focus_half_window_bp)
@@ -4128,6 +4474,7 @@ impl MainAreaDna {
                 .cached_alternative_promoter_comparison = None;
             self.variant_followup_ui.cached_promoter_evidence_matrix = None;
             self.variant_followup_ui.cached_isoform_promoter_comparison = None;
+            self.variant_followup_ui.cached_promoter_expression_evidence = None;
         }
 
         ui.separator();
@@ -4245,6 +4592,18 @@ impl MainAreaDna {
             }
             if ui
                 .add_enabled(
+                    engine_available && !source_missing,
+                    egui::Button::new("Summarize expression evidence"),
+                )
+                .on_hover_text(
+                    "Assign supplied expression rows to promoter groups through the shared promoter expression evidence operation.",
+                )
+                .clicked()
+            {
+                self.summarize_variant_followup_promoter_expression_evidence();
+            }
+            if ui
+                .add_enabled(
                     engine_available && !source_missing && has_variant_seed,
                     egui::Button::new("Summarize promoter context"),
                 )
@@ -4303,6 +4662,23 @@ impl MainAreaDna {
                 .clicked()
             {
                 self.export_variant_followup_promoter_evidence_matrix_json();
+            }
+            if ui
+                .add_enabled(
+                    engine_available
+                        && !source_missing
+                        && self
+                            .variant_followup_ui
+                            .cached_promoter_expression_evidence
+                            .is_some(),
+                    egui::Button::new("Export expression JSON..."),
+                )
+                .on_hover_text(
+                    "Write promoter expression association evidence through the shared engine report route.",
+                )
+                .clicked()
+            {
+                self.export_variant_followup_promoter_expression_evidence_json();
             }
             if ui
                 .add_enabled(
@@ -4385,6 +4761,20 @@ impl MainAreaDna {
         self.render_variant_followup_isoform_promoter_comparison_summary(ui);
         ui.add_space(8.0);
         self.render_variant_followup_promoter_evidence_matrix_summary(ui);
+        ui.add_space(8.0);
+        self.render_variant_followup_promoter_expression_summary(ui);
+        ui.add_space(8.0);
+        egui::CollapsingHeader::new("CUT&RUN occupancy support")
+            .default_open(false)
+            .show(ui, |ui| {
+                ui.small(
+                    egui::RichText::new(
+                        "This reuses the shared CUT&RUN regulatory-support report already available in the sequence window; GENtle displays sequence evidence and does not infer validation from occupancy alone.",
+                    )
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+                );
+                self.render_cutrun_regulatory_support_summary_panel(ui);
+            });
         ui.add_space(8.0);
         self.render_variant_followup_report_summary(ui);
         ui.add_space(8.0);
