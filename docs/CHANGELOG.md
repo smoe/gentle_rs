@@ -14,6 +14,10 @@ Maintenance rule:
 
 ## 2026-06-17
 
+- Extended `planning protein-expression-handoff --seq-id` with defaulted
+  product-readiness summaries for stored DNA/protein sequences, including CDS
+  annotation count, start/stop/internal-stop sanity, ambiguity counts, and
+  review-specific missing questions.
 - Added Promoter design GUI parity for promoter expression evidence and
   cached CUT&RUN regulatory-support reports, additive four-state TFBS support
   status, and promoter cohort comparison; `genomes promoter-cohort-comparison`

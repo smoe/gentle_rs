@@ -142,6 +142,12 @@ metadata:
       - available operations
       - what operations
       - what commands
+      - clariom pm probe interpretation
+      - clariom probe region interpretation
+      - pm probe constraint report
+      - probe-region interpretation report
+      - array probe transcript geometry
+      - clariom transcript geometry review
       - version
       - runtime version
       - installed version

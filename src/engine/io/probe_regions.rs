@@ -481,9 +481,8 @@ impl GentleEngine {
         if apt_summary_path.is_empty() || annotation_path.is_empty() || output_dir.is_empty() {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
-                message:
-                    "APT probe-region import requires SUMMARY.tsv ANNOTATION.csv OUTPUT_DIR"
-                        .to_string(),
+                message: "APT probe-region import requires SUMMARY.tsv ANNOTATION.csv OUTPUT_DIR"
+                    .to_string(),
                 cause_chain: vec![],
             });
         }
@@ -563,8 +562,9 @@ impl GentleEngine {
                 cause_chain: vec![],
             });
         }
-        let metadata_summary = if let Some(path) =
-            metadata_path.map(str::trim).filter(|value| !value.is_empty())
+        let metadata_summary = if let Some(path) = metadata_path
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
         {
             let summary = Self::probe_region_apt_metadata_summary(
                 path,
@@ -771,16 +771,15 @@ impl GentleEngine {
                 "parent_probeset_summary"
             };
             let probe_table_path = Path::new(output_dir).join(PROBE_REGION_PROBE_TABLE_FILE);
-            let mut probe_writer = csv::Writer::from_path(&probe_table_path).map_err(|e| {
-                EngineError {
+            let mut probe_writer =
+                csv::Writer::from_path(&probe_table_path).map_err(|e| EngineError {
                     code: ErrorCode::Io,
                     message: format!(
                         "Could not create probe-coordinate table '{}': {e}",
                         probe_table_path.to_string_lossy()
                     ),
                     cause_chain: vec![],
-                }
-            })?;
+                })?;
             let mut probe_header = vec![
                 "chromosome".to_string(),
                 "start".to_string(),
@@ -795,11 +794,13 @@ impl GentleEngine {
                 "intensity_source".to_string(),
             ];
             probe_header.extend(probe_value_header.iter().cloned());
-            probe_writer.write_record(&probe_header).map_err(|e| EngineError {
-                code: ErrorCode::Io,
-                message: format!("Could not write probe-coordinate table header: {e}"),
-                cause_chain: vec![],
-            })?;
+            probe_writer
+                .write_record(&probe_header)
+                .map_err(|e| EngineError {
+                    code: ErrorCode::Io,
+                    message: format!("Could not write probe-coordinate table header: {e}"),
+                    cause_chain: vec![],
+                })?;
             let mut probes = annotation.probes.iter().collect::<Vec<_>>();
             probes.sort_by(|a, b| {
                 a.chromosome
@@ -970,16 +971,16 @@ impl GentleEngine {
             skipped_invalid_count,
             probe_row_count,
             sample_columns,
-            probe_intensity_path: probe_intensity
-                .as_ref()
-                .map(|table| table.path.clone()),
+            probe_intensity_path: probe_intensity.as_ref().map(|table| table.path.clone()),
             probe_intensity_source: probe_intensity_source.map(str::to_string),
             probe_intensity_sample_columns: probe_intensity
                 .as_ref()
                 .map(|table| table.sample_columns.clone())
                 .unwrap_or_default(),
             missing_probe_intensity_count,
-            metadata_path: metadata_summary.as_ref().map(|metadata| metadata.path.clone()),
+            metadata_path: metadata_summary
+                .as_ref()
+                .map(|metadata| metadata.path.clone()),
             condition_column: metadata_summary
                 .as_ref()
                 .map(|metadata| metadata.condition_column.clone()),
@@ -1034,8 +1035,7 @@ impl GentleEngine {
 
         let region_table =
             Self::probe_region_file_status(&region_table_path.to_string_lossy(), "region_table");
-        let probe_table =
-            Self::probe_region_optional_file_status(&probe_table_path, "probe_table");
+        let probe_table = Self::probe_region_optional_file_status(&probe_table_path, "probe_table");
         let sample_table =
             Self::probe_region_optional_file_status(&sample_table_path, "sample_table");
         let normalized_matrix_manifest =
@@ -1127,8 +1127,7 @@ impl GentleEngine {
                     coordinate_system = Self::probe_region_json_string(&value, "coordinate_system");
                     genome_build = Self::probe_region_json_string(&value, "genome_build")
                         .or_else(|| Self::probe_region_json_string(&value, "reference_genome_id"));
-                    coordinate_projections =
-                        Self::probe_region_json_coordinate_projections(&value);
+                    coordinate_projections = Self::probe_region_json_coordinate_projections(&value);
                     target_levels = Self::probe_region_json_string_array(&value, "targets");
                     artifact_paths = Self::probe_region_json_string_array(&value, "artifacts");
                 }
@@ -1198,21 +1197,28 @@ impl GentleEngine {
                 .iter()
                 .map(|column| format!("Probe-region table is missing required column '{column}'")),
         );
-        let probe_table_summary =
-            if probe_table.as_ref().is_some_and(|status| status.exists && status.is_file) {
-                match Self::inspect_probe_region_probe_table(&probe_table_path) {
-                    Ok(summary) => summary,
-                    Err(err) => {
-                        errors.push(format!("Could not parse probe-coordinate table: {err}"));
-                        ProbeRegionProbeTableSummary::default()
-                    }
+        let probe_table_summary = if probe_table
+            .as_ref()
+            .is_some_and(|status| status.exists && status.is_file)
+        {
+            match Self::inspect_probe_region_probe_table(&probe_table_path) {
+                Ok(summary) => summary,
+                Err(err) => {
+                    errors.push(format!("Could not parse probe-coordinate table: {err}"));
+                    ProbeRegionProbeTableSummary::default()
                 }
-            } else {
-                ProbeRegionProbeTableSummary::default()
-            };
-        errors.extend(probe_table_summary.required_columns_missing.iter().map(|column| {
-            format!("Probe-coordinate table is missing required column '{column}'")
-        }));
+            }
+        } else {
+            ProbeRegionProbeTableSummary::default()
+        };
+        errors.extend(
+            probe_table_summary
+                .required_columns_missing
+                .iter()
+                .map(|column| {
+                    format!("Probe-coordinate table is missing required column '{column}'")
+                }),
+        );
 
         let mut projection_blockers = Vec::new();
         if coordinate_system.is_none() {
@@ -1473,7 +1479,10 @@ impl GentleEngine {
                         output_dir
                     )
                 } else {
-                    format!("Probe-region output '{}' has no projectable rows", output_dir)
+                    format!(
+                        "Probe-region output '{}' has no projectable rows",
+                        output_dir
+                    )
                 },
                 cause_chain: vec![],
             });
@@ -1872,7 +1881,8 @@ impl GentleEngine {
                 let counts = transcript_counts
                     .remove(&tx.transcript_id)
                     .unwrap_or_default();
-                let unmapped = total_evidence.saturating_sub(counts.compatible + counts.constraining);
+                let unmapped =
+                    total_evidence.saturating_sub(counts.compatible + counts.constraining);
                 let relationship_summary = if counts.unique > 0 {
                     "has_unique_compatible_evidence"
                 } else if counts.shared > 0 {
@@ -1965,15 +1975,21 @@ impl GentleEngine {
             {
                 continue;
             }
-            let feature_level = Self::probe_region_first_qualifier(feature, &["gentle_array_level"])
-                .unwrap_or_else(|| "probe_region".to_string());
+            let feature_level =
+                Self::probe_region_first_qualifier(feature, &["gentle_array_level"])
+                    .unwrap_or_else(|| "probe_region".to_string());
             if level != "all" && feature_level != level {
                 continue;
             }
-            let logfc =
-                Self::probe_region_first_qualifier(feature, &["logFC", "score"]).and_then(|value| {
-                    value.trim().parse::<f64>().ok().filter(|value| value.is_finite())
-                });
+            let logfc = Self::probe_region_first_qualifier(feature, &["logFC", "score"]).and_then(
+                |value| {
+                    value
+                        .trim()
+                        .parse::<f64>()
+                        .ok()
+                        .filter(|value| value.is_finite())
+                },
+            );
             if let Some(threshold) = min_abs_logfc
                 && logfc.map(|value| value.abs() < threshold).unwrap_or(true)
             {
@@ -1994,8 +2010,7 @@ impl GentleEngine {
                 .as_deref()
                 .map(|contrast| format!("{feature_id}:{contrast}"))
                 .unwrap_or_else(|| feature_id.clone());
-            let (local_start, local_end) = Self::probe_region_range_span(&ranges)
-                .unwrap_or((0, 0));
+            let (local_start, local_end) = Self::probe_region_range_span(&ranges).unwrap_or((0, 0));
             out.push(ProbeRegionProjectedEvidence {
                 evidence_id,
                 level: feature_level,
@@ -2346,16 +2361,19 @@ impl GentleEngine {
                 continue;
             }
             let gap = (left.range_0based.1, right.range_0based.0);
-            let one_range_spans_boundary = item.ranges_0based.iter().any(|range| {
-                range.0 < left.range_0based.1 && range.1 > right.range_0based.0
-            });
+            let one_range_spans_boundary = item
+                .ranges_0based
+                .iter()
+                .any(|range| range.0 < left.range_0based.1 && range.1 > right.range_0based.0);
             let joined_evidence_hits_both_sides = item.ranges_0based.len() > 1
-                && item.ranges_0based.iter().any(|range| {
-                    Self::probe_region_ranges_overlap(&left.range_0based, range)
-                })
-                && item.ranges_0based.iter().any(|range| {
-                    Self::probe_region_ranges_overlap(&right.range_0based, range)
-                });
+                && item
+                    .ranges_0based
+                    .iter()
+                    .any(|range| Self::probe_region_ranges_overlap(&left.range_0based, range))
+                && item
+                    .ranges_0based
+                    .iter()
+                    .any(|range| Self::probe_region_ranges_overlap(&right.range_0based, range));
             if !one_range_spans_boundary && !joined_evidence_hits_both_sides {
                 continue;
             }
@@ -2409,7 +2427,10 @@ impl GentleEngine {
         if path.is_absolute() {
             return path.to_string_lossy().to_string();
         }
-        Path::new(output_dir).join(path).to_string_lossy().to_string()
+        Path::new(output_dir)
+            .join(path)
+            .to_string_lossy()
+            .to_string()
     }
 
     fn probe_region_apt_annotation_rows(
@@ -2502,7 +2523,12 @@ impl GentleEngine {
         let probe_chromosome_idx = Self::probe_region_metadata_column_index(
             &headers,
             None,
-            &["probe_chromosome", "probe_chrom", "pm_chromosome", "pm_chrom"],
+            &[
+                "probe_chromosome",
+                "probe_chrom",
+                "pm_chromosome",
+                "pm_chrom",
+            ],
         );
         let probe_start_idx = Self::probe_region_metadata_column_index(
             &headers,
@@ -2587,11 +2613,7 @@ impl GentleEngine {
                     cause_chain: vec![],
                 });
             }
-            let chromosome = record
-                .get(chromosome_idx)
-                .unwrap_or("")
-                .trim()
-                .to_string();
+            let chromosome = record.get(chromosome_idx).unwrap_or("").trim().to_string();
             let strand = strand_idx
                 .and_then(|idx| record.get(idx))
                 .map(str::trim)
@@ -2767,8 +2789,9 @@ impl GentleEngine {
                 cause_chain: vec![],
             });
         }
-        let metadata_summary = if let Some(path) =
-            metadata_path.map(str::trim).filter(|value| !value.is_empty())
+        let metadata_summary = if let Some(path) = metadata_path
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
         {
             Some(Self::probe_region_apt_metadata_summary(
                 path,
@@ -2905,7 +2928,9 @@ impl GentleEngine {
             .headers()
             .map_err(|e| EngineError {
                 code: ErrorCode::InvalidInput,
-                message: format!("Could not read APT sample metadata header '{metadata_path}': {e}"),
+                message: format!(
+                    "Could not read APT sample metadata header '{metadata_path}': {e}"
+                ),
                 cause_chain: vec![],
             })?
             .iter()
@@ -3046,10 +3071,7 @@ impl GentleEngine {
                 .enumerate()
                 .skip(1)
                 .map(|(idx, numerator)| ProbeRegionAptContrast {
-                    label: format!(
-                        "{}-{}",
-                        numerator.column_label, denominator.column_label
-                    ),
+                    label: format!("{}-{}", numerator.column_label, denominator.column_label),
                     numerator_index: idx,
                     denominator_index: 0,
                 })
@@ -3096,11 +3118,7 @@ impl GentleEngine {
         if trimmed.is_empty() {
             return Vec::new();
         }
-        let basename = trimmed
-            .rsplit(['/', '\\'])
-            .next()
-            .unwrap_or(trimmed)
-            .trim();
+        let basename = trimmed.rsplit(['/', '\\']).next().unwrap_or(trimmed).trim();
         let mut keys = Vec::new();
         for candidate in [trimmed, basename] {
             let lower = candidate.to_ascii_lowercase();
@@ -3292,10 +3310,7 @@ impl GentleEngine {
             .unwrap_or_default()
     }
 
-    fn probe_region_json_alias_string(
-        value: &serde_json::Value,
-        keys: &[&str],
-    ) -> Option<String> {
+    fn probe_region_json_alias_string(value: &serde_json::Value, keys: &[&str]) -> Option<String> {
         keys.iter()
             .find_map(|key| Self::probe_region_json_string(value, key))
     }
@@ -3465,7 +3480,11 @@ impl GentleEngine {
         let parent_idx = Self::probe_region_metadata_column_index(
             &headers,
             None,
-            &["parent_probeset_or_region_id", "parent_probeset_id", "probeset_id"],
+            &[
+                "parent_probeset_or_region_id",
+                "parent_probeset_id",
+                "probeset_id",
+            ],
         );
         let mut required_columns_missing = Vec::new();
         if chromosome_idx.is_none() {
@@ -3518,7 +3537,11 @@ impl GentleEngine {
                     row_count + 1
                 ));
             }
-            if let Some(parent) = record.get(parent_idx).map(str::trim).filter(|v| !v.is_empty()) {
+            if let Some(parent) = record
+                .get(parent_idx)
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+            {
                 parents.insert(parent.to_string());
             }
         }
@@ -3891,7 +3914,10 @@ impl GentleEngine {
             .headers()
             .map_err(|e| EngineError {
                 code: ErrorCode::InvalidInput,
-                message: format!("Could not read {} header: {e}", table_label.to_ascii_lowercase()),
+                message: format!(
+                    "Could not read {} header: {e}",
+                    table_label.to_ascii_lowercase()
+                ),
                 cause_chain: vec![],
             })?
             .iter()
@@ -3948,7 +3974,11 @@ impl GentleEngine {
         let parent_idx = Self::probe_region_metadata_column_index(
             &headers,
             None,
-            &["parent_probeset_or_region_id", "parent_probeset_id", "probeset_id"],
+            &[
+                "parent_probeset_or_region_id",
+                "parent_probeset_id",
+                "probeset_id",
+            ],
         );
         let intensity_source_idx =
             Self::probe_region_metadata_column_index(&headers, None, &["intensity_source"]);
@@ -3984,7 +4014,10 @@ impl GentleEngine {
         for (line_offset, record) in reader.records().enumerate() {
             let record = record.map_err(|e| EngineError {
                 code: ErrorCode::InvalidInput,
-                message: format!("Could not read {} row: {e}", table_label.to_ascii_lowercase()),
+                message: format!(
+                    "Could not read {} row: {e}",
+                    table_label.to_ascii_lowercase()
+                ),
                 cause_chain: vec![],
             })?;
             let line_no = line_offset + 2;
@@ -4231,10 +4264,7 @@ impl GentleEngine {
             ));
         }
         if let Some(value) = &row.parent_feature_id {
-            qualifiers.push((
-                "gentle_array_parent_feature_id".into(),
-                Some(value.clone()),
-            ));
+            qualifiers.push(("gentle_array_parent_feature_id".into(), Some(value.clone())));
         }
         if let Some(value) = &row.intensity_source {
             qualifiers.push(("gentle_array_intensity_source".into(), Some(value.clone())));

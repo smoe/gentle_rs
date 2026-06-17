@@ -1121,7 +1121,14 @@ mod tests {
     #[test]
     fn gene_set_random_is_deterministic_source_pinned_and_foreground_filtered() {
         let genes = (0..10)
-            .map(|idx| gene(&format!("Gene{idx}"), &format!("G{idx}"), "chr1", 100 + idx * 100))
+            .map(|idx| {
+                gene(
+                    &format!("Gene{idx}"),
+                    &format!("G{idx}"),
+                    "chr1",
+                    100 + idx * 100,
+                )
+            })
             .collect::<Vec<_>>();
 
         let mut first_warnings = vec![];
@@ -1146,7 +1153,10 @@ mod tests {
         );
         assert_eq!(symbols(&first), symbols(&second));
         assert_eq!(first_random.random_seed, second_random.random_seed);
-        assert_eq!(first_random.gene_index_source, second_random.gene_index_source);
+        assert_eq!(
+            first_random.gene_index_source,
+            second_random.gene_index_source
+        );
         assert!(first_warnings.is_empty());
         assert!(second_warnings.is_empty());
 
@@ -1174,9 +1184,9 @@ mod tests {
             &mut excluded_warnings,
         );
         assert_eq!(filtered.len(), 3);
-        assert!(filtered
-            .iter()
-            .all(|row| row.gene_id.as_deref() != Some("G1") && row.gene_id.as_deref() != Some("G2")));
+        assert!(filtered.iter().all(
+            |row| row.gene_id.as_deref() != Some("G1") && row.gene_id.as_deref() != Some("G2")
+        ));
         assert_eq!(filtered_random.universe_size, genes.len());
         assert!(filtered_random.foreground_exclusion_count >= 2);
         assert!(excluded_warnings.is_empty());
@@ -1193,9 +1203,11 @@ mod tests {
             &mut too_large_warnings,
         );
         assert_eq!(too_large.len(), tiny_genes.len());
-        assert!(too_large_warnings
-            .iter()
-            .any(|warning| warning.contains("fewer than requested 5")));
+        assert!(
+            too_large_warnings
+                .iter()
+                .any(|warning| warning.contains("fewer than requested 5"))
+        );
     }
 
     #[test]
@@ -1249,9 +1261,11 @@ mod tests {
         )
         .expect("resolve boundary neighbors");
         assert_eq!(symbols(&rows), vec!["A", "B", "C"]);
-        assert!(warnings
-            .iter()
-            .any(|warning| warning.contains("near the start of chromosome chr1")));
+        assert!(
+            warnings
+                .iter()
+                .any(|warning| warning.contains("near the start of chromosome chr1"))
+        );
 
         warnings.clear();
         unresolved.clear();
@@ -1267,7 +1281,11 @@ mod tests {
         .expect("missing anchor is unresolved, not fatal");
         assert!(rows.is_empty());
         assert_eq!(unresolved.len(), 1);
-        assert!(unresolved[0].reason.contains("neighbor anchor did not resolve"));
+        assert!(
+            unresolved[0]
+                .reason
+                .contains("neighbor anchor did not resolve")
+        );
 
         let mut duplicated = genes.clone();
         duplicated.push(gene("C", "GC2", "chr2", 700));

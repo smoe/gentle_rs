@@ -4476,9 +4476,12 @@ Planning meta-layer commands (`gentle_cli planning ...` or `gentle_cli shell 'pl
     `suggested_next_actions[]` including a review-gated
     `services project-quote @...` packet-preparation step.
   - The route never designs, optimizes, orders, or mutates constructs. If
-    `--seq-id` is supplied, V1 records whether the product sequence exists in
-    state plus length/feature context, but still requires human review of CDS
-    boundaries, tags, chassis, folding, toxicity, yield metric, and endpoint.
+    `--seq-id` is supplied and resolves to a stored sequence, V1 adds
+    `product_definition.readiness` with sequence kind, GC/ambiguity counts,
+    CDS annotation count, longest ORF summary, and start/stop/internal-stop
+    sanity for the whole sequence. Human review is still required for exact
+    CDS boundaries, tags, chassis, folding, toxicity, yield metric, and
+    endpoint.
 - `planning profile show [--scope global|project_override|confirmed_agent_overlay|effective]`
   - Shows one profile scope or merged effective profile.
 - `planning profile set JSON_OR_@FILE [--scope global|project_override|confirmed_agent_overlay]`

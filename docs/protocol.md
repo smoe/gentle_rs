@@ -3698,10 +3698,15 @@ Adapter-equivalence guarantee for UI-intent tools:
     packet-preparation step that is only appropriate after product and
     outsourcing constraints are reviewed; no provider network call, order,
     optimization, or construct mutation is made
-  - `--seq-id` only records product-sequence availability and basic
-    length/feature context; CDS boundaries, tags, chassis, folding/PTMs,
-    toxicity/induction, yield metric, and purification/delivery endpoint stay
-    explicit review questions
+  - when `--seq-id` resolves to a stored sequence, `product_definition`
+    includes a defaulted `readiness` object with `sequence_context`,
+    `cds_assessment`, and `tag_assessment` summaries; V1 checks whole-sequence
+    start/stop/internal-stop sanity, ambiguous DNA bases, CDS annotation count,
+    protein-sequence status, and longest computed ORF without optimizing
+    codons or choosing a construct
+  - CDS boundaries, tag policy, chassis, folding/PTMs, toxicity/induction,
+    yield metric, and purification/delivery endpoint remain explicit review
+    questions
 - `planning profile show [--scope global|project_override|confirmed_agent_overlay|effective]`
   - inspect one planning profile scope or merged effective profile
 - `planning profile set JSON_OR_@FILE [--scope global|project_override|confirmed_agent_overlay]`

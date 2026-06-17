@@ -110,21 +110,21 @@ use crate::{
         PrimerDesignProgress, PrimerDesignReport, PrimerDesignSideConstraint,
         PrimerSpecificityPolicy, ProbeRegionAptImportReport,
         ProbeRegionEvidenceInterpretationReport, ProbeRegionEvidenceTranscriptMapping,
-        ProbeRegionOutputInspection,
-        PromoterEvidenceMatrixReport, PromoterEvidenceMatrixRow, PromoterExpressionEvidenceInput,
-        PromoterExpressionEvidenceReport, PromoterReporterCandidateSet, PromoterWindowCollapseMode,
-        ProtocolCartoonPreviewTelemetry, QpcrDesignReport,
-        QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting, QpcrTranscriptTargetingMode,
-        RenderSvgMode, RestrictionCloningPcrHandoffMode, RestrictionCloningPcrHandoffReport,
-        RestrictionCloningPcrHandoffSeedRequest, RestrictionCloningVectorEnzymeSuggestions,
-        RestrictionEnzymeDisplayMode, RestrictionSiteScanReport, RnaReadAlignConfig,
-        RnaReadAlignmentDisplay, RnaReadAlignmentEffect, RnaReadAlignmentInspection,
-        RnaReadAlignmentInspectionEffectFilter, RnaReadAlignmentInspectionRow,
-        RnaReadAlignmentInspectionSortKey, RnaReadAlignmentInspectionSubsetSpec,
-        RnaReadConcatemerInspection, RnaReadConcatemerInspectionSettings,
-        RnaReadExonSupportFrequency, RnaReadGeneSupportCompleteRule, RnaReadGeneSupportSummary,
-        RnaReadHitSelection, RnaReadInputFormat, RnaReadInterpretProgress,
-        RnaReadInterpretationHit, RnaReadInterpretationProfile, RnaReadInterpretationReport,
+        ProbeRegionOutputInspection, PromoterEvidenceMatrixReport, PromoterEvidenceMatrixRow,
+        PromoterExpressionEvidenceInput, PromoterExpressionEvidenceReport,
+        PromoterReporterCandidateSet, PromoterWindowCollapseMode, ProtocolCartoonPreviewTelemetry,
+        QpcrDesignReport, QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting,
+        QpcrTranscriptTargetingMode, RenderSvgMode, RestrictionCloningPcrHandoffMode,
+        RestrictionCloningPcrHandoffReport, RestrictionCloningPcrHandoffSeedRequest,
+        RestrictionCloningVectorEnzymeSuggestions, RestrictionEnzymeDisplayMode,
+        RestrictionSiteScanReport, RnaReadAlignConfig, RnaReadAlignmentDisplay,
+        RnaReadAlignmentEffect, RnaReadAlignmentInspection, RnaReadAlignmentInspectionEffectFilter,
+        RnaReadAlignmentInspectionRow, RnaReadAlignmentInspectionSortKey,
+        RnaReadAlignmentInspectionSubsetSpec, RnaReadConcatemerInspection,
+        RnaReadConcatemerInspectionSettings, RnaReadExonSupportFrequency,
+        RnaReadGeneSupportCompleteRule, RnaReadGeneSupportSummary, RnaReadHitSelection,
+        RnaReadInputFormat, RnaReadInterpretProgress, RnaReadInterpretationHit,
+        RnaReadInterpretationProfile, RnaReadInterpretationReport,
         RnaReadInterpretationReportSummary, RnaReadIsoformSupportRow, RnaReadIsoformTriageBin,
         RnaReadJunctionSupportFrequency, RnaReadLengthDistributionSummary, RnaReadOriginMode,
         RnaReadPairwiseAlignmentDetail, RnaReadReportMode, RnaReadScoreDensityScale,
@@ -2098,7 +2098,8 @@ impl MainAreaDna {
             probe_region_projection_contrasts: String::new(),
             probe_region_projection_level: "probe_region".to_string(),
             probe_region_projection_min_abs_logfc: String::new(),
-            probe_region_projection_max_features: default_probe_region_projection_max_features_text(),
+            probe_region_projection_max_features: default_probe_region_projection_max_features_text(
+            ),
             probe_region_projection_clear_existing: false,
             probe_region_interpretation_gene_label: String::new(),
             probe_region_interpretation_level: "all".to_string(),
@@ -7891,9 +7892,7 @@ impl MainAreaDna {
         format!("{}{}", shown.join(", "), suffix)
     }
 
-    fn probe_region_mapping_preview(
-        mappings: &[ProbeRegionEvidenceTranscriptMapping],
-    ) -> String {
+    fn probe_region_mapping_preview(mappings: &[ProbeRegionEvidenceTranscriptMapping]) -> String {
         if mappings.is_empty() {
             return "none".to_string();
         }
@@ -8053,8 +8052,7 @@ impl MainAreaDna {
                         self.cached_probe_region_output_inspection = None;
                         self.cached_probe_region_projection = None;
                         self.cached_probe_region_interpretation = None;
-                        self.op_status =
-                            format!("Could not decode APT import payload: {err}");
+                        self.op_status = format!("Could not decode APT import payload: {err}");
                     }
                 }
             }
@@ -8245,8 +8243,7 @@ impl MainAreaDna {
                     self.cached_probe_region_projection = None;
                     self.cached_probe_region_interpretation = None;
                     self.op_status =
-                        "Probe-region projection completed without an OpResult payload"
-                            .to_string();
+                        "Probe-region projection completed without an OpResult payload".to_string();
                     return;
                 };
                 match serde_json::from_value::<OpResult>(value) {
@@ -8861,7 +8858,9 @@ impl MainAreaDna {
             }
             if ui
                 .button("PM probes")
-                .on_hover_text("Project true PM probe-level rows from probe_intensity_chrom_order.csv")
+                .on_hover_text(
+                    "Project true PM probe-level rows from probe_intensity_chrom_order.csv",
+                )
                 .clicked()
             {
                 self.probe_region_projection_level = "pm_probe".to_string();
@@ -8884,10 +8883,8 @@ impl MainAreaDna {
             ui.label("min |log2FC|");
             if ui
                 .add(
-                    egui::TextEdit::singleline(
-                        &mut self.probe_region_projection_min_abs_logfc,
-                    )
-                    .desired_width(80.0),
+                    egui::TextEdit::singleline(&mut self.probe_region_projection_min_abs_logfc)
+                        .desired_width(80.0),
                 )
                 .on_hover_text("Optional absolute log2 fold-change threshold")
                 .changed()
@@ -8899,12 +8896,12 @@ impl MainAreaDna {
             ui.label("max features");
             if ui
                 .add(
-                    egui::TextEdit::singleline(
-                        &mut self.probe_region_projection_max_features,
-                    )
-                    .desired_width(90.0),
+                    egui::TextEdit::singleline(&mut self.probe_region_projection_max_features)
+                        .desired_width(90.0),
                 )
-                .on_hover_text("Optional cap for imported feature rows; empty uses the engine default")
+                .on_hover_text(
+                    "Optional cap for imported feature rows; empty uses the engine default",
+                )
                 .changed()
             {
                 projection_fields_changed = true;
@@ -9029,10 +9026,8 @@ impl MainAreaDna {
             ui.label("min |log2FC|");
             if ui
                 .add(
-                    egui::TextEdit::singleline(
-                        &mut self.probe_region_interpretation_min_abs_logfc,
-                    )
-                    .desired_width(80.0),
+                    egui::TextEdit::singleline(&mut self.probe_region_interpretation_min_abs_logfc)
+                        .desired_width(80.0),
                 )
                 .on_hover_text("Optional absolute log2 fold-change threshold for interpretation")
                 .changed()
@@ -9043,11 +9038,11 @@ impl MainAreaDna {
             if ui
                 .add_sized(
                     [ui.available_width().min(360.0), 0.0],
-                    egui::TextEdit::singleline(
-                        &mut self.probe_region_interpretation_output_path,
-                    ),
+                    egui::TextEdit::singleline(&mut self.probe_region_interpretation_output_path),
                 )
-                .on_hover_text("Optional JSON report path; empty keeps the report in the GUI cache only")
+                .on_hover_text(
+                    "Optional JSON report path; empty keeps the report in the GUI cache only",
+                )
                 .changed()
             {
                 interpretation_fields_changed = true;
@@ -9058,7 +9053,10 @@ impl MainAreaDna {
             self.save_engine_ops_state();
         }
         let interpretation_enabled = !self.probe_region_projection_seq_id.trim().is_empty()
-            || self.seq_id.as_deref().is_some_and(|seq_id| !seq_id.trim().is_empty());
+            || self
+                .seq_id
+                .as_deref()
+                .is_some_and(|seq_id| !seq_id.trim().is_empty());
         ui.horizontal_wrapped(|ui| {
             if ui
                 .add_enabled(
@@ -22307,9 +22305,7 @@ impl MainAreaDna {
             probe_region_projection_min_abs_logfc: self
                 .probe_region_projection_min_abs_logfc
                 .clone(),
-            probe_region_projection_max_features: self
-                .probe_region_projection_max_features
-                .clone(),
+            probe_region_projection_max_features: self.probe_region_projection_max_features.clone(),
             probe_region_projection_clear_existing: self.probe_region_projection_clear_existing,
             probe_region_interpretation_gene_label: self
                 .probe_region_interpretation_gene_label
@@ -22575,7 +22571,7 @@ impl MainAreaDna {
                 default_cutrun_neighbor_window_bp_text()
             } else {
                 s.cutrun_regulatory_neighbor_window_bp
-        };
+            };
         self.cutrun_regulatory_species_filters = s.cutrun_regulatory_species_filters;
         self.probe_region_apt_summary_path = s.probe_region_apt_summary_path;
         self.probe_region_apt_annotation_path = s.probe_region_apt_annotation_path;

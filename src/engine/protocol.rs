@@ -7004,7 +7004,66 @@ pub struct ProteinExpressionProductDefinition {
     pub sequence_name: Option<String>,
     pub length_bp: Option<usize>,
     pub feature_count: Option<usize>,
+    pub readiness: ProteinExpressionProductReadiness,
     pub product_metric: String,
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Sequence-derived product-readiness summary for a protein-expression handoff.
+pub struct ProteinExpressionProductReadiness {
+    pub status: String,
+    pub sequence_context: Option<ProteinExpressionSequenceContext>,
+    pub cds_assessment: Option<ProteinExpressionCdsAssessment>,
+    pub tag_assessment: Option<ProteinExpressionTagAssessment>,
+    pub missing_question_ids: Vec<String>,
+    pub warnings: Vec<String>,
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Stored-sequence summary relevant to protein-expression planning.
+pub struct ProteinExpressionSequenceContext {
+    pub sequence_kind: String,
+    pub molecule_type: Option<String>,
+    pub length_bp: Option<usize>,
+    pub length_aa: Option<usize>,
+    pub gc_fraction: Option<f64>,
+    pub ambiguous_base_count: usize,
+    pub cds_feature_count: usize,
+    pub orf_count: usize,
+    pub longest_orf_length_aa: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// CDS/ORF sanity summary for read-only protein-expression handoff planning.
+pub struct ProteinExpressionCdsAssessment {
+    pub status: String,
+    pub source: String,
+    pub cds_feature_count: usize,
+    pub divisible_by_three: Option<bool>,
+    pub has_start_codon: Option<bool>,
+    pub has_terminal_stop_codon: Option<bool>,
+    pub internal_stop_codon_count: Option<usize>,
+    pub inferred_protein_length_aa: Option<usize>,
+    pub selected_orf_frame: Option<i32>,
+    pub selected_orf_start_0based: Option<usize>,
+    pub selected_orf_end_0based_exclusive: Option<usize>,
+    pub selected_orf_length_aa: Option<usize>,
+    pub warnings: Vec<String>,
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Tag/readout hints for a protein-expression handoff.
+pub struct ProteinExpressionTagAssessment {
+    pub status: String,
+    pub detected_tag_labels: Vec<String>,
+    pub missing_question_ids: Vec<String>,
     pub notes: Vec<String>,
 }
 

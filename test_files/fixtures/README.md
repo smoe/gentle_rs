@@ -40,6 +40,9 @@ checks.
   - `clariomd.tp73_vendor_subset.manifest.json`
   - `clariomd.tp73_vendor_subset.AdTAp73alpha-AdGFP.tsv`
   - `clariomd.tp73_vendor_subset.AdTAp73beta-AdGFP.tsv`
+- `probe_region_outputs/`
+  - `README.md`
+  - `clariom_pm_probe_interpretation/`
 - `affymetrix_clariom_d_human_na36_hg38_subset/`
   - `README.md`
   - `clariom_d_human_na36_hg38_gene_panel.probesets.tsv`
@@ -170,6 +173,28 @@ checks.
 - Runtime/parser role:
   - intentionally stripped to minimal IDs, hg38 coordinates, feature types, and
     gene symbols; it is not a replacement for the full vendor annotations.
+
+### `probe_region_outputs/clariom_pm_probe_interpretation/*`
+
+- Origin: hand-crafted synthetic completed helper-output directory for the
+  ClawBio Clariom PM-probe interpretation workflow example.
+- Deterministic recreation:
+  - use the committed `test_files/tp73.ncbi.gb` GRCh38.p14 chromosome-1 locus
+  - choose two tiny PM-probe intervals within the first TP73 exon and one
+    parent probeset-region row
+  - write fixed sample, condition, and log2 fold-change values
+  - mark the PM probe rows as `probe_level_input`
+- Primary usage:
+  - ClawBio example
+    `request_workflow_clariom_pm_probe_interpretation.json`
+  - offline smoke coverage for projection plus review-only probe-region
+    evidence interpretation without running R/APT or committing CEL/vendor
+    binary files.
+- Runtime/parser role:
+  - tiny stand-in for a completed
+    `arrays import-apt-probe-region-output ... --probe-intensity ...` directory;
+    it is not biological evidence and does not assess probe specificity,
+    multi-hit status, or isoform support.
 
 ### `mapping/*.fasta` (TP73/TP53 benchmark set)
 

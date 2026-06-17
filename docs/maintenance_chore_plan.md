@@ -145,6 +145,10 @@ Findings to report:
   source-version date, or missing when a tutorial was materially rewritten.
 - Stack-hardening workarounds that should move from active to superseded in
   [`decisions.md`](decisions.md).
+- Deferred probe-region structure drift: once PM-probe import/projection/
+  interpretation behavior stops moving, split `src/engine/io/probe_regions.rs`
+  into import, inspect/render, projection, and interpretation modules without
+  changing behavior.
 
 Pass criteria:
 

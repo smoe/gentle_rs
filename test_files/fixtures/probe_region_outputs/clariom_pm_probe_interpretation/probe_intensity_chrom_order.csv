@@ -1,0 +1,3 @@
+chromosome,start,stop,strand,probe_id,x,y,parent_probeset_or_region_id,transcript_cluster_id,gene_symbol,intensity_source,sample_a.CEL,sample_b.CEL,mean_log2_AdGFP,sd_log2_AdGFP,mean_log2_AdTAp73alpha,sd_log2_AdTAp73alpha,log2FC_AdTAp73alpha-AdGFP
+chr1,3652520,3652537,+,probe_tp73_1,10,20,PSR0100145779.hg.1,TC0100006620.hg.1,TP73,probe_level_input,5.0,6.1,5.000,0.000,6.100,0.000,1.100
+chr1,3652540,3652558,+,probe_tp73_2,11,20,PSR0100145779.hg.1,TC0100006620.hg.1,TP73,probe_level_input,5.4,6.2,5.400,0.000,6.200,0.000,0.800

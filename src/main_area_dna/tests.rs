@@ -17,27 +17,26 @@ use crate::{
         DotplotMode, DotplotOverlayAnchorExonRef, DotplotOverlayXAxisMode, DotplotView,
         EditableStatus, Engine, EvidenceClass, FlexibilityModel, FlexibilityTrack, GentleEngine,
         LinearSequenceLetterLayoutMode, OpResult, Operation, PairwiseAlignmentMode,
-        PrimerDesignBackend, PrimerDesignPairConstraint,
-        PrimerDesignProgress, PrimerDesignSideConstraint, ProbeRegionEvidenceInterpretationReport,
-        ProjectState, PromoterExpressionEvidenceInput, PromoterReporterCandidateSet,
+        PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignProgress,
+        PrimerDesignSideConstraint, ProbeRegionEvidenceInterpretationReport, ProjectState,
+        PromoterExpressionEvidenceInput, PromoterReporterCandidateSet,
         ProtocolCartoonPreviewTelemetry, QpcrTranscriptSpecificityEvidence,
         QpcrTranscriptTargeting, QpcrTranscriptTargetingMode, RestrictionCloningPcrHandoffMode,
         RestrictionEnzymeDisplayMode, RnaReadAlignmentEffect, RnaReadAlignmentInspection,
         RnaReadAlignmentInspectionRow, RnaReadHitSelection, RnaReadInputFormat,
         RnaReadInterpretProgress, RnaReadInterpretationHit, RnaReadInterpretationProfile,
-        RnaReadInterpretationReport,
-        RnaReadInterpretationReportSummary, RnaReadIsoformSupportRow, RnaReadIsoformTriageBin,
-        RnaReadMappingHit, RnaReadOriginMode, RnaReadReportMode, RnaReadScoreDensityVariant,
-        RnaReadSeedFilterConfig, SequenceAlignmentReport, SequenceGenomeAnchorSummary,
-        SequencingConfirmationReadResult, SequencingConfirmationReport,
-        SequencingConfirmationStatus, SequencingConfirmationTargetKind,
-        SequencingConfirmationTargetResult, SequencingConfirmationVariantRow,
-        SequencingPrimerOrientation, SequencingPrimerOverlayReport,
-        SequencingPrimerOverlaySuggestion, SequencingPrimerProblemKind,
-        SequencingPrimerProposalRow, SequencingTraceChannelData, SequencingTraceFormat,
-        SequencingTraceImportReport, SequencingTraceRecord, SplicingScopePreset,
-        TfbsScoreTrackReport, TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric,
-        TfbsTrackSimilarityReport, VariantPromoterContextReport,
+        RnaReadInterpretationReport, RnaReadInterpretationReportSummary, RnaReadIsoformSupportRow,
+        RnaReadIsoformTriageBin, RnaReadMappingHit, RnaReadOriginMode, RnaReadReportMode,
+        RnaReadScoreDensityVariant, RnaReadSeedFilterConfig, SequenceAlignmentReport,
+        SequenceGenomeAnchorSummary, SequencingConfirmationReadResult,
+        SequencingConfirmationReport, SequencingConfirmationStatus,
+        SequencingConfirmationTargetKind, SequencingConfirmationTargetResult,
+        SequencingConfirmationVariantRow, SequencingPrimerOrientation,
+        SequencingPrimerOverlayReport, SequencingPrimerOverlaySuggestion,
+        SequencingPrimerProblemKind, SequencingPrimerProposalRow, SequencingTraceChannelData,
+        SequencingTraceFormat, SequencingTraceImportReport, SequencingTraceRecord,
+        SplicingScopePreset, TfbsScoreTrackReport, TfbsScoreTrackValueKind,
+        TfbsTrackSimilarityRankingMetric, TfbsTrackSimilarityReport, VariantPromoterContextReport,
         parse_required_usize_or_formula_text_on_sequence,
     },
     enzymes::active_restriction_enzymes,
@@ -9026,25 +9025,24 @@ fn variant_followup_promoter_expression_evidence_runs_shared_op_and_caches_repor
     area.variant_followup_ui.promoter_downstream_bp = "50".to_string();
     area.variant_followup_ui.promoter_expression_source_label =
         "synthetic expression table".to_string();
-    area.variant_followup_ui.promoter_expression_rows_json =
-        serde_json::to_string(&vec![
-            PromoterExpressionEvidenceInput {
-                transcript_id: Some("ENSTTP73A".to_string()),
-                sample_id: Some("case_1".to_string()),
-                condition: Some("case".to_string()),
-                value: 10.0,
-                unit: Some("TPM".to_string()),
-                source: Some("synthetic RNA-seq".to_string()),
-                ..PromoterExpressionEvidenceInput::default()
-            },
-            PromoterExpressionEvidenceInput {
-                transcript_id: Some("ENSTUNRELATED".to_string()),
-                value: 99.0,
-                unit: Some("TPM".to_string()),
-                ..PromoterExpressionEvidenceInput::default()
-            },
-        ])
-        .expect("serialize expression rows");
+    area.variant_followup_ui.promoter_expression_rows_json = serde_json::to_string(&vec![
+        PromoterExpressionEvidenceInput {
+            transcript_id: Some("ENSTTP73A".to_string()),
+            sample_id: Some("case_1".to_string()),
+            condition: Some("case".to_string()),
+            value: 10.0,
+            unit: Some("TPM".to_string()),
+            source: Some("synthetic RNA-seq".to_string()),
+            ..PromoterExpressionEvidenceInput::default()
+        },
+        PromoterExpressionEvidenceInput {
+            transcript_id: Some("ENSTUNRELATED".to_string()),
+            value: 99.0,
+            unit: Some("TPM".to_string()),
+            ..PromoterExpressionEvidenceInput::default()
+        },
+    ])
+    .expect("serialize expression rows");
 
     area.summarize_variant_followup_promoter_expression_evidence();
 

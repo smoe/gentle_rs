@@ -110,11 +110,20 @@ Expected difference:
 
 - `product_definition.seq_id` records the supplied id
 - `product_definition.sequence_present` tells whether the id is loaded
-- if loaded, GENtle records length and feature-count context
-- the report still asks the expression-specific review questions
+- if loaded, GENtle records length and feature-count context plus
+  `product_definition.readiness`
+- `readiness.sequence_context` reports sequence kind, GC/ambiguity counts, CDS
+  annotation count, and longest computed ORF when applicable
+- `readiness.cds_assessment` reports whole-sequence start/stop/internal-stop
+  sanity, inferred protein length for a simple CDS candidate, and whether a
+  protein sequence still needs a coding-DNA or reverse-translation route
+- the report still asks the expression-specific review questions, and adds
+  product-boundary or tag-policy questions when the sequence context is not yet
+  enough
 
-V1 does not infer expression-ready CDS boundaries, tags, stop policy, or codon
-optimization from the sequence. Those decisions remain explicit review work.
+V1 summarizes sequence sanity, but it does not optimize codons, select tags, or
+declare a final construct expression-ready. Those decisions remain explicit
+review work.
 
 ## Step 5: Inspect The GeneArt Preflight Scaffold
 

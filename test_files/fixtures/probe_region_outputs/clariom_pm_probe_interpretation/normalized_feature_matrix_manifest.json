@@ -1,0 +1,24 @@
+{
+  "schema": "gentle.probe_region_normalized_matrix_manifest.v1",
+  "platform": "Clariom_D_Human",
+  "coordinate_system": "hg38",
+  "genome_build": "GRCh38.p14",
+  "normalization": "synthetic-rma",
+  "targets": [
+    "probeset",
+    "pm_probe"
+  ],
+  "artifacts": [
+    {
+      "kind": "region_intensity_table",
+      "path": "region_intensity_chrom_order.csv"
+    },
+    {
+      "kind": "probe_intensity_table",
+      "path": "probe_intensity_chrom_order.csv"
+    }
+  ],
+  "warnings": [
+    "Synthetic ClawBio smoke fixture; not CEL-derived biological evidence."
+  ]
+}

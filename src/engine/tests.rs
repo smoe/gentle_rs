@@ -19,6 +19,7 @@ use crate::ensembl_gene::{
 use crate::ensembl_protein::{
     EnsemblProteinEntry, EnsemblProteinFeature, EnsemblTranscriptExon, EnsemblTranscriptTranslation,
 };
+use crate::engine_shell::{execute_shell_command, ShellCommand};
 use crate::genomes::BlastHit;
 use crate::lineage_export::{LineageSvgNodeKind, build_lineage_svg_graph, export_lineage_svg};
 use bio::io::fasta;
@@ -689,18 +690,21 @@ fn interpret_probe_region_evidence_preserves_shared_transcript_ambiguity() {
             && mapping.junction_spans.is_empty()
             && mapping.overlap_bp == 18
     }));
-    assert!(row
-        .ambiguity_tags
-        .iter()
-        .any(|tag| tag == "shared_transcript_overlap"));
-    assert!(row
-        .ambiguity_tags
-        .iter()
-        .any(|tag| tag == "multi_hit_not_assessed"));
-    assert!(row
-        .ambiguity_tags
-        .iter()
-        .any(|tag| tag == "isoform_support_not_inferred"));
+    assert!(
+        row.ambiguity_tags
+            .iter()
+            .any(|tag| tag == "shared_transcript_overlap")
+    );
+    assert!(
+        row.ambiguity_tags
+            .iter()
+            .any(|tag| tag == "multi_hit_not_assessed")
+    );
+    assert!(
+        row.ambiguity_tags
+            .iter()
+            .any(|tag| tag == "isoform_support_not_inferred")
+    );
     assert!(report.transcript_rows.iter().all(|tx| {
         tx.shared_evidence_count == 1
             && tx.unique_evidence_count == 0
@@ -788,14 +792,18 @@ fn interpret_probe_region_evidence_reports_junction_spanning_geometry() {
     assert_eq!(mapping.mapping_kind, "junction_spanning_exon_overlap");
     assert_eq!(mapping.geometry_score, 0.75);
     assert_eq!(mapping.geometry_score_class, "junction_spanning_geometry");
-    assert!(mapping
-        .score_basis
-        .iter()
-        .any(|basis| basis == "junction_spans=1"));
-    assert!(mapping
-        .score_basis
-        .iter()
-        .any(|basis| basis == "probe_sequence_alignment_not_assessed"));
+    assert!(
+        mapping
+            .score_basis
+            .iter()
+            .any(|basis| basis == "junction_spans=1")
+    );
+    assert!(
+        mapping
+            .score_basis
+            .iter()
+            .any(|basis| basis == "probe_sequence_alignment_not_assessed")
+    );
     assert_eq!(mapping.exon_ordinals, vec![1, 2]);
     assert_eq!(
         mapping.exon_ranges_1based,
@@ -1238,6 +1246,191 @@ fn import_apt_probe_region_output_uses_supplied_probe_intensity_table() {
     let provenance = fs::read_to_string(output_dir.join("provenance.json")).expect("provenance");
     assert!(provenance.contains("\"probe_intensity_source\": \"probe_level_input\""));
     assert!(provenance.contains("\"probe_intensity_probe_id_column\": \"probe_id\""));
+}
+
+#[test]
+fn import_project_interpret_pm_probe_region_output_end_to_end() {
+    let tmp = tempdir().expect("tempdir");
+    let summary = tmp.path().join("apt.summary.tsv");
+    let annotation = tmp.path().join("annotation.csv");
+    let metadata = tmp.path().join("samples.csv");
+    let probe_intensity = tmp.path().join("probe_intensity.tsv");
+    let output_dir = tmp.path().join("probe_regions");
+    fs::write(
+        &summary,
+        concat!(
+            "probeset_id\tsample_a.CEL\tsample_b.CEL\n",
+            "PSR1\t8.1\t9.2\n",
+            "PSR2\t7.8\t7.9\n"
+        ),
+    )
+    .expect("APT summary");
+    fs::write(
+        &annotation,
+        concat!(
+            "probeset_id,chromosome,start,stop,strand,transcript_cluster_id,number_of_probes,gene_symbol,probe_id,probe_start,probe_stop,x,y\n",
+            "PSR1,chr1,1010,1030,+,TC1,4,PATZ1,probe_1,1011,1028,10,20\n",
+            "PSR1,chr1,1010,1030,+,TC1,4,PATZ1,probe_2,1012,1029,11,20\n",
+            "PSR2,chr1,1060,1080,+,TC1,4,PATZ1,probe_3,1061,1078,12,21\n"
+        ),
+    )
+    .expect("annotation");
+    fs::write(
+        &metadata,
+        concat!(
+            "file,condition\n",
+            "sample_a.CEL,AdGFP\n",
+            "sample_b.CEL,TAp73\n"
+        ),
+    )
+    .expect("metadata");
+    fs::write(
+        &probe_intensity,
+        concat!(
+            "probe_id\tsample_a.CEL\tsample_b.CEL\n",
+            "probe_1\t5.0\t6.0\n",
+            "probe_2\t5.5\t6.2\n",
+            "probe_3\t3.0\t3.2\n"
+        ),
+    )
+    .expect("probe intensity");
+
+    let mut engine = microarray_anchored_engine("hg38", "+");
+    let import_run = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ArraysImportAptProbeRegionOutput {
+            summary: summary.to_string_lossy().to_string(),
+            annotation: annotation.to_string_lossy().to_string(),
+            output_dir: output_dir.to_string_lossy().to_string(),
+            metadata: Some(metadata.to_string_lossy().to_string()),
+            condition_column: Some("condition".to_string()),
+            sample_column: Some("file".to_string()),
+            probe_intensity: Some(probe_intensity.to_string_lossy().to_string()),
+            probe_id_column: Some("probe_id".to_string()),
+            platform: Some("Clariom_D_Human".to_string()),
+            normalization: Some("rma-sketch".to_string()),
+            coordinate_system: Some("hg38".to_string()),
+            genome_build: Some("GRCh38".to_string()),
+        },
+    )
+    .expect("execute APT helper-output import through shell route");
+    assert!(!import_run.state_changed);
+    assert_eq!(
+        import_run.output["import"]["probe_intensity_source"].as_str(),
+        Some("probe_level_input")
+    );
+
+    let probe_table =
+        fs::read_to_string(output_dir.join("probe_intensity_chrom_order.csv")).expect("probes");
+    assert!(probe_table.contains("probe_level_input"));
+    assert!(probe_table.contains(
+        "chr1,1011,1028,+,probe_1,10,20,PSR1,TC1,PATZ1,probe_level_input,5.0,6.0,5.000,0.000,6.000,0.000,1.000"
+    ));
+
+    let result = engine
+        .apply(Operation::ProjectProbeRegionOutput {
+            seq_id: "array_slice".to_string(),
+            output_dir: output_dir.to_string_lossy().to_string(),
+            contrasts: vec!["TAp73-AdGFP".to_string()],
+            level: Some("pm_probe".to_string()),
+            min_abs_logfc: Some(0.5),
+            max_features: Some(10),
+            clear_existing: Some(true),
+        })
+        .expect("project imported PM probe helper output");
+    let projection = result.microarray_projection.expect("projection report");
+    assert_eq!(projection.level, "pm_probe");
+    assert_eq!(projection.parsed_rows, 3);
+    assert_eq!(projection.imported_features, 2);
+    assert_eq!(projection.skipped_filter, 1);
+
+    let dna = engine.state().sequences.get("array_slice").unwrap();
+    let array_features = dna
+        .features()
+        .iter()
+        .filter(|feature| {
+            first_qualifier(feature, "gentle_track_source").as_deref() == Some("Array")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(array_features.len(), 2);
+    let first_probe = array_features
+        .iter()
+        .find(|feature| first_qualifier(feature, "feature_id").as_deref() == Some("probe_1"))
+        .expect("projected true PM probe feature");
+    assert_eq!(
+        first_qualifier(first_probe, "gentle_array_level").as_deref(),
+        Some("pm_probe")
+    );
+    assert_eq!(
+        first_qualifier(first_probe, "gentle_array_intensity_source").as_deref(),
+        Some("probe_level_input")
+    );
+
+    let dna = engine
+        .state_mut()
+        .sequences
+        .get_mut("array_slice")
+        .expect("array slice");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(10, 28),
+            gb_io::seq::Location::simple_range(60, 80),
+        ]),
+        qualifiers: vec![
+            ("gene".into(), Some("PATZ1".to_string())),
+            ("transcript_id".into(), Some("PATZ1-201".to_string())),
+            ("label".into(), Some("PATZ1-201".to_string())),
+            ("strand".into(), Some("+".to_string())),
+        ],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(10, 28),
+            gb_io::seq::Location::simple_range(70, 90),
+        ]),
+        qualifiers: vec![
+            ("gene".into(), Some("PATZ1".to_string())),
+            ("transcript_id".into(), Some("PATZ1-202".to_string())),
+            ("label".into(), Some("PATZ1-202".to_string())),
+            ("strand".into(), Some("+".to_string())),
+        ],
+    });
+
+    let report_path = tmp.path().join("probe_region_interpretation.json");
+    let result = engine
+        .apply(Operation::InterpretProbeRegionEvidence {
+            seq_id: "array_slice".to_string(),
+            gene_label: Some("PATZ1".to_string()),
+            level: Some("pm_probe".to_string()),
+            min_abs_logfc: Some(0.5),
+            path: Some(report_path.to_string_lossy().to_string()),
+        })
+        .expect("interpret imported and projected PM probe evidence");
+    assert!(report_path.exists());
+    let report = result
+        .probe_region_evidence_interpretation
+        .expect("interpretation report");
+    assert_eq!(report.schema, PROBE_REGION_EVIDENCE_INTERPRETATION_SCHEMA);
+    assert_eq!(report.level, "pm_probe");
+    assert_eq!(report.array_feature_count, 2);
+    assert_eq!(report.transcript_count, 2);
+    assert_eq!(report.evidence_rows.len(), 2);
+    let first_row = report
+        .evidence_rows
+        .iter()
+        .find(|row| row.feature_id == "probe_1")
+        .expect("probe_1 interpretation row");
+    assert_eq!(first_row.parent_feature_id.as_deref(), Some("PSR1"));
+    assert!(first_row
+        .ambiguity_tags
+        .iter()
+        .any(|tag| tag == "multi_hit_not_assessed"));
+    assert!(first_row
+        .ambiguity_tags
+        .iter()
+        .any(|tag| tag == "isoform_support_not_inferred"));
 }
 
 #[test]
@@ -2840,7 +3033,9 @@ fn prepare_gene_set_test_genome(root: &Path, engine: &mut GentleEngine) -> Strin
     catalog_path
 }
 
-fn gene_set_cutrun_promoter_cohort(windows: Vec<GeneSetPromoterWindow>) -> GeneSetPromoterCohortReport {
+fn gene_set_cutrun_promoter_cohort(
+    windows: Vec<GeneSetPromoterWindow>,
+) -> GeneSetPromoterCohortReport {
     GeneSetPromoterCohortReport {
         schema: GENE_SET_PROMOTER_COHORT_SCHEMA.to_string(),
         genome_id: "ToyGenome".to_string(),
@@ -2949,10 +3144,11 @@ fn resolve_gene_set_external_mapping_unions_local_groups_and_gates_status() {
         .expect("zero GO mappings are reported, not fatal");
     assert_eq!(zero.resolved_member_count, 0);
     assert_eq!(zero.unresolved_member_count, 1);
-    assert!(zero
-        .warnings
-        .iter()
-        .any(|warning| warning.contains("No local gene groups map")));
+    assert!(
+        zero.warnings
+            .iter()
+            .any(|warning| warning.contains("No local gene groups map"))
+    );
 
     let draft_err = engine
         .resolve_gene_set(
@@ -2984,10 +3180,12 @@ fn resolve_gene_set_external_mapping_unions_local_groups_and_gates_status() {
         )
         .expect("draft GO group allowed by flag");
     assert_eq!(draft.resolved_member_count, 1);
-    assert!(draft
-        .warnings
-        .iter()
-        .any(|warning| warning.contains("Using draft gene group 'draft_go'")));
+    assert!(
+        draft
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("Using draft gene group 'draft_go'"))
+    );
 
     let deprecated_err = engine
         .resolve_gene_set(
@@ -3019,10 +3217,12 @@ fn resolve_gene_set_external_mapping_unions_local_groups_and_gates_status() {
         )
         .expect("deprecated GO group allowed by flag");
     assert_eq!(deprecated.resolved_member_count, 1);
-    assert!(deprecated
-        .warnings
-        .iter()
-        .any(|warning| warning.contains("Using deprecated gene group 'deprecated_go'")));
+    assert!(
+        deprecated
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("Using deprecated gene group 'deprecated_go'"))
+    );
 }
 
 #[test]
@@ -3066,10 +3266,12 @@ fn build_gene_set_promoter_cohort_uses_default_strand_geometry_and_keeps_unresol
     assert_eq!(cohort.upstream_bp, DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP);
     assert_eq!(cohort.downstream_bp, DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP);
     assert_eq!(cohort.returned_window_count, 2);
-    assert!(cohort
-        .unresolved_members
-        .iter()
-        .any(|member| member.query == "MISSING"));
+    assert!(
+        cohort
+            .unresolved_members
+            .iter()
+            .any(|member| member.query == "MISSING")
+    );
 
     let pos = cohort
         .windows
@@ -3130,7 +3332,12 @@ fn summarize_multi_gene_promoter_tfbs_expands_gene_set_and_keeps_plain_gene_path
     assert_eq!(plain_report.returned_gene_count, 1);
     assert!(plain_report.gene_set.is_none());
     assert!(plain_report.gene_set_resolution.is_none());
-    assert!(plain_report.genes.iter().any(|row| row.gene_query == "POS1"));
+    assert!(
+        plain_report
+            .genes
+            .iter()
+            .any(|row| row.gene_query == "POS1")
+    );
 
     let expanded = engine
         .apply(Operation::SummarizeMultiGenePromoterTfbs {
@@ -3164,10 +3371,12 @@ fn summarize_multi_gene_promoter_tfbs_expands_gene_set_and_keeps_plain_gene_path
         .expect("gene-set resolution provenance");
     assert_eq!(resolution.resolved_member_count, 1);
     assert_eq!(resolution.resolved_members[0].symbol, "NEG1");
-    assert!(expanded_report
-        .genes
-        .iter()
-        .any(|row| row.display_label == "NEG1"));
+    assert!(
+        expanded_report
+            .genes
+            .iter()
+            .any(|row| row.display_label == "NEG1")
+    );
 }
 
 #[test]
@@ -3204,7 +3413,10 @@ fn inspect_cutrun_gene_set_regulatory_support_keeps_evaluated_denominators_hones
     let cutrun_cache_dir = root.join("cutrun_cache");
     let _project_root_guard =
         EnvVarGuard::set(crate::genomes::PROJECT_ROOT_ENV, &root.to_string_lossy());
-    let _cutrun_cache_guard = EnvVarGuard::set("GENTLE_CUTRUN_CACHE_DIR", &cutrun_cache_dir.to_string_lossy());
+    let _cutrun_cache_guard = EnvVarGuard::set(
+        "GENTLE_CUTRUN_CACHE_DIR",
+        &cutrun_cache_dir.to_string_lossy(),
+    );
 
     let mut engine = GentleEngine::new();
     let status = engine
@@ -3267,7 +3479,10 @@ fn inspect_cutrun_gene_set_regulatory_support_keeps_evaluated_denominators_hones
     assert_eq!(report.aggregate.unevaluated_member_count, 1);
     assert_eq!(report.aggregate.members_with_support_windows, 1);
     assert_eq!(report.aggregate.members_with_strong_support, 1);
-    assert_eq!(report.aggregate.evaluated_fraction_with_support_windows, 0.5);
+    assert_eq!(
+        report.aggregate.evaluated_fraction_with_support_windows,
+        0.5
+    );
     assert_eq!(report.aggregate.evaluated_fraction_with_strong_support, 0.5);
     assert_eq!(report.aggregate.mean_support_window_count_evaluated, 1.0);
 
@@ -3281,7 +3496,10 @@ fn inspect_cutrun_gene_set_regulatory_support_keeps_evaluated_denominators_hones
         GeneSetCutRunEvaluationState::Evaluated
     );
     assert_eq!(supported.support_window_count, 2);
-    assert_eq!(supported.strongest_support_strength.as_deref(), Some("strong"));
+    assert_eq!(
+        supported.strongest_support_strength.as_deref(),
+        Some("strong")
+    );
     assert_eq!(
         supported.contributing_dataset_ids,
         vec!["toy_gene_set_cutrun".to_string()]
@@ -3296,7 +3514,10 @@ fn inspect_cutrun_gene_set_regulatory_support_keeps_evaluated_denominators_hones
         .iter()
         .find(|row| row.symbol == "EvalZero")
         .expect("zero-support evaluated member");
-    assert_eq!(zero.evaluation_state, GeneSetCutRunEvaluationState::Evaluated);
+    assert_eq!(
+        zero.evaluation_state,
+        GeneSetCutRunEvaluationState::Evaluated
+    );
     assert_eq!(zero.support_window_count, 0);
     assert!(zero.strongest_support_strength.is_none());
 

@@ -3950,6 +3950,11 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             None,
             300,
         ),
+        "request_workflow_clariom_pm_probe_interpretation.json": (
+            "workflow",
+            None,
+            300,
+        ),
         "request_workflow_tp73_tfbs_score_tracks_svg.json": (
             "workflow",
             None,
@@ -4362,6 +4367,15 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             assert payload["expected_artifacts"] == [
                 "artifacts/tp73_upstream_tfbs_score_tracks.summary.json"
             ]
+        if name == "request_workflow_clariom_pm_probe_interpretation.json":
+            assert payload["state_path"] == ".gentle_state.json"
+            assert (
+                payload["workflow_path"]
+                == "integrations/clawbio/skills/gentle-cloning/examples/workflows/clariom_pm_probe_interpretation.workflow.json"
+            )
+            assert payload["expected_artifacts"] == [
+                "artifacts/clariom_pm_probe_interpretation.json"
+            ]
         if name == "request_workflow_tp73_tfbs_score_tracks_svg.json":
             assert payload["state_path"] == ".gentle_state.json"
             assert (
@@ -4663,6 +4677,51 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
         "artifacts/tp73_upstream_tfbs_score_tracks.summary.json"
     ]
     assert tfbs_score_track_summary_payload["timeout_secs"] == 300
+
+    clariom_pm_probe_payload = json.loads(
+        (examples_dir / "request_workflow_clariom_pm_probe_interpretation.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert clariom_pm_probe_payload["schema"] == "gentle.clawbio_skill_request.v1"
+    assert clariom_pm_probe_payload["mode"] == "workflow"
+    assert clariom_pm_probe_payload["state_path"] == ".gentle_state.json"
+    assert (
+        clariom_pm_probe_payload["workflow_path"]
+        == "integrations/clawbio/skills/gentle-cloning/examples/workflows/clariom_pm_probe_interpretation.workflow.json"
+    )
+    assert clariom_pm_probe_payload["expected_artifacts"] == [
+        "artifacts/clariom_pm_probe_interpretation.json"
+    ]
+    assert clariom_pm_probe_payload["timeout_secs"] == 300
+
+    clariom_pm_probe_workflow = json.loads(
+        (
+            examples_dir
+            / "workflows"
+            / "clariom_pm_probe_interpretation.workflow.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert clariom_pm_probe_workflow["run_id"] == (
+        "clawbio_clariom_pm_probe_interpretation"
+    )
+    clariom_ops = clariom_pm_probe_workflow["ops"]
+    assert clariom_ops[0]["LoadFile"] == {
+        "path": "test_files/tp73.ncbi.gb",
+        "as_id": "tp73_clariom_pm_probe_context",
+    }
+    assert "ArraysImportAptProbeRegionOutput" not in json.dumps(clariom_ops)
+    assert clariom_ops[1]["ProjectProbeRegionOutput"]["level"] == "pm_probe"
+    assert clariom_ops[1]["ProjectProbeRegionOutput"]["output_dir"] == (
+        "test_files/fixtures/probe_region_outputs/clariom_pm_probe_interpretation"
+    )
+    assert clariom_ops[-1]["InterpretProbeRegionEvidence"] == {
+        "seq_id": "tp73_clariom_pm_probe_context",
+        "gene_label": "TP73",
+        "level": "pm_probe",
+        "min_abs_logfc": 0.5,
+        "path": "artifacts/clariom_pm_probe_interpretation.json",
+    }
 
     tfbs_score_track_svg_payload = json.loads(
         (examples_dir / "request_workflow_tp73_tfbs_score_tracks_svg.json").read_text(
@@ -5167,6 +5226,7 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
         "telegram_guide_isoforms",
         "telegram_guide_follow_up",
         "capabilities",
+        "clariom_pm_probe_interpretation",
         "runtime_version",
         "services_status",
         "sequence_delivery_route",
@@ -5234,6 +5294,9 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
             "examples/request_services_telegram_guide_follow_up.json"
         ),
         "capabilities": "examples/request_capabilities.json",
+        "clariom_pm_probe_interpretation": (
+            "examples/request_workflow_clariom_pm_probe_interpretation.json"
+        ),
         "runtime_version": "examples/request_runtime_version.json",
         "services_status": "examples/request_services_status.json",
         "sequence_delivery_route": None,

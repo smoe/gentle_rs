@@ -9343,6 +9343,42 @@ fn execute_planning_consult_cloning_recognizes_maximal_protein_intent() {
 }
 
 #[test]
+fn protein_expression_handoff_old_json_defaults_product_readiness() {
+    let raw = r#"{
+      "schema":"gentle.protein_expression_handoff.v1",
+      "generated_at_unix_ms":1,
+      "status":"needs_product_definition",
+      "biological_intent":"protein_expression_max_yield",
+      "product_definition":{
+        "seq_id":null,
+        "sequence_present":false,
+        "sequence_name":null,
+        "length_bp":null,
+        "feature_count":null,
+        "product_metric":"review_required",
+        "notes":[]
+      },
+      "host_chassis_candidates":[],
+      "vector_route_candidates":[],
+      "missing_questions":[],
+      "service_handoff_candidates":[],
+      "warnings":[],
+      "suggested_next_actions":[],
+      "text_report":null
+    }"#;
+    let report: crate::engine::ProteinExpressionHandoffReport =
+        serde_json::from_str(raw).expect("old protein-expression report JSON");
+    assert_eq!(report.product_definition.readiness.status, "");
+    assert!(
+        report
+            .product_definition
+            .readiness
+            .sequence_context
+            .is_none()
+    );
+}
+
+#[test]
 fn execute_planning_protein_expression_handoff_returns_reviewable_contract() {
     let mut engine = GentleEngine::default();
     let out = execute_shell_command(
@@ -9436,6 +9472,130 @@ fn execute_planning_protein_expression_handoff_returns_reviewable_contract() {
             .as_deref()
             .unwrap_or_default()
             .contains("Quote packet after review: services project-quote")
+    );
+}
+
+#[test]
+fn execute_planning_protein_expression_handoff_summarizes_sequence_readiness() {
+    let mut dna = DNAsequence::from_sequence("ATGGCTGCTTAA").expect("synthetic CDS");
+    dna.features_mut().push(Feature {
+        kind: "CDS".into(),
+        location: Location::simple_range(0, 12),
+        qualifiers: vec![("label".into(), Some("toy expression CDS".to_string()))],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("toy_cds".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PlanningProteinExpressionHandoff {
+            seq_id: Some("toy_cds".to_string()),
+            objective_json: Some(
+                r#"{
+                  "schema":"gentle.planning_objective.v1",
+                  "biological_intent":"protein_expression_max_yield"
+                }"#
+                .to_string(),
+            ),
+            profile_scope: PlanningProfileScope::Effective,
+            output_format: "text".to_string(),
+        },
+    )
+    .expect("planning protein-expression handoff with CDS");
+    assert!(!out.state_changed);
+    let report: crate::engine::ProteinExpressionHandoffReport =
+        serde_json::from_value(out.output).expect("protein-expression handoff report");
+    assert_eq!(report.product_definition.seq_id.as_deref(), Some("toy_cds"));
+    assert_eq!(
+        report.product_definition.readiness.status,
+        "annotated_cds_review_required"
+    );
+    let sequence_context = report
+        .product_definition
+        .readiness
+        .sequence_context
+        .as_ref()
+        .expect("sequence context");
+    assert_eq!(sequence_context.sequence_kind, "dna");
+    assert_eq!(sequence_context.length_bp, Some(12));
+    assert_eq!(sequence_context.cds_feature_count, 1);
+    let cds = report
+        .product_definition
+        .readiness
+        .cds_assessment
+        .as_ref()
+        .expect("CDS assessment");
+    assert_eq!(cds.source, "annotated_cds");
+    assert_eq!(cds.has_start_codon, Some(true));
+    assert_eq!(cds.has_terminal_stop_codon, Some(true));
+    assert_eq!(cds.internal_stop_codon_count, Some(0));
+    assert_eq!(cds.inferred_protein_length_aa, Some(3));
+    assert!(
+        !report
+            .missing_questions
+            .iter()
+            .any(|question| question.question_id == "coding_sequence_boundaries")
+    );
+    assert!(
+        report
+            .text_report
+            .as_deref()
+            .unwrap_or_default()
+            .contains("Product readiness: annotated_cds_review_required")
+    );
+}
+
+#[test]
+fn execute_planning_protein_expression_handoff_flags_ambiguous_sequence_boundaries() {
+    let dna = DNAsequence::from_sequence("ATGNNNT").expect("ambiguous synthetic DNA");
+    let mut state = ProjectState::default();
+    state.sequences.insert("ambiguous_product".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PlanningProteinExpressionHandoff {
+            seq_id: Some("ambiguous_product".to_string()),
+            objective_json: Some(
+                r#"{
+                  "schema":"gentle.planning_objective.v1",
+                  "biological_intent":"protein_expression_max_yield"
+                }"#
+                .to_string(),
+            ),
+            profile_scope: PlanningProfileScope::Effective,
+            output_format: "json".to_string(),
+        },
+    )
+    .expect("planning protein-expression handoff with ambiguous sequence");
+    let report: crate::engine::ProteinExpressionHandoffReport =
+        serde_json::from_value(out.output).expect("protein-expression handoff report");
+    assert_eq!(
+        report.product_definition.readiness.status,
+        "needs_cds_boundary"
+    );
+    let sequence_context = report
+        .product_definition
+        .readiness
+        .sequence_context
+        .as_ref()
+        .expect("sequence context");
+    assert_eq!(sequence_context.ambiguous_base_count, 3);
+    let cds = report
+        .product_definition
+        .readiness
+        .cds_assessment
+        .as_ref()
+        .expect("CDS assessment");
+    assert!(
+        cds.warnings
+            .iter()
+            .any(|warning| warning.contains("ambiguous/non-ACGT"))
+    );
+    assert!(
+        report
+            .missing_questions
+            .iter()
+            .any(|question| question.question_id == "coding_sequence_boundaries")
     );
 }
 

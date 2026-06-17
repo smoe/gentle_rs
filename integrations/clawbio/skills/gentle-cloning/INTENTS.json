@@ -291,6 +291,26 @@
       ]
     },
     {
+      "intent_id": "clariom_pm_probe_interpretation",
+      "description": "Run an offline Clariom D PM-probe projection and review-only transcript/exon geometry constraint report; this does not run R/APT, assess probe multi-hits, or make an isoform-support call.",
+      "trigger_terms": [
+        "clariom pm probe interpretation",
+        "clariom probe region interpretation",
+        "pm probe constraint report",
+        "probe-region interpretation report",
+        "array probe transcript geometry",
+        "clariom transcript geometry review"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_workflow_clariom_pm_probe_interpretation.json"
+        }
+      ]
+    },
+    {
       "intent_id": "runtime_version",
       "description": "Check the installed local ClawBio GENtle rewrite runtime version through the skill bundle.",
       "trigger_terms": [

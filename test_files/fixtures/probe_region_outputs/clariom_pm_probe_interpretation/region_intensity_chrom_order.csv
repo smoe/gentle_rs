@@ -1,0 +1,2 @@
+chromosome,start,stop,strand,probeset_or_region_id,transcript_cluster_id,number_of_probes,gene_symbol,sample_a.CEL,sample_b.CEL,mean_log2_AdGFP,sd_log2_AdGFP,mean_log2_AdTAp73alpha,sd_log2_AdTAp73alpha,log2FC_AdTAp73alpha-AdGFP
+chr1,3652520,3652564,+,PSR0100145779.hg.1,TC0100006620.hg.1,2,TP73,8.1,9.2,8.100,0.000,9.200,0.000,1.100
