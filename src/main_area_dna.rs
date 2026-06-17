@@ -7937,8 +7937,12 @@ impl MainAreaDna {
                     format!(" junctions={spans}{suffix}")
                 };
                 format!(
-                    "{}:{} exons={}{}",
-                    mapping.transcript_id, mapping.mapping_kind, exons, junctions
+                    "{}:{} score={:.2} exons={}{}",
+                    mapping.transcript_id,
+                    mapping.mapping_kind,
+                    mapping.geometry_score,
+                    exons,
+                    junctions
                 )
             })
             .collect::<Vec<_>>();
@@ -8497,7 +8501,7 @@ impl MainAreaDna {
                             report.seq_id.as_str(),
                         ))
                         .striped(true)
-                        .num_columns(7)
+                        .num_columns(9)
                         .show(ui, |ui| {
                             ui.strong("transcript");
                             ui.strong("exons");
@@ -8505,6 +8509,8 @@ impl MainAreaDna {
                             ui.strong("shared");
                             ui.strong("unique");
                             ui.strong("constraining");
+                            ui.strong("score");
+                            ui.strong("constraint");
                             ui.strong("summary");
                             ui.end_row();
                             for row in report.transcript_rows.iter().take(24) {
@@ -8514,6 +8520,8 @@ impl MainAreaDna {
                                 ui.small(row.shared_evidence_count.to_string());
                                 ui.small(row.unique_evidence_count.to_string());
                                 ui.small(row.constraining_evidence_count.to_string());
+                                ui.small(format!("{:.2}", row.compatible_geometry_score));
+                                ui.small(format!("{:.2}", row.constraining_geometry_score));
                                 ui.small(&row.relationship_summary);
                                 ui.end_row();
                             }

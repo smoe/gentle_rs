@@ -3051,7 +3051,8 @@ The `Help` menu now includes:
   without invoking R/APT or changing the projected features. The preview
   includes compact transcript-mapping summaries for exon overlap and
   junction-spanning evidence; the full JSON report keeps the structured exon
-  ordinals, ranges, junction spans, and overlap base counts.
+  ordinals, ranges, junction spans, overlap base counts, geometry scores, and
+  score-basis guardrails.
 
 ## microRNA Target Scan
 

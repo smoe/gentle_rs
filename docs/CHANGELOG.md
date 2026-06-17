@@ -37,6 +37,9 @@ Maintenance rule:
 - Extended `InterpretProbeRegionEvidence` with explicit per-evidence
   transcript mappings that record exon ordinals, exon ranges, junction spans,
   and overlap base counts without turning array evidence into isoform calls.
+- Added conservative geometry scores and score-basis guardrails to
+  `InterpretProbeRegionEvidence`, with transcript-level unique/shared/
+  constraining score sums for review-only probeset evidence triage.
 
 ## 2026-06-16
 

@@ -122,6 +122,10 @@ struct ProbeRegionTranscriptEvidenceCounts {
     constraining: usize,
     shared: usize,
     unique: usize,
+    compatible_score: f64,
+    constraining_score: f64,
+    shared_score: f64,
+    unique_score: f64,
 }
 
 #[derive(Default)]
@@ -1822,19 +1826,22 @@ impl GentleEngine {
                 ambiguity_tags.insert("non_exonic_transcript_span_overlap".to_string());
             }
 
-            for tx_id in &overlapping_transcripts {
-                if let Some(counts) = transcript_counts.get_mut(tx_id) {
-                    counts.compatible += 1;
-                    if overlapping_transcripts.len() > 1 {
-                        counts.shared += 1;
+            for mapping in &transcript_mappings {
+                if let Some(counts) = transcript_counts.get_mut(&mapping.transcript_id) {
+                    if mapping.exon_ordinals.is_empty() {
+                        counts.constraining += 1;
+                        counts.constraining_score += mapping.geometry_score;
                     } else {
-                        counts.unique += 1;
+                        counts.compatible += 1;
+                        counts.compatible_score += mapping.geometry_score;
+                        if overlapping_transcripts.len() > 1 {
+                            counts.shared += 1;
+                            counts.shared_score += mapping.geometry_score;
+                        } else {
+                            counts.unique += 1;
+                            counts.unique_score += mapping.geometry_score;
+                        }
                     }
-                }
-            }
-            for tx_id in &span_overlaps {
-                if let Some(counts) = transcript_counts.get_mut(tx_id) {
-                    counts.constraining += 1;
                 }
             }
 
@@ -1887,6 +1894,10 @@ impl GentleEngine {
                     shared_evidence_count: counts.shared,
                     unique_evidence_count: counts.unique,
                     unmapped_evidence_count: unmapped,
+                    compatible_geometry_score: counts.compatible_score,
+                    shared_geometry_score: counts.shared_score,
+                    unique_geometry_score: counts.unique_score,
+                    constraining_geometry_score: counts.constraining_score,
                     relationship_summary,
                 }
             })
@@ -2233,9 +2244,18 @@ impl GentleEngine {
                 "exon_overlap"
             }
             .to_string();
+            let (geometry_score, geometry_score_class, score_basis) =
+                Self::probe_region_evidence_geometry_score(
+                    &mapping_kind,
+                    overlap_bp,
+                    junction_spans.len(),
+                );
             return Some(ProbeRegionEvidenceTranscriptMapping {
                 transcript_id: tx.transcript_id.clone(),
                 mapping_kind,
+                geometry_score,
+                geometry_score_class,
+                score_basis,
                 exon_ordinals,
                 exon_ranges_1based,
                 junction_spans,
@@ -2252,11 +2272,43 @@ impl GentleEngine {
         (overlap_bp > 0).then(|| ProbeRegionEvidenceTranscriptMapping {
             transcript_id: tx.transcript_id.clone(),
             mapping_kind: "transcript_span_non_exonic".to_string(),
+            geometry_score: -0.25,
+            geometry_score_class: "constraining_non_exonic_geometry".to_string(),
+            score_basis: vec![
+                "mapping_kind=transcript_span_non_exonic".to_string(),
+                format!("overlap_bp={overlap_bp}"),
+                "probe_sequence_alignment_not_assessed".to_string(),
+                "isoform_support_not_inferred".to_string(),
+            ],
             exon_ordinals: Vec::new(),
             exon_ranges_1based: Vec::new(),
             junction_spans: Vec::new(),
             overlap_bp,
         })
+    }
+
+    fn probe_region_evidence_geometry_score(
+        mapping_kind: &str,
+        overlap_bp: usize,
+        junction_span_count: usize,
+    ) -> (f64, String, Vec<String>) {
+        let (score, class) = match mapping_kind {
+            "junction_spanning_exon_overlap" => (0.75, "junction_spanning_geometry"),
+            "multi_exon_overlap" => (0.60, "multi_exon_geometry"),
+            "exon_overlap" => (0.50, "exon_geometry"),
+            _ => (0.0, "unscored_geometry"),
+        };
+        (
+            score,
+            class.to_string(),
+            vec![
+                format!("mapping_kind={mapping_kind}"),
+                format!("overlap_bp={overlap_bp}"),
+                format!("junction_spans={junction_span_count}"),
+                "probe_sequence_alignment_not_assessed".to_string(),
+                "isoform_support_not_inferred".to_string(),
+            ],
+        )
     }
 
     fn probe_region_evidence_junction_spans(

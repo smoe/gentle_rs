@@ -674,6 +674,12 @@ fn interpret_probe_region_evidence_preserves_shared_transcript_ambiguity() {
     assert_eq!(row.transcript_mappings.len(), 2);
     assert!(row.transcript_mappings.iter().all(|mapping| {
         mapping.mapping_kind == "exon_overlap"
+            && mapping.geometry_score == 0.5
+            && mapping.geometry_score_class == "exon_geometry"
+            && mapping
+                .score_basis
+                .iter()
+                .any(|basis| basis == "isoform_support_not_inferred")
             && mapping.exon_ordinals == vec![1]
             && mapping.exon_ranges_1based == vec!["11..28".to_string()]
             && mapping.junction_spans.is_empty()
@@ -694,6 +700,10 @@ fn interpret_probe_region_evidence_preserves_shared_transcript_ambiguity() {
     assert!(report.transcript_rows.iter().all(|tx| {
         tx.shared_evidence_count == 1
             && tx.unique_evidence_count == 0
+            && tx.compatible_geometry_score == 0.5
+            && tx.shared_geometry_score == 0.5
+            && tx.unique_geometry_score == 0.0
+            && tx.constraining_geometry_score == 0.0
             && tx.relationship_summary == "only_shared_compatible_evidence"
     }));
 }
@@ -771,6 +781,16 @@ fn interpret_probe_region_evidence_reports_junction_spanning_geometry() {
     let mapping = &row.transcript_mappings[0];
     assert_eq!(mapping.transcript_id, "PATZ1-201");
     assert_eq!(mapping.mapping_kind, "junction_spanning_exon_overlap");
+    assert_eq!(mapping.geometry_score, 0.75);
+    assert_eq!(mapping.geometry_score_class, "junction_spanning_geometry");
+    assert!(mapping
+        .score_basis
+        .iter()
+        .any(|basis| basis == "junction_spans=1"));
+    assert!(mapping
+        .score_basis
+        .iter()
+        .any(|basis| basis == "probe_sequence_alignment_not_assessed"));
     assert_eq!(mapping.exon_ordinals, vec![1, 2]);
     assert_eq!(
         mapping.exon_ranges_1based,
@@ -783,6 +803,11 @@ fn interpret_probe_region_evidence_reports_junction_spanning_geometry() {
     assert_eq!(junction.to_exon_ordinal, 2);
     assert_eq!(junction.genomic_start_1based, 29);
     assert_eq!(junction.genomic_end_1based, 60);
+    let tx = &report.transcript_rows[0];
+    assert_eq!(tx.compatible_geometry_score, 0.75);
+    assert_eq!(tx.unique_geometry_score, 0.75);
+    assert_eq!(tx.shared_geometry_score, 0.0);
+    assert_eq!(tx.constraining_geometry_score, 0.0);
 }
 
 #[test]

@@ -4170,6 +4170,9 @@ pub struct ProbeRegionEvidenceMappingRow {
 pub struct ProbeRegionEvidenceTranscriptMapping {
     pub transcript_id: String,
     pub mapping_kind: String,
+    pub geometry_score: f64,
+    pub geometry_score_class: String,
+    pub score_basis: Vec<String>,
     pub exon_ordinals: Vec<usize>,
     pub exon_ranges_1based: Vec<String>,
     pub junction_spans: Vec<ProbeRegionEvidenceJunctionSpan>,
@@ -4203,6 +4206,10 @@ pub struct ProbeRegionEvidenceTranscriptRow {
     pub shared_evidence_count: usize,
     pub unique_evidence_count: usize,
     pub unmapped_evidence_count: usize,
+    pub compatible_geometry_score: f64,
+    pub shared_geometry_score: f64,
+    pub unique_geometry_score: f64,
+    pub constraining_geometry_score: f64,
     pub relationship_summary: String,
 }
 

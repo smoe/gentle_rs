@@ -2436,8 +2436,9 @@ Microarray track projection notes:
   The report records mapping status, overlap transcript ids, ambiguity tags,
   per-transcript compatible/constraining counts, and structured
   `transcript_mappings[]` rows with exon ordinals, exon ranges, junction
-  spans, and overlap base counts; it explicitly does not infer isoform
-  support, probe uniqueness, or biological validation.
+  spans, overlap base counts, conservative geometry scores, and score-basis
+  guardrails; it explicitly does not infer isoform support, probe uniqueness,
+  or biological validation.
 - manifests may also include `coordinate_projections[]` entries with
   `source_genome_id`, `target_genome_id`, `method`, and `path`. These paths
   point at tab-delimited interval maps for build-to-build projection, currently
