@@ -2108,6 +2108,8 @@ impl GentleEngine {
             clip_negative,
             motifs_requested: motifs.to_vec(),
             gene_queries_requested: genes.to_vec(),
+            gene_set: None,
+            gene_set_resolution: None,
             returned_gene_count: gene_reports.len(),
             genes: gene_reports,
             summary_rows,

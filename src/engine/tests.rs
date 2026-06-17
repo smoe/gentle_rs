@@ -559,8 +559,12 @@ fn project_probe_region_output_pm_probe_level_materializes_true_probe_features()
     assert_eq!(report.parsed_rows, 2);
     assert_eq!(report.imported_features, 1);
     assert_eq!(report.skipped_filter, 1);
-    assert!(report.warnings.iter().any(|warning| warning
-        .contains("intensity_source was not probe_level_input")));
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("intensity_source was not probe_level_input"))
+    );
 
     let dna = engine.state().sequences.get("array_slice").unwrap();
     let array_features = dna
@@ -1028,9 +1032,8 @@ fn import_apt_probe_region_output_writes_inspectable_helper_directory() {
     );
     assert_eq!(report.inspection.coordinate_system.as_deref(), Some("hg38"));
 
-    let region_table =
-        fs::read_to_string(output_dir.join("region_intensity_chrom_order.csv"))
-            .expect("region table");
+    let region_table = fs::read_to_string(output_dir.join("region_intensity_chrom_order.csv"))
+        .expect("region table");
     assert!(region_table.contains("chromosome,start,stop,strand,probeset_or_region_id"));
     assert!(region_table.contains("chr1,1010,1030,+,PSR1"));
     assert!(region_table.contains("chr1,1060,1080,+,PSR2"));
@@ -1089,7 +1092,10 @@ fn import_apt_probe_region_output_derives_metadata_condition_tracks() {
         )
         .expect("import explicit APT output with metadata");
 
-    assert_eq!(report.metadata_path.as_deref(), Some(metadata.to_str().unwrap()));
+    assert_eq!(
+        report.metadata_path.as_deref(),
+        Some(metadata.to_str().unwrap())
+    );
     assert_eq!(report.condition_column.as_deref(), Some("condition"));
     assert_eq!(report.sample_column.as_deref(), Some("file"));
     assert_eq!(
@@ -1098,8 +1104,12 @@ fn import_apt_probe_region_output_derives_metadata_condition_tracks() {
     );
     assert_eq!(report.logfc_columns, vec!["TAp73-AdGFP".to_string()]);
     assert_eq!(report.probe_row_count, 3);
-    assert!(report.warnings.iter().any(|warning| warning
-        .contains("parent probeset-summary intensities")));
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("parent probeset-summary intensities"))
+    );
     assert_eq!(report.inspection.probe_row_count, 3);
     assert_eq!(report.inspection.probe_parent_feature_count, 2);
     assert_eq!(
@@ -1206,8 +1216,12 @@ fn import_apt_probe_region_output_uses_supplied_probe_intensity_table() {
         report.probe_intensity_sample_columns,
         vec!["sample_a.CEL".to_string(), "sample_b.CEL".to_string()]
     );
-    assert!(!report.warnings.iter().any(|warning| warning
-        .contains("parent probeset-summary intensities")));
+    assert!(
+        !report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("parent probeset-summary intensities"))
+    );
 
     let region_table =
         fs::read_to_string(output_dir.join("region_intensity_chrom_order.csv")).expect("table");
@@ -1221,8 +1235,7 @@ fn import_apt_probe_region_output_uses_supplied_probe_intensity_table() {
     assert!(probe_table.contains(
         "chr1,1061,1078,+,probe_3,12,21,PSR2,TC1,PATZ1,probe_level_input,3.0,4.5,3.000,0.000,4.500,0.000,1.500"
     ));
-    let provenance =
-        fs::read_to_string(output_dir.join("provenance.json")).expect("provenance");
+    let provenance = fs::read_to_string(output_dir.join("provenance.json")).expect("provenance");
     assert!(provenance.contains("\"probe_intensity_source\": \"probe_level_input\""));
     assert!(provenance.contains("\"probe_intensity_probe_id_column\": \"probe_id\""));
 }
@@ -36129,7 +36142,12 @@ fn apply_summarize_multi_gene_promoter_tfbs_returns_transcription_aligned_report
             score_kind: TfbsScoreTrackValueKind::LlrBackgroundTailLog10,
             clip_negative: true,
             catalog_path: Some(catalog_path_str),
+            gene_group_catalog_path: None,
             cache_dir: None,
+            gene_set: None,
+            gene_set_resolution: None,
+            allow_draft: false,
+            allow_deprecated: false,
             path: None,
         })
         .expect("summarize multi-gene promoter tfbs");

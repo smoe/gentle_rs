@@ -696,6 +696,69 @@
     },
     {
       "source": "glossary_command",
+      "name": "gene-sets promoter-cohort",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Gene-set shell workflows are engine-backed but not yet projected as dedicated typed adapter routes."
+    },
+    {
+      "source": "glossary_command",
+      "name": "gene-sets promoter-cohort",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Gene-set shell workflows are engine-backed but not yet projected as dedicated typed adapter routes."
+    },
+    {
+      "source": "glossary_command",
+      "name": "gene-sets promoter-cohort",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Gene-set shell workflows are engine-backed but not yet projected as dedicated typed adapter routes."
+    },
+    {
+      "source": "glossary_command",
+      "name": "gene-sets resolve",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Gene-set shell workflows are engine-backed but not yet projected as dedicated typed adapter routes."
+    },
+    {
+      "source": "glossary_command",
+      "name": "gene-sets resolve",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Gene-set shell workflows are engine-backed but not yet projected as dedicated typed adapter routes."
+    },
+    {
+      "source": "glossary_command",
+      "name": "gene-sets resolve",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Gene-set shell workflows are engine-backed but not yet projected as dedicated typed adapter routes."
+    },
+    {
+      "source": "glossary_command",
+      "name": "cutrun gene-set-regulatory-support",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Gene-set CUT&RUN support is currently exposed through shell and engine operation payloads rather than dedicated typed adapter routes."
+    },
+    {
+      "source": "glossary_command",
+      "name": "cutrun gene-set-regulatory-support",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Gene-set CUT&RUN support is currently exposed through shell and engine operation payloads rather than dedicated typed adapter routes."
+    },
+    {
+      "source": "glossary_command",
+      "name": "cutrun gene-set-regulatory-support",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Gene-set CUT&RUN support is currently exposed through shell and engine operation payloads rather than dedicated typed adapter routes."
+    },
+    {
+      "source": "glossary_command",
       "name": "genomes blast",
       "adapter": "js",
       "surfacing": "not_applicable",

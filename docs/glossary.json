@@ -1693,6 +1693,41 @@
       },
       {
          "aliases": [
+            "gene_sets resolve",
+            "genesets resolve"
+         ],
+         "engine_operations": [
+            "ResolveGeneSet"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "gene-sets resolve",
+         "summary": "Resolve a gene set into analysis-ready members with provenance from a catalog group, explicit members, local external mapping such as GO, genomic neighbors, or deterministic random sampling.",
+         "usage": "gene-sets resolve [GROUP_ID|--group GROUP_ID|--members A,B|--go GO:NNNNNNN|--neighbors GENE --flank-genes N|--random-size N --seed N] [--genome GENOME_ID] [--catalog PATH] [--genome-catalog PATH] [--allow-draft] [--allow-deprecated] [--output OUTPUT.json]"
+      },
+      {
+         "aliases": [
+            "gene_sets promoter-cohort",
+            "genesets promoter-cohort",
+            "gene-sets promoter_cohort"
+         ],
+         "engine_operations": [
+            "BuildGeneSetPromoterCohort"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "gene-sets promoter-cohort",
+         "summary": "Build strand-aware promoter windows for a resolved gene set using the shared promoter/TSS resolver and default 1000 bp upstream / 200 bp downstream geometry.",
+         "usage": "gene-sets promoter-cohort GENOME_ID [--resolution RESOLUTION.json|--group GROUP_ID|--members A,B|--go GO:NNNNNNN|--neighbors GENE --flank-genes N|--random-size N --seed N] [--upstream-bp N] [--downstream-bp N] [--catalog PATH] [--genome-catalog PATH] [--output OUTPUT.json]"
+      },
+      {
+         "aliases": [
             "resources publication-datasets"
          ],
          "engine_operations": [],
@@ -2580,6 +2615,22 @@
          "path": "cutrun inspect-regulatory-support",
          "summary": "Aggregate CUT&RUN ROI evidence into support windows, confirmed/unconfirmed TFBS rows, and motif-context summaries.",
          "usage": "cutrun inspect-regulatory-support SEQ_ID [--dataset DATASET_ID]... [--read-report REPORT_ID]... [--promoter-search-start N] [--promoter-search-end N] [--neighbor-window-bp N] [--species-filter NAME]... [--path OUTPUT.json]"
+      },
+      {
+         "aliases": [
+            "cutrun gene_set_regulatory_support"
+         ],
+         "engine_operations": [
+            "InspectCutRunGeneSetRegulatorySupport"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "cutrun gene-set-regulatory-support",
+         "summary": "Score prepared CUT&RUN datasets and saved read reports against a gene-set promoter cohort while reporting evaluated and unevaluated members separately.",
+         "usage": "cutrun gene-set-regulatory-support GENOME_ID [--promoter-cohort COHORT.json|--resolution RESOLUTION.json|--group GROUP_ID|--members A,B|--go GO:NNNNNNN] [--dataset DATASET_ID]... [--read-report REPORT_ID]... [--upstream-bp N] [--downstream-bp N] [--path OUTPUT.json]"
       },
       {
          "aliases": [],

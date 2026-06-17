@@ -46,11 +46,12 @@ use crate::{
         DotplotOverlayQuerySpec, DotplotOverlayXAxisMode, EditableStatus, Engine,
         ExonSkipReturnKind, ExonSkipSelectionCriterion, FeatureBedCoordinateMode,
         FeatureExpertTarget, FeatureExpertView, FlexibilityModel, GUIDE_DESIGN_METADATA_KEY,
-        GenomeAnchorSide, GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackSource,
-        GenomeTrackSubscription, GentleEngine, GuideCandidate, GuideOligoExportFormat,
-        GuideOligoPlateFormat, GuidePracticalFilterConfig, InlineSequenceTopology,
-        LabAssistantInstructionsFormat, LineageMacroInstance, LineageMacroPortBinding,
-        MacroInstanceStatus, OligoOrderFormCreateRequest, Operation, OperationProgress,
+        GeneSetPromoterCohortReport, GeneSetRequest, GeneSetResolutionReport, GenomeAnchorSide,
+        GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackSource, GenomeTrackSubscription,
+        GentleEngine, GuideCandidate, GuideOligoExportFormat, GuideOligoPlateFormat,
+        GuidePracticalFilterConfig, InlineSequenceTopology, LabAssistantInstructionsFormat,
+        LineageMacroInstance, LineageMacroPortBinding, MacroInstanceStatus,
+        OligoOrderFormCreateRequest, Operation, OperationProgress,
         PLANNING_CLONING_CONSULTATION_SCHEMA, PLANNING_ESTIMATE_SCHEMA, PLANNING_OBJECTIVE_SCHEMA,
         PLANNING_PROFILE_SCHEMA, PLANNING_SUGGESTION_SCHEMA, PLANNING_SYNC_STATUS_SCHEMA,
         PRIMER_DESIGN_REPORTS_METADATA_KEY, PROTEIN_EXPRESSION_HANDOFF_SCHEMA,
@@ -1038,6 +1039,29 @@ pub enum ShellCommand {
         agent_generated_at_utc: Option<String>,
         output: Option<String>,
     },
+    GeneSetsResolve {
+        source: GeneSetRequest,
+        genome_id: Option<String>,
+        gene_group_catalog_path: Option<String>,
+        genome_catalog_path: Option<String>,
+        cache_dir: Option<String>,
+        allow_draft: bool,
+        allow_deprecated: bool,
+        output: Option<String>,
+    },
+    GeneSetsPromoterCohort {
+        genome_id: String,
+        source: Option<GeneSetRequest>,
+        resolution: Option<GeneSetResolutionReport>,
+        gene_group_catalog_path: Option<String>,
+        genome_catalog_path: Option<String>,
+        cache_dir: Option<String>,
+        upstream_bp: usize,
+        downstream_bp: usize,
+        allow_draft: bool,
+        allow_deprecated: bool,
+        output: Option<String>,
+    },
     ResourcesListPublicationDatasets {
         filter: Option<String>,
         catalog_path: Option<String>,
@@ -1393,7 +1417,12 @@ pub enum ShellCommand {
         score_kind: TfbsScoreTrackValueKind,
         clip_negative: bool,
         catalog_path: Option<String>,
+        gene_group_catalog_path: Option<String>,
         cache_dir: Option<String>,
+        gene_set: Option<GeneSetRequest>,
+        gene_set_resolution: Option<GeneSetResolutionReport>,
+        allow_draft: bool,
+        allow_deprecated: bool,
         path: Option<String>,
     },
     ReferencePromoterTfbsSvg {
@@ -1406,7 +1435,12 @@ pub enum ShellCommand {
         score_kind: TfbsScoreTrackValueKind,
         clip_negative: bool,
         catalog_path: Option<String>,
+        gene_group_catalog_path: Option<String>,
         cache_dir: Option<String>,
+        gene_set: Option<GeneSetRequest>,
+        gene_set_resolution: Option<GeneSetResolutionReport>,
+        allow_draft: bool,
+        allow_deprecated: bool,
         output: String,
     },
     ReferenceExtendAnchor {
@@ -1549,6 +1583,24 @@ pub enum ShellCommand {
         promoter_search_end_0based_exclusive: Option<usize>,
         neighbor_window_bp: usize,
         species_filters: Vec<String>,
+        output_path: Option<String>,
+    },
+    CutRunGeneSetRegulatorySupport {
+        genome_id: Option<String>,
+        source: Option<GeneSetRequest>,
+        resolution: Option<GeneSetResolutionReport>,
+        promoter_cohort: Option<GeneSetPromoterCohortReport>,
+        dataset_ids: Vec<String>,
+        read_report_ids: Vec<String>,
+        upstream_bp: usize,
+        downstream_bp: usize,
+        neighbor_window_bp: usize,
+        species_filters: Vec<String>,
+        gene_group_catalog_path: Option<String>,
+        genome_catalog_path: Option<String>,
+        cache_dir: Option<String>,
+        allow_draft: bool,
+        allow_deprecated: bool,
         output_path: Option<String>,
     },
     TracksImportVcf {
@@ -4458,6 +4510,261 @@ fn split_csv_tokens_with_empty_error(raw: &str) -> Result<Vec<String>, String> {
     Ok(tokens)
 }
 
+#[derive(Clone, Debug, Default)]
+struct GeneSetSourceArgs {
+    catalog_group: Option<String>,
+    explicit_members: Vec<String>,
+    external_mapping: Option<(String, String)>,
+    neighbor_anchor: Option<String>,
+    neighbor_flank_gene_count: Option<usize>,
+    neighbor_flank_bp: Option<usize>,
+    exclude_anchor: bool,
+    random_count: Option<usize>,
+    random_seed: Option<u64>,
+    random_exclude_members: Vec<String>,
+}
+
+fn parse_gene_set_external_mapping(raw: &str, context: &str) -> Result<(String, String), String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err(format!(
+            "{context} external mapping token must not be empty"
+        ));
+    }
+    if let Some((namespace, _rest)) = trimmed.split_once(':') {
+        let namespace = namespace.trim();
+        if namespace.is_empty() {
+            return Err(format!(
+                "{context} external mapping '{trimmed}' has an empty namespace"
+            ));
+        }
+        Ok((namespace.to_ascii_uppercase(), trimmed.to_string()))
+    } else {
+        Err(format!(
+            "{context} external mapping '{trimmed}' must include a namespace prefix such as GO:0000381"
+        ))
+    }
+}
+
+fn parse_gene_set_go_mapping(raw: &str, context: &str) -> Result<(String, String), String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err(format!("{context} GO token must not be empty"));
+    }
+    let id = if trimmed.to_ascii_uppercase().starts_with("GO:") {
+        trimmed.to_string()
+    } else {
+        format!("GO:{trimmed}")
+    };
+    Ok(("GO".to_string(), id))
+}
+
+fn set_gene_set_source_once<T>(
+    slot: &mut Option<T>,
+    value: T,
+    label: &str,
+    context: &str,
+) -> Result<(), String> {
+    if slot.is_some() {
+        return Err(format!("{context} received more than one {label} source"));
+    }
+    *slot = Some(value);
+    Ok(())
+}
+
+fn parse_gene_set_source_option(
+    tokens: &[String],
+    idx: &mut usize,
+    context: &str,
+    args: &mut GeneSetSourceArgs,
+) -> Result<bool, String> {
+    match tokens[*idx].as_str() {
+        "--gene-set" => {
+            let raw = parse_option_path(tokens, idx, "--gene-set", context)?;
+            if raw.to_ascii_uppercase().starts_with("GO:") {
+                let mapping = parse_gene_set_go_mapping(&raw, context)?;
+                set_gene_set_source_once(
+                    &mut args.external_mapping,
+                    mapping,
+                    "external_mapping",
+                    context,
+                )?;
+            } else {
+                set_gene_set_source_once(&mut args.catalog_group, raw, "catalog_group", context)?;
+            }
+            Ok(true)
+        }
+        "--group" | "--catalog-group" | "--catalog_group" => {
+            let flag = tokens[*idx].clone();
+            let raw = parse_option_path(tokens, idx, &flag, context)?;
+            set_gene_set_source_once(&mut args.catalog_group, raw, "catalog_group", context)?;
+            Ok(true)
+        }
+        "--member" => {
+            let raw = parse_option_path(tokens, idx, "--member", context)?;
+            if raw.trim().is_empty() {
+                return Err(format!("{context} --member must not be empty"));
+            }
+            args.explicit_members.push(raw);
+            Ok(true)
+        }
+        "--members" => {
+            let raw = parse_option_path(tokens, idx, "--members", context)?;
+            args.explicit_members
+                .extend(split_csv_tokens_with_empty_error(&raw)?);
+            Ok(true)
+        }
+        "--external-mapping" | "--external_mapping" => {
+            let flag = tokens[*idx].clone();
+            let raw = parse_option_path(tokens, idx, &flag, context)?;
+            let mapping = parse_gene_set_external_mapping(&raw, context)?;
+            set_gene_set_source_once(
+                &mut args.external_mapping,
+                mapping,
+                "external_mapping",
+                context,
+            )?;
+            Ok(true)
+        }
+        "--go" | "--go-term" | "--go_term" => {
+            let flag = tokens[*idx].clone();
+            let raw = parse_option_path(tokens, idx, &flag, context)?;
+            let mapping = parse_gene_set_go_mapping(&raw, context)?;
+            set_gene_set_source_once(
+                &mut args.external_mapping,
+                mapping,
+                "external_mapping",
+                context,
+            )?;
+            Ok(true)
+        }
+        "--neighbors" | "--neighbours" | "--neighbor-anchor" | "--neighbour-anchor" => {
+            let flag = tokens[*idx].clone();
+            let raw = parse_option_path(tokens, idx, &flag, context)?;
+            set_gene_set_source_once(&mut args.neighbor_anchor, raw, "genomic_neighbors", context)?;
+            Ok(true)
+        }
+        "--flank-genes" | "--flank-gene-count" | "--flank_gene_count" => {
+            let flag = tokens[*idx].clone();
+            let raw = parse_option_path(tokens, idx, &flag, context)?;
+            args.neighbor_flank_gene_count = Some(
+                raw.parse::<usize>()
+                    .map_err(|e| format!("Invalid {flag} value '{raw}' for {context}: {e}"))?,
+            );
+            Ok(true)
+        }
+        "--flank-bp" | "--flank_bp" => {
+            let flag = tokens[*idx].clone();
+            let raw = parse_option_path(tokens, idx, &flag, context)?;
+            args.neighbor_flank_bp = Some(
+                raw.parse::<usize>()
+                    .map_err(|e| format!("Invalid {flag} value '{raw}' for {context}: {e}"))?,
+            );
+            Ok(true)
+        }
+        "--exclude-anchor" | "--exclude_anchor" => {
+            args.exclude_anchor = true;
+            *idx += 1;
+            Ok(true)
+        }
+        "--random-size" | "--random-count" | "--random_count" => {
+            let flag = tokens[*idx].clone();
+            let raw = parse_option_path(tokens, idx, &flag, context)?;
+            args.random_count = Some(
+                raw.parse::<usize>()
+                    .map_err(|e| format!("Invalid {flag} value '{raw}' for {context}: {e}"))?,
+            );
+            Ok(true)
+        }
+        "--seed" | "--random-seed" | "--random_seed" => {
+            let flag = tokens[*idx].clone();
+            let raw = parse_option_path(tokens, idx, &flag, context)?;
+            args.random_seed = Some(
+                raw.parse::<u64>()
+                    .map_err(|e| format!("Invalid {flag} value '{raw}' for {context}: {e}"))?,
+            );
+            Ok(true)
+        }
+        "--exclude-member" => {
+            let raw = parse_option_path(tokens, idx, "--exclude-member", context)?;
+            if raw.trim().is_empty() {
+                return Err(format!("{context} --exclude-member must not be empty"));
+            }
+            args.random_exclude_members.push(raw);
+            Ok(true)
+        }
+        "--exclude-members" => {
+            let raw = parse_option_path(tokens, idx, "--exclude-members", context)?;
+            args.random_exclude_members
+                .extend(split_csv_tokens_with_empty_error(&raw)?);
+            Ok(true)
+        }
+        _ => Ok(false),
+    }
+}
+
+fn build_gene_set_request_from_args(
+    args: GeneSetSourceArgs,
+    context: &str,
+) -> Result<Option<GeneSetRequest>, String> {
+    let mut source_count = 0usize;
+    if args.catalog_group.is_some() {
+        source_count += 1;
+    }
+    if !args.explicit_members.is_empty() {
+        source_count += 1;
+    }
+    if args.external_mapping.is_some() {
+        source_count += 1;
+    }
+    if args.neighbor_anchor.is_some() {
+        source_count += 1;
+    }
+    if args.random_count.is_some() {
+        source_count += 1;
+    }
+    if source_count == 0 {
+        return Ok(None);
+    }
+    if source_count > 1 {
+        return Err(format!(
+            "{context} accepts exactly one gene-set source kind per command"
+        ));
+    }
+    if let Some(query) = args.catalog_group {
+        return Ok(Some(GeneSetRequest::CatalogGroup { query }));
+    }
+    if !args.explicit_members.is_empty() {
+        return Ok(Some(GeneSetRequest::ExplicitMembers {
+            members: args.explicit_members,
+        }));
+    }
+    if let Some((namespace, id)) = args.external_mapping {
+        return Ok(Some(GeneSetRequest::ExternalMapping { namespace, id }));
+    }
+    if let Some(anchor) = args.neighbor_anchor {
+        if args.neighbor_flank_gene_count.is_none() && args.neighbor_flank_bp.is_none() {
+            return Err(format!(
+                "{context} genomic-neighbor source requires --flank-genes N or --flank-bp N"
+            ));
+        }
+        return Ok(Some(GeneSetRequest::GenomicNeighbors {
+            anchor,
+            flank_gene_count: args.neighbor_flank_gene_count,
+            flank_bp: args.neighbor_flank_bp,
+            exclude_anchor: args.exclude_anchor,
+        }));
+    }
+    if let Some(count) = args.random_count {
+        return Ok(Some(GeneSetRequest::Random {
+            count,
+            random_seed: args.random_seed.unwrap_or(0),
+            exclude_members: args.random_exclude_members,
+        }));
+    }
+    Ok(None)
+}
+
 fn parse_tfbs_score_track_value_kind_shell(
     raw: &str,
     context: &str,
@@ -6686,6 +6993,49 @@ impl ShellCommand {
                 go_mappings.len(),
                 output.as_deref().unwrap_or("-"),
             ),
+            Self::GeneSetsResolve {
+                source,
+                genome_id,
+                gene_group_catalog_path,
+                genome_catalog_path,
+                allow_draft,
+                allow_deprecated,
+                output,
+                ..
+            } => format!(
+                "resolve gene set from {} (genome='{}', gene_group_catalog='{}', genome_catalog='{}', allow_draft={}, allow_deprecated={}, output='{}')",
+                source.source_kind_label(),
+                genome_id.as_deref().unwrap_or("-"),
+                gene_group_catalog_path
+                    .as_deref()
+                    .unwrap_or(gene_groups::DEFAULT_GENE_GROUP_DISCOVERY_TOKEN),
+                genome_catalog_path
+                    .as_deref()
+                    .unwrap_or(default_catalog_discovery_token(false)),
+                allow_draft,
+                allow_deprecated,
+                output.as_deref().unwrap_or("-"),
+            ),
+            Self::GeneSetsPromoterCohort {
+                genome_id,
+                source,
+                resolution,
+                upstream_bp,
+                downstream_bp,
+                output,
+                ..
+            } => format!(
+                "build gene-set promoter cohort for '{}' (source={}, upstream_bp={}, downstream_bp={}, output='{}')",
+                genome_id,
+                source
+                    .as_ref()
+                    .map(GeneSetRequest::source_kind_label)
+                    .or_else(|| resolution.as_ref().map(|_| "resolution"))
+                    .unwrap_or("-"),
+                upstream_bp,
+                downstream_bp,
+                output.as_deref().unwrap_or("-"),
+            ),
             Self::ReportersList {
                 catalog_path,
                 filter,
@@ -7789,7 +8139,10 @@ impl ShellCommand {
                 clip_negative,
                 catalog_path,
                 cache_dir,
+                gene_set,
+                gene_set_resolution,
                 path,
+                ..
             } => {
                 let label = if *helper_mode { "helper" } else { "genome" };
                 let catalog = catalog_path
@@ -7814,8 +8167,13 @@ impl ShellCommand {
                 } else {
                     motifs.join(",")
                 };
+                let gene_set_summary = gene_set
+                    .as_ref()
+                    .map(GeneSetRequest::source_kind_label)
+                    .or_else(|| gene_set_resolution.as_ref().map(|_| "resolution"))
+                    .unwrap_or("-");
                 format!(
-                    "summarize multi-gene {label} promoter TFBS for '{genome_id}' (genes={gene_summary}, motifs={motif_summary}, upstream_bp={upstream_bp}, downstream_bp={downstream_bp}, score_kind={}, clip_negative={}, output='{}', catalog='{catalog}', cache='{cache}')",
+                    "summarize multi-gene {label} promoter TFBS for '{genome_id}' (genes={gene_summary}, gene_set={gene_set_summary}, motifs={motif_summary}, upstream_bp={upstream_bp}, downstream_bp={downstream_bp}, score_kind={}, clip_negative={}, output='{}', catalog='{catalog}', cache='{cache}')",
                     score_kind.as_str(),
                     clip_negative,
                     path.as_deref().unwrap_or("-"),
@@ -7832,7 +8190,10 @@ impl ShellCommand {
                 clip_negative,
                 catalog_path,
                 cache_dir,
+                gene_set,
+                gene_set_resolution,
                 output,
+                ..
             } => {
                 let label = if *helper_mode { "helper" } else { "genome" };
                 let catalog = catalog_path
@@ -7857,8 +8218,13 @@ impl ShellCommand {
                 } else {
                     motifs.join(",")
                 };
+                let gene_set_summary = gene_set
+                    .as_ref()
+                    .map(GeneSetRequest::source_kind_label)
+                    .or_else(|| gene_set_resolution.as_ref().map(|_| "resolution"))
+                    .unwrap_or("-");
                 format!(
-                    "render multi-gene {label} promoter TFBS SVG for '{genome_id}' (genes={gene_summary}, motifs={motif_summary}, upstream_bp={upstream_bp}, downstream_bp={downstream_bp}, score_kind={}, clip_negative={}, output='{output}', catalog='{catalog}', cache='{cache}')",
+                    "render multi-gene {label} promoter TFBS SVG for '{genome_id}' (genes={gene_summary}, gene_set={gene_set_summary}, motifs={motif_summary}, upstream_bp={upstream_bp}, downstream_bp={downstream_bp}, score_kind={}, clip_negative={}, output='{output}', catalog='{catalog}', cache='{cache}')",
                     score_kind.as_str(),
                     clip_negative,
                 )
@@ -8215,6 +8581,33 @@ impl ShellCommand {
                     species_filters.join(",")
                 },
                 output_path.as_deref().unwrap_or("-")
+            ),
+            Self::CutRunGeneSetRegulatorySupport {
+                genome_id,
+                source,
+                resolution,
+                promoter_cohort,
+                dataset_ids,
+                read_report_ids,
+                output_path,
+                ..
+            } => format!(
+                "inspect CUT&RUN gene-set regulatory support (genome='{}', source={}, datasets={}, read_reports={}, output='{}')",
+                genome_id.as_deref().unwrap_or_else(|| {
+                    promoter_cohort
+                        .as_ref()
+                        .map(|report| report.genome_id.as_str())
+                        .unwrap_or("-")
+                }),
+                source
+                    .as_ref()
+                    .map(GeneSetRequest::source_kind_label)
+                    .or_else(|| resolution.as_ref().map(|_| "resolution"))
+                    .or_else(|| promoter_cohort.as_ref().map(|_| "promoter_cohort"))
+                    .unwrap_or("-"),
+                dataset_ids.len(),
+                read_report_ids.len(),
+                output_path.as_deref().unwrap_or("-"),
             ),
             Self::TracksImportVcf {
                 seq_id,
@@ -16337,10 +16730,23 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
             let mut score_kind = TfbsScoreTrackValueKind::default();
             let mut clip_negative = true;
             let mut catalog_path: Option<String> = None;
+            let mut gene_group_catalog_path: Option<String> = None;
             let mut cache_dir: Option<String> = None;
+            let mut gene_set_source_args = GeneSetSourceArgs::default();
+            let mut gene_set_resolution: Option<GeneSetResolutionReport> = None;
+            let mut allow_draft = false;
+            let mut allow_deprecated = false;
             let mut path: Option<String> = None;
             let mut idx = 3usize;
             while idx < tokens.len() {
+                if parse_gene_set_source_option(
+                    tokens,
+                    &mut idx,
+                    &format!("{label} promoter-tfbs-summary"),
+                    &mut gene_set_source_args,
+                )? {
+                    continue;
+                }
                 match tokens[idx].as_str() {
                     "--gene" => {
                         let raw = parse_option_path(tokens, &mut idx, "--gene", label)?;
@@ -16409,8 +16815,30 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                         catalog_path =
                             Some(parse_option_path(tokens, &mut idx, "--catalog", label)?)
                     }
+                    "--gene-group-catalog" | "--gene_group_catalog" => {
+                        let flag = tokens[idx].clone();
+                        gene_group_catalog_path =
+                            Some(parse_option_path(tokens, &mut idx, &flag, label)?);
+                    }
                     "--cache-dir" => {
                         cache_dir = Some(parse_option_path(tokens, &mut idx, "--cache-dir", label)?)
+                    }
+                    "--gene-set-resolution" | "--gene_set_resolution" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, label)?;
+                        gene_set_resolution = Some(parse_required_json_payload::<
+                            GeneSetResolutionReport,
+                        >(
+                            &raw, "gene-set resolution"
+                        )?);
+                    }
+                    "--allow-draft" | "--allow_draft" => {
+                        allow_draft = true;
+                        idx += 1;
+                    }
+                    "--allow-deprecated" | "--allow_deprecated" => {
+                        allow_deprecated = true;
+                        idx += 1;
                     }
                     "--path" | "--output" => {
                         let flag = tokens[idx].clone();
@@ -16427,9 +16855,13 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                     }
                 }
             }
-            if genes.is_empty() {
+            let gene_set = build_gene_set_request_from_args(
+                gene_set_source_args,
+                &format!("{label} promoter-tfbs-summary"),
+            )?;
+            if genes.is_empty() && gene_set.is_none() && gene_set_resolution.is_none() {
                 return Err(format!(
-                    "{label} promoter-tfbs-summary requires at least one --gene QUERY or --gene-json JSON"
+                    "{label} promoter-tfbs-summary requires at least one --gene QUERY, --gene-json JSON, --gene-set SOURCE, or --gene-set-resolution JSON"
                 ));
             }
             if motifs.is_empty() {
@@ -16447,7 +16879,12 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                 score_kind,
                 clip_negative,
                 catalog_path,
+                gene_group_catalog_path,
                 cache_dir,
+                gene_set,
+                gene_set_resolution,
+                allow_draft,
+                allow_deprecated,
                 path,
             })
         }
@@ -16465,10 +16902,23 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
             let mut score_kind = TfbsScoreTrackValueKind::default();
             let mut clip_negative = true;
             let mut catalog_path: Option<String> = None;
+            let mut gene_group_catalog_path: Option<String> = None;
             let mut cache_dir: Option<String> = None;
+            let mut gene_set_source_args = GeneSetSourceArgs::default();
+            let mut gene_set_resolution: Option<GeneSetResolutionReport> = None;
+            let mut allow_draft = false;
+            let mut allow_deprecated = false;
             let mut output: Option<String> = None;
             let mut idx = 3usize;
             while idx < tokens.len() {
+                if parse_gene_set_source_option(
+                    tokens,
+                    &mut idx,
+                    &format!("{label} promoter-tfbs-svg"),
+                    &mut gene_set_source_args,
+                )? {
+                    continue;
+                }
                 match tokens[idx].as_str() {
                     "--gene" => {
                         let raw = parse_option_path(tokens, &mut idx, "--gene", label)?;
@@ -16537,8 +16987,30 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                         catalog_path =
                             Some(parse_option_path(tokens, &mut idx, "--catalog", label)?)
                     }
+                    "--gene-group-catalog" | "--gene_group_catalog" => {
+                        let flag = tokens[idx].clone();
+                        gene_group_catalog_path =
+                            Some(parse_option_path(tokens, &mut idx, &flag, label)?);
+                    }
                     "--cache-dir" => {
                         cache_dir = Some(parse_option_path(tokens, &mut idx, "--cache-dir", label)?)
+                    }
+                    "--gene-set-resolution" | "--gene_set_resolution" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, label)?;
+                        gene_set_resolution = Some(parse_required_json_payload::<
+                            GeneSetResolutionReport,
+                        >(
+                            &raw, "gene-set resolution"
+                        )?);
+                    }
+                    "--allow-draft" | "--allow_draft" => {
+                        allow_draft = true;
+                        idx += 1;
+                    }
+                    "--allow-deprecated" | "--allow_deprecated" => {
+                        allow_deprecated = true;
+                        idx += 1;
                     }
                     "--output" | "--path" => {
                         let flag = tokens[idx].clone();
@@ -16555,9 +17027,13 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                     }
                 }
             }
-            if genes.is_empty() {
+            let gene_set = build_gene_set_request_from_args(
+                gene_set_source_args,
+                &format!("{label} promoter-tfbs-svg"),
+            )?;
+            if genes.is_empty() && gene_set.is_none() && gene_set_resolution.is_none() {
                 return Err(format!(
-                    "{label} promoter-tfbs-svg requires at least one --gene QUERY or --gene-json JSON"
+                    "{label} promoter-tfbs-svg requires at least one --gene QUERY, --gene-json JSON, --gene-set SOURCE, or --gene-set-resolution JSON"
                 ));
             }
             if motifs.is_empty() {
@@ -16580,7 +17056,12 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                 score_kind,
                 clip_negative,
                 catalog_path,
+                gene_group_catalog_path,
                 cache_dir,
+                gene_set,
+                gene_set_resolution,
+                allow_draft,
+                allow_deprecated,
                 output,
             })
         }
@@ -19190,6 +19671,183 @@ fn parse_ui_command(tokens: &[String]) -> Result<ShellCommand, String> {
         }
         other => Err(format!(
             "Unknown ui subcommand '{other}' (expected intents, open, focus, prepared-genomes, latest-prepared)"
+        )),
+    }
+}
+
+fn parse_gene_sets_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err("gene-sets requires a subcommand: resolve or promoter-cohort".to_string());
+    }
+    match tokens[1].as_str() {
+        "resolve" => {
+            let context = "gene-sets resolve";
+            let mut source_args = GeneSetSourceArgs::default();
+            let mut genome_id: Option<String> = None;
+            let mut gene_group_catalog_path: Option<String> = None;
+            let mut genome_catalog_path: Option<String> = None;
+            let mut cache_dir: Option<String> = None;
+            let mut allow_draft = false;
+            let mut allow_deprecated = false;
+            let mut output: Option<String> = None;
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                if parse_gene_set_source_option(tokens, &mut idx, context, &mut source_args)? {
+                    continue;
+                }
+                match tokens[idx].as_str() {
+                    "--genome" | "--genome-id" | "--genome_id" => {
+                        let flag = tokens[idx].clone();
+                        genome_id = Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    "--catalog" | "--gene-group-catalog" | "--gene_group_catalog" => {
+                        let flag = tokens[idx].clone();
+                        gene_group_catalog_path =
+                            Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    "--genome-catalog" | "--genome_catalog" => {
+                        let flag = tokens[idx].clone();
+                        genome_catalog_path =
+                            Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    "--cache-dir" | "--cache_dir" => {
+                        let flag = tokens[idx].clone();
+                        cache_dir = Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    "--allow-draft" | "--allow_draft" => {
+                        allow_draft = true;
+                        idx += 1;
+                    }
+                    "--allow-deprecated" | "--allow_deprecated" => {
+                        allow_deprecated = true;
+                        idx += 1;
+                    }
+                    "--output" | "--path" => {
+                        let flag = tokens[idx].clone();
+                        output = Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    other if !other.starts_with("--") && source_args.catalog_group.is_none() => {
+                        source_args.catalog_group = Some(other.to_string());
+                        idx += 1;
+                    }
+                    other => return Err(format!("Unknown option '{other}' for {context}")),
+                }
+            }
+            let source = build_gene_set_request_from_args(source_args, context)?
+                .ok_or_else(|| format!("{context} requires a gene-set source"))?;
+            Ok(ShellCommand::GeneSetsResolve {
+                source,
+                genome_id,
+                gene_group_catalog_path,
+                genome_catalog_path,
+                cache_dir,
+                allow_draft,
+                allow_deprecated,
+                output,
+            })
+        }
+        "promoter-cohort" | "promoter_cohort" => {
+            let context = "gene-sets promoter-cohort";
+            let mut source_args = GeneSetSourceArgs::default();
+            let mut genome_id: Option<String> = None;
+            let mut resolution: Option<GeneSetResolutionReport> = None;
+            let mut gene_group_catalog_path: Option<String> = None;
+            let mut genome_catalog_path: Option<String> = None;
+            let mut cache_dir: Option<String> = None;
+            let mut upstream_bp = DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP;
+            let mut downstream_bp = DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP;
+            let mut allow_draft = false;
+            let mut allow_deprecated = false;
+            let mut output: Option<String> = None;
+            let mut idx = 2usize;
+            if idx < tokens.len() && !tokens[idx].starts_with("--") {
+                genome_id = Some(tokens[idx].clone());
+                idx += 1;
+            }
+            while idx < tokens.len() {
+                if parse_gene_set_source_option(tokens, &mut idx, context, &mut source_args)? {
+                    continue;
+                }
+                match tokens[idx].as_str() {
+                    "--genome" | "--genome-id" | "--genome_id" => {
+                        let flag = tokens[idx].clone();
+                        genome_id = Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    "--resolution" | "--gene-set-resolution" | "--gene_set_resolution" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        resolution = Some(parse_required_json_payload::<GeneSetResolutionReport>(
+                            &raw,
+                            "gene-set resolution",
+                        )?);
+                    }
+                    "--catalog" | "--gene-group-catalog" | "--gene_group_catalog" => {
+                        let flag = tokens[idx].clone();
+                        gene_group_catalog_path =
+                            Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    "--genome-catalog" | "--genome_catalog" => {
+                        let flag = tokens[idx].clone();
+                        genome_catalog_path =
+                            Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    "--cache-dir" | "--cache_dir" => {
+                        let flag = tokens[idx].clone();
+                        cache_dir = Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    "--upstream-bp" | "--upstream_bp" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        upstream_bp = raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid {flag} value '{raw}' for {context}: {e}")
+                        })?;
+                    }
+                    "--downstream-bp" | "--downstream_bp" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        downstream_bp = raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid {flag} value '{raw}' for {context}: {e}")
+                        })?;
+                    }
+                    "--allow-draft" | "--allow_draft" => {
+                        allow_draft = true;
+                        idx += 1;
+                    }
+                    "--allow-deprecated" | "--allow_deprecated" => {
+                        allow_deprecated = true;
+                        idx += 1;
+                    }
+                    "--output" | "--path" => {
+                        let flag = tokens[idx].clone();
+                        output = Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    other => return Err(format!("Unknown option '{other}' for {context}")),
+                }
+            }
+            let genome_id = genome_id
+                .ok_or_else(|| format!("{context} requires GENOME_ID or --genome GENOME_ID"))?;
+            let source = build_gene_set_request_from_args(source_args, context)?;
+            if source.is_none() && resolution.is_none() {
+                return Err(format!(
+                    "{context} requires a gene-set source or --resolution JSON"
+                ));
+            }
+            Ok(ShellCommand::GeneSetsPromoterCohort {
+                genome_id,
+                source,
+                resolution,
+                gene_group_catalog_path,
+                genome_catalog_path,
+                cache_dir,
+                upstream_bp,
+                downstream_bp,
+                allow_draft,
+                allow_deprecated,
+                output,
+            })
+        }
+        other => Err(format!(
+            "Unknown gene-sets subcommand '{other}' (expected resolve or promoter-cohort)"
         )),
     }
 }
@@ -22497,6 +23155,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "ui" => parse_ui_command(tokens),
         "agents" => parse_agents_command(tokens),
         "routines" => parse_routines_command(tokens),
+        "gene-sets" | "gene_sets" | "genesets" => parse_gene_sets_command(tokens),
         "gene-groups" | "gene_groups" | "genegroups" => parse_gene_groups_command(tokens),
         "reporters" => parse_reporters_command(tokens),
         "resources" => {
@@ -27911,6 +28570,74 @@ fn execute_export_import_and_resource_command(
                     .map_err(|e| format!("Could not serialize gene-group draft report: {e}"))?,
             })
         }
+        ShellCommand::GeneSetsResolve {
+            source,
+            genome_id,
+            gene_group_catalog_path,
+            genome_catalog_path,
+            cache_dir,
+            allow_draft,
+            allow_deprecated,
+            output,
+        } => {
+            let result = engine
+                .apply(Operation::ResolveGeneSet {
+                    source: source.clone(),
+                    genome_id: genome_id.clone(),
+                    gene_group_catalog_path: gene_group_catalog_path.clone(),
+                    genome_catalog_path: genome_catalog_path.clone(),
+                    cache_dir: cache_dir.clone(),
+                    allow_draft: *allow_draft,
+                    allow_deprecated: *allow_deprecated,
+                    path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let report = result
+                .gene_set_resolution
+                .ok_or_else(|| "ResolveGeneSet did not return a gene-set resolution".to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(&report)
+                    .map_err(|e| format!("Could not serialize gene-set resolution: {e}"))?,
+            })
+        }
+        ShellCommand::GeneSetsPromoterCohort {
+            genome_id,
+            source,
+            resolution,
+            gene_group_catalog_path,
+            genome_catalog_path,
+            cache_dir,
+            upstream_bp,
+            downstream_bp,
+            allow_draft,
+            allow_deprecated,
+            output,
+        } => {
+            let result = engine
+                .apply(Operation::BuildGeneSetPromoterCohort {
+                    genome_id: genome_id.clone(),
+                    source: source.clone(),
+                    resolution: resolution.clone(),
+                    upstream_bp: *upstream_bp,
+                    downstream_bp: *downstream_bp,
+                    gene_group_catalog_path: gene_group_catalog_path.clone(),
+                    genome_catalog_path: genome_catalog_path.clone(),
+                    cache_dir: cache_dir.clone(),
+                    allow_draft: *allow_draft,
+                    allow_deprecated: *allow_deprecated,
+                    path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let report = result.gene_set_promoter_cohort.ok_or_else(|| {
+                "BuildGeneSetPromoterCohort did not return a promoter cohort".to_string()
+            })?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(&report)
+                    .map_err(|e| format!("Could not serialize gene-set promoter cohort: {e}"))?,
+            })
+        }
         ShellCommand::ReportersList {
             catalog_path,
             filter,
@@ -28630,6 +29357,62 @@ fn execute_cutrun_command(
                 state_changed: false,
                 output: serde_json::to_value(&report).map_err(|e| {
                     format!("Could not serialize CUT&RUN regulatory-support report: {e}")
+                })?,
+            })
+        }
+        ShellCommand::CutRunGeneSetRegulatorySupport {
+            genome_id,
+            source,
+            resolution,
+            promoter_cohort,
+            dataset_ids,
+            read_report_ids,
+            upstream_bp,
+            downstream_bp,
+            neighbor_window_bp,
+            species_filters,
+            gene_group_catalog_path,
+            genome_catalog_path,
+            cache_dir,
+            allow_draft,
+            allow_deprecated,
+            output_path,
+        } => {
+            let effective_genome_id = genome_id
+                .clone()
+                .or_else(|| promoter_cohort.as_ref().map(|report| report.genome_id.clone()))
+                .ok_or_else(|| {
+                    "cutrun gene-set-regulatory-support requires --genome when no promoter cohort is provided"
+                        .to_string()
+                })?;
+            let result = engine
+                .apply(Operation::InspectCutRunGeneSetRegulatorySupport {
+                    genome_id: effective_genome_id,
+                    source: source.clone(),
+                    resolution: resolution.clone(),
+                    promoter_cohort: promoter_cohort.clone(),
+                    dataset_ids: dataset_ids.clone(),
+                    read_report_ids: read_report_ids.clone(),
+                    upstream_bp: *upstream_bp,
+                    downstream_bp: *downstream_bp,
+                    neighbor_window_bp: *neighbor_window_bp,
+                    species_filters: species_filters.clone(),
+                    gene_group_catalog_path: gene_group_catalog_path.clone(),
+                    genome_catalog_path: genome_catalog_path.clone(),
+                    cache_dir: cache_dir.clone(),
+                    allow_draft: *allow_draft,
+                    allow_deprecated: *allow_deprecated,
+                    path: output_path.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let report = result.gene_set_cutrun_regulatory_support.ok_or_else(|| {
+                "InspectCutRunGeneSetRegulatorySupport did not return a gene-set regulatory-support payload"
+                    .to_string()
+            })?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(&report).map_err(|e| {
+                    format!("Could not serialize gene-set CUT&RUN regulatory-support report: {e}")
                 })?,
             })
         }
@@ -29665,7 +30448,12 @@ fn execute_reference_and_track_command(
             score_kind,
             clip_negative,
             catalog_path,
+            gene_group_catalog_path,
             cache_dir,
+            gene_set,
+            gene_set_resolution,
+            allow_draft,
+            allow_deprecated,
             path,
         } => {
             let op_result = engine
@@ -29678,7 +30466,12 @@ fn execute_reference_and_track_command(
                     score_kind: *score_kind,
                     clip_negative: *clip_negative,
                     catalog_path: operation_catalog_path(catalog_path, *helper_mode),
+                    gene_group_catalog_path: gene_group_catalog_path.clone(),
                     cache_dir: cache_dir.clone(),
+                    gene_set: gene_set.clone(),
+                    gene_set_resolution: gene_set_resolution.clone(),
+                    allow_draft: *allow_draft,
+                    allow_deprecated: *allow_deprecated,
                     path: path.clone(),
                 })
                 .map_err(|e| e.to_string())?;
@@ -29697,7 +30490,12 @@ fn execute_reference_and_track_command(
             score_kind,
             clip_negative,
             catalog_path,
+            gene_group_catalog_path,
             cache_dir,
+            gene_set,
+            gene_set_resolution,
+            allow_draft,
+            allow_deprecated,
             output,
         } => {
             let op_result = engine
@@ -29710,7 +30508,12 @@ fn execute_reference_and_track_command(
                     score_kind: *score_kind,
                     clip_negative: *clip_negative,
                     catalog_path: operation_catalog_path(catalog_path, *helper_mode),
+                    gene_group_catalog_path: gene_group_catalog_path.clone(),
                     cache_dir: cache_dir.clone(),
+                    gene_set: gene_set.clone(),
+                    gene_set_resolution: gene_set_resolution.clone(),
+                    allow_draft: *allow_draft,
+                    allow_deprecated: *allow_deprecated,
                     path: output.clone(),
                 })
                 .map_err(|e| e.to_string())?;
@@ -36959,6 +37762,8 @@ fn execute_shell_command_with_options_dispatch(
             | ShellCommand::GeneGroupsResolve { .. }
             | ShellCommand::GeneGroupsDoctor { .. }
             | ShellCommand::GeneGroupsDraft { .. }
+            | ShellCommand::GeneSetsResolve { .. }
+            | ShellCommand::GeneSetsPromoterCohort { .. }
             | ShellCommand::ReportersList { .. }
             | ShellCommand::ReportersRecommend { .. }
             | ShellCommand::ReportersExportCorpus { .. }
@@ -36999,6 +37804,7 @@ fn execute_shell_command_with_options_dispatch(
             | ShellCommand::CutRunShowReadReport { .. }
             | ShellCommand::CutRunExportCoverage { .. }
             | ShellCommand::CutRunInspectRegulatorySupport { .. }
+            | ShellCommand::CutRunGeneSetRegulatorySupport { .. }
     ) {
         return execute_cutrun_command(engine, command);
     }
@@ -37649,6 +38455,8 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::GeneGroupsResolve { .. }
         | ShellCommand::GeneGroupsDoctor { .. }
         | ShellCommand::GeneGroupsDraft { .. }
+        | ShellCommand::GeneSetsResolve { .. }
+        | ShellCommand::GeneSetsPromoterCohort { .. }
         | ShellCommand::ReportersList { .. }
         | ShellCommand::ReportersRecommend { .. }
         | ShellCommand::ReportersExportCorpus { .. }
@@ -37873,7 +38681,8 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::CutRunListReadReports { .. }
         | ShellCommand::CutRunShowReadReport { .. }
         | ShellCommand::CutRunExportCoverage { .. }
-        | ShellCommand::CutRunInspectRegulatorySupport { .. } => {
+        | ShellCommand::CutRunInspectRegulatorySupport { .. }
+        | ShellCommand::CutRunGeneSetRegulatorySupport { .. } => {
             execute_cutrun_command(engine, command)?
         }
         ShellCommand::HostsList { .. }

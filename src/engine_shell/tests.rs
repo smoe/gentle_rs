@@ -407,6 +407,13 @@ fn smoke_command_override(path: &str) -> Option<&'static str> {
         "cutrun inspect-regulatory-support" => {
             Some("cutrun inspect-regulatory-support seq --dataset dataset")
         }
+        "cutrun gene-set-regulatory-support" => {
+            Some("cutrun gene-set-regulatory-support ToyGenome --group yamanaka_factors --dataset toy_ctcf")
+        }
+        "gene-sets resolve" => Some("gene-sets resolve --group yamanaka_factors"),
+        "gene-sets promoter-cohort" => {
+            Some("gene-sets promoter-cohort ToyGenome --group yamanaka_factors")
+        }
         "seq-confirm run" => Some("seq-confirm run expected --reads read1"),
         "seq-primer suggest" => Some("seq-primer suggest expected --primers primer1"),
         "candidates generate-between-anchors" => Some(
@@ -457,6 +464,14 @@ fn skip_glossary_flag_parse(path: &str, flag: &str) -> bool {
                     | "helpers blast-track",
                 "--options-file"
             ) | ("cutrun interpret", "--dataset")
+                | (
+                    "cutrun gene-set-regulatory-support",
+                    "--resolution" | "--gene-set-resolution" | "--promoter-cohort"
+                )
+                | (
+                    "gene-sets promoter-cohort",
+                    "--resolution" | "--gene-set-resolution"
+                )
                 | (
                     "features tfbs-score-tracks-svg",
                     "--end" | "--output" | "--sequence-text" | "--start"
@@ -13696,6 +13711,96 @@ fn parse_gene_groups_list_show_resolve_and_doctor_commands() {
 }
 
 #[test]
+fn parse_gene_sets_resolve_and_promoter_cohort_commands() {
+    let resolve = parse_shell_line(
+        "gene-sets resolve --go GO:0000381 --genome ToyGenome --allow-draft --output set.json",
+    )
+    .expect("parse gene-sets resolve");
+    match resolve {
+        ShellCommand::GeneSetsResolve {
+            source,
+            genome_id,
+            allow_draft,
+            output,
+            ..
+        } => {
+            assert!(matches!(
+                source,
+                GeneSetRequest::ExternalMapping { namespace, id }
+                    if namespace == "GO" && id == "GO:0000381"
+            ));
+            assert_eq!(genome_id.as_deref(), Some("ToyGenome"));
+            assert!(allow_draft);
+            assert_eq!(output.as_deref(), Some("set.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let cohort = parse_shell_line(
+        "gene-sets promoter-cohort ToyGenome --neighbors TP53 --flank-genes 2 --exclude-anchor --upstream-bp 500 --downstream-bp 100 --output cohort.json",
+    )
+    .expect("parse gene-sets promoter-cohort");
+    match cohort {
+        ShellCommand::GeneSetsPromoterCohort {
+            genome_id,
+            source:
+                Some(GeneSetRequest::GenomicNeighbors {
+                    anchor,
+                    flank_gene_count,
+                    exclude_anchor,
+                    ..
+                }),
+            upstream_bp,
+            downstream_bp,
+            output,
+            ..
+        } => {
+            assert_eq!(genome_id, "ToyGenome");
+            assert_eq!(anchor, "TP53");
+            assert_eq!(flank_gene_count, Some(2));
+            assert!(exclude_anchor);
+            assert_eq!(upstream_bp, 500);
+            assert_eq!(downstream_bp, 100);
+            assert_eq!(output.as_deref(), Some("cohort.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_cutrun_gene_set_regulatory_support_command() {
+    let cmd = parse_shell_line(
+        "cutrun gene-set-regulatory-support ToyGenome --group regulation_of_alternative_splicing --dataset toy_ctcf --read-report toy_reads --upstream-bp 700 --downstream-bp 150 --neighbor-window-bp 77 --allow-deprecated --path support.json",
+    )
+    .expect("parse CUT&RUN gene-set-regulatory-support");
+    match cmd {
+        ShellCommand::CutRunGeneSetRegulatorySupport {
+            genome_id,
+            source: Some(GeneSetRequest::CatalogGroup { query }),
+            dataset_ids,
+            read_report_ids,
+            upstream_bp,
+            downstream_bp,
+            neighbor_window_bp,
+            allow_deprecated,
+            output_path,
+            ..
+        } => {
+            assert_eq!(genome_id.as_deref(), Some("ToyGenome"));
+            assert_eq!(query, "regulation_of_alternative_splicing");
+            assert_eq!(dataset_ids, vec!["toy_ctcf"]);
+            assert_eq!(read_report_ids, vec!["toy_reads"]);
+            assert_eq!(upstream_bp, 700);
+            assert_eq!(downstream_bp, 150);
+            assert_eq!(neighbor_window_bp, 77);
+            assert!(allow_deprecated);
+            assert_eq!(output_path.as_deref(), Some("support.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn execute_gene_groups_commands_expose_builtin_go_resource_and_groups() {
     let mut engine = GentleEngine::new();
     let list = execute_shell_command(
@@ -19867,6 +19972,7 @@ fn parse_genomes_promoter_tfbs_summary_with_multiple_gene_specs() {
             catalog_path,
             cache_dir,
             path,
+            ..
         } => {
             assert!(!helper_mode);
             assert_eq!(genome_id, "ToyGenome".to_string());

@@ -8877,8 +8877,165 @@ pub(super) fn parse_cutrun_command(tokens: &[String]) -> Result<ShellCommand, St
                 output_path,
             })
         }
+        "gene-set-regulatory-support" | "gene_set_regulatory_support" => {
+            let context = "cutrun gene-set-regulatory-support";
+            let mut idx = 2usize;
+            let mut genome_id: Option<String> = None;
+            if idx < tokens.len() && !tokens[idx].starts_with("--") {
+                genome_id = Some(tokens[idx].trim().to_string());
+                idx += 1;
+            }
+            let mut source_args = GeneSetSourceArgs::default();
+            let mut resolution: Option<GeneSetResolutionReport> = None;
+            let mut promoter_cohort: Option<GeneSetPromoterCohortReport> = None;
+            let mut dataset_ids = vec![];
+            let mut read_report_ids = vec![];
+            let mut upstream_bp = DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP;
+            let mut downstream_bp = DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP;
+            let mut neighbor_window_bp = 150usize;
+            let mut species_filters = vec![];
+            let mut gene_group_catalog_path: Option<String> = None;
+            let mut genome_catalog_path: Option<String> = None;
+            let mut cache_dir: Option<String> = None;
+            let mut allow_draft = false;
+            let mut allow_deprecated = false;
+            let mut output_path: Option<String> = None;
+            while idx < tokens.len() {
+                if parse_gene_set_source_option(tokens, &mut idx, context, &mut source_args)? {
+                    continue;
+                }
+                match tokens[idx].as_str() {
+                    "--genome" | "--genome-id" | "--genome_id" => {
+                        let flag = tokens[idx].clone();
+                        genome_id = Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    "--resolution" | "--gene-set-resolution" | "--gene_set_resolution" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        resolution = Some(parse_required_json_payload::<GeneSetResolutionReport>(
+                            &raw,
+                            "gene-set resolution",
+                        )?);
+                    }
+                    "--promoter-cohort" | "--promoter_cohort" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        promoter_cohort = Some(parse_required_json_payload::<
+                            GeneSetPromoterCohortReport,
+                        >(
+                            &raw, "gene-set promoter cohort"
+                        )?);
+                    }
+                    "--dataset" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--dataset", context)?;
+                        let trimmed = raw.trim();
+                        if trimmed.is_empty() {
+                            return Err(format!("{context} --dataset must not be empty"));
+                        }
+                        dataset_ids.push(trimmed.to_string());
+                    }
+                    "--read-report" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--read-report", context)?;
+                        let trimmed = raw.trim();
+                        if trimmed.is_empty() {
+                            return Err(format!("{context} --read-report must not be empty"));
+                        }
+                        read_report_ids.push(trimmed.to_string());
+                    }
+                    "--upstream-bp" | "--upstream_bp" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        upstream_bp = raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid {flag} value '{raw}' for {context}: {e}")
+                        })?;
+                    }
+                    "--downstream-bp" | "--downstream_bp" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        downstream_bp = raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid {flag} value '{raw}' for {context}: {e}")
+                        })?;
+                    }
+                    "--neighbor-window-bp" | "--neighbor_window_bp" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        neighbor_window_bp = raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid {flag} value '{raw}' for {context}: {e}")
+                        })?;
+                    }
+                    "--species-filter" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--species-filter", context)?;
+                        let trimmed = raw.trim();
+                        if !trimmed.is_empty() {
+                            species_filters.push(trimmed.to_string());
+                        }
+                    }
+                    "--catalog" | "--gene-group-catalog" | "--gene_group_catalog" => {
+                        let flag = tokens[idx].clone();
+                        gene_group_catalog_path =
+                            Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    "--genome-catalog" | "--genome_catalog" => {
+                        let flag = tokens[idx].clone();
+                        genome_catalog_path =
+                            Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    "--cache-dir" | "--cache_dir" => {
+                        let flag = tokens[idx].clone();
+                        cache_dir = Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    "--allow-draft" | "--allow_draft" => {
+                        allow_draft = true;
+                        idx += 1;
+                    }
+                    "--allow-deprecated" | "--allow_deprecated" => {
+                        allow_deprecated = true;
+                        idx += 1;
+                    }
+                    "--path" | "--output" => {
+                        let flag = tokens[idx].clone();
+                        output_path = Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    other => return Err(format!("Unknown option '{other}' for {context}")),
+                }
+            }
+            if dataset_ids.is_empty() && read_report_ids.is_empty() {
+                return Err(format!(
+                    "{context} requires at least one --dataset or --read-report"
+                ));
+            }
+            let source = build_gene_set_request_from_args(source_args, context)?;
+            if promoter_cohort.is_none() && source.is_none() && resolution.is_none() {
+                return Err(format!(
+                    "{context} requires --promoter-cohort JSON, --resolution JSON, or a gene-set source"
+                ));
+            }
+            if promoter_cohort.is_none() && genome_id.is_none() {
+                return Err(format!(
+                    "{context} requires GENOME_ID or --genome when not using --promoter-cohort"
+                ));
+            }
+            Ok(ShellCommand::CutRunGeneSetRegulatorySupport {
+                genome_id,
+                source,
+                resolution,
+                promoter_cohort,
+                dataset_ids,
+                read_report_ids,
+                upstream_bp,
+                downstream_bp,
+                neighbor_window_bp,
+                species_filters,
+                gene_group_catalog_path,
+                genome_catalog_path,
+                cache_dir,
+                allow_draft,
+                allow_deprecated,
+                output_path,
+            })
+        }
         other => Err(format!(
-            "Unknown cutrun subcommand '{other}' (expected list, status, prepare, project, interpret, list-read-reports, show-read-report, export-coverage, or inspect-regulatory-support)"
+            "Unknown cutrun subcommand '{other}' (expected list, status, prepare, project, interpret, list-read-reports, show-read-report, export-coverage, inspect-regulatory-support, or gene-set-regulatory-support)"
         )),
     }
 }

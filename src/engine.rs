@@ -648,6 +648,8 @@ mod cutrun;
 mod feature_coordinate_formulas;
 #[path = "engine/analysis/feature_expert_ops.rs"]
 mod feature_expert_ops;
+#[path = "engine/analysis/gene_sets.rs"]
+mod gene_sets;
 #[path = "engine/io/genome_tracks.rs"]
 mod genome_tracks;
 #[path = "engine/io/import_anchors.rs"]
@@ -3088,6 +3090,79 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
+    ResolveGeneSet {
+        source: GeneSetRequest,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        genome_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        gene_group_catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        genome_catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_dir: Option<String>,
+        #[serde(default)]
+        allow_draft: bool,
+        #[serde(default)]
+        allow_deprecated: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    BuildGeneSetPromoterCohort {
+        genome_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        source: Option<GeneSetRequest>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        resolution: Option<GeneSetResolutionReport>,
+        #[serde(default = "default_promoter_window_upstream_bp")]
+        upstream_bp: usize,
+        #[serde(default = "default_promoter_window_downstream_bp")]
+        downstream_bp: usize,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        gene_group_catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        genome_catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_dir: Option<String>,
+        #[serde(default)]
+        allow_draft: bool,
+        #[serde(default)]
+        allow_deprecated: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    InspectCutRunGeneSetRegulatorySupport {
+        genome_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        source: Option<GeneSetRequest>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        resolution: Option<GeneSetResolutionReport>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        promoter_cohort: Option<GeneSetPromoterCohortReport>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        dataset_ids: Vec<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        read_report_ids: Vec<String>,
+        #[serde(default = "default_promoter_window_upstream_bp")]
+        upstream_bp: usize,
+        #[serde(default = "default_promoter_window_downstream_bp")]
+        downstream_bp: usize,
+        #[serde(default = "default_cutrun_neighbor_window_bp")]
+        neighbor_window_bp: usize,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        species_filters: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        gene_group_catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        genome_catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_dir: Option<String>,
+        #[serde(default)]
+        allow_draft: bool,
+        #[serde(default)]
+        allow_deprecated: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
     ImportIsoformPanel {
         seq_id: SeqId,
         panel_path: String,
@@ -4018,7 +4093,17 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         catalog_path: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        gene_group_catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         cache_dir: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        gene_set: Option<GeneSetRequest>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        gene_set_resolution: Option<GeneSetResolutionReport>,
+        #[serde(default)]
+        allow_draft: bool,
+        #[serde(default)]
+        allow_deprecated: bool,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
@@ -4039,7 +4124,17 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         catalog_path: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        gene_group_catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         cache_dir: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        gene_set: Option<GeneSetRequest>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        gene_set_resolution: Option<GeneSetResolutionReport>,
+        #[serde(default)]
+        allow_draft: bool,
+        #[serde(default)]
+        allow_deprecated: bool,
         path: String,
     },
     ScanTfbsHits {

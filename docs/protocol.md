@@ -413,8 +413,8 @@ instead of repeating a single-gene promoter workflow manually.
 Current shared-shell routes:
 
 ```bash
-gentle_cli shell 'genomes promoter-tfbs-summary GENOME_ID --gene QUERY[::OCCURRENCE][@TRANSCRIPT_ID][#DISPLAY_LABEL] [--gene ...|--gene-json JSON] --motif TOKEN [--motif TOKEN ...|--motifs CSV] [--upstream-bp N] [--downstream-bp N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--catalog PATH] [--cache-dir PATH] [--path FILE.json]'
-gentle_cli shell 'genomes promoter-tfbs-svg GENOME_ID --gene QUERY[::OCCURRENCE][@TRANSCRIPT_ID][#DISPLAY_LABEL] [--gene ...|--gene-json JSON] --motif TOKEN [--motif TOKEN ...|--motifs CSV] [--upstream-bp N] [--downstream-bp N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--catalog PATH] [--cache-dir PATH] OUTPUT.svg'
+gentle_cli shell 'genomes promoter-tfbs-summary GENOME_ID [--gene QUERY[::OCCURRENCE][@TRANSCRIPT_ID][#DISPLAY_LABEL] ...|--gene-json JSON|--gene-set GROUP_OR_GO|--gene-set-resolution RESOLUTION.json] --motif TOKEN [--motif TOKEN ...|--motifs CSV] [--upstream-bp N] [--downstream-bp N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--catalog PATH] [--gene-group-catalog PATH] [--cache-dir PATH] [--path FILE.json]'
+gentle_cli shell 'genomes promoter-tfbs-svg GENOME_ID [--gene QUERY[::OCCURRENCE][@TRANSCRIPT_ID][#DISPLAY_LABEL] ...|--gene-json JSON|--gene-set GROUP_OR_GO|--gene-set-resolution RESOLUTION.json] --motif TOKEN [--motif TOKEN ...|--motifs CSV] [--upstream-bp N] [--downstream-bp N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--catalog PATH] [--gene-group-catalog PATH] [--cache-dir PATH] OUTPUT.svg'
 ```
 
 First-class operation routes:
@@ -696,6 +696,49 @@ description hash, user/member counts, agent-suggested candidate members,
 unresolved candidates, warnings, and the proposed local record. It does not
 mutate trusted catalogs by default. A later import/promote step can require
 explicit review before a drafted group becomes authoritative.
+
+## Gene set analysis operands
+
+Implemented baseline:
+
+- schemas:
+  - `gentle.gene_set_resolution.v1`
+  - `gentle.gene_set_promoter_cohort.v1`
+  - `gentle.gene_set_cutrun_regulatory_support.v1`
+- engine operations:
+  - `ResolveGeneSet`
+  - `BuildGeneSetPromoterCohort`
+  - `InspectCutRunGeneSetRegulatorySupport`
+- `gene-groups resolve` answers "which catalog entry matches this token";
+  `gene-sets resolve` answers "which genes are in this analysis operand after
+  expansion, gating, deduplication, and provenance recording".
+- V1 is offline-first: GO/external mappings resolve only from local
+  `external_mappings`; no live GO download or Ensembl ortholog/paralog API call
+  is made.
+
+Current shared-shell routes:
+
+```bash
+gentle_cli shell 'gene-sets resolve [GROUP_ID|--group GROUP_ID|--members A,B|--go GO:NNNNNNN|--neighbors GENE --flank-genes N|--random-size N --seed N] [--genome GENOME_ID] [--catalog PATH] [--genome-catalog PATH] [--allow-draft] [--allow-deprecated] [--output OUTPUT.json]'
+gentle_cli shell 'gene-sets promoter-cohort GENOME_ID [--resolution RESOLUTION.json|--group GROUP_ID|--members A,B|--go GO:NNNNNNN|--neighbors GENE --flank-genes N|--random-size N --seed N] [--upstream-bp N] [--downstream-bp N] [--catalog PATH] [--genome-catalog PATH] [--output OUTPUT.json]'
+```
+
+Resolution notes:
+
+- group-level `curation_status` and member-level `status` are independent
+  gates; draft groups require `--allow-draft`, deprecated groups require
+  `--allow-deprecated`, draft members are included with a warning, excluded
+  members are skipped, and unknown member statuses are included with warnings.
+- deterministic random sets use a stable prepared-genome universe and record
+  genome id/build, gene-index source, seed, universe size, and foreground
+  exclusion count.
+- genomic neighbors are same-chromosome only and require a uniquely resolved
+  anchor.
+- duplicate collapse prefers resolved `gene_id`, then normalized symbol, and
+  keeps merge provenance auditable.
+- existing jq recipes that approximate membership with `.status // "included"`
+  may silently drop or miss draft-member warnings; the engine now reports draft
+  members explicitly in gene-set resolution warnings.
 
 ## Stateless sequence-scan contract
 
@@ -2333,7 +2376,12 @@ Current draft operations:
     `gentle.cutrun_read_report.v1`,
     `gentle.cutrun_read_reports.v1`,
     `gentle.cutrun_read_coverage_export.v1`,
-    `gentle.cutrun_regulatory_support.v1`.
+    `gentle.cutrun_regulatory_support.v1`,
+    `gentle.gene_set_cutrun_regulatory_support.v1`.
+  - `cutrun gene-set-regulatory-support` consumes a resolved gene-set promoter
+    cohort or enough local inputs to build one, scores only prepared datasets
+    and saved read reports, and keeps `evaluated` and `unevaluated` member
+    states separate so set-level fractions use evaluated members only.
 
 Microarray track projection notes:
 

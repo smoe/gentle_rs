@@ -431,6 +431,8 @@ mod tests {
             clip_negative: true,
             motifs_requested: vec!["SP1".to_string()],
             gene_queries_requested: vec![],
+            gene_set: None,
+            gene_set_resolution: None,
             returned_gene_count: 1,
             genes: vec![MultiGenePromoterTfbsGeneReport {
                 gene_query: "TERT".to_string(),

@@ -8,10 +8,11 @@
 pub mod construct_reasoning;
 pub mod dna_ladder;
 pub mod gene_groups;
+pub mod gene_sets;
 pub mod reporter;
 
 use serde::{Deserialize, Deserializer, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     error::Error,
@@ -20,34 +21,44 @@ use std::{
 };
 
 pub use construct_reasoning::{
-    AdapterCaptureProtectionMode, AdapterCaptureStyle, AdapterRestrictionCapturePlan,
-    AnnotationCandidate, AnnotationCandidateSummary, AnnotationCandidateWriteback,
-    ConstructCandidate, ConstructObjective, ConstructReasoningGraph,
-    ConstructReasoningInspectionAction, ConstructReasoningInspectionActionKind,
-    ConstructReasoningRepeatFamilyProvenance, ConstructReasoningStore, ConstructRole,
-    DecisionMethod, DesignDecisionNode, DesignEvidence, DesignFact, EditableStatus,
-    EvidenceClass, EvidenceScope, HelperConstructProfile, HostLifecycleRole, HostProfileCatalog,
-    HostProfileRecord, HostRouteStep, ProteinToDnaHandoffCandidate, ProteinToDnaHandoffCoverage,
-    ProteinToDnaHandoffRankingGoal, ProteinToDnaHandoffStrategy, ANNOTATION_CANDIDATE_SCHEMA,
-    ANNOTATION_CANDIDATE_SUMMARY_SCHEMA, ANNOTATION_CANDIDATE_WRITEBACK_SCHEMA,
-    CONSTRUCT_CANDIDATE_SCHEMA, CONSTRUCT_OBJECTIVE_SCHEMA, CONSTRUCT_REASONING_GRAPH_SCHEMA,
-    CONSTRUCT_REASONING_INSPECTION_ACTION_SCHEMA, CONSTRUCT_REASONING_STORE_SCHEMA,
-    DESIGN_DECISION_NODE_SCHEMA, DESIGN_EVIDENCE_SCHEMA, DESIGN_FACT_SCHEMA,
-    HOST_PROFILE_CATALOG_SCHEMA,
+    ANNOTATION_CANDIDATE_SCHEMA, ANNOTATION_CANDIDATE_SUMMARY_SCHEMA,
+    ANNOTATION_CANDIDATE_WRITEBACK_SCHEMA, AdapterCaptureProtectionMode, AdapterCaptureStyle,
+    AdapterRestrictionCapturePlan, AnnotationCandidate, AnnotationCandidateSummary,
+    AnnotationCandidateWriteback, CONSTRUCT_CANDIDATE_SCHEMA, CONSTRUCT_OBJECTIVE_SCHEMA,
+    CONSTRUCT_REASONING_GRAPH_SCHEMA, CONSTRUCT_REASONING_INSPECTION_ACTION_SCHEMA,
+    CONSTRUCT_REASONING_STORE_SCHEMA, ConstructCandidate, ConstructObjective,
+    ConstructReasoningGraph, ConstructReasoningInspectionAction,
+    ConstructReasoningInspectionActionKind, ConstructReasoningRepeatFamilyProvenance,
+    ConstructReasoningStore, ConstructRole, DESIGN_DECISION_NODE_SCHEMA, DESIGN_EVIDENCE_SCHEMA,
+    DESIGN_FACT_SCHEMA, DecisionMethod, DesignDecisionNode, DesignEvidence, DesignFact,
+    EditableStatus, EvidenceClass, EvidenceScope, HOST_PROFILE_CATALOG_SCHEMA,
+    HelperConstructProfile, HostLifecycleRole, HostProfileCatalog, HostProfileRecord,
+    HostRouteStep, ProteinToDnaHandoffCandidate, ProteinToDnaHandoffCoverage,
+    ProteinToDnaHandoffRankingGoal, ProteinToDnaHandoffStrategy,
 };
 pub use dna_ladder::{
-    default_dna_ladders, default_rna_ladders, DNALadder, DNALadderBand, DNALadders, Ladder,
-    LadderBand, LadderCatalog, LadderMolecule, RNALadder, RNALadderBand, RNALadders,
+    DNALadder, DNALadderBand, DNALadders, Ladder, LadderBand, LadderCatalog, LadderMolecule,
+    RNALadder, RNALadderBand, RNALadders, default_dna_ladders, default_rna_ladders,
 };
 pub use gene_groups::{
+    GENE_GROUP_CATALOG_SCHEMA, GENE_GROUP_DOCTOR_REPORT_SCHEMA, GENE_GROUP_DRAFT_REPORT_SCHEMA,
+    GENE_GROUP_LIST_REPORT_SCHEMA, GENE_GROUP_RESOLVE_REPORT_SCHEMA, GENE_GROUP_SHOW_REPORT_SCHEMA,
     GeneGroupCatalog, GeneGroupCatalogSourceReport, GeneGroupDoctorReport, GeneGroupDraftReport,
     GeneGroupExternalMapping, GeneGroupExternalResource, GeneGroupListEntry, GeneGroupListReport,
     GeneGroupMember, GeneGroupRecord, GeneGroupResolveReport, GeneGroupShowReport,
-    GENE_GROUP_CATALOG_SCHEMA, GENE_GROUP_DOCTOR_REPORT_SCHEMA, GENE_GROUP_DRAFT_REPORT_SCHEMA,
-    GENE_GROUP_LIST_REPORT_SCHEMA, GENE_GROUP_RESOLVE_REPORT_SCHEMA, GENE_GROUP_SHOW_REPORT_SCHEMA,
+};
+pub use gene_sets::{
+    GENE_SET_CUTRUN_REGULATORY_SUPPORT_SCHEMA, GENE_SET_PROMOTER_COHORT_SCHEMA,
+    GENE_SET_RESOLUTION_SCHEMA, GeneSetCutRunEvaluationState, GeneSetCutRunMemberSupport,
+    GeneSetCutRunRegulatorySupportReport, GeneSetCutRunSupportAggregate,
+    GeneSetPromoterCohortReport, GeneSetPromoterWindow, GeneSetProvenanceRow,
+    GeneSetRandomProvenance, GeneSetRequest, GeneSetResolutionReport, GeneSetResolvedMember,
+    GeneSetUnresolvedMember,
 };
 pub use reporter::{
-    PortBindingStatus, ReporterAnnotatedRecord, ReporterBackboneResolution,
+    PortBindingStatus, REPORTER_CATALOG_REPORT_SCHEMA, REPORTER_CATALOG_SCHEMA,
+    REPORTER_CONSTRUCT_HANDOFF_SCHEMA, REPORTER_CORPUS_EXPORT_SCHEMA,
+    REPORTER_RECOMMENDATION_SCHEMA, ReporterAnnotatedRecord, ReporterBackboneResolution,
     ReporterBackboneResolutionStatus, ReporterCatalog, ReporterCatalogReport,
     ReporterComputedAnnotation, ReporterConstraints, ReporterConstructHandoffCommand,
     ReporterConstructHandoffPlan, ReporterConstructHandoffProvenance, ReporterConstructPortBinding,
@@ -55,8 +66,6 @@ pub use reporter::{
     ReporterCorpusExportFormat, ReporterPreferenceWeights, ReporterQuarantinedRecord,
     ReporterRecommendation, ReporterRecommendationResult, ReporterRecord,
     ReporterRejectedCandidate, ReporterSourceRef, ReporterSpectralProfile,
-    REPORTER_CATALOG_REPORT_SCHEMA, REPORTER_CATALOG_SCHEMA, REPORTER_CONSTRUCT_HANDOFF_SCHEMA,
-    REPORTER_CORPUS_EXPORT_SCHEMA, REPORTER_RECOMMENDATION_SCHEMA,
 };
 
 /// Stable identifier for one sequence entry stored in project state.

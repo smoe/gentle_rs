@@ -15460,6 +15460,52 @@ impl GentleEngine {
         Ok(())
     }
 
+    fn expand_gene_set_for_promoter_tfbs(
+        &self,
+        genome_id: &str,
+        gene_set: Option<GeneSetRequest>,
+        gene_set_resolution: Option<GeneSetResolutionReport>,
+        gene_group_catalog_path: Option<&str>,
+        genome_catalog_path: Option<&str>,
+        cache_dir: Option<&str>,
+        allow_draft: bool,
+        allow_deprecated: bool,
+    ) -> Result<(Vec<PromoterTfbsGeneQuery>, Option<GeneSetResolutionReport>), EngineError> {
+        let resolution = match (gene_set_resolution, gene_set) {
+            (Some(resolution), _) => Some(resolution),
+            (None, Some(source)) => Some(self.resolve_gene_set(
+                source,
+                Some(genome_id),
+                gene_group_catalog_path,
+                genome_catalog_path,
+                cache_dir,
+                allow_draft,
+                allow_deprecated,
+            )?),
+            (None, None) => None,
+        };
+        let genes = resolution
+            .as_ref()
+            .map(|report| {
+                report
+                    .resolved_members
+                    .iter()
+                    .map(|member| PromoterTfbsGeneQuery {
+                        gene_query: member
+                            .gene_id
+                            .clone()
+                            .filter(|value| !value.trim().is_empty())
+                            .unwrap_or_else(|| member.symbol.clone()),
+                        occurrence: None,
+                        transcript_id: None,
+                        display_label: Some(member.symbol.clone()),
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        Ok((genes, resolution))
+    }
+
     #[inline(never)]
     fn apply_feature_scan_operation(
         &mut self,
@@ -15785,12 +15831,30 @@ impl GentleEngine {
                 score_kind,
                 clip_negative,
                 catalog_path,
+                gene_group_catalog_path,
                 cache_dir,
+                gene_set,
+                gene_set_resolution,
+                allow_draft,
+                allow_deprecated,
                 path,
             } => {
+                let (mut expanded_genes, mut resolved_gene_set) = self
+                    .expand_gene_set_for_promoter_tfbs(
+                        &genome_id,
+                        gene_set.clone(),
+                        gene_set_resolution.clone(),
+                        gene_group_catalog_path.as_deref(),
+                        catalog_path.as_deref(),
+                        cache_dir.as_deref(),
+                        allow_draft,
+                        allow_deprecated,
+                    )?;
+                let mut effective_genes = genes.clone();
+                effective_genes.append(&mut expanded_genes);
                 let mut report = self.summarize_multi_gene_promoter_tfbs(
                     &genome_id,
-                    &genes,
+                    &effective_genes,
                     &motifs,
                     upstream_bp,
                     downstream_bp,
@@ -15801,6 +15865,13 @@ impl GentleEngine {
                 )?;
                 report.op_id = Some(result.op_id.clone());
                 report.run_id = Some(run_id.to_string());
+                if let Some(resolution) = resolved_gene_set.as_mut() {
+                    resolution.op_id = Some(result.op_id.clone());
+                    resolution.run_id = Some(run_id.to_string());
+                    report.warnings.extend(resolution.warnings.clone());
+                }
+                report.gene_set = gene_set.clone();
+                report.gene_set_resolution = resolved_gene_set;
                 if let Some(path) = path.as_deref() {
                     self.write_pretty_json_file(&report, path, "multi-gene promoter TFBS report")?;
                     result.messages.push(format!(
@@ -16279,6 +16350,9 @@ impl GentleEngine {
             cutrun_read_report_summaries: None,
             cutrun_read_coverage_export: None,
             cutrun_regulatory_support: None,
+            gene_set_resolution: None,
+            gene_set_promoter_cohort: None,
+            gene_set_cutrun_regulatory_support: None,
             read_acquisition_report: None,
             cutrun_dataset_projection: None,
             microarray_projection: None,
@@ -16685,12 +16759,30 @@ impl GentleEngine {
                     score_kind,
                     clip_negative,
                     catalog_path,
+                    gene_group_catalog_path,
                     cache_dir,
+                    gene_set,
+                    gene_set_resolution,
+                    allow_draft,
+                    allow_deprecated,
                     path,
                 } => {
+                    let (mut expanded_genes, mut resolved_gene_set) = self
+                        .expand_gene_set_for_promoter_tfbs(
+                            &genome_id,
+                            gene_set.clone(),
+                            gene_set_resolution.clone(),
+                            gene_group_catalog_path.as_deref(),
+                            catalog_path.as_deref(),
+                            cache_dir.as_deref(),
+                            allow_draft,
+                            allow_deprecated,
+                        )?;
+                    let mut effective_genes = genes.clone();
+                    effective_genes.append(&mut expanded_genes);
                     let mut report = self.summarize_multi_gene_promoter_tfbs(
                         &genome_id,
-                        &genes,
+                        &effective_genes,
                         &motifs,
                         upstream_bp,
                         downstream_bp,
@@ -16701,6 +16793,13 @@ impl GentleEngine {
                     )?;
                     report.op_id = Some(result.op_id.clone());
                     report.run_id = Some(run_id.to_string());
+                    if let Some(resolution) = resolved_gene_set.as_mut() {
+                        resolution.op_id = Some(result.op_id.clone());
+                        resolution.run_id = Some(run_id.to_string());
+                        report.warnings.extend(resolution.warnings.clone());
+                    }
+                    report.gene_set = gene_set.clone();
+                    report.gene_set_resolution = resolved_gene_set;
                     let svg =
                         crate::render_multi_gene_promoter_tfbs::render_multi_gene_promoter_tfbs_svg(
                             &report,
@@ -19437,15 +19536,14 @@ impl GentleEngine {
                         .map(str::trim)
                         .filter(|value| !value.is_empty())
                     {
-                        let text = serde_json::to_string_pretty(&report).map_err(|e| {
-                            EngineError {
+                        let text =
+                            serde_json::to_string_pretty(&report).map_err(|e| EngineError {
                                 code: ErrorCode::InvalidInput,
                                 message: format!(
                                     "Could not serialize probe-region interpretation report: {e}"
                                 ),
                                 cause_chain: vec![],
-                            }
-                        })?;
+                            })?;
                         std::fs::write(path, text).map_err(|e| EngineError {
                             code: ErrorCode::Io,
                             message: format!(
@@ -19718,6 +19816,178 @@ impl GentleEngine {
                         report.motif_absent_supported_windows.len()
                     ));
                     result.cutrun_regulatory_support = Some(report);
+                }
+                Operation::ResolveGeneSet {
+                    source,
+                    genome_id,
+                    gene_group_catalog_path,
+                    genome_catalog_path,
+                    cache_dir,
+                    allow_draft,
+                    allow_deprecated,
+                    path,
+                } => {
+                    let mut report = self.resolve_gene_set(
+                        source,
+                        genome_id.as_deref(),
+                        gene_group_catalog_path.as_deref(),
+                        genome_catalog_path.as_deref(),
+                        cache_dir.as_deref(),
+                        allow_draft,
+                        allow_deprecated,
+                    )?;
+                    report.op_id = Some(result.op_id.clone());
+                    report.run_id = Some(run_id.to_string());
+                    if let Some(path) = path.as_deref() {
+                        self.write_pretty_json_file(&report, path, "gene-set resolution report")?;
+                        result
+                            .messages
+                            .push(format!("Wrote gene-set resolution report to '{}'", path));
+                    }
+                    result.warnings.extend(report.warnings.clone());
+                    result.messages.push(format!(
+                        "Resolved gene set from {}: {} member(s), {} unresolved",
+                        report.request.source_kind_label(),
+                        report.resolved_member_count,
+                        report.unresolved_member_count
+                    ));
+                    result.gene_set_resolution = Some(report);
+                }
+                Operation::BuildGeneSetPromoterCohort {
+                    genome_id,
+                    source,
+                    resolution,
+                    upstream_bp,
+                    downstream_bp,
+                    gene_group_catalog_path,
+                    genome_catalog_path,
+                    cache_dir,
+                    allow_draft,
+                    allow_deprecated,
+                    path,
+                } => {
+                    let resolution = match resolution {
+                        Some(report) => report,
+                        None => {
+                            let source = source.ok_or_else(|| EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: "BuildGeneSetPromoterCohort requires source or resolution"
+                                    .to_string(),
+                                cause_chain: vec![],
+                            })?;
+                            self.resolve_gene_set(
+                                source,
+                                Some(&genome_id),
+                                gene_group_catalog_path.as_deref(),
+                                genome_catalog_path.as_deref(),
+                                cache_dir.as_deref(),
+                                allow_draft,
+                                allow_deprecated,
+                            )?
+                        }
+                    };
+                    let mut report = self.build_gene_set_promoter_cohort(
+                        &genome_id,
+                        resolution,
+                        upstream_bp,
+                        downstream_bp,
+                        genome_catalog_path.as_deref(),
+                        cache_dir.as_deref(),
+                    )?;
+                    report.op_id = Some(result.op_id.clone());
+                    report.run_id = Some(run_id.to_string());
+                    if let Some(path) = path.as_deref() {
+                        self.write_pretty_json_file(&report, path, "gene-set promoter cohort")?;
+                        result.messages.push(format!(
+                            "Wrote gene-set promoter cohort for '{}' to '{}'",
+                            genome_id, path
+                        ));
+                    }
+                    result.warnings.extend(report.warnings.clone());
+                    result.messages.push(format!(
+                        "Built gene-set promoter cohort for '{}' with {} window(s)",
+                        genome_id, report.returned_window_count
+                    ));
+                    result.gene_set_promoter_cohort = Some(report);
+                }
+                Operation::InspectCutRunGeneSetRegulatorySupport {
+                    genome_id,
+                    source,
+                    resolution,
+                    promoter_cohort,
+                    dataset_ids,
+                    read_report_ids,
+                    upstream_bp,
+                    downstream_bp,
+                    neighbor_window_bp,
+                    species_filters,
+                    gene_group_catalog_path,
+                    genome_catalog_path,
+                    cache_dir,
+                    allow_draft,
+                    allow_deprecated,
+                    path,
+                } => {
+                    let promoter_cohort = match promoter_cohort {
+                        Some(report) => report,
+                        None => {
+                            let resolution = match resolution {
+                                Some(report) => report,
+                                None => {
+                                    let source = source.ok_or_else(|| EngineError {
+                                        code: ErrorCode::InvalidInput,
+                                        message:
+                                            "InspectCutRunGeneSetRegulatorySupport requires source, resolution, or promoter_cohort"
+                                                .to_string(),
+                                        cause_chain: vec![],
+                                    })?;
+                                    self.resolve_gene_set(
+                                        source,
+                                        Some(&genome_id),
+                                        gene_group_catalog_path.as_deref(),
+                                        genome_catalog_path.as_deref(),
+                                        cache_dir.as_deref(),
+                                        allow_draft,
+                                        allow_deprecated,
+                                    )?
+                                }
+                            };
+                            self.build_gene_set_promoter_cohort(
+                                &genome_id,
+                                resolution,
+                                upstream_bp,
+                                downstream_bp,
+                                genome_catalog_path.as_deref(),
+                                cache_dir.as_deref(),
+                            )?
+                        }
+                    };
+                    let mut report = self.inspect_cutrun_gene_set_regulatory_support(
+                        promoter_cohort,
+                        &dataset_ids,
+                        &read_report_ids,
+                        neighbor_window_bp,
+                        &species_filters,
+                    )?;
+                    report.op_id = Some(result.op_id.clone());
+                    report.run_id = Some(run_id.to_string());
+                    if let Some(path) = path.as_deref() {
+                        self.write_pretty_json_file(
+                            &report,
+                            path,
+                            "gene-set CUT&RUN regulatory-support report",
+                        )?;
+                        result.messages.push(format!(
+                            "Wrote gene-set CUT&RUN regulatory-support report to '{}'",
+                            path
+                        ));
+                    }
+                    result.warnings.extend(report.warnings.clone());
+                    result.messages.push(format!(
+                        "CUT&RUN gene-set regulatory support evaluated {} of {} member(s)",
+                        report.aggregate.evaluated_member_count, report.aggregate.member_count
+                    ));
+                    result.gene_set_cutrun_regulatory_support = Some(report);
                 }
                 Operation::ImportIsoformPanel {
                     seq_id,

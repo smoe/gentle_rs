@@ -49,7 +49,12 @@ pub use gentle_protocol::{
     EXON_SKIP_MATERIALIZATION_SCHEMA, EXON_SKIP_SELECTION_PLAN_SCHEMA, EditableStatus, EngineError,
     ErrorCode, EvidenceClass, EvidenceScope, ExonSkipCandidateExon, ExonSkipMaterializationReport,
     ExonSkipReturnKind, ExonSkipReturnPayload, ExonSkipSelectionCriterion, ExonSkipSelectionPlan,
-    FeatureBedCoordinateMode, FlexibilityModel, GenomeAnchorSide, GenomeAnnotationScope,
+    FeatureBedCoordinateMode, FlexibilityModel, GENE_SET_CUTRUN_REGULATORY_SUPPORT_SCHEMA,
+    GENE_SET_PROMOTER_COHORT_SCHEMA, GENE_SET_RESOLUTION_SCHEMA, GeneSetCutRunEvaluationState,
+    GeneSetCutRunMemberSupport, GeneSetCutRunRegulatorySupportReport,
+    GeneSetCutRunSupportAggregate, GeneSetPromoterCohortReport, GeneSetPromoterWindow,
+    GeneSetProvenanceRow, GeneSetRandomProvenance, GeneSetRequest, GeneSetResolutionReport,
+    GeneSetResolvedMember, GeneSetUnresolvedMember, GenomeAnchorSide, GenomeAnnotationScope,
     GenomeGeneExtractMode, GenomeTrackImportProgress, GenomeTrackSource, GenomeTrackSubscription,
     HOST_PROFILE_CATALOG_SCHEMA, HelperConstructProfile, HostLifecycleRole, HostProfileCatalog,
     HostProfileRecord, HostRouteStep, PairwiseAlignmentMode, PortBindingStatus,
@@ -1141,6 +1146,10 @@ pub struct MultiGenePromoterTfbsReport {
     pub motifs_requested: Vec<String>,
     #[serde(default)]
     pub gene_queries_requested: Vec<PromoterTfbsGeneQuery>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_set: Option<GeneSetRequest>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_set_resolution: Option<GeneSetResolutionReport>,
     pub returned_gene_count: usize,
     #[serde(default)]
     pub genes: Vec<MultiGenePromoterTfbsGeneReport>,
@@ -3688,6 +3697,12 @@ pub struct OpResult {
     pub cutrun_read_coverage_export: Option<CutRunReadCoverageExport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cutrun_regulatory_support: Option<CutRunRegulatorySupportReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_set_resolution: Option<GeneSetResolutionReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_set_promoter_cohort: Option<GeneSetPromoterCohortReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_set_cutrun_regulatory_support: Option<GeneSetCutRunRegulatorySupportReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub read_acquisition_report: Option<ReadAcquisitionReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

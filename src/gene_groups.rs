@@ -67,7 +67,7 @@ pub fn default_gene_group_catalog_discovery_label() -> &'static str {
     "default gene-group catalog discovery"
 }
 
-fn normalize_lookup(raw: &str) -> String {
+pub(crate) fn normalize_gene_group_lookup(raw: &str) -> String {
     raw.chars()
         .map(|ch| {
             if ch.is_ascii_alphanumeric() {
@@ -80,6 +80,10 @@ fn normalize_lookup(raw: &str) -> String {
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+fn normalize_lookup(raw: &str) -> String {
+    normalize_gene_group_lookup(raw)
 }
 
 fn slugify_identifier(raw: &str) -> String {
@@ -253,6 +257,10 @@ fn discovered_gene_group_catalog_sources() -> Vec<GeneGroupCatalogSourceCandidat
 }
 
 impl GeneGroupCatalogIndex {
+    pub fn catalog_label(&self) -> &str {
+        &self.catalog_label
+    }
+
     pub fn from_explicit_path(path: &str) -> Result<Self, String> {
         Self::from_sources(
             &[GeneGroupCatalogSourceCandidate {
@@ -425,6 +433,31 @@ impl GeneGroupCatalogIndex {
             .groups
             .iter()
             .filter(|row| group_lookup_keys(&row.record).contains(&normalized))
+            .cloned()
+            .collect::<Vec<_>>();
+        rows.sort_by(|a, b| a.record.id.cmp(&b.record.id));
+        rows
+    }
+
+    pub fn groups_by_external_mapping(
+        &self,
+        namespace: &str,
+        id: &str,
+    ) -> Vec<LoadedGeneGroupRecord> {
+        let namespace = namespace.trim();
+        let id = id.trim();
+        if namespace.is_empty() || id.is_empty() {
+            return vec![];
+        }
+        let mut rows = self
+            .groups
+            .iter()
+            .filter(|row| {
+                row.record.external_mappings.iter().any(|mapping| {
+                    mapping.namespace.eq_ignore_ascii_case(namespace)
+                        && mapping.id.eq_ignore_ascii_case(id)
+                })
+            })
             .cloned()
             .collect::<Vec<_>>();
         rows.sort_by(|a, b| a.record.id.cmp(&b.record.id));
