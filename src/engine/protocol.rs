@@ -6986,6 +6986,10 @@ pub struct ProteinExpressionHandoffReport {
     pub status: String,
     pub biological_intent: String,
     pub product_definition: ProteinExpressionProductDefinition,
+    pub product_readiness: ProteinExpressionProductReadiness,
+    pub sequence_context: Option<ProteinExpressionSequenceContext>,
+    pub cds_assessment: ProteinExpressionCdsAssessment,
+    pub tag_assessment: ProteinExpressionTagAssessment,
     pub host_chassis_candidates: Vec<ProteinExpressionHostChassisCandidate>,
     pub vector_route_candidates: Vec<ProteinExpressionVectorRouteCandidate>,
     pub missing_questions: Vec<PlanningCloningMissingQuestion>,
@@ -7011,60 +7015,84 @@ pub struct ProteinExpressionProductDefinition {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(default, deny_unknown_fields)]
-/// Sequence-derived product-readiness summary for a protein-expression handoff.
+/// Readiness summary for deciding whether a product can enter expression review.
 pub struct ProteinExpressionProductReadiness {
     pub status: String,
-    pub sequence_context: Option<ProteinExpressionSequenceContext>,
-    pub cds_assessment: Option<ProteinExpressionCdsAssessment>,
-    pub tag_assessment: Option<ProteinExpressionTagAssessment>,
-    pub missing_question_ids: Vec<String>,
-    pub warnings: Vec<String>,
-    pub notes: Vec<String>,
+    pub usable_sequence_context: bool,
+    pub usable_cds_context: bool,
+    pub translation_possible: bool,
+    pub review_gate: String,
+    pub blockers: Vec<String>,
+    pub review_notes: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(default, deny_unknown_fields)]
-/// Stored-sequence summary relevant to protein-expression planning.
+/// Sequence-level context consumed by a read-only protein-expression handoff.
 pub struct ProteinExpressionSequenceContext {
-    pub sequence_kind: String,
+    pub seq_id: Option<String>,
+    pub sequence_name: Option<String>,
     pub molecule_type: Option<String>,
-    pub length_bp: Option<usize>,
-    pub length_aa: Option<usize>,
-    pub gc_fraction: Option<f64>,
+    pub nucleotide_length: Option<usize>,
+    pub protein_length_aa: Option<usize>,
+    pub feature_count: usize,
+    pub gc_percent: Option<f64>,
+    pub gc_window_bp: Option<usize>,
+    pub gc_min_percent: Option<f64>,
+    pub gc_max_percent: Option<f64>,
     pub ambiguous_base_count: usize,
-    pub cds_feature_count: usize,
-    pub orf_count: usize,
-    pub longest_orf_length_aa: Option<usize>,
+    pub ambiguous_bases: Vec<String>,
+    pub annotation_summaries: Vec<ProteinExpressionFeatureSummary>,
+    pub notes: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(default, deny_unknown_fields)]
-/// CDS/ORF sanity summary for read-only protein-expression handoff planning.
+/// Compact annotation row relevant to protein-expression handoff review.
+pub struct ProteinExpressionFeatureSummary {
+    pub feature_id: usize,
+    pub kind: String,
+    pub label: Option<String>,
+    pub start_0based: Option<usize>,
+    pub end_0based_exclusive: Option<usize>,
+    pub strand: Option<String>,
+    pub length_nt: Option<usize>,
+    pub selected_qualifiers: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Read-only CDS/ORF sanity assessment for a protein-expression product.
 pub struct ProteinExpressionCdsAssessment {
-    pub status: String,
-    pub source: String,
-    pub cds_feature_count: usize,
-    pub divisible_by_three: Option<bool>,
-    pub has_start_codon: Option<bool>,
-    pub has_terminal_stop_codon: Option<bool>,
-    pub internal_stop_codon_count: Option<usize>,
-    pub inferred_protein_length_aa: Option<usize>,
-    pub selected_orf_frame: Option<i32>,
-    pub selected_orf_start_0based: Option<usize>,
-    pub selected_orf_end_0based_exclusive: Option<usize>,
-    pub selected_orf_length_aa: Option<usize>,
+    pub context_source: String,
+    pub plausible_cds: bool,
+    pub translation_possible: bool,
+    pub nucleotide_length: Option<usize>,
+    pub protein_length_aa: Option<usize>,
+    pub codon_count: Option<usize>,
+    pub translation_table: Option<usize>,
+    pub start_codon: Option<String>,
+    pub stop_codon: Option<String>,
+    pub starts_with_atg: Option<bool>,
+    pub has_terminal_stop: Option<bool>,
+    pub has_internal_stops: bool,
+    pub internal_stop_count: usize,
+    pub ambiguous_codon_count: usize,
+    pub length_multiple_of_three: Option<bool>,
+    pub annotated_cds_features: Vec<ProteinExpressionFeatureSummary>,
     pub warnings: Vec<String>,
-    pub notes: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(default, deny_unknown_fields)]
-/// Tag/readout hints for a protein-expression handoff.
+/// Read-only tag/signalling annotation context for protein-expression review.
 pub struct ProteinExpressionTagAssessment {
-    pub status: String,
-    pub detected_tag_labels: Vec<String>,
-    pub missing_question_ids: Vec<String>,
-    pub notes: Vec<String>,
+    pub annotated_tag_count: usize,
+    pub annotated_signal_peptide_count: usize,
+    pub annotated_tags: Vec<ProteinExpressionFeatureSummary>,
+    pub tag_policy_known: bool,
+    pub missing_inputs: Vec<String>,
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]

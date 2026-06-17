@@ -4479,18 +4479,28 @@ Planning meta-layer commands (`gentle_cli planning ...` or `gentle_cli shell 'pl
 - `planning protein-expression-handoff [--seq-id SEQ_ID] [--objective JSON_OR_@FILE] [--profile-scope effective] [--format json|text]`
   - Returns a read-only protein-expression planning handoff for underspecified
     requests such as "give me the maximal amount of protein."
-  - Emits `product_definition`, ranked `host_chassis_candidates[]`, ranked
-    `vector_route_candidates[]`, explicit `missing_questions[]`, a GeneArt
-    protein-expression `service_handoff_candidates[]` preflight scaffold, and
-    `suggested_next_actions[]` including a review-gated
+  - Emits `product_definition`, `product_readiness`, `sequence_context`,
+    `cds_assessment`, `tag_assessment`, ranked `host_chassis_candidates[]`,
+    ranked `vector_route_candidates[]`, explicit `missing_questions[]`, a
+    GeneArt protein-expression `service_handoff_candidates[]` preflight
+    scaffold, and `suggested_next_actions[]` including a review-gated
     `services project-quote @...` packet-preparation step.
-  - The route never designs, optimizes, orders, or mutates constructs. If
-    `--seq-id` is supplied and resolves to a stored sequence, V1 adds
-    `product_definition.readiness` with sequence kind, GC/ambiguity counts,
-    CDS annotation count, longest ORF summary, and start/stop/internal-stop
-    sanity for the whole sequence. Human review is still required for exact
-    CDS boundaries, tags, chassis, folding, toxicity, yield metric, and
-    endpoint.
+  - If `--seq-id` is supplied, the route now performs read-only product-context
+    analysis: annotated CDS features are summarized first, whole-sequence CDS
+    sanity is used only as an explicit fallback, and the report records
+    nucleotide/protein length, GC percent/range, ambiguous bases,
+    translation possibility, start/stop sanity, internal stops, and annotated
+    tag/signal context.
+  - If no usable CDS/protein context is found, `missing_questions[]` asks for
+    coding sequence, ORF, CDS annotation, or target-protein boundaries. If a
+    product is inferable, the questions shift toward total vs soluble/active/
+    purified/secreted yield, purification endpoint, tag preference,
+    host/chassis, toxicity/induction, PTMs/cofactors, localization/secretion,
+    scale, and delivery endpoint.
+  - The route never designs, optimizes, orders, mutates constructs, queries
+    live providers, or promises wet-lab yield. GUI exposure for this richer
+    handoff remains a future Synthetic Biology inspector slice rather than a
+    new dashboard in the CLI contract.
 - `planning profile show [--scope global|project_override|confirmed_agent_overlay|effective]`
   - Shows one profile scope or merged effective profile.
 - `planning profile set JSON_OR_@FILE [--scope global|project_override|confirmed_agent_overlay]`

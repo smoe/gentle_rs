@@ -28,7 +28,7 @@ use crate::{
     agent_transport::{
         agent_system_availability, discover_models_for_agent_system, load_agent_system_catalog,
     },
-    amino_acids::AminoAcids,
+    amino_acids::{STOP_CODON, UNKNOWN_CODON},
     attract_motifs,
     dna_ladder::LadderMolecule,
     dna_sequence::DNAsequence,
@@ -65,7 +65,8 @@ use crate::{
         PrimerDesignPairConstraint, PrimerDesignReport, PrimerDesignSideConstraint,
         PrimerSpecificityPolicy, ProbeRegionRequest, ProjectState, PromoterArtifactManifestEntry,
         PromoterCohortKind, PromoterExpressionEvidenceInput, PromoterTfbsGeneQuery,
-        PromoterWindowCollapseMode, ProteinExpressionCdsAssessment, ProteinExpressionHandoffReport,
+        PromoterWindowCollapseMode, ProteinExpressionCdsAssessment,
+        ProteinExpressionFeatureSummary, ProteinExpressionHandoffReport,
         ProteinExpressionHostChassisCandidate, ProteinExpressionProductDefinition,
         ProteinExpressionProductReadiness, ProteinExpressionSequenceContext,
         ProteinExpressionServiceHandoffCandidate, ProteinExpressionTagAssessment,
@@ -98,7 +99,7 @@ use crate::{
     },
     enzymes::active_restriction_enzymes,
     enzymes::is_type_iis_capable_enzyme_name,
-    feature_location::collect_location_ranges_usize,
+    feature_location::{collect_location_ranges_usize, feature_is_reverse},
     gene_groups,
     genomes::{
         GenomeBlastReport, GenomeCatalog, GenomeCatalogListEntry, GenomeGeneRecord,
@@ -108,7 +109,6 @@ use crate::{
     },
     gibson_planning::{GIBSON_ASSEMBLY_PREVIEW_SCHEMA, GibsonAssemblyPlan},
     mirna::{self, MirnaRegionClass, MirnaSeedClass, MirnaTargetScanRequest},
-    open_reading_frame::OpenReadingFrame,
     protocol_cartoon::{ProtocolCartoonKind, protocol_cartoon_catalog_rows},
     publication_resources, resource_status, resource_sync, service_readiness,
     shell_docs::{
@@ -13907,6 +13907,761 @@ fn protein_expression_max_yield_missing_questions() -> Vec<PlanningCloningMissin
     ]
 }
 
+#[derive(Debug, Clone, Default)]
+struct ProteinExpressionSequenceAnalysis {
+    sequence_context: Option<ProteinExpressionSequenceContext>,
+    cds_assessment: ProteinExpressionCdsAssessment,
+    tag_assessment: ProteinExpressionTagAssessment,
+    product_readiness: ProteinExpressionProductReadiness,
+}
+
+fn protein_expression_feature_label(feature: &gb_io::seq::Feature) -> Option<String> {
+    for key in [
+        "label",
+        "gene",
+        "locus_tag",
+        "product",
+        "protein_id",
+        "note",
+    ] {
+        if let Some(value) = feature
+            .qualifier_values(key)
+            .map(str::trim)
+            .find(|value| !value.is_empty())
+        {
+            return Some(value.to_string());
+        }
+    }
+    None
+}
+
+fn protein_expression_feature_qualifier_text(
+    feature: &gb_io::seq::Feature,
+    key: &str,
+) -> Option<String> {
+    feature
+        .qualifier_values(key)
+        .map(str::trim)
+        .find(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+fn protein_expression_selected_qualifiers(feature: &gb_io::seq::Feature) -> Vec<String> {
+    let selected_keys = [
+        "label",
+        "gene",
+        "locus_tag",
+        "product",
+        "protein_id",
+        "note",
+        "tag",
+        "codon_start",
+        "transl_table",
+        "translation_table",
+        "translation",
+    ];
+    let mut rows = vec![];
+    for (key, value) in &feature.qualifiers {
+        let key_text = key.to_string();
+        if !selected_keys
+            .iter()
+            .any(|selected| key_text.eq_ignore_ascii_case(selected))
+        {
+            continue;
+        }
+        let value_text = value
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("true");
+        let clipped = if value_text.chars().count() > 96 {
+            format!("{}...", value_text.chars().take(96).collect::<String>())
+        } else {
+            value_text.to_string()
+        };
+        rows.push(format!("{key_text}={clipped}"));
+        if rows.len() >= 8 {
+            break;
+        }
+    }
+    rows
+}
+
+fn protein_expression_feature_summary(
+    feature_id: usize,
+    feature: &gb_io::seq::Feature,
+) -> ProteinExpressionFeatureSummary {
+    let mut ranges = Vec::new();
+    collect_location_ranges_usize(&feature.location, &mut ranges);
+    let start_0based = ranges.iter().map(|(start, _)| *start).min();
+    let end_0based_exclusive = ranges.iter().map(|(_, end)| *end).max();
+    let length_nt = ranges
+        .iter()
+        .map(|(start, end)| end.saturating_sub(*start))
+        .sum::<usize>();
+    ProteinExpressionFeatureSummary {
+        feature_id,
+        kind: feature.kind.to_string(),
+        label: protein_expression_feature_label(feature),
+        start_0based,
+        end_0based_exclusive,
+        strand: Some(
+            if feature_is_reverse(feature) {
+                "-"
+            } else {
+                "+"
+            }
+            .to_string(),
+        ),
+        length_nt: (length_nt > 0).then_some(length_nt),
+        selected_qualifiers: protein_expression_selected_qualifiers(feature),
+    }
+}
+
+fn protein_expression_feature_kind_upper(feature: &gb_io::seq::Feature) -> String {
+    feature.kind.to_string().to_ascii_uppercase()
+}
+
+fn protein_expression_feature_is_cds(feature: &gb_io::seq::Feature) -> bool {
+    protein_expression_feature_kind_upper(feature) == "CDS"
+}
+
+fn protein_expression_feature_is_protein_context(feature: &gb_io::seq::Feature) -> bool {
+    let kind = protein_expression_feature_kind_upper(feature);
+    if matches!(
+        kind.as_str(),
+        "CDS" | "MAT_PEPTIDE" | "SIG_PEPTIDE" | "SIGNAL_PEPTIDE" | "PROPEP" | "PROTEIN"
+    ) {
+        return true;
+    }
+    ["product", "protein_id", "translation"]
+        .iter()
+        .any(|key| feature.qualifier_values(key).next().is_some())
+}
+
+fn protein_expression_feature_text_hints(feature: &gb_io::seq::Feature) -> String {
+    let mut parts = vec![feature.kind.to_string()];
+    for key in ["label", "product", "note", "tag", "function"] {
+        parts.extend(feature.qualifier_values(key).map(str::to_string));
+    }
+    parts.join(" ").to_ascii_lowercase()
+}
+
+fn protein_expression_feature_is_tag_context(feature: &gb_io::seq::Feature) -> bool {
+    let kind = protein_expression_feature_kind_upper(feature);
+    if matches!(kind.as_str(), "SIG_PEPTIDE" | "SIGNAL_PEPTIDE") || kind.contains("TAG") {
+        return true;
+    }
+    let text = protein_expression_feature_text_hints(feature);
+    [
+        "tag",
+        "6xhis",
+        "his-tag",
+        "histidine",
+        "strep",
+        "flag",
+        "gst",
+        "mbp",
+        "maltose binding",
+        "myc",
+        "ha",
+        "tev",
+        "signal peptide",
+        "secretion signal",
+    ]
+    .iter()
+    .any(|needle| text.contains(needle))
+}
+
+fn protein_expression_feature_is_signal_peptide(feature: &gb_io::seq::Feature) -> bool {
+    let kind = protein_expression_feature_kind_upper(feature);
+    if matches!(kind.as_str(), "SIG_PEPTIDE" | "SIGNAL_PEPTIDE") {
+        return true;
+    }
+    let text = protein_expression_feature_text_hints(feature);
+    text.contains("signal peptide") || text.contains("secretion signal")
+}
+
+fn protein_expression_feature_translation_table(feature: &gb_io::seq::Feature) -> usize {
+    for key in ["transl_table", "translation_table"] {
+        if let Some(value) = protein_expression_feature_qualifier_text(feature, key)
+            .and_then(|raw| raw.parse::<usize>().ok())
+            .filter(|value| *value > 0)
+        {
+            return value;
+        }
+    }
+    1
+}
+
+fn protein_expression_feature_codon_start_offset(feature: &gb_io::seq::Feature) -> usize {
+    if let Some(value) = protein_expression_feature_qualifier_text(feature, "codon_start")
+        .and_then(|raw| raw.parse::<usize>().ok())
+        .filter(|value| (1..=3).contains(value))
+    {
+        return value.saturating_sub(1);
+    }
+    if let Some(value) = protein_expression_feature_qualifier_text(feature, "phase")
+        .and_then(|raw| raw.parse::<usize>().ok())
+        .filter(|value| *value <= 2)
+    {
+        return value;
+    }
+    0
+}
+
+fn protein_expression_normalize_nt(base: u8) -> u8 {
+    match base.to_ascii_uppercase() {
+        b'U' => b'T',
+        other => other,
+    }
+}
+
+fn protein_expression_is_unambiguous_nt(base: u8) -> bool {
+    matches!(
+        protein_expression_normalize_nt(base),
+        b'A' | b'C' | b'G' | b'T'
+    )
+}
+
+fn protein_expression_complement_base(base: u8) -> u8 {
+    match protein_expression_normalize_nt(base) {
+        b'A' => b'T',
+        b'C' => b'G',
+        b'G' => b'C',
+        b'T' => b'A',
+        _ => b'N',
+    }
+}
+
+fn protein_expression_reverse_complement_bases(bases: &[u8]) -> Vec<u8> {
+    bases
+        .iter()
+        .rev()
+        .map(|base| protein_expression_complement_base(*base))
+        .collect()
+}
+
+fn protein_expression_feature_bases(
+    sequence: &DNAsequence,
+    feature: &gb_io::seq::Feature,
+) -> Option<Vec<u8>> {
+    let mut ranges = Vec::new();
+    collect_location_ranges_usize(&feature.location, &mut ranges);
+    if ranges.is_empty() {
+        return None;
+    }
+    ranges.sort_unstable_by(|left, right| left.0.cmp(&right.0).then(left.1.cmp(&right.1)));
+    let mut bases = vec![];
+    for (start, end) in ranges {
+        if start >= end || end > sequence.len() {
+            return None;
+        }
+        bases.extend_from_slice(&sequence.forward_bytes()[start..end]);
+    }
+    if feature_is_reverse(feature) {
+        Some(protein_expression_reverse_complement_bases(&bases))
+    } else {
+        Some(
+            bases
+                .into_iter()
+                .map(protein_expression_normalize_nt)
+                .collect(),
+        )
+    }
+}
+
+fn protein_expression_assess_coding_bases(
+    context_source: &str,
+    bases: &[u8],
+    codon_start_offset: usize,
+    translation_table: usize,
+) -> ProteinExpressionCdsAssessment {
+    let mut warnings = vec![];
+    let normalized = bases
+        .iter()
+        .map(|base| protein_expression_normalize_nt(*base))
+        .collect::<Vec<_>>();
+    if codon_start_offset >= normalized.len() {
+        warnings.push(format!(
+            "Codon-start offset {} is outside the selected coding sequence.",
+            codon_start_offset + 1
+        ));
+    }
+    let trimmed = normalized
+        .get(codon_start_offset..)
+        .unwrap_or_default()
+        .to_vec();
+    let nucleotide_length = trimmed.len();
+    let length_multiple_of_three = nucleotide_length > 0 && nucleotide_length % 3 == 0;
+    let codon_count = nucleotide_length / 3;
+    let start_codon = trimmed
+        .get(0..3)
+        .map(|codon| String::from_utf8_lossy(codon).to_string());
+    let stop_codon = if codon_count > 0 {
+        let start = (codon_count - 1) * 3;
+        trimmed
+            .get(start..start + 3)
+            .map(|codon| String::from_utf8_lossy(codon).to_string())
+    } else {
+        None
+    };
+    let starts_with_atg = start_codon.as_deref().map(|codon| codon == "ATG");
+    let mut ambiguous_codon_count = 0usize;
+    let mut internal_stop_count = 0usize;
+    let mut terminal_stop = false;
+
+    for codon_index in 0..codon_count {
+        let start = codon_index * 3;
+        let codon = [trimmed[start], trimmed[start + 1], trimmed[start + 2]];
+        let aa = crate::AMINO_ACIDS.codon2aa(codon, Some(translation_table));
+        if aa == UNKNOWN_CODON
+            || codon
+                .iter()
+                .any(|base| !protein_expression_is_unambiguous_nt(*base))
+        {
+            ambiguous_codon_count = ambiguous_codon_count.saturating_add(1);
+        }
+        if aa == STOP_CODON {
+            if codon_index + 1 == codon_count {
+                terminal_stop = true;
+            } else {
+                internal_stop_count = internal_stop_count.saturating_add(1);
+            }
+        }
+    }
+
+    if nucleotide_length == 0 {
+        warnings.push("No coding bases were available for translation assessment.".to_string());
+    }
+    if nucleotide_length > 0 && !length_multiple_of_three {
+        warnings.push(format!(
+            "Coding sequence length {nucleotide_length} is not divisible by 3."
+        ));
+    }
+    if starts_with_atg == Some(false) {
+        warnings.push(
+            "Coding sequence does not start with ATG under the current assessment.".to_string(),
+        );
+    }
+    let has_terminal_stop = (codon_count > 0 && length_multiple_of_three).then_some(terminal_stop);
+    if has_terminal_stop == Some(false) {
+        warnings.push("Coding sequence does not end with an in-frame stop codon; stop/tag policy needs review.".to_string());
+    }
+    if internal_stop_count > 0 {
+        warnings.push(format!(
+            "Coding sequence contains {internal_stop_count} internal in-frame stop codon(s)."
+        ));
+    }
+    if ambiguous_codon_count > 0 {
+        warnings.push(format!(
+            "Coding sequence contains {ambiguous_codon_count} codon(s) with ambiguous bases or unresolved amino acids."
+        ));
+    }
+
+    let translation_possible =
+        codon_count > 0 && length_multiple_of_three && ambiguous_codon_count == 0;
+    let protein_length_aa = translation_possible.then_some(if terminal_stop {
+        codon_count.saturating_sub(1)
+    } else {
+        codon_count
+    });
+    let plausible_cds =
+        translation_possible && starts_with_atg.unwrap_or(false) && internal_stop_count == 0;
+
+    ProteinExpressionCdsAssessment {
+        context_source: context_source.to_string(),
+        plausible_cds,
+        translation_possible,
+        nucleotide_length: Some(nucleotide_length),
+        protein_length_aa,
+        codon_count: Some(codon_count),
+        translation_table: Some(translation_table),
+        start_codon,
+        stop_codon,
+        starts_with_atg,
+        has_terminal_stop,
+        has_internal_stops: internal_stop_count > 0,
+        internal_stop_count,
+        ambiguous_codon_count,
+        length_multiple_of_three: Some(length_multiple_of_three),
+        annotated_cds_features: vec![],
+        warnings,
+    }
+}
+
+fn protein_expression_gc_percent_for_window(window: &[u8]) -> Option<f64> {
+    let mut gc = 0usize;
+    let mut acgt = 0usize;
+    for base in window {
+        match protein_expression_normalize_nt(*base) {
+            b'G' | b'C' => {
+                gc += 1;
+                acgt += 1;
+            }
+            b'A' | b'T' => acgt += 1,
+            _ => {}
+        }
+    }
+    (acgt > 0).then_some((gc as f64 / acgt as f64) * 100.0)
+}
+
+fn protein_expression_sequence_context(
+    seq_id: &str,
+    sequence: &DNAsequence,
+) -> ProteinExpressionSequenceContext {
+    if sequence.is_protein_sequence() {
+        return ProteinExpressionSequenceContext {
+            seq_id: Some(seq_id.to_string()),
+            sequence_name: sequence.name().clone(),
+            molecule_type: sequence.molecule_type().map(str::to_string),
+            nucleotide_length: None,
+            protein_length_aa: Some(sequence.len()),
+            feature_count: sequence.features().len(),
+            notes: vec![
+                "Sequence is marked as protein/peptide; GENtle records amino-acid context but does not infer DNA CDS boundaries from it.".to_string(),
+            ],
+            ..ProteinExpressionSequenceContext::default()
+        };
+    }
+
+    let bases = sequence.forward_bytes();
+    let mut ambiguous = BTreeSet::new();
+    let mut ambiguous_count = 0usize;
+    for base in bases {
+        if !protein_expression_is_unambiguous_nt(*base) {
+            ambiguous_count = ambiguous_count.saturating_add(1);
+            ambiguous.insert((*base as char).to_string());
+        }
+    }
+    let gc_percent = protein_expression_gc_percent_for_window(bases);
+    let gc_window_bp = (!bases.is_empty()).then_some(bases.len().min(100));
+    let mut gc_values = vec![];
+    if let Some(window_bp) = gc_window_bp {
+        for window in bases.chunks(window_bp) {
+            if let Some(value) = protein_expression_gc_percent_for_window(window) {
+                gc_values.push(value);
+            }
+        }
+    }
+    let annotation_summaries = sequence
+        .features()
+        .iter()
+        .enumerate()
+        .filter(|(_, feature)| {
+            protein_expression_feature_is_protein_context(feature)
+                || protein_expression_feature_is_tag_context(feature)
+        })
+        .take(12)
+        .map(|(idx, feature)| protein_expression_feature_summary(idx, feature))
+        .collect::<Vec<_>>();
+    let mut notes = vec![];
+    if sequence
+        .features()
+        .iter()
+        .any(protein_expression_feature_is_cds)
+    {
+        notes.push(
+            "Annotated CDS features were found and are preferred over whole-sequence ORF guessing."
+                .to_string(),
+        );
+    } else {
+        notes.push(
+            "No annotated CDS feature was found; whole-sequence CDS sanity is a fallback only."
+                .to_string(),
+        );
+    }
+    ProteinExpressionSequenceContext {
+        seq_id: Some(seq_id.to_string()),
+        sequence_name: sequence.name().clone(),
+        molecule_type: sequence.molecule_type().map(str::to_string),
+        nucleotide_length: Some(sequence.len()),
+        protein_length_aa: None,
+        feature_count: sequence.features().len(),
+        gc_percent,
+        gc_window_bp,
+        gc_min_percent: gc_values.iter().copied().reduce(f64::min),
+        gc_max_percent: gc_values.iter().copied().reduce(f64::max),
+        ambiguous_base_count: ambiguous_count,
+        ambiguous_bases: ambiguous.into_iter().collect(),
+        annotation_summaries,
+        notes,
+    }
+}
+
+fn protein_expression_tag_assessment(sequence: &DNAsequence) -> ProteinExpressionTagAssessment {
+    let annotated_tags = sequence
+        .features()
+        .iter()
+        .enumerate()
+        .filter(|(_, feature)| protein_expression_feature_is_tag_context(feature))
+        .map(|(idx, feature)| protein_expression_feature_summary(idx, feature))
+        .collect::<Vec<_>>();
+    let annotated_signal_peptide_count = sequence
+        .features()
+        .iter()
+        .filter(|feature| protein_expression_feature_is_signal_peptide(feature))
+        .count();
+    let mut missing_inputs = vec![
+        "tag_preference".to_string(),
+        "tag_position".to_string(),
+        "tag_cleavage_policy".to_string(),
+    ];
+    let mut warnings = vec![];
+    if annotated_tags.is_empty() {
+        warnings.push(
+            "No annotated affinity, solubility, epitope, or signal tag context was found."
+                .to_string(),
+        );
+    } else {
+        warnings.push(
+            "Annotated tag/signalling features are context only; confirm whether to keep, remove, relocate, or cleave them before expression planning."
+                .to_string(),
+        );
+        missing_inputs.push("annotated_tag_retention_policy".to_string());
+    }
+    ProteinExpressionTagAssessment {
+        annotated_tag_count: annotated_tags.len(),
+        annotated_signal_peptide_count,
+        annotated_tags,
+        tag_policy_known: false,
+        missing_inputs,
+        warnings,
+    }
+}
+
+fn protein_expression_cds_assessment(sequence: &DNAsequence) -> ProteinExpressionCdsAssessment {
+    if sequence.is_protein_sequence() {
+        return ProteinExpressionCdsAssessment {
+            context_source: "protein_sequence".to_string(),
+            plausible_cds: false,
+            translation_possible: false,
+            protein_length_aa: Some(sequence.len()),
+            warnings: vec![
+                "Selected sequence is marked as protein/peptide; DNA CDS translation cannot be assessed from this sequence alone.".to_string(),
+            ],
+            ..ProteinExpressionCdsAssessment::default()
+        };
+    }
+
+    let annotated_cds = sequence
+        .features()
+        .iter()
+        .enumerate()
+        .filter(|(_, feature)| protein_expression_feature_is_cds(feature))
+        .collect::<Vec<_>>();
+    let annotated_cds_features = annotated_cds
+        .iter()
+        .map(|(idx, feature)| protein_expression_feature_summary(*idx, feature))
+        .collect::<Vec<_>>();
+    if let Some((_, feature)) = annotated_cds.first() {
+        let mut assessment = match protein_expression_feature_bases(sequence, feature) {
+            Some(bases) => protein_expression_assess_coding_bases(
+                "annotated_cds",
+                &bases,
+                protein_expression_feature_codon_start_offset(feature),
+                protein_expression_feature_translation_table(feature),
+            ),
+            None => {
+                let mut assessment = ProteinExpressionCdsAssessment {
+                    context_source: "annotated_cds".to_string(),
+                    warnings: vec![
+                        "Annotated CDS feature exists, but its location could not be resolved against the selected sequence."
+                            .to_string(),
+                    ],
+                    ..ProteinExpressionCdsAssessment::default()
+                };
+                assessment.translation_table =
+                    Some(protein_expression_feature_translation_table(feature));
+                assessment
+            }
+        };
+        assessment.annotated_cds_features = annotated_cds_features;
+        if assessment.annotated_cds_features.len() > 1 {
+            assessment.warnings.push(format!(
+                "{} annotated CDS features were found; the first resolvable CDS was assessed and all CDS rows are summarized for review.",
+                assessment.annotated_cds_features.len()
+            ));
+        }
+        return assessment;
+    }
+
+    let mut assessment = protein_expression_assess_coding_bases(
+        "whole_sequence_fallback",
+        sequence.forward_bytes(),
+        0,
+        1,
+    );
+    assessment.warnings.push(
+        "No annotated CDS feature was found; whole-sequence CDS assessment is a fallback and requires human boundary review."
+            .to_string(),
+    );
+    assessment
+}
+
+fn protein_expression_analyze_sequence(
+    seq_id: Option<&str>,
+    sequence: Option<&DNAsequence>,
+) -> ProteinExpressionSequenceAnalysis {
+    let Some(seq_id) = seq_id else {
+        return ProteinExpressionSequenceAnalysis {
+            product_readiness: ProteinExpressionProductReadiness {
+                status: "needs_product_definition".to_string(),
+                review_gate: "Provide a coding sequence, ORF boundaries, or target protein sequence before expression-route review.".to_string(),
+                blockers: vec!["No product sequence id was supplied.".to_string()],
+                ..ProteinExpressionProductReadiness::default()
+            },
+            ..ProteinExpressionSequenceAnalysis::default()
+        };
+    };
+    let Some(sequence) = sequence else {
+        return ProteinExpressionSequenceAnalysis {
+            product_readiness: ProteinExpressionProductReadiness {
+                status: "needs_product_definition".to_string(),
+                review_gate: "Load the referenced product sequence before expression-route review."
+                    .to_string(),
+                blockers: vec![format!(
+                    "Sequence id '{seq_id}' is not present in the current state."
+                )],
+                ..ProteinExpressionProductReadiness::default()
+            },
+            ..ProteinExpressionSequenceAnalysis::default()
+        };
+    };
+
+    let sequence_context = protein_expression_sequence_context(seq_id, sequence);
+    let cds_assessment = protein_expression_cds_assessment(sequence);
+    let tag_assessment = protein_expression_tag_assessment(sequence);
+    let mut blockers = vec![];
+    let mut review_notes = vec![];
+    let status;
+    let usable_cds_context;
+    let translation_possible;
+    if sequence.is_protein_sequence() {
+        status = "needs_expression_specification";
+        usable_cds_context = false;
+        translation_possible = false;
+        review_notes.push(
+            "A target amino-acid sequence is available; DNA construction, codon policy, and provider route remain review-gated."
+                .to_string(),
+        );
+    } else if cds_assessment.plausible_cds {
+        status = "needs_expression_specification";
+        usable_cds_context = true;
+        translation_possible = cds_assessment.translation_possible;
+        review_notes.push(
+            "A plausible coding sequence is available for expression-review context; GENtle did not optimize or create a construct."
+                .to_string(),
+        );
+    } else {
+        status = "needs_cds_boundaries";
+        usable_cds_context = false;
+        translation_possible = cds_assessment.translation_possible;
+        blockers.push(
+            "No usable CDS/protein product context was confirmed from the selected sequence."
+                .to_string(),
+        );
+        review_notes.push(
+            "Ask for coding sequence, ORF, or target-protein boundaries before selecting expression routes."
+                .to_string(),
+        );
+    }
+    ProteinExpressionSequenceAnalysis {
+        sequence_context: Some(sequence_context),
+        product_readiness: ProteinExpressionProductReadiness {
+            status: status.to_string(),
+            usable_sequence_context: true,
+            usable_cds_context,
+            translation_possible,
+            review_gate: "Human review must confirm product boundaries, tag policy, chassis, endpoint, and provider handoff before any construct or order step.".to_string(),
+            blockers,
+            review_notes,
+        },
+        cds_assessment,
+        tag_assessment,
+    }
+}
+
+fn protein_expression_handoff_missing_questions(
+    readiness: &ProteinExpressionProductReadiness,
+    tag_assessment: &ProteinExpressionTagAssessment,
+) -> Vec<PlanningCloningMissingQuestion> {
+    let has_inferable_product_context =
+        readiness.usable_cds_context || readiness.status == "needs_expression_specification";
+    if !has_inferable_product_context {
+        return vec![
+            PlanningCloningMissingQuestion {
+                question_id: "coding_sequence_or_orf_boundaries".to_string(),
+                prompt: "Which coding sequence, ORF, CDS annotation, or target protein boundaries define the product to express?".to_string(),
+                reason: "GENtle found no usable CDS/protein context and should not choose an expression route from an undefined product.".to_string(),
+            },
+            PlanningCloningMissingQuestion {
+                question_id: "target_protein_source".to_string(),
+                prompt: "Is the product source a reviewed CDS, an annotated protein, a UniProt/Ensembl protein, or a manually supplied amino-acid sequence?".to_string(),
+                reason: "The product source determines whether later work should preserve native sequence, use protein-to-DNA handoff records, or request explicit synthesis boundaries.".to_string(),
+            },
+        ];
+    }
+
+    let mut questions = vec![
+        PlanningCloningMissingQuestion {
+            question_id: "protein_yield_metric".to_string(),
+            prompt: "Should success maximize total expressed protein, soluble protein, active protein, purified protein, secreted protein, or membrane-localized protein?".to_string(),
+            reason: "The desired yield metric changes host, induction, tag, solubility, purification, and provider-route choices.".to_string(),
+        },
+        PlanningCloningMissingQuestion {
+            question_id: "purification_endpoint".to_string(),
+            prompt: "What purification endpoint is required: crude lysate, affinity capture, polished purity, endotoxin control, activity assay, buffer, or delivery format?".to_string(),
+            reason: "Protein-expression planning must optimize for the downstream endpoint, not just expression signal.".to_string(),
+        },
+        PlanningCloningMissingQuestion {
+            question_id: "tag_preference".to_string(),
+            prompt: "Which tag strategy is preferred, including N- vs C-terminal position, cleavage site, retention/removal policy, and whether annotated tags or signal peptides should be preserved?".to_string(),
+            reason: if tag_assessment.annotated_tag_count > 0 {
+                "Annotated tag/signalling context exists, but GENtle needs explicit review before preserving or changing it.".to_string()
+            } else {
+                "No tag policy is known, and tags can dominate solubility, purification, localization, and activity.".to_string()
+            },
+        },
+        PlanningCloningMissingQuestion {
+            question_id: "expression_chassis".to_string(),
+            prompt: "Which host/chassis is acceptable: bacterial, yeast, insect, mammalian, cell-free, or provider-managed expression?".to_string(),
+            reason: "Host choice controls folding environment, PTMs, toxicity tolerance, scale, cost, and provider compatibility.".to_string(),
+        },
+        PlanningCloningMissingQuestion {
+            question_id: "toxicity_and_induction_tolerance".to_string(),
+            prompt: "Is toxicity expected, and should expression be constitutive, inducible, tightly repressed before induction, low-temperature, or provider-optimized?".to_string(),
+            reason: "The strongest cassette can reduce final usable yield when the product slows growth, aggregates, or harms the host.".to_string(),
+        },
+        PlanningCloningMissingQuestion {
+            question_id: "protein_folding_requirements".to_string(),
+            prompt: "Does the product require disulfides, glycosylation, cofactors, chaperones, membrane insertion, secretion, or other PTMs?".to_string(),
+            reason: "A high-expression host can be biologically wrong if the protein is insoluble, inactive, or misprocessed.".to_string(),
+        },
+        PlanningCloningMissingQuestion {
+            question_id: "secreted_vs_intracellular".to_string(),
+            prompt: "Should the product be secreted, periplasmic, cytosolic, membrane-associated, organelle-targeted, or recovered from total lysate?".to_string(),
+            reason: "Localization changes signal peptides, tags, host choice, lysis/harvest route, and service-provider handoff details.".to_string(),
+        },
+        PlanningCloningMissingQuestion {
+            question_id: "scale_and_purification_endpoint".to_string(),
+            prompt: "What scale, purity, buffer, QC, and delivery endpoint define a successful protein-production handoff?".to_string(),
+            reason: "Scale and endpoint keep cloning, expression, purification, and outsourcing choices aligned.".to_string(),
+        },
+    ];
+    if !tag_assessment.missing_inputs.is_empty() {
+        questions.push(PlanningCloningMissingQuestion {
+            question_id: "tag_missing_inputs".to_string(),
+            prompt: format!(
+                "Resolve tag-related missing inputs: {}.",
+                tag_assessment.missing_inputs.join(", ")
+            ),
+            reason: "Tag decisions are product-specific and remain review-gated even when a CDS appears usable.".to_string(),
+        });
+    }
+    questions
+}
+
 fn build_planning_cloning_consultation_text(report: &PlanningCloningConsultation) -> String {
     let mut lines = vec![
         "GENtle cloning planning consultation".to_string(),
@@ -13968,250 +14723,10 @@ fn build_planning_cloning_consultation_text(report: &PlanningCloningConsultation
     lines.join("\n")
 }
 
-fn protein_expression_codon_at(sequence: &[u8], offset: usize) -> Option<[u8; 3]> {
-    (offset + 3 <= sequence.len()).then(|| {
-        [
-            sequence[offset].to_ascii_uppercase(),
-            sequence[offset + 1].to_ascii_uppercase(),
-            sequence[offset + 2].to_ascii_uppercase(),
-        ]
-    })
-}
-
-fn protein_expression_detected_tag_labels(sequence: &DNAsequence) -> Vec<String> {
-    let mut labels = Vec::new();
-    for feature in sequence.features() {
-        let kind = feature.kind.to_ascii_lowercase();
-        if !(kind.contains("tag") || kind.contains("epitope") || kind.contains("affinity")) {
-            continue;
-        }
-        let mut label = None;
-        for (key, value) in &feature.qualifiers {
-            let key = key.to_ascii_lowercase();
-            if matches!(key.as_str(), "label" | "note" | "product" | "tag") {
-                label = value
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|value| !value.is_empty())
-                    .map(str::to_string);
-                if label.is_some() {
-                    break;
-                }
-            }
-        }
-        labels.push(label.unwrap_or_else(|| feature.kind.to_string()));
-    }
-    labels.sort();
-    labels.dedup();
-    labels
-}
-
-fn protein_expression_product_readiness(
-    sequence: &DNAsequence,
-) -> ProteinExpressionProductReadiness {
-    let molecule_type = sequence.molecule_type().map(str::to_string);
-    let is_protein = sequence.is_protein_sequence();
-    let bytes = sequence.forward_bytes();
-    let length = bytes.len();
-    let cds_feature_count = sequence
-        .features()
-        .iter()
-        .filter(|feature| feature.kind.eq_ignore_ascii_case("CDS"))
-        .count();
-    let tag_labels = protein_expression_detected_tag_labels(sequence);
-
-    let mut readiness = ProteinExpressionProductReadiness {
-        status: "needs_product_sequence_review".to_string(),
-        tag_assessment: Some(ProteinExpressionTagAssessment {
-            status: if tag_labels.is_empty() {
-                "not_assessed".to_string()
-            } else {
-                "annotation_review_required".to_string()
-            },
-            detected_tag_labels: tag_labels,
-            missing_question_ids: vec!["tag_preference".to_string()],
-            notes: vec![
-                "Tag compatibility, cleavage needs, and purification endpoint remain review questions."
-                    .to_string(),
-            ],
-        }),
-        ..ProteinExpressionProductReadiness::default()
-    };
-
-    if is_protein {
-        readiness.status = "protein_sequence_review_required".to_string();
-        readiness.sequence_context = Some(ProteinExpressionSequenceContext {
-            sequence_kind: "protein".to_string(),
-            molecule_type,
-            length_bp: None,
-            length_aa: Some(length),
-            gc_fraction: None,
-            ambiguous_base_count: 0,
-            cds_feature_count,
-            orf_count: 0,
-            longest_orf_length_aa: None,
-        });
-        readiness.cds_assessment = Some(ProteinExpressionCdsAssessment {
-            status: "protein_sequence_review_required".to_string(),
-            source: "protein_sequence".to_string(),
-            cds_feature_count,
-            notes: vec![
-                "A protein sequence can guide reverse-translation or provider handoff, but expression-ready DNA still needs an explicit coding sequence or construct route."
-                    .to_string(),
-            ],
-            ..ProteinExpressionCdsAssessment::default()
-        });
-        readiness
-            .missing_question_ids
-            .push("coding_dna_or_reverse_translation_route".to_string());
-        return readiness;
-    }
-
-    let normalized: Vec<u8> = bytes.iter().map(u8::to_ascii_uppercase).collect();
-    let gc_count = normalized
-        .iter()
-        .filter(|base| matches!(base, b'G' | b'C'))
-        .count();
-    let ambiguous_base_count = normalized
-        .iter()
-        .filter(|base| !matches!(base, b'A' | b'C' | b'G' | b'T'))
-        .count();
-    let orfs = OpenReadingFrame::find_orfs(bytes, sequence.is_circular());
-    let longest_orf = orfs.iter().max_by_key(|orf| orf.to().abs_diff(orf.from()));
-    let longest_orf_length_aa = longest_orf.map(|orf| {
-        let span_bp = orf.to().abs_diff(orf.from()).saturating_add(1);
-        (span_bp as usize) / 3
-    });
-    let first_codon = protein_expression_codon_at(&normalized, 0);
-    let has_start_codon = first_codon.as_ref().map(AminoAcids::is_start_codon);
-    let divisible_by_three = length > 0 && length % 3 == 0;
-    let terminal_stop_codon = if divisible_by_three {
-        length
-            .checked_sub(3)
-            .and_then(|offset| protein_expression_codon_at(&normalized, offset))
-            .map(|codon| AminoAcids::is_stop_codon(&codon))
-    } else {
-        Some(false)
-    };
-    let internal_stop_codon_count = if divisible_by_three {
-        let terminal_offset = length.saturating_sub(3);
-        Some(
-            (3..terminal_offset)
-                .step_by(3)
-                .filter_map(|offset| protein_expression_codon_at(&normalized, offset))
-                .filter(AminoAcids::is_stop_codon)
-                .count(),
-        )
-    } else {
-        None
-    };
-    let inferred_protein_length_aa = if divisible_by_three && length >= 3 {
-        Some(if terminal_stop_codon == Some(true) {
-            length / 3 - 1
-        } else {
-            length / 3
-        })
-    } else {
-        None
-    };
-    let mut cds_warnings = Vec::new();
-    if ambiguous_base_count > 0 {
-        cds_warnings.push(format!(
-            "Sequence contains {ambiguous_base_count} ambiguous/non-ACGT base(s)."
-        ));
-    }
-    if length > 0 && !divisible_by_three {
-        cds_warnings.push(
-            "Whole sequence length is not divisible by three; coding boundaries need review."
-                .to_string(),
-        );
-    }
-    if has_start_codon == Some(false) {
-        cds_warnings.push("Whole sequence does not start with ATG.".to_string());
-    }
-    if terminal_stop_codon == Some(false) {
-        cds_warnings.push("Whole sequence does not end with a standard stop codon.".to_string());
-    }
-    if internal_stop_codon_count.unwrap_or_default() > 0 {
-        cds_warnings.push(format!(
-            "Whole sequence has {} internal stop codon(s) in frame 1.",
-            internal_stop_codon_count.unwrap_or_default()
-        ));
-    }
-
-    let source = if cds_feature_count > 0 {
-        "annotated_cds"
-    } else if divisible_by_three
-        && has_start_codon == Some(true)
-        && terminal_stop_codon == Some(true)
-        && internal_stop_codon_count == Some(0)
-        && ambiguous_base_count == 0
-    {
-        "whole_sequence"
-    } else if longest_orf.is_some() {
-        "computed_orf"
-    } else {
-        "none"
-    };
-    let status = match source {
-        "annotated_cds" => "annotated_cds_review_required",
-        "whole_sequence" => "whole_sequence_cds_candidate",
-        "computed_orf" => "orf_candidate_review_required",
-        _ => "needs_cds_boundary",
-    };
-    readiness.status = status.to_string();
-    readiness.sequence_context = Some(ProteinExpressionSequenceContext {
-        sequence_kind: "dna".to_string(),
-        molecule_type,
-        length_bp: Some(length),
-        length_aa: None,
-        gc_fraction: (length > 0).then_some(gc_count as f64 / length as f64),
-        ambiguous_base_count,
-        cds_feature_count,
-        orf_count: orfs.len(),
-        longest_orf_length_aa,
-    });
-    readiness.cds_assessment = Some(ProteinExpressionCdsAssessment {
-        status: status.to_string(),
-        source: source.to_string(),
-        cds_feature_count,
-        divisible_by_three: Some(divisible_by_three),
-        has_start_codon,
-        has_terminal_stop_codon: terminal_stop_codon,
-        internal_stop_codon_count,
-        inferred_protein_length_aa,
-        selected_orf_frame: longest_orf.map(OpenReadingFrame::frame),
-        selected_orf_start_0based: longest_orf.map(|orf| orf.from().min(orf.to()).max(0) as usize),
-        selected_orf_end_0based_exclusive: longest_orf.map(|orf| {
-            let start = orf.from().min(orf.to()).max(0) as usize;
-            let end_inclusive = orf.from().max(orf.to()).max(0) as usize;
-            end_inclusive.saturating_add(1).max(start)
-        }),
-        selected_orf_length_aa: longest_orf_length_aa,
-        warnings: cds_warnings,
-        notes: vec![
-            "This is a read-only sequence sanity summary; it does not perform codon optimization or choose an expression construct."
-                .to_string(),
-        ],
-    });
-
-    if !matches!(
-        readiness.status.as_str(),
-        "whole_sequence_cds_candidate" | "annotated_cds_review_required"
-    ) {
-        readiness
-            .missing_question_ids
-            .push("coding_sequence_boundaries".to_string());
-    }
-    readiness
-        .missing_question_ids
-        .push("tag_preference".to_string());
-    readiness
-}
-
 fn protein_expression_product_definition(
-    engine: &GentleEngine,
     seq_id: &Option<String>,
+    sequence: Option<&DNAsequence>,
+    analysis: &ProteinExpressionSequenceAnalysis,
     warnings: &mut Vec<String>,
 ) -> ProteinExpressionProductDefinition {
     let seq_id = seq_id
@@ -14230,14 +14745,21 @@ fn protein_expression_product_definition(
 
     match seq_id {
         Some(ref id) => {
-            if let Some(sequence) = engine.state().sequences.get(id) {
+            if let Some(sequence) = sequence {
                 product.sequence_present = true;
                 product.sequence_name = sequence.name().clone();
-                product.length_bp = Some(sequence.len());
+                product.length_bp = analysis
+                    .sequence_context
+                    .as_ref()
+                    .and_then(|context| context.nucleotide_length)
+                    .or_else(|| (!sequence.is_protein_sequence()).then_some(sequence.len()));
                 product.feature_count = Some(sequence.features().len());
-                product.readiness = protein_expression_product_readiness(sequence);
+                product.readiness = analysis.product_readiness.clone();
+                product
+                    .notes
+                    .extend(analysis.product_readiness.review_notes.clone());
                 product.notes.push(
-                    "Stored sequence context is available for review; GENtle summarizes CDS/ORF sanity but does not optimize codons or choose an expression construct."
+                    "Sequence context was analyzed read-only; GENtle did not mutate sequence, optimize codons, create constructs, or choose a final provider route."
                         .to_string(),
                 );
             } else {
@@ -14259,43 +14781,6 @@ fn protein_expression_product_definition(
     }
 
     product
-}
-
-fn protein_expression_product_definition_missing_questions(
-    product: &ProteinExpressionProductDefinition,
-) -> Vec<PlanningCloningMissingQuestion> {
-    if !product.sequence_present {
-        return vec![PlanningCloningMissingQuestion {
-            question_id: "protein_product_definition".to_string(),
-            prompt: "What exact protein product or coding sequence should be produced?".to_string(),
-            reason: "A high-yield expression plan needs a concrete product sequence or protein target before route choices are meaningful.".to_string(),
-        }];
-    }
-
-    let mut questions = Vec::new();
-    for question_id in &product.readiness.missing_question_ids {
-        match question_id.as_str() {
-            "coding_sequence_boundaries" => questions.push(PlanningCloningMissingQuestion {
-                question_id: "coding_sequence_boundaries".to_string(),
-                prompt: "Which exact CDS or ORF boundaries define the expression product?".to_string(),
-                reason: "The supplied sequence is present, but GENtle cannot yet treat the whole sequence as an expression-ready CDS without boundary review.".to_string(),
-            }),
-            "coding_dna_or_reverse_translation_route" => {
-                questions.push(PlanningCloningMissingQuestion {
-                    question_id: "coding_dna_or_reverse_translation_route".to_string(),
-                    prompt: "Should this protein sequence be reverse-translated, linked to an existing coding DNA sequence, or handed off to a provider as a protein target?".to_string(),
-                    reason: "A protein sequence alone does not determine a reviewable DNA construct or expression cassette.".to_string(),
-                })
-            }
-            "tag_preference" => questions.push(PlanningCloningMissingQuestion {
-                question_id: "tag_preference".to_string(),
-                prompt: "Which affinity, solubility, localization, secretion, or cleavage tag policy should be used?".to_string(),
-                reason: "Tag choice can dominate soluble yield, purification success, and biological activity.".to_string(),
-            }),
-            _ => {}
-        }
-    }
-    questions
 }
 
 fn protein_expression_host_chassis_candidates() -> Vec<ProteinExpressionHostChassisCandidate> {
@@ -14533,10 +15018,24 @@ fn build_protein_expression_handoff_text(report: &ProteinExpressionHandoffReport
         Some(seq_id) => lines.push(format!("Product sequence: {seq_id} (not loaded)")),
         None => lines.push("Product sequence: not supplied".to_string()),
     }
-    if !report.product_definition.readiness.status.is_empty() {
+    if !report.product_readiness.status.is_empty() {
         lines.push(format!(
-            "Product readiness: {}",
-            report.product_definition.readiness.status
+            "Product readiness: {} (usable CDS context: {})",
+            report.product_readiness.status, report.product_readiness.usable_cds_context
+        ));
+    }
+    if !report.cds_assessment.context_source.is_empty() {
+        lines.push(format!(
+            "CDS assessment: source={}, translation_possible={}, protein_length_aa={}, internal_stops={}, ambiguous_codons={}",
+            report.cds_assessment.context_source,
+            report.cds_assessment.translation_possible,
+            report
+                .cds_assessment
+                .protein_length_aa
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "unknown".to_string()),
+            report.cds_assessment.internal_stop_count,
+            report.cds_assessment.ambiguous_codon_count
         ));
     }
     lines.push(String::new());
@@ -14610,12 +15109,34 @@ fn execute_planning_protein_expression_handoff(
         biological_intent = "protein_expression_max_yield".to_string();
     }
 
-    let product_definition = protein_expression_product_definition(engine, seq_id, &mut warnings);
+    let resolved_sequence = seq_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .and_then(|id| engine.state().sequences.get(id));
+    let sequence_analysis =
+        protein_expression_analyze_sequence(seq_id.as_deref(), resolved_sequence);
+    let product_definition = protein_expression_product_definition(
+        seq_id,
+        resolved_sequence,
+        &sequence_analysis,
+        &mut warnings,
+    );
+    warnings.extend(sequence_analysis.cds_assessment.warnings.clone());
+    warnings.extend(sequence_analysis.tag_assessment.warnings.clone());
+    warnings.extend(
+        sequence_analysis
+            .product_readiness
+            .blockers
+            .iter()
+            .map(|blocker| format!("Product readiness blocker: {blocker}")),
+    );
     let host_chassis_candidates = protein_expression_host_chassis_candidates();
     let vector_route_candidates = protein_expression_vector_route_candidates();
-    let mut missing_questions =
-        protein_expression_product_definition_missing_questions(&product_definition);
-    missing_questions.extend(protein_expression_max_yield_missing_questions());
+    let missing_questions = protein_expression_handoff_missing_questions(
+        &sequence_analysis.product_readiness,
+        &sequence_analysis.tag_assessment,
+    );
     let service_handoff_candidates = protein_expression_service_handoff_candidates(&mut warnings);
     let suggested_next_actions = vec![
         PlanningCloningSuggestedNextAction {
@@ -14644,7 +15165,9 @@ fn execute_planning_protein_expression_handoff(
         },
     ];
 
-    let status = if product_definition.sequence_present {
+    let status = if !sequence_analysis.product_readiness.status.is_empty() {
+        sequence_analysis.product_readiness.status.as_str()
+    } else if product_definition.sequence_present {
         "needs_expression_specification"
     } else {
         "needs_product_definition"
@@ -14655,6 +15178,10 @@ fn execute_planning_protein_expression_handoff(
         status: status.to_string(),
         biological_intent,
         product_definition,
+        product_readiness: sequence_analysis.product_readiness,
+        sequence_context: sequence_analysis.sequence_context,
+        cds_assessment: sequence_analysis.cds_assessment,
+        tag_assessment: sequence_analysis.tag_assessment,
         host_chassis_candidates,
         vector_route_candidates,
         missing_questions,

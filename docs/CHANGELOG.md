@@ -20,10 +20,9 @@ Maintenance rule:
 - Completed gene-set cohort relationship support by deriving evaluated-only
   CUT&RUN occupancy consistency flags for declared co-regulated and
   anti-co-regulated promoter cohorts.
-- Extended `planning protein-expression-handoff --seq-id` with defaulted
-  product-readiness summaries for stored DNA/protein sequences, including CDS
-  annotation count, start/stop/internal-stop sanity, ambiguity counts, and
-  review-specific missing questions.
+- Extended `planning protein-expression-handoff --seq-id` with read-only
+  sequence/readiness/CDS/tag context so high-yield protein-expression handoffs
+  report product uncertainty before review-gated provider or construct work.
 - Added optional gene-set promoter-cohort relationship expectations
   (`manual`, `co_regulated`, `anti_co_regulated`) to promoter cohort and
   CUT&RUN aggregate reports, with non-blocking expectation flags and

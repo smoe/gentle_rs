@@ -47,21 +47,32 @@ Expected outcome:
 - `biological_intent` is `protein_expression_max_yield`
 - `status` is `needs_product_definition`
 - `product_definition.sequence_present` is `false`
+- `product_readiness.status` is `needs_product_definition`
 - the report contains `host_chassis_candidates[]`,
   `vector_route_candidates[]`, `missing_questions[]`,
-  `service_handoff_candidates[]`, `warnings[]`, and
-  `suggested_next_actions[]`
+  `service_handoff_candidates[]`, `warnings[]`,
+  `suggested_next_actions[]`, and defaulted sequence-readiness records
 
 This is the safest first response when no product sequence has been loaded.
 GENtle can still explain the choices, but it refuses to pretend that the
 product is already defined.
 
-## Step 2: Read The Five Missing Questions First
+## Step 2: Read The Missing Questions First
 
-Start with `missing_questions[]`. A high-yield protein plan should answer:
+Start with `missing_questions[]`. With no usable product context, the first
+questions should ask which coding sequence, ORF, CDS annotation, or target
+protein boundaries define the product.
+
+Once a CDS or protein context is inferable, a high-yield protein plan should
+answer:
 
 - which yield metric matters: total, soluble, active, purified, secreted, or
   membrane-localized protein
+- which purification endpoint matters: crude lysate, affinity capture, polished
+  purity, activity assay, buffer, or delivery format
+- which tag strategy is preferred, including N- vs C-terminal position,
+  cleavage, retention/removal, and whether annotated tags or signal peptides
+  should be preserved
 - which chassis is acceptable: bacterial, yeast, insect, mammalian, cell-free,
   or provider-managed expression
 - whether the protein needs disulfides, glycosylation, cofactors, secretion,
@@ -110,20 +121,23 @@ Expected difference:
 
 - `product_definition.seq_id` records the supplied id
 - `product_definition.sequence_present` tells whether the id is loaded
-- if loaded, GENtle records length and feature-count context plus
-  `product_definition.readiness`
-- `readiness.sequence_context` reports sequence kind, GC/ambiguity counts, CDS
-  annotation count, and longest computed ORF when applicable
-- `readiness.cds_assessment` reports whole-sequence start/stop/internal-stop
-  sanity, inferred protein length for a simple CDS candidate, and whether a
-  protein sequence still needs a coding-DNA or reverse-translation route
-- the report still asks the expression-specific review questions, and adds
-  product-boundary or tag-policy questions when the sequence context is not yet
-  enough
+- if loaded, `sequence_context` records sequence name/type, nucleotide or
+  protein length, feature count, GC percent/range, ambiguous bases, and
+  relevant CDS/protein/tag annotations
+- `cds_assessment` reports whether annotated CDS context or whole-sequence
+  fallback context was used, plus nucleotide length, inferred protein length,
+  start/stop sanity, internal stops, ambiguous codons, translation table, and
+  warnings
+- `tag_assessment` summarizes annotated affinity, solubility, epitope, or
+  signal-tag context while keeping tag policy explicit
+- if no usable CDS/protein context is found, the report asks for product
+  boundaries instead of selecting an expression route
+- if a CDS/protein context is inferable, the report shifts toward the
+  expression-specific review questions
 
-V1 summarizes sequence sanity, but it does not optimize codons, select tags, or
-declare a final construct expression-ready. Those decisions remain explicit
-review work.
+This analysis is read-only. GENtle does not infer that the product is
+expression-ready, codon-optimize it, mutate the sequence, create a construct,
+choose a final host/vector/tag, or submit anything to a provider.
 
 ## Step 5: Inspect The GeneArt Preflight Scaffold
 
@@ -178,10 +192,17 @@ For ClawBio or another agent, the safe instruction is:
 
 - call `planning protein-expression-handoff`
 - quote `biological_intent`, `product_definition`,
+  `product_readiness`, `sequence_context`, `cds_assessment`,
+  `tag_assessment`,
   `host_chassis_candidates`, `vector_route_candidates`, `missing_questions`,
   `service_handoff_candidates`, and `suggested_next_actions`
 - do not invent a final expression host, promoter, vector, tag, or vendor
   submission from chat context alone
+
+GUI note: the current slice is CLI/shared-shell first. A dedicated Synthetic
+Biology or protein-expression handoff inspector for existing
+`gentle.protein_expression_handoff.v1` reports is the natural next GUI slice,
+not something this tutorial assumes exists today.
 
 ## Expected Outcome
 
@@ -189,8 +210,10 @@ At the end of this tutorial you should have:
 
 - a `gentle.protein_expression_handoff.v1` report
 - a clear distinction between product definition and expression route choice
+- read-only sequence/readiness/CDS/tag context when a sequence id is supplied
 - ranked but review-required chassis and route candidates
-- the five missing biological questions for high-yield protein production
+- explicit missing biological questions for either product boundaries or
+  expression-route review
 - a local GeneArt preflight scaffold and optional quote-packet handoff
 - no created construct and no vendor-side action
 

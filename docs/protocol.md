@@ -3758,10 +3758,25 @@ Adapter-equivalence guarantee for UI-intent tools:
   - emits `gentle.protein_expression_handoff.v1`
   - records `biological_intent = protein_expression_max_yield` for phrase-like
     objectives such as "give me the maximal amount of protein"
-  - fields include `product_definition`, `host_chassis_candidates[]`,
-    `vector_route_candidates[]`, `missing_questions[]`,
-    `service_handoff_candidates[]`, `warnings[]`, and
+  - fields include `product_definition`, `product_readiness`,
+    `sequence_context`, `cds_assessment`, `tag_assessment`,
+    `host_chassis_candidates[]`, `vector_route_candidates[]`,
+    `missing_questions[]`, `service_handoff_candidates[]`, `warnings[]`, and
     `suggested_next_actions[]`
+  - `product_readiness` reports whether the product context is usable for
+    expression review, whether translation was possible, any blockers, and the
+    human-review gate that still applies before construct or service action
+  - `sequence_context` summarizes loaded `--seq-id` context without mutation:
+    sequence name/type, nucleotide or protein length, feature count, GC percent
+    and bounded GC range, ambiguous bases, and relevant CDS/protein/tag
+    annotation rows
+  - `cds_assessment` prefers annotated CDS features when present and otherwise
+    labels whole-sequence ORF/CDS checks as fallback; it reports nucleotide
+    length, inferred protein length, start/stop sanity, internal stops,
+    ambiguous codons, translation table, and explicit warnings
+  - `tag_assessment` summarizes annotated affinity/solubility/epitope/signal
+    tag context and keeps tag preference, position, cleavage, and retention
+    policy as explicit review inputs
   - the first V1 service scaffold points at
     `docs/examples/external_services/geneart_protein_expression_request.json`
     through a local `services project-preflight @...` command, and
@@ -3769,15 +3784,21 @@ Adapter-equivalence guarantee for UI-intent tools:
     packet-preparation step that is only appropriate after product and
     outsourcing constraints are reviewed; no provider network call, order,
     optimization, or construct mutation is made
-  - when `--seq-id` resolves to a stored sequence, `product_definition`
-    includes a defaulted `readiness` object with `sequence_context`,
-    `cds_assessment`, and `tag_assessment` summaries; V1 checks whole-sequence
-    start/stop/internal-stop sanity, ambiguous DNA bases, CDS annotation count,
-    protein-sequence status, and longest computed ORF without optimizing
-    codons or choosing a construct
-  - CDS boundaries, tag policy, chassis, folding/PTMs, toxicity/induction,
-    yield metric, and purification/delivery endpoint remain explicit review
-    questions
+  - if no usable CDS/protein context is found, `missing_questions[]` asks for
+    coding sequence, ORF, CDS annotation, or target-protein boundaries rather
+    than choosing an expression route
+  - if a CDS/protein context is inferable, `missing_questions[]` shifts toward
+    expression-specific unknowns: total vs soluble/active/purified/secreted
+    yield, purification endpoint, tag preference, host/chassis,
+    toxicity/induction, PTMs/cofactors, secretion/localization, scale, and
+    delivery endpoint
+  - this remains a review-gated handoff, not an autonomous construct designer:
+    GENtle does not codon-optimize, mutate sequences, create constructs, query
+    live providers, submit orders, or promise wet-lab yield
+  - GUI follow-up: a dedicated Synthetic Biology / protein-expression handoff
+    inspector should display existing `gentle.protein_expression_handoff.v1`
+    reports later; this protocol slice intentionally keeps GUI exposure to the
+    shared shell/CLI contract rather than adding a new dashboard
 - `planning profile show [--scope global|project_override|confirmed_agent_overlay|effective]`
   - inspect one planning profile scope or merged effective profile
 - `planning profile set JSON_OR_@FILE [--scope global|project_override|confirmed_agent_overlay]`
