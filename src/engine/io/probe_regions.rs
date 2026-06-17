@@ -1883,6 +1883,16 @@ impl GentleEngine {
                     "no_mapped_evidence"
                 }
                 .to_string();
+                let review_status = if counts.unique > 0 {
+                    "unique_geometry_for_review"
+                } else if counts.shared > 0 {
+                    "shared_geometry_for_review"
+                } else if counts.constraining > 0 {
+                    "non_exonic_constraint_for_review"
+                } else {
+                    "no_probe_region_evidence"
+                }
+                .to_string();
                 ProbeRegionEvidenceTranscriptRow {
                     transcript_id: tx.transcript_id.clone(),
                     gene: tx.gene.clone(),
@@ -1898,6 +1908,7 @@ impl GentleEngine {
                     shared_geometry_score: counts.shared_score,
                     unique_geometry_score: counts.unique_score,
                     constraining_geometry_score: counts.constraining_score,
+                    review_status,
                     relationship_summary,
                 }
             })

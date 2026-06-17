@@ -3052,7 +3052,8 @@ The `Help` menu now includes:
   includes compact transcript-mapping summaries for exon overlap and
   junction-spanning evidence; the full JSON report keeps the structured exon
   ordinals, ranges, junction spans, overlap base counts, geometry scores, and
-  score-basis guardrails.
+  score-basis guardrails. Transcript rows show review-only labels for unique,
+  shared, constraining, or absent geometry; these labels are not isoform calls.
 
 ## microRNA Target Scan
 

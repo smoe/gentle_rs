@@ -40,6 +40,9 @@ Maintenance rule:
 - Added conservative geometry scores and score-basis guardrails to
   `InterpretProbeRegionEvidence`, with transcript-level unique/shared/
   constraining score sums for review-only probeset evidence triage.
+- Added transcript-level `review_status` labels to probe-region interpretation
+  reports so GUI/CLI users can triage unique, shared, constraining, and absent
+  geometry without treating the result as an isoform call.
 
 ## 2026-06-16
 

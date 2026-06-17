@@ -704,6 +704,7 @@ fn interpret_probe_region_evidence_preserves_shared_transcript_ambiguity() {
             && tx.shared_geometry_score == 0.5
             && tx.unique_geometry_score == 0.0
             && tx.constraining_geometry_score == 0.0
+            && tx.review_status == "shared_geometry_for_review"
             && tx.relationship_summary == "only_shared_compatible_evidence"
     }));
 }
@@ -808,6 +809,7 @@ fn interpret_probe_region_evidence_reports_junction_spanning_geometry() {
     assert_eq!(tx.unique_geometry_score, 0.75);
     assert_eq!(tx.shared_geometry_score, 0.0);
     assert_eq!(tx.constraining_geometry_score, 0.0);
+    assert_eq!(tx.review_status, "unique_geometry_for_review");
 }
 
 #[test]

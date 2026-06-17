@@ -8501,7 +8501,7 @@ impl MainAreaDna {
                             report.seq_id.as_str(),
                         ))
                         .striped(true)
-                        .num_columns(9)
+                        .num_columns(10)
                         .show(ui, |ui| {
                             ui.strong("transcript");
                             ui.strong("exons");
@@ -8511,6 +8511,7 @@ impl MainAreaDna {
                             ui.strong("constraining");
                             ui.strong("score");
                             ui.strong("constraint");
+                            ui.strong("review");
                             ui.strong("summary");
                             ui.end_row();
                             for row in report.transcript_rows.iter().take(24) {
@@ -8522,6 +8523,7 @@ impl MainAreaDna {
                                 ui.small(row.constraining_evidence_count.to_string());
                                 ui.small(format!("{:.2}", row.compatible_geometry_score));
                                 ui.small(format!("{:.2}", row.constraining_geometry_score));
+                                ui.small(&row.review_status);
                                 ui.small(&row.relationship_summary);
                                 ui.end_row();
                             }

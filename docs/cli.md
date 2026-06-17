@@ -3720,9 +3720,9 @@ Tutorial companion:
     `gentle.probe_region_evidence_interpretation.v1`. The report preserves
     shared-transcript overlaps, parent probeset context, structured
     exon/junction/transcript mappings, conservative geometry scores,
-    score-basis guardrails, probe sequence multi-hit-not-assessed status, and
-    coordinate-projection ambiguity rather than converting array intervals
-    directly into isoform support calls.
+    score-basis guardrails, transcript-level review labels, probe sequence
+    multi-hit-not-assessed status, and coordinate-projection ambiguity rather
+    than converting array intervals directly into isoform support calls.
 - `resources sync-ucsc-rmsk INPUT.rmsk.txt_or_txt.gz [OUTPUT.rmsk.json] [--assembly DB] [--limit N]`
   - Normalizes the UCSC RepeatMasker `rmsk` table into
     `gentle.ucsc_rmsk_resource.v1`.
@@ -5321,9 +5321,10 @@ Notes:
   features back from the sequence and summarizes transcript/exon geometry
   compatibility as a read-only report, including structured exon ordinals,
   exon ranges, junction spans, overlap base counts, conservative geometry
-  scores, and score-basis guardrails for each evidence-to-transcript mapping.
-  It does not run R/APT and does not claim isoform support until
-  probe/probeset-to-transcript ambiguity has been audited.
+  scores, score-basis guardrails, and review-only transcript labels for each
+  evidence-to-transcript mapping. It does not run R/APT and does not claim
+  isoform support until probe/probeset-to-transcript ambiguity has been
+  audited.
 - The built-in genome catalog includes both `Human GRCh38 Ensembl 116` and
   `Human GRCh37 Ensembl 87` (`hg19`/`GRCh37.p13` aliases), so direct native
   extraction can use either build when the corresponding cache has been

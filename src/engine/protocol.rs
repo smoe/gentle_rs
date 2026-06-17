@@ -4210,6 +4210,7 @@ pub struct ProbeRegionEvidenceTranscriptRow {
     pub shared_geometry_score: f64,
     pub unique_geometry_score: f64,
     pub constraining_geometry_score: f64,
+    pub review_status: String,
     pub relationship_summary: String,
 }
 
