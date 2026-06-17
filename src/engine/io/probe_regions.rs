@@ -142,6 +142,15 @@ struct ProbeRegionAptContrast {
     denominator_index: usize,
 }
 
+struct ProbeRegionAptProbeIntensityTable {
+    path: String,
+    probe_id_column: String,
+    sample_columns: Vec<String>,
+    value_header: Vec<String>,
+    rows: BTreeMap<String, Vec<String>>,
+    warnings: Vec<String>,
+}
+
 impl GentleEngine {
     /// Build a reusable preflight plan for chromosome-ordered probe inspection.
     pub fn plan_probe_regions(&self, request: ProbeRegionRequest) -> ProbeRegionPlan {
@@ -413,6 +422,8 @@ impl GentleEngine {
         metadata_path: Option<&str>,
         condition_column: Option<&str>,
         sample_column: Option<&str>,
+        probe_intensity_path: Option<&str>,
+        probe_id_column: Option<&str>,
         platform: Option<&str>,
         normalization: Option<&str>,
         coordinate_system: Option<&str>,
@@ -517,6 +528,22 @@ impl GentleEngine {
             )?;
             warnings.extend(summary.warnings.iter().cloned());
             Some(summary)
+        } else {
+            None
+        };
+        let probe_intensity = if let Some(path) = probe_intensity_path
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            let table = Self::probe_region_apt_probe_intensity_rows(
+                path,
+                probe_id_column,
+                metadata_path,
+                condition_column,
+                sample_column,
+            )?;
+            warnings.extend(table.warnings.iter().cloned());
+            Some(table)
         } else {
             None
         };
@@ -684,7 +711,19 @@ impl GentleEngine {
         })?;
 
         let mut probe_row_count = 0usize;
+        let mut missing_probe_intensity_count = 0usize;
+        let mut probe_intensity_source: Option<&str> = None;
         if !annotation.probes.is_empty() {
+            let using_probe_intensity = probe_intensity.is_some();
+            let probe_value_header = probe_intensity
+                .as_ref()
+                .map(|table| table.value_header.clone())
+                .unwrap_or_else(|| value_header.clone());
+            let row_intensity_source = if using_probe_intensity {
+                "probe_level_input"
+            } else {
+                "parent_probeset_summary"
+            };
             let probe_table_path = Path::new(output_dir).join(PROBE_REGION_PROBE_TABLE_FILE);
             let mut probe_writer = csv::Writer::from_path(&probe_table_path).map_err(|e| {
                 EngineError {
@@ -709,7 +748,7 @@ impl GentleEngine {
                 "gene_symbol".to_string(),
                 "intensity_source".to_string(),
             ];
-            probe_header.extend(value_header.iter().cloned());
+            probe_header.extend(probe_value_header.iter().cloned());
             probe_writer.write_record(&probe_header).map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not write probe-coordinate table header: {e}"),
@@ -725,8 +764,16 @@ impl GentleEngine {
             });
             let mut skipped_probe_rows = 0usize;
             for probe in probes {
-                let Some(values) = output_value_rows.get(&probe.parent_feature_id) else {
+                if !output_value_rows.contains_key(&probe.parent_feature_id) {
                     skipped_probe_rows += 1;
+                    continue;
+                };
+                let Some(values) = probe_intensity
+                    .as_ref()
+                    .map(|table| table.rows.get(&probe.probe_id))
+                    .unwrap_or_else(|| output_value_rows.get(&probe.parent_feature_id))
+                else {
+                    missing_probe_intensity_count += 1;
                     continue;
                 };
                 let mut row = vec![
@@ -740,7 +787,7 @@ impl GentleEngine {
                     probe.parent_feature_id.clone(),
                     probe.transcript_cluster_id.clone(),
                     probe.gene_symbol.clone(),
-                    "parent_probeset_summary".to_string(),
+                    row_intensity_source.to_string(),
                 ];
                 row.extend(values.iter().cloned());
                 probe_writer.write_record(&row).map_err(|e| EngineError {
@@ -750,28 +797,46 @@ impl GentleEngine {
                 })?;
                 probe_row_count += 1;
             }
+            if probe_row_count > 0 {
+                probe_intensity_source = Some(row_intensity_source);
+            }
             probe_writer.flush().map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not flush probe-coordinate table: {e}"),
                 cause_chain: vec![],
             })?;
-            warnings.push(
-                "probe_intensity_chrom_order.csv uses parent probeset-summary intensities; true PM probe intensities require probe-level intensity input"
-                    .to_string(),
-            );
+            if !using_probe_intensity && probe_row_count > 0 {
+                warnings.push(
+                    "probe_intensity_chrom_order.csv uses parent probeset-summary intensities; true PM probe intensities require probe-level intensity input"
+                        .to_string(),
+                );
+            }
+            if missing_probe_intensity_count > 0 {
+                warnings.push(format!(
+                    "{} probe-coordinate annotation row(s) were skipped because their probe_id was absent from the supplied probe-intensity table",
+                    missing_probe_intensity_count
+                ));
+            }
             if skipped_probe_rows > 0 {
                 warnings.push(format!(
                     "{} probe-coordinate annotation row(s) were skipped because their parent probeset was absent from the imported APT summary",
                     skipped_probe_rows
                 ));
             }
+        } else if probe_intensity.is_some() {
+            warnings.push(
+                "Probe-intensity table was supplied, but the annotation table did not provide probe_id plus probe_start/probe_stop coordinates"
+                    .to_string(),
+            );
         }
 
         let manifest_path = Path::new(output_dir).join(PROBE_REGION_MATRIX_MANIFEST_FILE);
         let provenance_path = Path::new(output_dir).join(PROBE_REGION_PROVENANCE_FILE);
         let mut artifacts = vec![PROBE_REGION_TABLE_FILE.to_string()];
+        let mut targets = vec!["probeset".to_string()];
         if probe_row_count > 0 {
             artifacts.push(PROBE_REGION_PROBE_TABLE_FILE.to_string());
+            targets.push("pm_probe".to_string());
         }
         let manifest = json!({
             "schema": PROBE_REGION_MATRIX_MANIFEST_SCHEMA,
@@ -787,7 +852,12 @@ impl GentleEngine {
             "sample_column": metadata_summary
                 .as_ref()
                 .map(|metadata| metadata.sample_column.as_str()),
-            "targets": ["probeset"],
+            "probe_intensity_path": probe_intensity.as_ref().map(|table| table.path.as_str()),
+            "probe_intensity_probe_id_column": probe_intensity
+                .as_ref()
+                .map(|table| table.probe_id_column.as_str()),
+            "probe_intensity_source": probe_intensity_source,
+            "targets": targets,
             "artifacts": artifacts.clone()
         });
         let provenance = json!({
@@ -805,11 +875,11 @@ impl GentleEngine {
             "coordinate_system": coordinate_system,
             "genome_build": genome_build,
             "normalization": normalization,
-            "probe_intensity_source": if probe_row_count > 0 {
-                Some("parent_probeset_summary")
-            } else {
-                None
-            },
+            "probe_intensity_path": probe_intensity.as_ref().map(|table| table.path.as_str()),
+            "probe_intensity_probe_id_column": probe_intensity
+                .as_ref()
+                .map(|table| table.probe_id_column.as_str()),
+            "probe_intensity_source": probe_intensity_source,
             "artifacts": artifacts
         });
         std::fs::write(
@@ -854,6 +924,15 @@ impl GentleEngine {
             skipped_invalid_count,
             probe_row_count,
             sample_columns,
+            probe_intensity_path: probe_intensity
+                .as_ref()
+                .map(|table| table.path.clone()),
+            probe_intensity_source: probe_intensity_source.map(str::to_string),
+            probe_intensity_sample_columns: probe_intensity
+                .as_ref()
+                .map(|table| table.sample_columns.clone())
+                .unwrap_or_default(),
+            missing_probe_intensity_count,
             metadata_path: metadata_summary.as_ref().map(|metadata| metadata.path.clone()),
             condition_column: metadata_summary
                 .as_ref()
@@ -1881,6 +1960,185 @@ impl GentleEngine {
         Ok(ProbeRegionAptAnnotationTable {
             regions: rows,
             probes,
+        })
+    }
+
+    fn probe_region_apt_probe_intensity_rows(
+        probe_intensity_path: &str,
+        requested_probe_id_column: Option<&str>,
+        metadata_path: Option<&str>,
+        condition_column: Option<&str>,
+        sample_column: Option<&str>,
+    ) -> Result<ProbeRegionAptProbeIntensityTable, EngineError> {
+        let mut reader = csv::ReaderBuilder::new()
+            .delimiter(Self::probe_region_metadata_delimiter(probe_intensity_path))
+            .trim(csv::Trim::All)
+            .flexible(true)
+            .from_path(probe_intensity_path)
+            .map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not open APT probe-intensity table '{probe_intensity_path}': {e}"
+                ),
+                cause_chain: vec![],
+            })?;
+        let headers = reader
+            .headers()
+            .map_err(|e| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Could not read APT probe-intensity table header '{probe_intensity_path}': {e}"
+                ),
+                cause_chain: vec![],
+            })?
+            .iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        let probe_id_idx = Self::probe_region_metadata_column_index(
+            &headers,
+            requested_probe_id_column,
+            &["probe_id", "probe id", "probeid", "probe", "id"],
+        )
+        .ok_or_else(|| EngineError {
+            code: ErrorCode::InvalidInput,
+            message: "APT probe-intensity table is missing a probe id column".to_string(),
+            cause_chain: vec![],
+        })?;
+        let sample_indices = headers
+            .iter()
+            .enumerate()
+            .filter(|(idx, header)| *idx != probe_id_idx && !header.trim().is_empty())
+            .map(|(idx, _)| idx)
+            .collect::<Vec<_>>();
+        let sample_columns = sample_indices
+            .iter()
+            .filter_map(|idx| headers.get(*idx))
+            .map(|header| header.trim().to_string())
+            .collect::<Vec<_>>();
+        if sample_columns.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "APT probe-intensity table '{probe_intensity_path}' has no sample intensity columns"
+                ),
+                cause_chain: vec![],
+            });
+        }
+        let metadata_summary = if let Some(path) =
+            metadata_path.map(str::trim).filter(|value| !value.is_empty())
+        {
+            Some(Self::probe_region_apt_metadata_summary(
+                path,
+                condition_column,
+                sample_column,
+                &sample_columns,
+            )?)
+        } else {
+            None
+        };
+        let mut warnings = metadata_summary
+            .as_ref()
+            .map(|summary| summary.warnings.clone())
+            .unwrap_or_default();
+        let mut value_header = sample_columns.clone();
+        if let Some(metadata) = metadata_summary.as_ref() {
+            for condition in &metadata.conditions {
+                value_header.push(format!("mean_log2_{}", condition.column_label));
+                value_header.push(format!("sd_log2_{}", condition.column_label));
+            }
+            for contrast in &metadata.contrasts {
+                value_header.push(format!("log2FC_{}", contrast.label));
+            }
+        }
+
+        let mut rows = BTreeMap::new();
+        let mut skipped_invalid_count = 0usize;
+        let mut duplicate_probe_count = 0usize;
+        for record in reader.records() {
+            let record = record.map_err(|e| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("Could not read APT probe-intensity row: {e}"),
+                cause_chain: vec![],
+            })?;
+            let probe_id = record.get(probe_id_idx).unwrap_or("").trim();
+            if probe_id.is_empty() {
+                skipped_invalid_count += 1;
+                continue;
+            }
+            let sample_values = sample_indices
+                .iter()
+                .map(|idx| record.get(*idx).unwrap_or("").trim().to_string())
+                .collect::<Vec<_>>();
+            let mut value_row = sample_values.clone();
+            if let Some(metadata) = metadata_summary.as_ref() {
+                let stats = metadata
+                    .conditions
+                    .iter()
+                    .map(|condition| {
+                        Self::probe_region_apt_condition_stats(
+                            &sample_values,
+                            &condition.sample_indices,
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                for stat in &stats {
+                    value_row.push(
+                        stat.map(|(mean, _)| Self::probe_region_format_number(mean))
+                            .unwrap_or_default(),
+                    );
+                    value_row.push(
+                        stat.map(|(_, sd)| Self::probe_region_format_number(sd))
+                            .unwrap_or_default(),
+                    );
+                }
+                for contrast in &metadata.contrasts {
+                    let numerator = stats
+                        .get(contrast.numerator_index)
+                        .and_then(|value| value.map(|(mean, _)| mean));
+                    let denominator = stats
+                        .get(contrast.denominator_index)
+                        .and_then(|value| value.map(|(mean, _)| mean));
+                    value_row.push(
+                        numerator
+                            .zip(denominator)
+                            .map(|(num, den)| Self::probe_region_format_number(num - den))
+                            .unwrap_or_default(),
+                    );
+                }
+            }
+            if rows.insert(probe_id.to_string(), value_row).is_some() {
+                duplicate_probe_count += 1;
+            }
+        }
+        if rows.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "APT probe-intensity table '{probe_intensity_path}' had no usable probe rows"
+                ),
+                cause_chain: vec![],
+            });
+        }
+        if skipped_invalid_count > 0 {
+            warnings.push(format!(
+                "{} APT probe-intensity row(s) were skipped because probe id was empty",
+                skipped_invalid_count
+            ));
+        }
+        if duplicate_probe_count > 0 {
+            warnings.push(format!(
+                "{} duplicate APT probe-intensity row(s) reused the last value for that probe id",
+                duplicate_probe_count
+            ));
+        }
+
+        Ok(ProbeRegionAptProbeIntensityTable {
+            path: probe_intensity_path.to_string(),
+            probe_id_column: headers.get(probe_id_idx).cloned().unwrap_or_default(),
+            sample_columns,
+            value_header,
+            rows,
+            warnings,
         })
     }
 

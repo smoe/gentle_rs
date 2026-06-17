@@ -6935,7 +6935,7 @@ fn parse_arrays_microarray_track_commands() {
     ));
 
     let import_apt_probe_output = parse_shell_line(
-        "arrays import-apt-probe-region-output apt.summary.tsv annotation.csv analysis/probe_regions --metadata samples.csv --condition-column condition --sample-column file --platform Clariom_D_Human --normalization rma-sketch --coordinate-system hg38 --genome-build GRCh38",
+        "arrays import-apt-probe-region-output apt.summary.tsv annotation.csv analysis/probe_regions --metadata samples.csv --condition-column condition --sample-column file --probe-intensity probe_intensity.tsv --probe-id-column probe_id --platform Clariom_D_Human --normalization rma-sketch --coordinate-system hg38 --genome-build GRCh38",
     )
     .expect("parse APT probe output import");
     match import_apt_probe_output {
@@ -6946,6 +6946,8 @@ fn parse_arrays_microarray_track_commands() {
             metadata,
             condition_column,
             sample_column,
+            probe_intensity,
+            probe_id_column,
             platform,
             normalization,
             coordinate_system,
@@ -6957,6 +6959,8 @@ fn parse_arrays_microarray_track_commands() {
             assert_eq!(metadata.as_deref(), Some("samples.csv"));
             assert_eq!(condition_column.as_deref(), Some("condition"));
             assert_eq!(sample_column.as_deref(), Some("file"));
+            assert_eq!(probe_intensity.as_deref(), Some("probe_intensity.tsv"));
+            assert_eq!(probe_id_column.as_deref(), Some("probe_id"));
             assert_eq!(platform.as_deref(), Some("Clariom_D_Human"));
             assert_eq!(normalization.as_deref(), Some("rma-sketch"));
             assert_eq!(coordinate_system.as_deref(), Some("hg38"));

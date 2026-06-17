@@ -174,15 +174,12 @@ broad crate surgery that is not tied to the selected release story.
   `RenderRnaStructureSvg`, `RenderTfbsScoreTrackCorrelationSvg`,
   `ComputeDotplot`, then `ComputeFlexibilityTrack`.
 - Clariom D and splice-isoform evidence need an engine-owned interpretation
-  layer beyond the current prepared-track projection. Future work should map
-  array probe oligos/probesets to genome/transcript coordinates with explicit
-  build, liftover, multi-hit, and ambiguity provenance, then use those mapped
-  probe/exon/junction constraints to identify compatible splice isoforms and
-  rule out incompatible ones without hiding uncertain evidence.
-- Next array-evidence implementation pass: add true PM probe-intensity input
-  support for workflows that can provide probe-level intensity matrices, so
-  `probe_intensity_chrom_order.csv` no longer needs to carry only parent
-  probeset-summary values.
+  layer beyond the current prepared-track projection. Current explicit APT
+  imports can preserve supplied PM probe-level intensity matrices in
+  `probe_intensity_chrom_order.csv`; future work should use those mapped
+  probe oligos/probesets with explicit build, liftover, multi-hit, and
+  ambiguity provenance to identify compatible splice isoforms and rule out
+  incompatible ones without hiding uncertain evidence.
 
 ## Phase D: Visualization And Workflow UX
 

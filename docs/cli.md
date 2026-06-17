@@ -3655,7 +3655,7 @@ Tutorial companion:
     bounded preview rows, row counts, feature counts, coordinate/build
     declarations, declared coordinate projection maps, projection-readiness
     blockers, and required-column problems.
-- `arrays import-apt-probe-region-output apt.summary.tsv annotation.csv analysis/probe_regions --metadata samples.csv --condition-column condition --sample-column file --platform Clariom_D_Human --normalization rma-sketch --coordinate-system hg38 --genome-build GRCh38`
+- `arrays import-apt-probe-region-output apt.summary.tsv annotation.csv analysis/probe_regions --metadata samples.csv --condition-column condition --sample-column file --probe-intensity probe_intensity.tsv --probe-id-column probe_id --platform Clariom_D_Human --normalization rma-sketch --coordinate-system hg38 --genome-build GRCh38`
   - Converts explicit APT summary output plus an explicit annotation/NetAffx
     coordinate table into GENtle's helper-output directory contract. The
     annotation table must provide probeset/region id, chromosome, start, and
@@ -3663,9 +3663,12 @@ Tutorial companion:
     gene-symbol columns. When optional metadata is supplied, matching sample
     rows add `mean_log2_*`, `sd_log2_*`, and default `log2FC_*` columns to the
     imported region table. If annotation rows also include `probe_id` and
-    PM probe `probe_start`/`probe_stop` coordinates, GENtle also writes
-    `probe_intensity_chrom_order.csv` with parent-probeset summary intensities
-    explicitly marked as `parent_probeset_summary`. GENtle writes
+    PM probe `probe_start`/`probe_stop` coordinates, GENtle writes
+    `probe_intensity_chrom_order.csv`. With `--probe-intensity`, that table
+    uses rows from the supplied probe-level matrix and marks them
+    `probe_level_input`; without it, GENtle preserves the compatibility
+    fallback by using parent-probeset summary intensities marked as
+    `parent_probeset_summary`. GENtle writes
     `region_intensity_chrom_order.csv`,
     `normalized_feature_matrix_manifest.json`, and `provenance.json`; it does
     not run APT.

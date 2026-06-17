@@ -1573,6 +1573,8 @@ pub enum ShellCommand {
         metadata: Option<String>,
         condition_column: Option<String>,
         sample_column: Option<String>,
+        probe_intensity: Option<String>,
+        probe_id_column: Option<String>,
         platform: Option<String>,
         normalization: Option<String>,
         coordinate_system: Option<String>,
@@ -8240,18 +8242,22 @@ impl ShellCommand {
                 metadata,
                 condition_column,
                 sample_column,
+                probe_intensity,
+                probe_id_column,
                 platform,
                 normalization,
                 coordinate_system,
                 genome_build,
             } => format!(
-                "import APT probe-region output summary='{}' annotation='{}' output_dir='{}' metadata={} condition_column={} sample_column={} platform={} normalization={} coordinate_system={} genome_build={}",
+                "import APT probe-region output summary='{}' annotation='{}' output_dir='{}' metadata={} condition_column={} sample_column={} probe_intensity={} probe_id_column={} platform={} normalization={} coordinate_system={} genome_build={}",
                 summary,
                 annotation,
                 output_dir,
                 metadata.as_deref().unwrap_or("-"),
                 condition_column.as_deref().unwrap_or("-"),
                 sample_column.as_deref().unwrap_or("-"),
+                probe_intensity.as_deref().unwrap_or("-"),
+                probe_id_column.as_deref().unwrap_or("-"),
                 platform.as_deref().unwrap_or("-"),
                 normalization.as_deref().unwrap_or("-"),
                 coordinate_system.as_deref().unwrap_or("-"),
@@ -23905,7 +23911,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 "import-apt-probe-region-output" | "convert-apt-probe-region-output" => {
                     if tokens.len() < 5 {
                         return Err(
-                            "arrays import-apt-probe-region-output requires SUMMARY.tsv ANNOTATION.csv OUTPUT_DIR [--metadata TSV] [--condition-column NAME] [--sample-column NAME] [--platform NAME] [--normalization NAME] [--coordinate-system ID] [--genome-build ID]"
+                            "arrays import-apt-probe-region-output requires SUMMARY.tsv ANNOTATION.csv OUTPUT_DIR [--metadata TSV] [--condition-column NAME] [--sample-column NAME] [--probe-intensity TSV] [--probe-id-column NAME] [--platform NAME] [--normalization NAME] [--coordinate-system ID] [--genome-build ID]"
                                 .to_string(),
                         );
                     }
@@ -23915,6 +23921,8 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     let mut metadata = None;
                     let mut condition_column = None;
                     let mut sample_column = None;
+                    let mut probe_intensity = None;
+                    let mut probe_id_column = None;
                     let mut platform = None;
                     let mut normalization = None;
                     let mut coordinate_system = None;
@@ -23946,6 +23954,30 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                                     return Err("Missing NAME after --sample-column".to_string());
                                 }
                                 sample_column = Some(tokens[idx].clone());
+                                idx += 1;
+                            }
+                            "--probe-intensity"
+                            | "--probe_intensity"
+                            | "--probe-intensity-table"
+                            | "--probe_intensity_table"
+                            | "--probe-intensities" => {
+                                idx += 1;
+                                if idx >= tokens.len() {
+                                    return Err(
+                                        "Missing TSV after --probe-intensity".to_string()
+                                    );
+                                }
+                                probe_intensity = Some(tokens[idx].clone());
+                                idx += 1;
+                            }
+                            "--probe-id-column" | "--probe_id_column" => {
+                                idx += 1;
+                                if idx >= tokens.len() {
+                                    return Err(
+                                        "Missing NAME after --probe-id-column".to_string()
+                                    );
+                                }
+                                probe_id_column = Some(tokens[idx].clone());
                                 idx += 1;
                             }
                             "--platform" => {
@@ -23996,6 +24028,8 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         metadata,
                         condition_column,
                         sample_column,
+                        probe_intensity,
+                        probe_id_column,
                         platform,
                         normalization,
                         coordinate_system,
@@ -29389,6 +29423,8 @@ fn execute_reference_and_track_command(
             metadata,
             condition_column,
             sample_column,
+            probe_intensity,
+            probe_id_column,
             platform,
             normalization,
             coordinate_system,
@@ -29402,6 +29438,8 @@ fn execute_reference_and_track_command(
                     metadata.as_deref(),
                     condition_column.as_deref(),
                     sample_column.as_deref(),
+                    probe_intensity.as_deref(),
+                    probe_id_column.as_deref(),
                     platform.as_deref(),
                     normalization.as_deref(),
                     coordinate_system.as_deref(),

@@ -3020,9 +3020,11 @@ The `Help` menu now includes:
   `probe_regions_oligo.R` output directories and explicit APT summary +
   annotation table imports, with optional sample metadata columns to derive
   condition means/SDs and default log2FC tracks. When explicit PM probe
-  coordinates are present in the annotation table, the same import can also
-  write and inspect a probe-coordinate table whose values are labeled as
-  parent probeset-summary intensities. It uses the same shared
+  coordinates are present in the annotation table, the same import can write
+  and inspect a probe-coordinate table. Supplying an explicit probe-intensity
+  matrix lets that table carry true PM probe-level values marked as
+  `probe_level_input`; otherwise the GUI keeps the parent-probeset summary
+  fallback marked as `parent_probeset_summary`. It uses the same shared
   `arrays import-apt-probe-region-output` and
   `arrays inspect-probe-region-output OUTPUT_DIR` contracts as the GUI shell,
   then previews helper outputs, sample/condition/logFC columns, chromosome/gene

@@ -2381,11 +2381,17 @@ Microarray track projection notes:
   annotation table also declares `probe_id` plus explicit PM probe
   `probe_start`/`probe_stop` coordinate columns, GENtle writes
   `probe_intensity_chrom_order.csv` with probe coordinates, x/y feature
-  positions when present, parent probeset ids, and the same sample/derived
-  value columns. Those probe rows are marked as
-  `parent_probeset_summary` intensity source; true PM probe intensities still
-  require probe-level intensity input. It does not run APT or infer
-  coordinates from vendor files by itself.
+  positions when present, parent probeset ids, and sample/derived value
+  columns. Supplying `--probe-intensity TSV` plus optional
+  `--probe-id-column NAME` reads true PM probe-level rows from that explicit
+  matrix, recomputes condition summaries/logFC against the matrix's sample
+  columns when metadata is present, and marks rows as `probe_level_input`.
+  Without a probe matrix, the compatibility fallback still writes parent
+  probeset-summary values marked as `parent_probeset_summary`. The import
+  report and provenance include `probe_intensity_path`,
+  `probe_intensity_source`, `probe_intensity_sample_columns`, and
+  `missing_probe_intensity_count`. It does not run APT or infer coordinates
+  from vendor files by itself.
 - `arrays render-probe-region-output-svg OUTPUT_DIR OUTPUT.svg` consumes the
   same completed helper directory and writes
   `gentle.probe_region_output_svg_export.v1` provenance for a deterministic

@@ -12,6 +12,13 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-06-17
+
+- Added optional true PM probe-intensity matrix input to
+  `arrays import-apt-probe-region-output` and the Clariom D GUI panel, with
+  probe-level sample, condition-summary, and logFC columns preserved in
+  `probe_intensity_chrom_order.csv`.
+
 ## 2026-06-16
 
 - Added first-class sequence-window GUI controls for importing explicit APT
@@ -73,7 +80,8 @@ Maintenance rule:
   tracks for native inspection, plotting, and projection.
 - Added optional `probe_intensity_chrom_order.csv` output for explicit APT
   imports when annotation rows provide PM probe coordinates, marking values as
-  parent probeset-summary intensities until true PM intensity input is supplied.
+  parent probeset-summary intensities when no explicit PM probe matrix is
+  supplied.
 
 ## 2026-06-14
 

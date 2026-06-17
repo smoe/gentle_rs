@@ -714,6 +714,8 @@ fn import_apt_probe_region_output_writes_inspectable_helper_directory() {
             None,
             None,
             None,
+            None,
+            None,
             Some("Clariom_D_Human"),
             Some("rma-sketch"),
             Some("hg38"),
@@ -789,6 +791,8 @@ fn import_apt_probe_region_output_derives_metadata_condition_tracks() {
             Some(&metadata.to_string_lossy()),
             Some("condition"),
             Some("file"),
+            None,
+            None,
             Some("Clariom_D_Human"),
             Some("rma-sketch"),
             Some("hg38"),
@@ -833,6 +837,105 @@ fn import_apt_probe_region_output_derives_metadata_condition_tracks() {
     assert!(probe_table.contains("parent_probeset_summary"));
     assert!(probe_table.contains("probe_1"));
     assert!(probe_table.contains("probe_3"));
+}
+
+#[test]
+fn import_apt_probe_region_output_uses_supplied_probe_intensity_table() {
+    let tmp = tempdir().expect("tempdir");
+    let summary = tmp.path().join("apt.summary.tsv");
+    let annotation = tmp.path().join("annotation.csv");
+    let metadata = tmp.path().join("samples.csv");
+    let probe_intensity = tmp.path().join("probe_intensity.tsv");
+    let output_dir = tmp.path().join("probe_regions");
+    fs::write(
+        &summary,
+        concat!(
+            "probeset_id\tsample_a.CEL\tsample_b.CEL\n",
+            "PSR1\t8.1\t9.2\n",
+            "PSR2\t7.8\t7.9\n"
+        ),
+    )
+    .expect("APT summary");
+    fs::write(
+        &annotation,
+        concat!(
+            "probeset_id,chromosome,start,stop,strand,transcript_cluster_id,number_of_probes,gene_symbol,probe_id,probe_start,probe_stop,x,y\n",
+            "PSR1,chr1,1010,1030,+,TC1,4,PATZ1,probe_1,1011,1028,10,20\n",
+            "PSR1,chr1,1010,1030,+,TC1,4,PATZ1,probe_2,1012,1029,11,20\n",
+            "PSR2,chr1,1060,1080,+,TC1,4,PATZ1,probe_3,1061,1078,12,21\n"
+        ),
+    )
+    .expect("annotation");
+    fs::write(
+        &metadata,
+        concat!(
+            "file,condition\n",
+            "sample_a.CEL,AdGFP\n",
+            "sample_b.CEL,TAp73\n"
+        ),
+    )
+    .expect("metadata");
+    fs::write(
+        &probe_intensity,
+        concat!(
+            "probe_id\tsample_a.CEL\tsample_b.CEL\n",
+            "probe_1\t5.0\t6.0\n",
+            "probe_2\t5.5\t6.2\n",
+            "probe_3\t3.0\t4.5\n"
+        ),
+    )
+    .expect("probe intensity");
+
+    let report = GentleEngine::default()
+        .import_apt_probe_region_output(
+            &summary.to_string_lossy(),
+            &annotation.to_string_lossy(),
+            &output_dir.to_string_lossy(),
+            Some(&metadata.to_string_lossy()),
+            Some("condition"),
+            Some("file"),
+            Some(&probe_intensity.to_string_lossy()),
+            Some("probe_id"),
+            Some("Clariom_D_Human"),
+            Some("rma-sketch"),
+            Some("hg38"),
+            Some("GRCh38"),
+        )
+        .expect("import explicit APT output with probe intensities");
+
+    assert_eq!(report.probe_row_count, 3);
+    assert_eq!(report.missing_probe_intensity_count, 0);
+    assert_eq!(
+        report.probe_intensity_path.as_deref(),
+        Some(probe_intensity.to_str().unwrap())
+    );
+    assert_eq!(
+        report.probe_intensity_source.as_deref(),
+        Some("probe_level_input")
+    );
+    assert_eq!(
+        report.probe_intensity_sample_columns,
+        vec!["sample_a.CEL".to_string(), "sample_b.CEL".to_string()]
+    );
+    assert!(!report.warnings.iter().any(|warning| warning
+        .contains("parent probeset-summary intensities")));
+
+    let region_table =
+        fs::read_to_string(output_dir.join("region_intensity_chrom_order.csv")).expect("table");
+    assert!(region_table.contains(",8.1,9.2,8.100,0.000,9.200,0.000,1.100"));
+    let probe_table =
+        fs::read_to_string(output_dir.join("probe_intensity_chrom_order.csv")).expect("probes");
+    assert!(probe_table.contains("probe_level_input"));
+    assert!(probe_table.contains(
+        "chr1,1011,1028,+,probe_1,10,20,PSR1,TC1,PATZ1,probe_level_input,5.0,6.0,5.000,0.000,6.000,0.000,1.000"
+    ));
+    assert!(probe_table.contains(
+        "chr1,1061,1078,+,probe_3,12,21,PSR2,TC1,PATZ1,probe_level_input,3.0,4.5,3.000,0.000,4.500,0.000,1.500"
+    ));
+    let provenance =
+        fs::read_to_string(output_dir.join("provenance.json")).expect("provenance");
+    assert!(provenance.contains("\"probe_intensity_source\": \"probe_level_input\""));
+    assert!(provenance.contains("\"probe_intensity_probe_id_column\": \"probe_id\""));
 }
 
 #[test]

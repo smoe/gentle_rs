@@ -596,6 +596,10 @@ struct EngineOpsUiState {
     #[serde(default)]
     probe_region_apt_sample_column: String,
     #[serde(default)]
+    probe_region_apt_probe_intensity_path: String,
+    #[serde(default)]
+    probe_region_apt_probe_id_column: String,
+    #[serde(default)]
     probe_region_apt_platform: String,
     #[serde(default)]
     probe_region_apt_normalization: String,
@@ -1368,6 +1372,8 @@ pub struct MainAreaDna {
     probe_region_apt_metadata_path: String,
     probe_region_apt_condition_column: String,
     probe_region_apt_sample_column: String,
+    probe_region_apt_probe_intensity_path: String,
+    probe_region_apt_probe_id_column: String,
     probe_region_apt_platform: String,
     probe_region_apt_normalization: String,
     probe_region_apt_coordinate_system: String,
@@ -2057,6 +2063,8 @@ impl MainAreaDna {
             probe_region_apt_metadata_path: String::new(),
             probe_region_apt_condition_column: "condition".to_string(),
             probe_region_apt_sample_column: "file".to_string(),
+            probe_region_apt_probe_intensity_path: String::new(),
+            probe_region_apt_probe_id_column: "probe_id".to_string(),
             probe_region_apt_platform: "Clariom_D_Human".to_string(),
             probe_region_apt_normalization: "rma-sketch".to_string(),
             probe_region_apt_coordinate_system: "hg38".to_string(),
@@ -7893,6 +7901,12 @@ impl MainAreaDna {
                 &self.probe_region_apt_condition_column,
             ),
             sample_column: Self::optional_probe_region_text(&self.probe_region_apt_sample_column),
+            probe_intensity: Self::optional_probe_region_text(
+                &self.probe_region_apt_probe_intensity_path,
+            ),
+            probe_id_column: Self::optional_probe_region_text(
+                &self.probe_region_apt_probe_id_column,
+            ),
             platform: Self::optional_probe_region_text(&self.probe_region_apt_platform),
             normalization: Self::optional_probe_region_text(&self.probe_region_apt_normalization),
             coordinate_system: Self::optional_probe_region_text(
@@ -8214,6 +8228,32 @@ impl MainAreaDna {
             }
         });
         ui.horizontal_wrapped(|ui| {
+            ui.label("probe_intensity");
+            if ui
+                .add_sized(
+                    [ui.available_width().min(320.0), 0.0],
+                    egui::TextEdit::singleline(&mut self.probe_region_apt_probe_intensity_path),
+                )
+                .on_hover_text(
+                    "Optional PM probe-level intensity matrix; rows are probe ids and columns are sample intensities",
+                )
+                .changed()
+            {
+                import_fields_changed = true;
+            }
+            ui.label("probe id column");
+            if ui
+                .add(
+                    egui::TextEdit::singleline(&mut self.probe_region_apt_probe_id_column)
+                        .desired_width(120.0),
+                )
+                .on_hover_text("Optional probe identifier column name for the probe-intensity matrix")
+                .changed()
+            {
+                import_fields_changed = true;
+            }
+        });
+        ui.horizontal_wrapped(|ui| {
             ui.label("metadata");
             if ui
                 .add_sized(
@@ -8316,9 +8356,10 @@ impl MainAreaDna {
         }
         if let Some(import) = self.cached_probe_region_apt_import.as_ref() {
             ui.small(format!(
-                "last import: {} region row(s), {} probe row(s), {} summary row(s), {} annotation row(s), samples: {}, conditions: {}, logFC: {}",
+                "last import: {} region row(s), {} probe row(s), source: {}, {} summary row(s), {} annotation row(s), samples: {}, conditions: {}, logFC: {}",
                 import.written_row_count,
                 import.probe_row_count,
+                import.probe_intensity_source.as_deref().unwrap_or("-"),
                 import.summary_row_count,
                 import.annotation_row_count,
                 Self::probe_region_preview_list(&import.sample_columns),
@@ -21851,6 +21892,10 @@ impl MainAreaDna {
             probe_region_apt_metadata_path: self.probe_region_apt_metadata_path.clone(),
             probe_region_apt_condition_column: self.probe_region_apt_condition_column.clone(),
             probe_region_apt_sample_column: self.probe_region_apt_sample_column.clone(),
+            probe_region_apt_probe_intensity_path: self
+                .probe_region_apt_probe_intensity_path
+                .clone(),
+            probe_region_apt_probe_id_column: self.probe_region_apt_probe_id_column.clone(),
             probe_region_apt_platform: self.probe_region_apt_platform.clone(),
             probe_region_apt_normalization: self.probe_region_apt_normalization.clone(),
             probe_region_apt_coordinate_system: self.probe_region_apt_coordinate_system.clone(),
@@ -22137,6 +22182,13 @@ impl MainAreaDna {
         } else {
             s.probe_region_apt_sample_column
         };
+        self.probe_region_apt_probe_intensity_path = s.probe_region_apt_probe_intensity_path;
+        self.probe_region_apt_probe_id_column =
+            if s.probe_region_apt_probe_id_column.trim().is_empty() {
+                "probe_id".to_string()
+            } else {
+                s.probe_region_apt_probe_id_column
+            };
         self.probe_region_apt_platform = if s.probe_region_apt_platform.trim().is_empty() {
             "Clariom_D_Human".to_string()
         } else {
