@@ -221,6 +221,13 @@ contracts, not a separate ordering implementation.
   creates a provider-neutral starter request for the selected provider/service.
 - Changing the selected provider or service kind refreshes that editable
   starter request and clears stale preflight/quote previews.
+- The project-source route block calls `services route-project-source` for
+  active sequence/span, persisted oligo order forms, or primer report pair
+  ranks. The selected delivery-route candidate can be copied into the same
+  editable request JSON for review.
+- Primer report pair ranks are persisted as an oligo order form before
+  classification, so exact duplicate procurement rows remain visible and
+  quote handoff stays blocked until duplicate review is recorded.
 - `Preflight` runs `services project-preflight`; `Prepare Quote Handoff` runs
   `services project-quote`.
 - `Export Handoff Bundle` runs `services project-quote --output-dir DIR` and

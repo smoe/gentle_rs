@@ -1073,6 +1073,15 @@ pub enum ShellCommand {
     ServicesDeliveryRoute {
         request_json: String,
     },
+    ServicesRouteProjectSource {
+        kind: String,
+        seq_id: Option<String>,
+        range: Option<String>,
+        source_as: Option<String>,
+        form_id: Option<String>,
+        report_id: Option<String>,
+        pair_ranks: Vec<usize>,
+    },
     ServicesProjectPreflight {
         request_json: String,
     },
@@ -6834,6 +6843,24 @@ impl ShellCommand {
                 } else {
                     request_json
                 }
+            ),
+            Self::ServicesRouteProjectSource {
+                kind,
+                seq_id,
+                range,
+                source_as,
+                form_id,
+                report_id,
+                pair_ranks,
+            } => format!(
+                "route project source kind='{}' seq_id='{}' range='{}' as='{}' form_id='{}' report_id='{}' pair_ranks={:?}",
+                kind,
+                seq_id.as_deref().unwrap_or("-"),
+                range.as_deref().unwrap_or("-"),
+                source_as.as_deref().unwrap_or("-"),
+                form_id.as_deref().unwrap_or("-"),
+                report_id.as_deref().unwrap_or("-"),
+                pair_ranks
             ),
             Self::ServicesProjectPreflight { request_json } => format!(
                 "preflight external-service request from '{}'",
@@ -12688,6 +12715,50 @@ where
         .map_err(|e| format!("Invalid {context} JSON payload: {e}"))
 }
 
+fn parse_services_route_project_rank_csv(raw: &str, flag: &str) -> Result<Vec<usize>, String> {
+    let ranks = split_csv_tokens_with_empty_error(raw)?
+        .into_iter()
+        .map(|token| {
+            let rank = token
+                .parse::<usize>()
+                .map_err(|e| format!("Invalid {flag} value '{token}': {e}"))?;
+            if rank == 0 {
+                return Err(format!("{flag} ranks must be >= 1"));
+            }
+            Ok(rank)
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    if ranks.is_empty() {
+        return Err(format!("{flag} requires at least one rank"));
+    }
+    Ok(ranks)
+}
+
+fn parse_services_route_project_range(raw: &str) -> Result<(usize, usize), String> {
+    let (start, end) = raw
+        .split_once("..")
+        .ok_or_else(|| "services route-project-source --range expects START..END".to_string())?;
+    let start = start
+        .trim()
+        .parse::<usize>()
+        .map_err(|e| format!("Invalid route-project-source range start '{start}': {e}"))?;
+    let end = end
+        .trim()
+        .parse::<usize>()
+        .map_err(|e| format!("Invalid route-project-source range end '{end}': {e}"))?;
+    if end < start {
+        return Err(format!(
+            "Invalid route-project-source range {start}..{end}: end must be >= start"
+        ));
+    }
+    if end == start {
+        return Err(format!(
+            "Invalid route-project-source range {start}..{end}: range must not be empty"
+        ));
+    }
+    Ok((start, end))
+}
+
 fn oligo_order_line_json(line: &crate::engine::OligoOrderLineItem) -> Value {
     json!({
         "line_id": line.line_id,
@@ -12760,6 +12831,174 @@ fn oligo_order_delivery_route_report(
         .map_err(|e| format!("Could not serialize oligo order delivery route request: {e}"))?;
     let route_report = service_readiness::external_service_delivery_route(&route_request_json)?;
     Ok((route_request, route_report))
+}
+
+fn sequence_delivery_route_request(
+    engine: &GentleEngine,
+    seq_id: &str,
+    range: Option<(usize, usize)>,
+    source_as: Option<&str>,
+) -> Result<ExternalServiceDeliveryRouteRequest, String> {
+    let seq_id = seq_id.trim();
+    if seq_id.is_empty() {
+        return Err(
+            "services route-project-source --kind sequence requires --seq-id ID".to_string(),
+        );
+    }
+    let source_as = source_as
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("sequence");
+    let source_as_key = source_as.replace('_', "-").to_ascii_lowercase();
+    let source_kind = match source_as_key.as_str() {
+        "sequence" => "selected_sequence",
+        "construct-output" => "construct_output",
+        other => {
+            return Err(format!(
+                "Unsupported services route-project-source --as '{other}' (expected sequence or construct-output)"
+            ));
+        }
+    };
+    let dna = engine
+        .state()
+        .sequences
+        .get(seq_id)
+        .ok_or_else(|| format!("Sequence '{seq_id}' not found"))?;
+    if dna.is_empty() {
+        return Err(format!("Sequence '{seq_id}' is empty and cannot be routed"));
+    }
+    let len = dna.len();
+    let (start, end) = range.unwrap_or((0, len));
+    if end > len {
+        return Err(format!(
+            "Invalid route-project-source range {start}..{end}: sequence '{seq_id}' has length {len}"
+        ));
+    }
+    if end <= start {
+        return Err(format!(
+            "Invalid route-project-source range {start}..{end}: range must not be empty"
+        ));
+    }
+    let sequence = String::from_utf8_lossy(&dna.forward_bytes()[start..end]).to_ascii_uppercase();
+    let source_range = json!({
+        "start_0based": start,
+        "end_0based_exclusive": end,
+    });
+    let mut source_target = json!({
+        "kind": source_kind,
+        "seq_id": seq_id,
+        "target_label": seq_id,
+        "sequence": sequence,
+        "sequence_length_nt": end - start,
+        "source_range_0based": source_range,
+    });
+    if source_kind == "construct_output"
+        && let Some(object) = source_target.as_object_mut()
+    {
+        object.insert("construct_output_seq_id".to_string(), json!(seq_id));
+    }
+    Ok(ExternalServiceDeliveryRouteRequest {
+        schema: EXTERNAL_SERVICE_DELIVERY_ROUTE_REQUEST_SCHEMA.to_string(),
+        source_target,
+        optimization_target: None,
+        vector_spec: None,
+        delivery_options: None,
+        commercial_context_ref: None,
+        return_spec: Default::default(),
+        request_metadata: Some(json!({
+            "source": "services route-project-source",
+            "source_kind": "sequence",
+            "source_as": source_as_key,
+            "seq_id": seq_id,
+            "range_0based": {
+                "start_0based": start,
+                "end_0based_exclusive": end,
+            },
+        })),
+    })
+}
+
+fn route_project_source_request(
+    request: &ExternalServiceDeliveryRouteRequest,
+) -> Result<ExternalServiceDeliveryRouteReport, String> {
+    let request_json = serde_json::to_string(request)
+        .map_err(|e| format!("Could not serialize project-source route request: {e}"))?;
+    service_readiness::external_service_delivery_route(&request_json)
+}
+
+fn route_project_source_command(
+    engine: &mut GentleEngine,
+    kind: &str,
+    seq_id: Option<&str>,
+    range: Option<&str>,
+    source_as: Option<&str>,
+    form_id: Option<&str>,
+    report_id: Option<&str>,
+    pair_ranks: &[usize],
+) -> Result<(ExternalServiceDeliveryRouteReport, bool), String> {
+    let normalized_kind = kind.trim().replace('_', "-").to_ascii_lowercase();
+    match normalized_kind.as_str() {
+        "sequence" => {
+            let seq_id = seq_id.ok_or_else(|| {
+                "services route-project-source --kind sequence requires --seq-id ID".to_string()
+            })?;
+            let parsed_range = range.map(parse_services_route_project_range).transpose()?;
+            let request = sequence_delivery_route_request(engine, seq_id, parsed_range, source_as)?;
+            let report = route_project_source_request(&request)?;
+            Ok((report, false))
+        }
+        "oligo-form" => {
+            let form_id = form_id.ok_or_else(|| {
+                "services route-project-source --kind oligo-form requires --form-id ID".to_string()
+            })?;
+            let form = engine
+                .get_oligo_order_form(form_id)
+                .map_err(|e| e.to_string())?;
+            let (_request, report) = oligo_order_delivery_route_report(&form)?;
+            Ok((report, false))
+        }
+        "primer-report-rows" => {
+            let report_id = report_id.ok_or_else(|| {
+                "services route-project-source --kind primer-report-rows requires --report-id ID"
+                    .to_string()
+            })?;
+            if pair_ranks.is_empty() {
+                return Err(
+                    "services route-project-source --kind primer-report-rows requires --pair-rank N[,N...]"
+                        .to_string(),
+                );
+            }
+            let before = engine
+                .state()
+                .metadata
+                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+                .cloned();
+            let form = engine
+                .create_oligo_order_form_from_primer_report(
+                    report_id,
+                    pair_ranks,
+                    form_id,
+                    None,
+                    None,
+                    &[],
+                )
+                .map_err(|e| e.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+                .cloned();
+            let (_request, mut report) = oligo_order_delivery_route_report(&form)?;
+            report.warnings.push(format!(
+                "Persisted oligo order form '{}' from primer report '{}' before routing; duplicate review remains required before quote handoff when exact duplicates are present.",
+                form.form_id, report_id
+            ));
+            Ok((report, before != after))
+        }
+        other => Err(format!(
+            "Unsupported services route-project-source --kind '{other}' (expected sequence, oligo-form or primer-report-rows)"
+        )),
+    }
 }
 
 fn oligo_order_review_blocks_quote(form: &crate::engine::OligoOrderForm) -> bool {
@@ -23193,7 +23432,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "services" => {
             if tokens.len() < 2 {
                 return Err(
-                    "services requires a subcommand: status, providers, delivery-route, project-preflight, project-quote, handoff, doctor or guide".to_string(),
+                    "services requires a subcommand: status, providers, delivery-route, route-project-source, project-preflight, project-quote, handoff, doctor or guide".to_string(),
                 );
             }
             match tokens[1].as_str() {
@@ -23268,6 +23507,109 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     }
                     Ok(ShellCommand::ServicesDeliveryRoute {
                         request_json: tokens[2].clone(),
+                    })
+                }
+                "route-project-source" => {
+                    let mut kind: Option<String> = None;
+                    let mut seq_id: Option<String> = None;
+                    let mut range: Option<String> = None;
+                    let mut source_as: Option<String> = None;
+                    let mut form_id: Option<String> = None;
+                    let mut report_id: Option<String> = None;
+                    let mut pair_ranks: Vec<usize> = vec![];
+                    let mut idx = 2usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--kind" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing VALUE after --kind for services route-project-source"
+                                            .to_string(),
+                                    );
+                                }
+                                kind = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--seq-id" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing ID after --seq-id for services route-project-source"
+                                            .to_string(),
+                                    );
+                                }
+                                seq_id = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--range" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing START..END after --range for services route-project-source"
+                                            .to_string(),
+                                    );
+                                }
+                                range = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--as" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing VALUE after --as for services route-project-source"
+                                            .to_string(),
+                                    );
+                                }
+                                source_as = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--form-id" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing ID after --form-id for services route-project-source"
+                                            .to_string(),
+                                    );
+                                }
+                                form_id = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--report-id" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing ID after --report-id for services route-project-source"
+                                            .to_string(),
+                                    );
+                                }
+                                report_id = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--pair-rank" | "--pair-ranks" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing N[,N...] after --pair-rank for services route-project-source"
+                                            .to_string(),
+                                    );
+                                }
+                                let flag = tokens[idx].clone();
+                                pair_ranks =
+                                    parse_services_route_project_rank_csv(&tokens[idx + 1], &flag)?;
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for services route-project-source"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::ServicesRouteProjectSource {
+                        kind: kind.ok_or_else(|| {
+                            "services route-project-source requires --kind sequence|oligo-form|primer-report-rows"
+                                .to_string()
+                        })?,
+                        seq_id,
+                        range,
+                        source_as,
+                        form_id,
+                        report_id,
+                        pair_ranks,
                     })
                 }
                 "project-preflight" => {
@@ -23389,7 +23731,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     })
                 }
                 other => Err(format!(
-                    "Unknown services subcommand '{other}' (expected status, providers, delivery-route, project-preflight, project-quote, handoff, doctor or guide)"
+                    "Unknown services subcommand '{other}' (expected status, providers, delivery-route, route-project-source, project-preflight, project-quote, handoff, doctor or guide)"
                 )),
             }
         }
@@ -23967,9 +24309,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                             "--condition-column" | "--condition_column" => {
                                 idx += 1;
                                 if idx >= tokens.len() {
-                                    return Err(
-                                        "Missing NAME after --condition-column".to_string()
-                                    );
+                                    return Err("Missing NAME after --condition-column".to_string());
                                 }
                                 condition_column = Some(tokens[idx].clone());
                                 idx += 1;
@@ -24025,9 +24365,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                             "--coordinate-system" | "--coordinate_system" => {
                                 idx += 1;
                                 if idx >= tokens.len() {
-                                    return Err(
-                                        "Missing ID after --coordinate-system".to_string()
-                                    );
+                                    return Err("Missing ID after --coordinate-system".to_string());
                                 }
                                 coordinate_system = Some(tokens[idx].clone());
                                 idx += 1;
@@ -27781,6 +28119,32 @@ fn execute_export_import_and_resource_command(
                 state_changed: false,
                 output: serde_json::to_value(report).map_err(|e| {
                     format!("Could not serialize external service delivery route: {e}")
+                })?,
+            })
+        }
+        ShellCommand::ServicesRouteProjectSource {
+            kind,
+            seq_id,
+            range,
+            source_as,
+            form_id,
+            report_id,
+            pair_ranks,
+        } => {
+            let (report, state_changed) = route_project_source_command(
+                engine,
+                kind,
+                seq_id.as_deref(),
+                range.as_deref(),
+                source_as.as_deref(),
+                form_id.as_deref(),
+                report_id.as_deref(),
+                pair_ranks,
+            )?;
+            Ok(ShellRunResult {
+                state_changed,
+                output: serde_json::to_value(report).map_err(|e| {
+                    format!("Could not serialize project-source delivery route: {e}")
                 })?,
             })
         }
@@ -36578,6 +36942,7 @@ fn execute_shell_command_with_options_dispatch(
             | ShellCommand::ServicesProvidersList
             | ShellCommand::ServicesProvidersDoctor { .. }
             | ShellCommand::ServicesDeliveryRoute { .. }
+            | ShellCommand::ServicesRouteProjectSource { .. }
             | ShellCommand::ServicesProjectPreflight { .. }
             | ShellCommand::ServicesProjectQuote { .. }
             | ShellCommand::ServicesHandoff { .. }
@@ -37267,6 +37632,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ServicesProvidersList
         | ShellCommand::ServicesProvidersDoctor { .. }
         | ShellCommand::ServicesDeliveryRoute { .. }
+        | ShellCommand::ServicesRouteProjectSource { .. }
         | ShellCommand::ServicesProjectPreflight { .. }
         | ShellCommand::ServicesProjectQuote { .. }
         | ShellCommand::ServicesHandoff { .. }

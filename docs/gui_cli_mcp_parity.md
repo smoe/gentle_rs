@@ -17,11 +17,11 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 
 | Adapter | prominent | shell-only | gap |
 |---|---:|---:|---:|
-| GUI | 21 | 546 | 0 |
-| gentle_cli | 326 | 266 | 0 |
-| MCP | 67 | 404 | 24 |
-| JS | 78 | 385 | 24 |
-| Lua | 77 | 386 | 24 |
+| GUI | 21 | 548 | 0 |
+| gentle_cli | 328 | 266 | 0 |
+| MCP | 67 | 404 | 26 |
+| JS | 78 | 385 | 26 |
+| Lua | 77 | 386 | 26 |
 | ClawBio | 0 | 0 | 0 |
 
 ## Glossary Commands
@@ -161,6 +161,8 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | services status | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation.<br>JS: External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation.<br>Lua: External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | services providers list | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation.<br>JS: External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation.<br>Lua: External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | services providers doctor | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation.<br>JS: External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation.<br>Lua: External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| services delivery-route | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| services route-project-source | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | services project-preflight | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation.<br>JS: External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation.<br>Lua: External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | services project-quote | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation.<br>JS: External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation.<br>Lua: External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | services handoff | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation.<br>JS: External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation.<br>Lua: External-service setup guidance is local CLI/GUI workflow metadata, not an engine operation.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
@@ -737,6 +739,8 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | JS | rna-reads list-reports | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | rna-reads show-alignment | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | rna-reads show-report | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| JS | services delivery-route | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| JS | services route-project-source | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | uniprot projection-list | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | uniprot projection-show | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | uniprot show | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
@@ -761,6 +765,8 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | Lua | rna-reads list-reports | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | rna-reads show-alignment | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | rna-reads show-report | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| Lua | services delivery-route | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| Lua | services route-project-source | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | uniprot projection-list | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | uniprot projection-show | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | uniprot show | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
@@ -785,6 +791,8 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | MCP | rna-reads list-reports | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | rna-reads show-alignment | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | rna-reads show-report | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| MCP | services delivery-route | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| MCP | services route-project-source | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | uniprot projection-list | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | uniprot projection-show | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | uniprot show | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |

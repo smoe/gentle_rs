@@ -24,6 +24,10 @@ Maintenance rule:
 
 ## 2026-06-16
 
+- Added `services route-project-source` plus External Services GUI helpers so
+  selected sequences/spans, persisted oligo order forms, and primer report pair
+  ranks can produce delivery-route candidates while preserving duplicate-review
+  gates before quote handoff.
 - Added first-class sequence-window GUI controls for importing explicit APT
   probe-region summaries plus annotation tables into inspectable GENtle helper
   output, reusing the shared shell import/inspect/export/project contracts.

@@ -12257,6 +12257,49 @@ fn execute_primers_oligo_order_generic_create_groups_review_export_and_persists(
         3
     );
 
+    let duplicate_route = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ServicesRouteProjectSource {
+            kind: "oligo-form".to_string(),
+            seq_id: None,
+            range: None,
+            source_as: None,
+            form_id: Some("tp73_order_generic".to_string()),
+            report_id: None,
+            pair_ranks: vec![],
+        },
+    )
+    .expect("route duplicate oligo order form");
+    assert!(!duplicate_route.state_changed);
+    assert_eq!(
+        duplicate_route.output["recommended_provider"].as_str(),
+        Some("metabion")
+    );
+    let duplicate_request =
+        serde_json::to_string(&duplicate_route.output["candidates"][0]["request"])
+            .expect("serialize route candidate request");
+    let duplicate_quote = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ServicesProjectQuote {
+            request_json: duplicate_request,
+            output_dir: None,
+        },
+    )
+    .expect("project quote should return a structured blocked report");
+    assert_eq!(
+        duplicate_quote.output["quote_status"].as_str(),
+        Some("blocked")
+    );
+    assert!(
+        duplicate_quote.output["preflight"]["blocking_issues"]
+            .as_array()
+            .expect("blocking issues")
+            .iter()
+            .any(|issue| issue
+                .as_str()
+                .is_some_and(|text| text.contains("duplicate review is required")))
+    );
+
     let blocked_quote = execute_shell_command(
         &mut engine,
         &ShellCommand::PrimersOligoOrderQuote {
@@ -12285,6 +12328,46 @@ fn execute_primers_oligo_order_generic_create_groups_review_export_and_persists(
         Some("reviewed")
     );
     assert_eq!(reviewed.output["line_count"].as_u64(), Some(3));
+
+    let reviewed_route = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ServicesRouteProjectSource {
+            kind: "oligo-form".to_string(),
+            seq_id: None,
+            range: None,
+            source_as: None,
+            form_id: Some("tp73_order_generic".to_string()),
+            report_id: None,
+            pair_ranks: vec![],
+        },
+    )
+    .expect("route reviewed oligo order form");
+    let reviewed_request =
+        serde_json::to_string(&reviewed_route.output["candidates"][0]["request"])
+            .expect("serialize reviewed route candidate request");
+    let reviewed_project_quote = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ServicesProjectQuote {
+            request_json: reviewed_request,
+            output_dir: None,
+        },
+    )
+    .expect("quote reviewed project-source request");
+    assert_eq!(
+        reviewed_project_quote.output["quote_status"].as_str(),
+        Some("handoff_ready")
+    );
+    assert_eq!(
+        reviewed_project_quote.output["service_ready_bundle"]["inline_payloads"]
+            .as_array()
+            .expect("inline payloads")
+            .iter()
+            .find(|payload| payload["payload_kind"].as_str() == Some("normalized_line_items_json"))
+            .and_then(|payload| payload["text"].as_str())
+            .and_then(|text| serde_json::from_str::<serde_json::Value>(text).ok())
+            .and_then(|rows| rows.as_array().map(Vec::len)),
+        Some(3)
+    );
 
     let quote_dir = tmp.path().join("oligo_quote_bundle");
     let quote = execute_shell_command(
@@ -12465,6 +12548,53 @@ fn execute_primers_oligo_order_from_primer_report_preserves_pair_provenance() {
         },
     )
     .expect("design primer report");
+
+    let project_source_route = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ServicesRouteProjectSource {
+            kind: "primer-report-rows".to_string(),
+            seq_id: None,
+            range: None,
+            source_as: None,
+            form_id: Some("tp73_primer_project_route".to_string()),
+            report_id: Some("tp73_primer_report_for_order".to_string()),
+            pair_ranks: vec![1],
+        },
+    )
+    .expect("route primer report rows through persisted order form");
+    assert!(project_source_route.state_changed);
+    assert_eq!(
+        project_source_route.output["recommended_provider"].as_str(),
+        Some("metabion")
+    );
+    assert_eq!(
+        project_source_route.output["candidates"][0]["request"]["source_target"]["form_id"]
+            .as_str(),
+        Some("tp73_primer_project_route")
+    );
+    assert!(
+        project_source_route.output["warnings"]
+            .as_array()
+            .expect("warnings")
+            .iter()
+            .any(|warning| warning
+                .as_str()
+                .is_some_and(|text| text.contains("Persisted oligo order form")))
+    );
+    let persisted = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersOligoOrderShow {
+            form_id: "tp73_primer_project_route".to_string(),
+        },
+    )
+    .expect("show persisted project-route order form");
+    assert_eq!(
+        persisted.output["form"]["line_items"]
+            .as_array()
+            .expect("persisted line items")
+            .len(),
+        2
+    );
 
     let created = execute_shell_command(
         &mut engine,
@@ -17163,6 +17293,26 @@ fn parse_services_external_provider_commands() {
         other => panic!("unexpected command: {other:?}"),
     }
 
+    let project_source = parse_shell_line(
+        "services route-project-source --kind primer-report-rows --report-id rpt_1 --pair-rank 1,2 --form-id order_1",
+    )
+    .expect("parse services route-project-source");
+    match project_source {
+        ShellCommand::ServicesRouteProjectSource {
+            kind,
+            report_id,
+            pair_ranks,
+            form_id,
+            ..
+        } => {
+            assert_eq!(kind, "primer-report-rows");
+            assert_eq!(report_id.as_deref(), Some("rpt_1"));
+            assert_eq!(pair_ranks, vec![1, 2]);
+            assert_eq!(form_id.as_deref(), Some("order_1"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
     let preflight = parse_shell_line("services project-preflight @geneart_request.json")
         .expect("parse services project-preflight");
     match preflight {
@@ -17355,6 +17505,141 @@ fn execute_services_delivery_route_selects_sequence_kind_provider_rules() {
         protein_route.output["recommended_service_kind"].as_str(),
         Some("protein_expression")
     );
+}
+
+#[test]
+fn execute_services_route_project_source_sequence_span_and_construct_output() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "short_seq".to_string(),
+        DNAsequence::from_sequence("AAAACCGGTTTT").expect("short sequence"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+
+    let route = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ServicesRouteProjectSource {
+            kind: "sequence".to_string(),
+            seq_id: Some("short_seq".to_string()),
+            range: None,
+            source_as: None,
+            form_id: None,
+            report_id: None,
+            pair_ranks: vec![],
+        },
+    )
+    .expect("route active sequence source");
+    assert!(!route.state_changed);
+    assert_eq!(route.output["status"].as_str(), Some("route_ready"));
+    assert_eq!(
+        route.output["recommended_provider"].as_str(),
+        Some("metabion")
+    );
+    assert_eq!(
+        route.output["recommended_service_kind"].as_str(),
+        Some("dna_oligo_single_tube")
+    );
+    assert_eq!(
+        route.output["candidates"][0]["request"]["source_target"]["seq_id"].as_str(),
+        Some("short_seq")
+    );
+
+    let range_route = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ServicesRouteProjectSource {
+            kind: "sequence".to_string(),
+            seq_id: Some("short_seq".to_string()),
+            range: Some("4..8".to_string()),
+            source_as: None,
+            form_id: None,
+            report_id: None,
+            pair_ranks: vec![],
+        },
+    )
+    .expect("route sequence span");
+    let source_target = &range_route.output["candidates"][0]["request"]["source_target"];
+    assert_eq!(source_target["sequence"].as_str(), Some("CCGG"));
+    assert_eq!(
+        source_target["source_range_0based"]["start_0based"].as_u64(),
+        Some(4)
+    );
+    assert_eq!(
+        source_target["source_range_0based"]["end_0based_exclusive"].as_u64(),
+        Some(8)
+    );
+
+    let construct_route = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ServicesRouteProjectSource {
+            kind: "sequence".to_string(),
+            seq_id: Some("short_seq".to_string()),
+            range: None,
+            source_as: Some("construct-output".to_string()),
+            form_id: None,
+            report_id: None,
+            pair_ranks: vec![],
+        },
+    )
+    .expect("route selected sequence as construct output");
+    assert_eq!(
+        construct_route.output["recommended_provider"].as_str(),
+        Some("geneart")
+    );
+    assert_eq!(
+        construct_route.output["recommended_service_kind"].as_str(),
+        Some("cloned_gene")
+    );
+    assert_eq!(
+        construct_route.output["candidates"][0]["request"]["source_target"]["kind"].as_str(),
+        Some("construct_output")
+    );
+}
+
+#[test]
+fn execute_services_route_project_source_sequence_errors_are_clear() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "short_seq".to_string(),
+        DNAsequence::from_sequence("AAAACCGGTTTT").expect("short sequence"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    for (range, expected) in [
+        ("8..4", "end must be >= start"),
+        ("4..4", "range must not be empty"),
+        ("0..99", "has length"),
+    ] {
+        let err = execute_shell_command(
+            &mut engine,
+            &ShellCommand::ServicesRouteProjectSource {
+                kind: "sequence".to_string(),
+                seq_id: Some("short_seq".to_string()),
+                range: Some(range.to_string()),
+                source_as: None,
+                form_id: None,
+                report_id: None,
+                pair_ranks: vec![],
+            },
+        )
+        .expect_err("invalid range should fail");
+        assert!(
+            err.contains(expected),
+            "range {range} should mention {expected:?}, got {err}"
+        );
+    }
+    let err = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ServicesRouteProjectSource {
+            kind: "sequence".to_string(),
+            seq_id: Some("missing".to_string()),
+            range: None,
+            source_as: None,
+            form_id: None,
+            report_id: None,
+            pair_ranks: vec![],
+        },
+    )
+    .expect_err("missing sequence should fail");
+    assert!(err.contains("Sequence 'missing' not found"));
 }
 
 #[test]

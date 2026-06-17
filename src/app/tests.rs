@@ -51,7 +51,7 @@ use crate::{
         TranslationSpeedMark, TranslationSpeedProfile, TranslationSpeedProfileSource,
         UniprotFeatureCodingDnaQueryMode, UniprotFeatureCodingDnaQueryReport,
     },
-    engine_shell::UiIntentTarget,
+    engine_shell::{ShellCommand, UiIntentTarget, parse_shell_line},
     ensembl_protein::{EnsemblProteinEntry, EnsemblProteinEntrySummary, EnsemblProteinFeature},
     genomes::{
         EnsemblCatalogUpdatePreview, EnsemblInstallableGenomeCatalog, EnsemblQuickInstallPreview,
@@ -5162,6 +5162,96 @@ fn external_services_preflight_uses_shared_shell_contract() {
     );
     assert_eq!(preflight["provider"].as_str(), Some("metabion"));
     assert_eq!(preflight["eligible"].as_bool(), Some(true));
+}
+
+#[test]
+fn external_services_project_source_copyable_commands_parse() {
+    let mut app = GENtleApp::default();
+    app.external_services_ui.project_source_kind = "sequence".to_string();
+    app.external_services_ui.project_source_seq_id = "seq_a".to_string();
+    app.external_services_ui.project_source_range = "3..18".to_string();
+    app.external_services_ui.project_source_as_construct_output = true;
+    let sequence_line = app.external_services_project_source_shell_line();
+    match parse_shell_line(&sequence_line).expect("parse sequence project-source command") {
+        ShellCommand::ServicesRouteProjectSource {
+            kind,
+            seq_id,
+            range,
+            source_as,
+            ..
+        } => {
+            assert_eq!(kind, "sequence");
+            assert_eq!(seq_id.as_deref(), Some("seq_a"));
+            assert_eq!(range.as_deref(), Some("3..18"));
+            assert_eq!(source_as.as_deref(), Some("construct-output"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    app.external_services_ui.project_source_kind = "oligo-form".to_string();
+    app.external_services_ui.project_source_form_id = "order_1".to_string();
+    assert!(matches!(
+        parse_shell_line(&app.external_services_project_source_shell_line())
+            .expect("parse oligo-form project-source command"),
+        ShellCommand::ServicesRouteProjectSource { kind, form_id, .. }
+            if kind == "oligo-form" && form_id.as_deref() == Some("order_1")
+    ));
+
+    app.external_services_ui.project_source_kind = "primer-report-rows".to_string();
+    app.external_services_ui.project_source_report_id = "report_1".to_string();
+    app.external_services_ui.project_source_pair_ranks = "1,2".to_string();
+    app.external_services_ui.project_source_form_id = "order_from_report".to_string();
+    assert!(matches!(
+        parse_shell_line(&app.external_services_project_source_shell_line())
+            .expect("parse primer-report project-source command"),
+        ShellCommand::ServicesRouteProjectSource { kind, report_id, pair_ranks, form_id, .. }
+            if kind == "primer-report-rows"
+                && report_id.as_deref() == Some("report_1")
+                && pair_ranks == vec![1, 2]
+                && form_id.as_deref() == Some("order_from_report")
+    ));
+}
+
+#[test]
+fn external_services_project_source_route_populates_editable_request_json() {
+    let mut app = GENtleApp::default();
+    {
+        let mut engine = app.engine.write().expect("engine lock");
+        engine.state_mut().sequences.insert(
+            "route_seq".to_string(),
+            DNAsequence::from_sequence("ACGTACGTACGTACGTACGT").expect("route sequence"),
+        );
+    }
+    app.open_external_services_dialog();
+    app.external_services_ui.project_source_kind = "sequence".to_string();
+    app.external_services_ui.project_source_seq_id = "route_seq".to_string();
+    app.external_services_ui.project_source_range.clear();
+    app.external_services_ui.project_source_as_construct_output = false;
+
+    app.run_external_services_project_source_route();
+
+    let route = app
+        .external_services_ui
+        .route_project_source_output
+        .as_ref()
+        .expect("route output");
+    assert_eq!(route["status"].as_str(), Some("route_ready"));
+    assert_eq!(route["recommended_provider"].as_str(), Some("metabion"));
+
+    app.use_external_services_route_candidate();
+
+    assert!(
+        app.external_services_ui
+            .request_json
+            .contains("\"provider\": \"metabion\"")
+    );
+    assert!(
+        app.external_services_ui
+            .request_json
+            .contains("\"seq_id\": \"route_seq\"")
+    );
+    assert!(app.external_services_ui.preflight_output.is_none());
+    assert!(app.external_services_ui.quote_output.is_none());
 }
 
 #[test]

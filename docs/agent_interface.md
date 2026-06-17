@@ -439,12 +439,14 @@ an agent has selected a deterministic operation.
 - `seq-trace list`
 - `seq-trace show`
 - `sequence create`
+- `services delivery-route`
 - `services guide`
 - `services handoff`
 - `services project-preflight`
 - `services project-quote`
 - `services providers doctor`
 - `services providers list`
+- `services route-project-source`
 - `services status`
 - `set-param`
 - `splicing-refs derive`

@@ -3431,6 +3431,27 @@ Service and resource commands:
   - Returned candidate requests are ordinary
     `gentle.external_service_request.v1` objects suitable for human-reviewed
     `services project-preflight` or `services project-quote`.
+- `services route-project-source --kind sequence|oligo-form|primer-report-rows ...`
+  - Builds a delivery-route request from a real project object and immediately
+    classifies it with the same logic as `services delivery-route`.
+  - Sequence source:
+    `services route-project-source --kind sequence --seq-id ID [--range START..END] [--as sequence|construct-output]`.
+    Ranges are 0-based, end-exclusive. `--as construct-output` keeps the
+    selected sequence as the source text but marks `source_target.kind =
+    construct_output`, so construct-aware routing can recommend cloned-gene
+    handoff.
+  - Oligo form source:
+    `services route-project-source --kind oligo-form --form-id FORM_ID`.
+    The route request reuses the persisted oligo order form line items,
+    duplicate groups, sequence-reuse groups, and duplicate-review status.
+  - Primer report rows:
+    `services route-project-source --kind primer-report-rows --report-id REPORT_ID --pair-rank N[,N...] [--form-id FORM_ID]`.
+    GENtle first persists those pair ranks as an oligo order form, then routes
+    the form. This preserves duplicate-review semantics; no transient order
+    forms are used in v1.
+  - Classification is allowed before review, but `services project-preflight`
+    and `services project-quote` block requests whose
+    `source_target.duplicate_review.status` is `review_required`.
 - `services project-preflight REQUEST_JSON_OR_@FILE`
   - Parses `gentle.external_service_request.v1` and returns
     `gentle.external_service_preflight.v1`.

@@ -285,6 +285,232 @@ impl GENtleApp {
         );
     }
 
+    pub(super) fn fill_external_services_project_source_from_active_sequence(&mut self) {
+        let Some((seq_id, selection)) = self.active_dna_window_context() else {
+            self.external_services_ui.status =
+                "No active DNA sequence window is available for project-source routing."
+                    .to_string();
+            return;
+        };
+        self.external_services_ui.project_source_kind = "sequence".to_string();
+        self.external_services_ui.project_source_seq_id = seq_id;
+        self.external_services_ui.project_source_range = selection
+            .filter(|(start, end)| end > start)
+            .map(|(start, end)| format!("{start}..{end}"))
+            .unwrap_or_default();
+        self.external_services_ui.status =
+            "Loaded active sequence/span into project-source routing fields.".to_string();
+    }
+
+    fn parse_external_services_project_pair_ranks(raw: &str) -> Result<Vec<usize>, String> {
+        let ranks = raw
+            .split(',')
+            .map(str::trim)
+            .filter(|token| !token.is_empty())
+            .map(|token| {
+                let rank = token
+                    .parse::<usize>()
+                    .map_err(|e| format!("Invalid primer pair rank '{token}': {e}"))?;
+                if rank == 0 {
+                    return Err("Primer pair ranks must be >= 1".to_string());
+                }
+                Ok(rank)
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        if ranks.is_empty() {
+            return Err("At least one primer pair rank is required.".to_string());
+        }
+        Ok(ranks)
+    }
+
+    pub(super) fn external_services_project_source_shell_line(&self) -> String {
+        match self.external_services_ui.project_source_kind.as_str() {
+            "oligo-form" => format!(
+                "services route-project-source --kind oligo-form --form-id {}",
+                self.external_services_ui.project_source_form_id.trim()
+            ),
+            "primer-report-rows" => {
+                let mut line = format!(
+                    "services route-project-source --kind primer-report-rows --report-id {} --pair-rank {}",
+                    self.external_services_ui.project_source_report_id.trim(),
+                    self.external_services_ui.project_source_pair_ranks.trim()
+                );
+                let form_id = self.external_services_ui.project_source_form_id.trim();
+                if !form_id.is_empty() {
+                    line.push_str(&format!(" --form-id {form_id}"));
+                }
+                line
+            }
+            _ => {
+                let mut line = format!(
+                    "services route-project-source --kind sequence --seq-id {}",
+                    self.external_services_ui.project_source_seq_id.trim()
+                );
+                let range = self.external_services_ui.project_source_range.trim();
+                if !range.is_empty() {
+                    line.push_str(&format!(" --range {range}"));
+                }
+                if self.external_services_ui.project_source_as_construct_output {
+                    line.push_str(" --as construct-output");
+                }
+                line
+            }
+        }
+    }
+
+    pub(super) fn external_services_project_source_command(&self) -> Result<ShellCommand, String> {
+        let kind = self.external_services_ui.project_source_kind.trim();
+        match kind {
+            "sequence" => Ok(ShellCommand::ServicesRouteProjectSource {
+                kind: "sequence".to_string(),
+                seq_id: Some(
+                    self.external_services_ui
+                        .project_source_seq_id
+                        .trim()
+                        .to_string(),
+                ),
+                range: (!self
+                    .external_services_ui
+                    .project_source_range
+                    .trim()
+                    .is_empty())
+                .then(|| {
+                    self.external_services_ui
+                        .project_source_range
+                        .trim()
+                        .to_string()
+                }),
+                source_as: self
+                    .external_services_ui
+                    .project_source_as_construct_output
+                    .then(|| "construct-output".to_string()),
+                form_id: None,
+                report_id: None,
+                pair_ranks: vec![],
+            }),
+            "oligo-form" => Ok(ShellCommand::ServicesRouteProjectSource {
+                kind: "oligo-form".to_string(),
+                seq_id: None,
+                range: None,
+                source_as: None,
+                form_id: Some(
+                    self.external_services_ui
+                        .project_source_form_id
+                        .trim()
+                        .to_string(),
+                ),
+                report_id: None,
+                pair_ranks: vec![],
+            }),
+            "primer-report-rows" => Ok(ShellCommand::ServicesRouteProjectSource {
+                kind: "primer-report-rows".to_string(),
+                seq_id: None,
+                range: None,
+                source_as: None,
+                form_id: (!self
+                    .external_services_ui
+                    .project_source_form_id
+                    .trim()
+                    .is_empty())
+                .then(|| {
+                    self.external_services_ui
+                        .project_source_form_id
+                        .trim()
+                        .to_string()
+                }),
+                report_id: Some(
+                    self.external_services_ui
+                        .project_source_report_id
+                        .trim()
+                        .to_string(),
+                ),
+                pair_ranks: Self::parse_external_services_project_pair_ranks(
+                    &self.external_services_ui.project_source_pair_ranks,
+                )?,
+            }),
+            other => Err(format!("Unsupported project source kind '{other}'")),
+        }
+    }
+
+    pub(super) fn run_external_services_project_source_route(&mut self) {
+        let command = match self.external_services_project_source_command() {
+            Ok(command) => command,
+            Err(err) => {
+                self.external_services_ui.status =
+                    format!("Could not build project-source route command: {err}");
+                return;
+            }
+        };
+        match self.execute_shared_shell_command_json(&command) {
+            Ok((output, state_changed)) => {
+                let status = output
+                    .get("status")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("unknown")
+                    .to_string();
+                let candidate_count = output
+                    .get("candidates")
+                    .and_then(serde_json::Value::as_array)
+                    .map(Vec::len)
+                    .unwrap_or(0);
+                self.external_services_ui.route_project_source_output = Some(output);
+                self.external_services_ui.selected_route_candidate = 0;
+                self.external_services_ui.status = format!(
+                    "Project-source route classified: status={status}, candidates={candidate_count}, state_changed={state_changed}"
+                );
+            }
+            Err(err) => {
+                self.external_services_ui.status =
+                    format!("Project-source route classification failed: {err}");
+            }
+        }
+    }
+
+    pub(super) fn use_external_services_route_candidate(&mut self) {
+        let Some(route) = self
+            .external_services_ui
+            .route_project_source_output
+            .as_ref()
+        else {
+            self.external_services_ui.status = "No route candidate is available yet.".to_string();
+            return;
+        };
+        let candidates = route
+            .get("candidates")
+            .and_then(serde_json::Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        let Some(candidate) = candidates.get(self.external_services_ui.selected_route_candidate)
+        else {
+            self.external_services_ui.status =
+                "Selected route candidate is not available.".to_string();
+            return;
+        };
+        let Some(request) = candidate.get("request") else {
+            self.external_services_ui.status =
+                "Selected route candidate has no service request payload.".to_string();
+            return;
+        };
+        self.external_services_ui.request_json =
+            serde_json::to_string_pretty(request).unwrap_or_else(|_| "{}".to_string());
+        if let Some(provider) = request.get("provider").and_then(serde_json::Value::as_str) {
+            self.external_services_ui.selected_provider = provider.to_string();
+        }
+        if let Some(service_kind) = request
+            .get("service_kind")
+            .and_then(serde_json::Value::as_str)
+        {
+            self.external_services_ui.selected_service_kind = service_kind.to_string();
+        }
+        self.external_services_ui.preflight_output = None;
+        self.external_services_ui.quote_output = None;
+        self.external_services_ui.selected_quote_payload = 0;
+        self.external_services_ui.quote_output_dir =
+            self.default_external_service_quote_output_dir();
+        self.external_services_ui.status =
+            "Copied selected route candidate into the editable service request JSON.".to_string();
+    }
+
     pub(super) fn run_external_services_preflight(&mut self) {
         let command = ShellCommand::ServicesProjectPreflight {
             request_json: self.external_services_ui.request_json.clone(),
@@ -488,6 +714,171 @@ impl GENtleApp {
             });
     }
 
+    fn render_external_services_project_source(&mut self, ui: &mut Ui) {
+        ui.strong("Project source route");
+        ui.small(
+            "Build a delivery-route candidate from a real project object, then copy the recommended request into the editable JSON below.",
+        );
+        ui.horizontal_wrapped(|ui| {
+            ui.radio_value(
+                &mut self.external_services_ui.project_source_kind,
+                "sequence".to_string(),
+                "Active sequence/span",
+            );
+            ui.radio_value(
+                &mut self.external_services_ui.project_source_kind,
+                "oligo-form".to_string(),
+                "Oligo order form",
+            );
+            ui.radio_value(
+                &mut self.external_services_ui.project_source_kind,
+                "primer-report-rows".to_string(),
+                "Primer report pairs",
+            );
+        });
+        match self.external_services_ui.project_source_kind.as_str() {
+            "oligo-form" => {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Form id");
+                    ui.add(
+                        egui::TextEdit::singleline(
+                            &mut self.external_services_ui.project_source_form_id,
+                        )
+                        .desired_width(260.0),
+                    );
+                });
+            }
+            "primer-report-rows" => {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Report id");
+                    ui.add(
+                        egui::TextEdit::singleline(
+                            &mut self.external_services_ui.project_source_report_id,
+                        )
+                        .desired_width(260.0),
+                    );
+                    ui.label("Pair ranks");
+                    ui.add(
+                        egui::TextEdit::singleline(
+                            &mut self.external_services_ui.project_source_pair_ranks,
+                        )
+                        .desired_width(110.0),
+                    );
+                    ui.label("Optional form id");
+                    ui.add(
+                        egui::TextEdit::singleline(
+                            &mut self.external_services_ui.project_source_form_id,
+                        )
+                        .desired_width(220.0),
+                    );
+                });
+            }
+            _ => {
+                ui.horizontal_wrapped(|ui| {
+                    if ui
+                        .button("Use Active DNA Selection")
+                        .on_hover_text("Fill seq-id and range from the active DNA sequence window")
+                        .clicked()
+                    {
+                        self.fill_external_services_project_source_from_active_sequence();
+                    }
+                    ui.label("Seq id");
+                    ui.add(
+                        egui::TextEdit::singleline(
+                            &mut self.external_services_ui.project_source_seq_id,
+                        )
+                        .desired_width(220.0),
+                    );
+                    ui.label("Range");
+                    ui.add(
+                        egui::TextEdit::singleline(
+                            &mut self.external_services_ui.project_source_range,
+                        )
+                        .hint_text("START..END")
+                        .desired_width(130.0),
+                    );
+                    ui.checkbox(
+                        &mut self.external_services_ui.project_source_as_construct_output,
+                        "Construct output",
+                    );
+                });
+            }
+        }
+        ui.horizontal_wrapped(|ui| {
+            if ui
+                .button("Classify Delivery Route")
+                .on_hover_text("Run the shared `services route-project-source` command")
+                .clicked()
+            {
+                self.run_external_services_project_source_route();
+            }
+            if ui
+                .button("Use Selected Route Request")
+                .on_hover_text("Copy the selected route candidate request into the editable JSON")
+                .clicked()
+            {
+                self.use_external_services_route_candidate();
+            }
+        });
+        ui.monospace(self.external_services_project_source_shell_line());
+
+        let candidates = self
+            .external_services_ui
+            .route_project_source_output
+            .as_ref()
+            .and_then(|route| route.get("candidates"))
+            .and_then(serde_json::Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        if !candidates.is_empty() {
+            if self.external_services_ui.selected_route_candidate >= candidates.len() {
+                self.external_services_ui.selected_route_candidate = candidates.len() - 1;
+            }
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Route candidate");
+                egui::ComboBox::from_id_salt("external_services_route_candidate_picker")
+                    .selected_text(
+                        candidates
+                            .get(self.external_services_ui.selected_route_candidate)
+                            .map(|candidate| {
+                                let provider = candidate
+                                    .get("provider")
+                                    .and_then(serde_json::Value::as_str)
+                                    .unwrap_or("provider");
+                                let service_kind = candidate
+                                    .get("service_kind")
+                                    .and_then(serde_json::Value::as_str)
+                                    .unwrap_or("service");
+                                format!("{provider} / {service_kind}")
+                            })
+                            .unwrap_or_else(|| "candidate".to_string()),
+                    )
+                    .show_ui(ui, |ui| {
+                        for (idx, candidate) in candidates.iter().enumerate() {
+                            let provider = candidate
+                                .get("provider")
+                                .and_then(serde_json::Value::as_str)
+                                .unwrap_or("provider");
+                            let service_kind = candidate
+                                .get("service_kind")
+                                .and_then(serde_json::Value::as_str)
+                                .unwrap_or("service");
+                            ui.selectable_value(
+                                &mut self.external_services_ui.selected_route_candidate,
+                                idx,
+                                format!("{provider} / {service_kind}"),
+                            );
+                        }
+                    });
+            });
+        }
+        Self::render_json_preview(
+            ui,
+            "Project Source Route JSON",
+            &self.external_services_ui.route_project_source_output,
+        );
+    }
+
     fn render_quote_payloads(&mut self, ui: &mut Ui) {
         let Some(quote) = self.external_services_ui.quote_output.as_ref() else {
             ui.small("Quote handoff: not run yet");
@@ -616,6 +1007,9 @@ impl GENtleApp {
 
         ui.separator();
         self.render_external_services_provider_picker(ui);
+
+        ui.separator();
+        self.render_external_services_project_source(ui);
 
         ui.separator();
         ui.strong("Editable service request JSON");

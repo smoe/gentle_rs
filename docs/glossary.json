@@ -1791,6 +1791,30 @@
             "gui-shell",
             "cli-direct"
          ],
+         "path": "services delivery-route",
+         "summary": "Classify a provider-neutral external-service delivery-route request and return recommended handoff candidates.",
+         "usage": "services delivery-route REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "services route-project-source",
+         "summary": "Build and classify an external-service delivery-route request from a GENtle project object such as a sequence, oligo order form, or primer report rows.",
+         "usage": "services route-project-source --kind sequence|oligo-form|primer-report-rows [--seq-id ID] [--range START..END] [--as sequence|construct-output] [--form-id ID] [--report-id ID] [--pair-rank N[,N...]]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
          "path": "services project-preflight",
          "summary": "Validate one vendor-neutral external-service request against the active provider config catalog.",
          "usage": "services project-preflight REQUEST_JSON_OR_@FILE"

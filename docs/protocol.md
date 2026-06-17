@@ -1221,12 +1221,18 @@ than GeneArt-, metabion-, or portal-specific fields.
     warnings, and deterministic validation errors
 - `gentle.external_service_delivery_route_request.v1`
   - accepted by `services delivery-route REQUEST_JSON_OR_@FILE`
+  - also produced and immediately classified by
+    `services route-project-source --kind sequence|oligo-form|primer-report-rows ...`
   - fields: `schema`, `source_target`, optional `optimization_target`,
     optional `vector_spec`, optional `delivery_options`, optional
     `commercial_context_ref`, `return_spec`, and optional `request_metadata`
   - this is the provider-neutral input for generic wording such as "deliver
     this sequence"; callers should fill it from the active sequence or selected
     line items before asking GENtle to choose a provider route
+  - `route-project-source` v1 supports selected project sequence/span,
+    persisted oligo order forms, and primer report pair ranks; primer rows are
+    always persisted as an oligo order form before routing so duplicate-review
+    provenance is not bypassed
 - `gentle.external_service_delivery_route.v1`
   - returned by `services delivery-route`
   - fields include `status`, `molecule_type`, `sequence_kind`,
@@ -1269,6 +1275,10 @@ than GeneArt-, metabion-, or portal-specific fields.
     contact Thermo Fisher/GeneArt
   - in the metabion slice this is also local and deterministic; WOP/email/Excel
     routes are represented as handoff channels, not automated submission
+  - requests carrying `source_target.duplicate_review.status =
+    review_required` are preflight-blocked until the source oligo order form is
+    reviewed with `primers oligo-order review-dedup FORM_ID`; delivery-route
+    classification remains allowed before that review
 - `gentle.external_service_quote.v1`
   - returned by `services project-quote`
   - fields include `quote_status`, `quote_mode`, the embedded preflight

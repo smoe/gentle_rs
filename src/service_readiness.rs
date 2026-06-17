@@ -555,6 +555,16 @@ fn source_target_contains_construct_context(request: &ExternalServiceDeliveryRou
         || source_target_kind(&request.source_target).contains("synthetic_gene")
 }
 
+fn source_target_duplicate_review_required(value: &Value) -> bool {
+    value
+        .as_object()
+        .and_then(|object| object.get("duplicate_review"))
+        .and_then(Value::as_object)
+        .and_then(|review| review.get("status"))
+        .and_then(Value::as_str)
+        .is_some_and(|status| status.trim().eq_ignore_ascii_case("review_required"))
+}
+
 fn source_target_sequences(value: &Value) -> Vec<String> {
     let mut sequences = vec![];
     if let Some(text) = string_from_value_keys(
@@ -1029,6 +1039,12 @@ fn external_service_project_preflight_for_request(
     };
     if let Some(issue) = source_issue {
         blocking_issues.push(issue);
+    }
+    if source_target_duplicate_review_required(&request.source_target) {
+        blocking_issues.push(
+            "Oligo order form duplicate review is required before quote handoff; run primers oligo-order review-dedup FORM_ID --duplicate-action keep-separate."
+                .to_string(),
+        );
     }
     if capability.direct_api_documented && !capability.direct_api_implemented {
         warnings.push(format!(
