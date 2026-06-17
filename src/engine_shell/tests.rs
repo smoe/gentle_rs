@@ -9472,6 +9472,10 @@ fn execute_planning_protein_expression_handoff_returns_reviewable_contract() {
     assert_eq!(report.status, "needs_product_definition");
     assert_eq!(report.biological_intent, "protein_expression_max_yield");
     assert_eq!(report.product_readiness.status, "needs_product_definition");
+    assert_eq!(
+        report.product_definition.readiness.status,
+        "needs_product_definition"
+    );
     assert!(report.sequence_context.is_none());
     assert!(
         report
@@ -9513,14 +9517,15 @@ fn execute_planning_protein_expression_handoff_returns_reviewable_contract() {
     );
     assert!(service.shell_line.contains("services project-preflight"));
     assert!(report.suggested_next_actions.iter().any(|action| {
-        action
+        action.action_id == "answer_yield_questions"
+            && action.shell_line == "planning objective show"
+    }));
+    assert!(
+        !report.suggested_next_actions.iter().any(|action| action
             .shell_line
-            .contains("geneart_protein_expression_request")
-    }));
-    assert!(report.suggested_next_actions.iter().any(|action| {
-        action.action_id == "prepare_geneart_quote_packet_after_review"
-            && action.shell_line.contains("services project-quote")
-    }));
+            .contains("geneart_protein_expression_request")),
+        "provider handoff should not be a next action until product context is usable"
+    );
     assert!(
         report
             .text_report
@@ -9579,7 +9584,7 @@ fn execute_planning_protein_expression_handoff_seq_id_reports_cds_context() {
     let report: crate::engine::ProteinExpressionHandoffReport =
         serde_json::from_value(out.output).expect("protein-expression handoff report");
     assert_eq!(report.biological_intent, "protein_expression_max_yield");
-    assert_eq!(report.status, "needs_expression_specification");
+    assert_eq!(report.status, "annotated_cds_review_required");
     assert!(report.product_readiness.usable_cds_context);
     assert!(report.product_readiness.translation_possible);
     assert_eq!(
@@ -9629,6 +9634,120 @@ fn execute_planning_protein_expression_handoff_seq_id_reports_cds_context() {
             .unwrap_or_default()
             .contains("CDS assessment: source=annotated_cds")
     );
+    assert!(report.suggested_next_actions.iter().any(|action| {
+        action.action_id == "inspect_geneart_protein_expression_preflight"
+            && action.shell_line.contains("services project-preflight")
+    }));
+    assert!(
+        report
+            .suggested_next_actions
+            .iter()
+            .any(|action| action.action_id == "consult_cloning_strategy")
+    );
+    assert!(report.suggested_next_actions.iter().any(|action| {
+        action.action_id == "prepare_geneart_quote_packet_after_review"
+            && action.shell_line.contains("services project-quote")
+    }));
+}
+
+#[test]
+fn execute_planning_protein_expression_handoff_whole_sequence_cds_suggests_preflight_and_consult() {
+    let mut state = ProjectState::default();
+    let mut dna = DNAsequence::from_sequence("ATGGCTGCTGAATAA").expect("synthetic CDS");
+    dna.set_name("whole_sequence_cds");
+    state.sequences.insert("whole_cds".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PlanningProteinExpressionHandoff {
+            seq_id: Some("whole_cds".to_string()),
+            objective_json: Some(
+                r#"{
+                  "schema":"gentle.planning_objective.v1",
+                  "biological_intent":"protein_expression_max_yield"
+                }"#
+                .to_string(),
+            ),
+            profile_scope: PlanningProfileScope::Effective,
+            output_format: "json".to_string(),
+        },
+    )
+    .expect("planning protein-expression handoff with whole-sequence CDS");
+    let report: crate::engine::ProteinExpressionHandoffReport =
+        serde_json::from_value(out.output).expect("protein-expression handoff report");
+    assert_eq!(report.status, "whole_sequence_cds_candidate");
+    assert_eq!(
+        report.product_definition.readiness.status,
+        "whole_sequence_cds_candidate"
+    );
+    assert_eq!(
+        report.cds_assessment.context_source,
+        "whole_sequence_fallback"
+    );
+    assert!(report.suggested_next_actions.iter().any(|action| {
+        action.action_id == "inspect_geneart_protein_expression_preflight"
+    }));
+    assert!(
+        report
+            .suggested_next_actions
+            .iter()
+            .any(|action| action.action_id == "consult_cloning_strategy")
+    );
+}
+
+#[test]
+fn execute_planning_protein_expression_handoff_protein_sequence_suggests_reverse_translation() {
+    let mut state = ProjectState::default();
+    let mut protein = DNAsequence::from_sequence("MSTNPKPQR").expect("synthetic protein");
+    protein.set_name("protein_target");
+    protein.set_molecule_type("protein");
+    state
+        .sequences
+        .insert("protein_product".to_string(), protein);
+    let mut engine = GentleEngine::from_state(state);
+
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PlanningProteinExpressionHandoff {
+            seq_id: Some("protein_product".to_string()),
+            objective_json: Some(
+                r#"{
+                  "schema":"gentle.planning_objective.v1",
+                  "biological_intent":"protein_expression_max_yield"
+                }"#
+                .to_string(),
+            ),
+            profile_scope: PlanningProfileScope::Effective,
+            output_format: "json".to_string(),
+        },
+    )
+    .expect("planning protein-expression handoff with protein sequence");
+    let report: crate::engine::ProteinExpressionHandoffReport =
+        serde_json::from_value(out.output).expect("protein-expression handoff report");
+    assert_eq!(report.status, "protein_sequence_review_required");
+    assert_eq!(
+        report.product_definition.readiness.status,
+        "protein_sequence_review_required"
+    );
+    assert!(
+        report
+            .missing_questions
+            .iter()
+            .any(|question| question.question_id == "coding_dna_or_reverse_translation_route")
+    );
+    assert!(report.suggested_next_actions.iter().any(|action| {
+        action.action_id == "review_reverse_translation_route"
+            && action
+                .shell_line
+                .contains("reverse-translate run protein_product")
+    }));
+    assert!(
+        report
+            .suggested_next_actions
+            .iter()
+            .any(|action| action.action_id == "inspect_provider_protein_target_handoff")
+    );
 }
 
 #[test]
@@ -9657,7 +9776,7 @@ fn execute_planning_protein_expression_handoff_ambiguous_noncoding_sequence_asks
     .expect("planning protein-expression handoff with ambiguous sequence");
     let report: crate::engine::ProteinExpressionHandoffReport =
         serde_json::from_value(out.output).expect("protein-expression handoff report");
-    assert_eq!(report.status, "needs_cds_boundaries");
+    assert_eq!(report.status, "needs_cds_boundary");
     assert_eq!(
         report.product_definition.readiness.status,
         report.product_readiness.status
@@ -9686,6 +9805,12 @@ fn execute_planning_protein_expression_handoff_ambiguous_noncoding_sequence_asks
             .iter()
             .any(|warning| warning.contains("ambiguous bases"))
     );
+    assert!(report.suggested_next_actions.iter().any(|action| {
+        action.action_id == "inspect_or_mark_cds_boundaries"
+            && action
+                .shell_line
+                .contains("features query ambiguous_product --kind CDS")
+    }));
 }
 
 #[test]

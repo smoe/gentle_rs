@@ -27,6 +27,9 @@ Maintenance rule:
   (`manual`, `co_regulated`, `anti_co_regulated`) to promoter cohort and
   CUT&RUN aggregate reports, with non-blocking expectation flags and
   `--relationship` shell parsing.
+- Routed protein-expression `suggested_next_actions[]` from
+  `product_definition.readiness.status`, distinguishing CDS candidates,
+  protein-only targets, and sequences that need CDS/ORF boundary review.
 - Added Promoter design GUI parity for promoter expression evidence and
   cached CUT&RUN regulatory-support reports, additive four-state TFBS support
   status, and promoter cohort comparison; `genomes promoter-cohort-comparison`

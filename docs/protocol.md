@@ -3779,11 +3779,8 @@ Adapter-equivalence guarantee for UI-intent tools:
     policy as explicit review inputs
   - the first V1 service scaffold points at
     `docs/examples/external_services/geneart_protein_expression_request.json`
-    through a local `services project-preflight @...` command, and
-    `suggested_next_actions[]` includes a `services project-quote @...`
-    packet-preparation step that is only appropriate after product and
-    outsourcing constraints are reviewed; no provider network call, order,
-    optimization, or construct mutation is made
+    through a local `services project-preflight @...` command; no provider
+    network call, order, optimization, or construct mutation is made
   - if no usable CDS/protein context is found, `missing_questions[]` asks for
     coding sequence, ORF, CDS annotation, or target-protein boundaries rather
     than choosing an expression route
@@ -3792,6 +3789,13 @@ Adapter-equivalence guarantee for UI-intent tools:
     yield, purification endpoint, tag preference, host/chassis,
     toxicity/induction, PTMs/cofactors, secretion/localization, scale, and
     delivery endpoint
+  - `product_definition.readiness.status` also drives
+    `suggested_next_actions[]`: `whole_sequence_cds_candidate` and
+    `annotated_cds_review_required` suggest GeneArt preflight, cloning
+    consultation, and review-gated quote-packet preparation;
+    `protein_sequence_review_required` suggests reverse-translation or
+    provider protein-target handoff review; `needs_cds_boundary` suggests
+    inspecting or marking CDS/ORF boundaries before expression planning
   - this remains a review-gated handoff, not an autonomous construct designer:
     GENtle does not codon-optimize, mutate sequences, create constructs, query
     live providers, submit orders, or promise wet-lab yield

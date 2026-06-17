@@ -134,6 +134,10 @@ Expected difference:
   boundaries instead of selecting an expression route
 - if a CDS/protein context is inferable, the report shifts toward the
   expression-specific review questions
+- `product_definition.readiness.status` determines the next actions: CDS
+  candidates can point to GeneArt preflight and cloning consultation,
+  protein-only targets point to reverse-translation or provider-target review,
+  and unresolved sequences point back to CDS/ORF boundary inspection
 
 This analysis is read-only. GENtle does not infer that the product is
 expression-ready, codon-optimize it, mutate the sequence, create a construct,

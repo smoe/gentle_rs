@@ -14538,23 +14538,34 @@ fn protein_expression_analyze_sequence(
     let usable_cds_context;
     let translation_possible;
     if sequence.is_protein_sequence() {
-        status = "needs_expression_specification";
+        status = "protein_sequence_review_required";
         usable_cds_context = false;
         translation_possible = false;
         review_notes.push(
             "A target amino-acid sequence is available; DNA construction, codon policy, and provider route remain review-gated."
                 .to_string(),
         );
-    } else if cds_assessment.plausible_cds {
-        status = "needs_expression_specification";
+    } else if cds_assessment.context_source == "annotated_cds"
+        && cds_assessment.translation_possible
+        && !cds_assessment.has_internal_stops
+    {
+        status = "annotated_cds_review_required";
         usable_cds_context = true;
         translation_possible = cds_assessment.translation_possible;
         review_notes.push(
-            "A plausible coding sequence is available for expression-review context; GENtle did not optimize or create a construct."
+            "An annotated coding sequence is available for expression-review context; GENtle did not optimize or create a construct."
+                .to_string(),
+        );
+    } else if cds_assessment.plausible_cds {
+        status = "whole_sequence_cds_candidate";
+        usable_cds_context = true;
+        translation_possible = cds_assessment.translation_possible;
+        review_notes.push(
+            "The whole selected sequence looks like a plausible CDS candidate, but boundary and annotation review are still required before expression planning."
                 .to_string(),
         );
     } else {
-        status = "needs_cds_boundaries";
+        status = "needs_cds_boundary";
         usable_cds_context = false;
         translation_possible = cds_assessment.translation_possible;
         blockers.push(
@@ -14586,8 +14597,14 @@ fn protein_expression_handoff_missing_questions(
     readiness: &ProteinExpressionProductReadiness,
     tag_assessment: &ProteinExpressionTagAssessment,
 ) -> Vec<PlanningCloningMissingQuestion> {
-    let has_inferable_product_context =
-        readiness.usable_cds_context || readiness.status == "needs_expression_specification";
+    let has_inferable_product_context = readiness.usable_cds_context
+        || matches!(
+            readiness.status.as_str(),
+            "protein_sequence_review_required"
+                | "annotated_cds_review_required"
+                | "whole_sequence_cds_candidate"
+                | "needs_expression_specification"
+        );
     if !has_inferable_product_context {
         return vec![
             PlanningCloningMissingQuestion {
@@ -14603,7 +14620,15 @@ fn protein_expression_handoff_missing_questions(
         ];
     }
 
-    let mut questions = vec![
+    let mut questions = vec![];
+    if readiness.status == "protein_sequence_review_required" {
+        questions.push(PlanningCloningMissingQuestion {
+            question_id: "coding_dna_or_reverse_translation_route".to_string(),
+            prompt: "Should this protein sequence be reverse-translated, linked to an existing coding DNA sequence, or handed off to a provider as a protein target?".to_string(),
+            reason: "A protein sequence defines the product but not an expression-ready coding DNA sequence, codon policy, or provider route.".to_string(),
+        });
+    }
+    questions.extend(vec![
         PlanningCloningMissingQuestion {
             question_id: "protein_yield_metric".to_string(),
             prompt: "Should success maximize total expressed protein, soluble protein, active protein, purified protein, secreted protein, or membrane-localized protein?".to_string(),
@@ -14648,7 +14673,7 @@ fn protein_expression_handoff_missing_questions(
             prompt: "What scale, purity, buffer, QC, and delivery endpoint define a successful protein-production handoff?".to_string(),
             reason: "Scale and endpoint keep cloning, expression, purification, and outsourcing choices aligned.".to_string(),
         },
-    ];
+    ]);
     if !tag_assessment.missing_inputs.is_empty() {
         questions.push(PlanningCloningMissingQuestion {
             question_id: "tag_missing_inputs".to_string(),
@@ -14740,6 +14765,7 @@ fn protein_expression_product_definition(
         notes: vec![
             "Protein-expression V1 treats maximal amount as an underspecified objective until the desired yield metric is selected.".to_string(),
         ],
+        readiness: analysis.product_readiness.clone(),
         ..ProteinExpressionProductDefinition::default()
     };
 
@@ -14754,7 +14780,6 @@ fn protein_expression_product_definition(
                     .and_then(|context| context.nucleotide_length)
                     .or_else(|| (!sequence.is_protein_sequence()).then_some(sequence.len()));
                 product.feature_count = Some(sequence.features().len());
-                product.readiness = analysis.product_readiness.clone();
                 product
                     .notes
                     .extend(analysis.product_readiness.review_notes.clone());
@@ -14999,6 +15024,76 @@ fn protein_expression_service_handoff_candidates(
     }]
 }
 
+fn protein_expression_suggested_next_actions(
+    product_definition: &ProteinExpressionProductDefinition,
+) -> Vec<PlanningCloningSuggestedNextAction> {
+    let mut actions = vec![PlanningCloningSuggestedNextAction {
+        action_id: "answer_yield_questions".to_string(),
+        label: "Answer protein-expression disambiguation questions".to_string(),
+        shell_line: "planning objective show".to_string(),
+        rationale: "Review the active objective before narrowing yield metric, chassis, and endpoint choices.".to_string(),
+    }];
+
+    let readiness = &product_definition.readiness;
+    match readiness.status.as_str() {
+        "whole_sequence_cds_candidate" | "annotated_cds_review_required" => {
+            actions.push(PlanningCloningSuggestedNextAction {
+                action_id: "inspect_geneart_protein_expression_preflight".to_string(),
+                label: "Inspect GeneArt protein-expression preflight scaffold".to_string(),
+                shell_line: protein_expression_geneart_preflight_shell_line(),
+                rationale: "A reviewable product context is present, so the local provider-neutral preflight scaffold can be inspected without submitting or ordering anything.".to_string(),
+            });
+            actions.push(PlanningCloningSuggestedNextAction {
+                action_id: "consult_cloning_strategy".to_string(),
+                label: "Consult cloning strategy after expression constraints are known".to_string(),
+                shell_line: "planning consult cloning --objective '{\"schema\":\"gentle.planning_objective.v1\",\"biological_intent\":\"protein_expression_max_yield\"}' --format json".to_string(),
+                rationale: "Rank cloning routine families only after product boundaries and protein-expression constraints are explicit.".to_string(),
+            });
+            actions.push(PlanningCloningSuggestedNextAction {
+                action_id: "prepare_geneart_quote_packet_after_review".to_string(),
+                label: "Prepare GeneArt protein-expression quote packet after review".to_string(),
+                shell_line: protein_expression_geneart_quote_shell_line(),
+                rationale: "After product and outsourcing constraints are reviewed, prepare the provider-neutral quote packet without submitting it.".to_string(),
+            });
+        }
+        "protein_sequence_review_required" => {
+            let protein_seq_id = product_definition
+                .seq_id
+                .as_deref()
+                .map(quote_shell_arg)
+                .unwrap_or_else(|| "PROTEIN_SEQ_ID".to_string());
+            actions.push(PlanningCloningSuggestedNextAction {
+                action_id: "review_reverse_translation_route".to_string(),
+                label: "Review reverse-translation route for protein target".to_string(),
+                shell_line: format!("reverse-translate run {protein_seq_id}"),
+                rationale: "A protein sequence defines the target product but still needs a reviewed coding-DNA, codon, or provider-target route before expression planning.".to_string(),
+            });
+            actions.push(PlanningCloningSuggestedNextAction {
+                action_id: "inspect_provider_protein_target_handoff".to_string(),
+                label: "Inspect provider protein-target handoff scaffold".to_string(),
+                shell_line: protein_expression_geneart_preflight_shell_line(),
+                rationale: "Use the local service-request scaffold only as a review packet for a protein target; GENtle does not reverse-translate, optimize, quote, or order automatically.".to_string(),
+            });
+        }
+        "needs_cds_boundary" | "needs_cds_boundaries" => {
+            let seq_id = product_definition
+                .seq_id
+                .as_deref()
+                .map(quote_shell_arg)
+                .unwrap_or_else(|| "SEQ_ID".to_string());
+            actions.push(PlanningCloningSuggestedNextAction {
+                action_id: "inspect_or_mark_cds_boundaries".to_string(),
+                label: "Inspect or mark CDS/ORF boundaries".to_string(),
+                shell_line: format!("features query {seq_id} --kind CDS --include-qualifiers"),
+                rationale: "No usable CDS/protein context was confirmed, so expression planning should start by reviewing or marking product boundaries.".to_string(),
+            });
+        }
+        _ => {}
+    }
+
+    actions
+}
+
 fn build_protein_expression_handoff_text(report: &ProteinExpressionHandoffReport) -> String {
     let mut lines = vec![
         "GENtle protein-expression handoff".to_string(),
@@ -15138,32 +15233,7 @@ fn execute_planning_protein_expression_handoff(
         &sequence_analysis.tag_assessment,
     );
     let service_handoff_candidates = protein_expression_service_handoff_candidates(&mut warnings);
-    let suggested_next_actions = vec![
-        PlanningCloningSuggestedNextAction {
-            action_id: "answer_yield_questions".to_string(),
-            label: "Answer protein-expression disambiguation questions".to_string(),
-            shell_line: "planning objective show".to_string(),
-            rationale: "Review the active objective before narrowing yield metric, chassis, and endpoint choices.".to_string(),
-        },
-        PlanningCloningSuggestedNextAction {
-            action_id: "inspect_service_handoff_scaffold".to_string(),
-            label: "Inspect GeneArt protein-expression preflight scaffold".to_string(),
-            shell_line: protein_expression_geneart_preflight_shell_line(),
-            rationale: "Use the existing external-service request contract as a human-reviewed handoff scaffold.".to_string(),
-        },
-        PlanningCloningSuggestedNextAction {
-            action_id: "prepare_geneart_quote_packet_after_review".to_string(),
-            label: "Prepare GeneArt protein-expression quote packet after review".to_string(),
-            shell_line: protein_expression_geneart_quote_shell_line(),
-            rationale: "After product and outsourcing constraints are reviewed, prepare the provider-neutral quote packet without submitting it.".to_string(),
-        },
-        PlanningCloningSuggestedNextAction {
-            action_id: "consult_cloning_strategy".to_string(),
-            label: "Consult cloning strategy after expression constraints are known".to_string(),
-            shell_line: "planning consult cloning --objective '{\"schema\":\"gentle.planning_objective.v1\",\"biological_intent\":\"protein_expression_max_yield\"}' --format json".to_string(),
-            rationale: "Rank cloning routine families only after the protein-expression constraints are explicit.".to_string(),
-        },
-    ];
+    let suggested_next_actions = protein_expression_suggested_next_actions(&product_definition);
 
     let status = if !sequence_analysis.product_readiness.status.is_empty() {
         sequence_analysis.product_readiness.status.as_str()
