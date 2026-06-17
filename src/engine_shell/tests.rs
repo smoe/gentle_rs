@@ -12226,6 +12226,60 @@ fn execute_primers_oligo_order_generic_create_groups_review_export_and_persists(
         reuse_only.output["form"]["duplicate_review"]["status"].as_str(),
         Some("not_required")
     );
+    assert!(
+        reuse_only.output["form"]["warnings"]
+            .as_array()
+            .expect("reuse warnings")
+            .iter()
+            .any(|warning| warning.as_str().is_some_and(|text| text.contains(
+                "1 sequence(s) reused across different scale/purification/modifications"
+            ))),
+        "same-sequence reuse across procurement settings is visible but non-blocking"
+    );
+
+    let reuse_route = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersOligoOrderRoute {
+            form_id: "tp73_order_reuse_only".to_string(),
+        },
+    )
+    .expect("route reuse-only oligo order");
+    assert!(!reuse_route.state_changed);
+    assert_eq!(reuse_route.output["status"].as_str(), Some("route_ready"));
+    assert!(
+        reuse_route.output["warnings"]
+            .as_array()
+            .expect("route warnings")
+            .iter()
+            .any(|warning| warning.as_str().is_some_and(|text| text.contains(
+                "1 sequence(s) reused across different scale/purification/modifications"
+            ))),
+        "route output carries the non-blocking sequence-reuse warning"
+    );
+    let reuse_request = serde_json::to_string(&reuse_route.output["candidates"][0]["request"])
+        .expect("serialize reuse route candidate request");
+    let reuse_quote = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ServicesProjectQuote {
+            request_json: reuse_request,
+            output_dir: None,
+        },
+    )
+    .expect("reuse-only order quote remains allowed");
+    assert_eq!(
+        reuse_quote.output["quote_status"].as_str(),
+        Some("handoff_ready")
+    );
+    assert!(
+        reuse_quote.output["warnings"]
+            .as_array()
+            .expect("quote warnings")
+            .iter()
+            .any(|warning| warning.as_str().is_some_and(|text| text.contains(
+                "1 sequence(s) reused across different scale/purification/modifications"
+            ))),
+        "quote output carries the non-blocking sequence-reuse warning"
+    );
 
     let listed = execute_shell_command(&mut engine, &ShellCommand::PrimersOligoOrderList)
         .expect("list oligo orders");

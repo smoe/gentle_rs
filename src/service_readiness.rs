@@ -525,6 +525,23 @@ fn source_target_has_any_key(value: &Value, keys: &[&str]) -> bool {
         .unwrap_or(false)
 }
 
+fn source_target_warnings(value: &Value) -> Vec<String> {
+    let mut warnings = value
+        .as_object()
+        .and_then(|object| object.get("warnings"))
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(str::trim)
+        .filter(|warning| !warning.is_empty())
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    warnings.sort();
+    warnings.dedup();
+    warnings
+}
+
 fn source_target_has_nonempty_array(value: &Value, keys: &[&str]) -> bool {
     value.as_object().is_some_and(|object| {
         keys.iter().any(|key| {
@@ -728,7 +745,7 @@ pub fn external_service_delivery_route(
     request_json: &str,
 ) -> Result<ExternalServiceDeliveryRouteReport, String> {
     let request = parse_external_service_delivery_route_request(request_json)?;
-    let mut warnings = vec![];
+    let mut warnings = source_target_warnings(&request.source_target);
     if !request.schema.trim().is_empty()
         && request.schema != EXTERNAL_SERVICE_DELIVERY_ROUTE_REQUEST_SCHEMA
     {
@@ -958,7 +975,7 @@ fn external_service_project_preflight_for_request(
     let provider = normalize_service_token(&request.provider);
     let service_kind = normalize_service_token(&request.service_kind);
     let mut blocking_issues = vec![];
-    let mut warnings = vec![];
+    let mut warnings = source_target_warnings(&request.source_target);
     if !request.schema.trim().is_empty() && request.schema != EXTERNAL_SERVICE_REQUEST_SCHEMA {
         warnings.push(format!(
             "Request schema '{}' is not '{}'; parsing with v1 defaults.",

@@ -385,8 +385,7 @@ pub const PROBE_REGION_EVIDENCE_INTERPRETATION_SCHEMA: &str =
 pub const PROBE_REGION_PLAN_SCHEMA: &str = "gentle.probe_region_plan.v1";
 pub const PROBE_REGION_OUTPUT_INSPECTION_SCHEMA: &str = "gentle.probe_region_output_inspection.v1";
 pub const PROBE_REGION_OUTPUT_SVG_EXPORT_SCHEMA: &str = "gentle.probe_region_output_svg_export.v1";
-pub const PROBE_REGION_APT_IMPORT_REPORT_SCHEMA: &str =
-    "gentle.probe_region_apt_import_report.v1";
+pub const PROBE_REGION_APT_IMPORT_REPORT_SCHEMA: &str = "gentle.probe_region_apt_import_report.v1";
 pub const GENOME_COORDINATE_PROJECTION_REPORT_SCHEMA: &str =
     "gentle.genome_coordinate_projection_report.v1";
 const MICROARRAY_TRACK_GENERATED_TAG: &str = "microarray_track_projection";
@@ -11102,6 +11101,16 @@ impl GentleEngine {
             .collect::<Vec<_>>();
         sequence_reuse_groups.sort_by(|left, right| left.group_id.cmp(&right.group_id));
         form.sequence_reuse_groups = sequence_reuse_groups;
+        form.warnings.retain(|warning| {
+            !warning
+                .contains("sequence(s) reused across different scale/purification/modifications")
+        });
+        if !form.sequence_reuse_groups.is_empty() {
+            form.warnings.push(format!(
+                "{} sequence(s) reused across different scale/purification/modifications; confirm this is intended.",
+                form.sequence_reuse_groups.len()
+            ));
+        }
 
         if form.duplicate_review.status.trim().is_empty()
             || form.duplicate_review.status == "not_required"
@@ -11501,7 +11510,7 @@ impl GentleEngine {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!(
-                    "Unsupported oligo duplicate review action '{}'; Phase A only supports keep-separate",
+                    "Unsupported oligo duplicate review action '{}'; v1 only supports keep-separate",
                     action
                 ),
                 cause_chain: vec![],

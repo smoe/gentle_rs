@@ -12798,6 +12798,7 @@ fn oligo_order_delivery_route_request(
             "duplicate_review": form.duplicate_review,
             "duplicate_groups": form.duplicate_groups,
             "sequence_reuse_groups": form.sequence_reuse_groups,
+            "warnings": form.warnings,
             "line_items": form
                 .line_items
                 .iter()
@@ -24329,9 +24330,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                             | "--probe-intensities" => {
                                 idx += 1;
                                 if idx >= tokens.len() {
-                                    return Err(
-                                        "Missing TSV after --probe-intensity".to_string()
-                                    );
+                                    return Err("Missing TSV after --probe-intensity".to_string());
                                 }
                                 probe_intensity = Some(tokens[idx].clone());
                                 idx += 1;
@@ -24339,9 +24338,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                             "--probe-id-column" | "--probe_id_column" => {
                                 idx += 1;
                                 if idx >= tokens.len() {
-                                    return Err(
-                                        "Missing NAME after --probe-id-column".to_string()
-                                    );
+                                    return Err("Missing NAME after --probe-id-column".to_string());
                                 }
                                 probe_id_column = Some(tokens[idx].clone());
                                 idx += 1;
