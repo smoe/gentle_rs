@@ -3112,7 +3112,7 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         source: Option<GeneSetRequest>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        resolution: Option<GeneSetResolutionReport>,
+        resolution: Option<Box<GeneSetResolutionReport>>,
         #[serde(default = "default_promoter_window_upstream_bp")]
         upstream_bp: usize,
         #[serde(default = "default_promoter_window_downstream_bp")]
@@ -3135,9 +3135,9 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         source: Option<GeneSetRequest>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        resolution: Option<GeneSetResolutionReport>,
+        resolution: Option<Box<GeneSetResolutionReport>>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        promoter_cohort: Option<GeneSetPromoterCohortReport>,
+        promoter_cohort: Option<Box<GeneSetPromoterCohortReport>>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         dataset_ids: Vec<String>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -4099,7 +4099,7 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         gene_set: Option<GeneSetRequest>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        gene_set_resolution: Option<GeneSetResolutionReport>,
+        gene_set_resolution: Option<Box<GeneSetResolutionReport>>,
         #[serde(default)]
         allow_draft: bool,
         #[serde(default)]
@@ -4130,7 +4130,7 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         gene_set: Option<GeneSetRequest>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        gene_set_resolution: Option<GeneSetResolutionReport>,
+        gene_set_resolution: Option<Box<GeneSetResolutionReport>>,
         #[serde(default)]
         allow_draft: bool,
         #[serde(default)]
