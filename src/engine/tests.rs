@@ -2722,6 +2722,628 @@ fn prepare_cutrun_test_anchor_range(
         .expect("extract CUT&RUN test anchor");
 }
 
+fn write_gene_set_test_reference_catalog(root: &Path, genome_id: &str) -> String {
+    let fasta_gz = root.join("gene_sets_toy.fa.gz");
+    let ann_gz = root.join("gene_sets_toy.gtf.gz");
+    let chr1 = "ACGT".repeat(1400);
+    let chr2 = "TGCA".repeat(300);
+    write_gzip(&fasta_gz, &format!(">chr1\n{chr1}\n>chr2\n{chr2}\n"));
+    write_gzip(
+        &ann_gz,
+        concat!(
+            "chr1\tsrc\tgene\t1501\t1900\t.\t+\t.\tgene_id \"GENE_POS\"; gene_name \"POS1\";\n",
+            "chr1\tsrc\ttranscript\t1601\t1850\t.\t+\t.\tgene_id \"GENE_POS\"; gene_name \"POS1\"; transcript_id \"TX_POS\";\n",
+            "chr1\tsrc\texon\t1601\t1700\t.\t+\t.\tgene_id \"GENE_POS\"; gene_name \"POS1\"; transcript_id \"TX_POS\"; exon_number \"1\";\n",
+            "chr1\tsrc\texon\t1751\t1850\t.\t+\t.\tgene_id \"GENE_POS\"; gene_name \"POS1\"; transcript_id \"TX_POS\"; exon_number \"2\";\n",
+            "chr1\tsrc\tgene\t2101\t2400\t.\t+\t.\tgene_id \"GENE_MID\"; gene_name \"MID1\";\n",
+            "chr1\tsrc\ttranscript\t2151\t2350\t.\t+\t.\tgene_id \"GENE_MID\"; gene_name \"MID1\"; transcript_id \"TX_MID\";\n",
+            "chr1\tsrc\texon\t2151\t2350\t.\t+\t.\tgene_id \"GENE_MID\"; gene_name \"MID1\"; transcript_id \"TX_MID\"; exon_number \"1\";\n",
+            "chr1\tsrc\tgene\t3001\t3600\t.\t-\t.\tgene_id \"GENE_NEG\"; gene_name \"NEG1\";\n",
+            "chr1\tsrc\ttranscript\t3101\t3500\t.\t-\t.\tgene_id \"GENE_NEG\"; gene_name \"NEG1\"; transcript_id \"TX_NEG\";\n",
+            "chr1\tsrc\texon\t3101\t3250\t.\t-\t.\tgene_id \"GENE_NEG\"; gene_name \"NEG1\"; transcript_id \"TX_NEG\"; exon_number \"1\";\n",
+            "chr1\tsrc\texon\t3351\t3500\t.\t-\t.\tgene_id \"GENE_NEG\"; gene_name \"NEG1\"; transcript_id \"TX_NEG\"; exon_number \"2\";\n",
+            "chr1\tsrc\tgene\t4501\t4700\t.\t+\t.\tgene_id \"GENE_EDGE\"; gene_name \"EDGE1\";\n",
+            "chr1\tsrc\ttranscript\t4521\t4660\t.\t+\t.\tgene_id \"GENE_EDGE\"; gene_name \"EDGE1\"; transcript_id \"TX_EDGE\";\n",
+            "chr1\tsrc\texon\t4521\t4660\t.\t+\t.\tgene_id \"GENE_EDGE\"; gene_name \"EDGE1\"; transcript_id \"TX_EDGE\"; exon_number \"1\";\n",
+            "chr2\tsrc\tgene\t101\t300\t.\t+\t.\tgene_id \"GENE_CHR2A\"; gene_name \"CHR2A\";\n",
+            "chr2\tsrc\ttranscript\t121\t260\t.\t+\t.\tgene_id \"GENE_CHR2A\"; gene_name \"CHR2A\"; transcript_id \"TX_CHR2A\";\n",
+            "chr2\tsrc\texon\t121\t260\t.\t+\t.\tgene_id \"GENE_CHR2A\"; gene_name \"CHR2A\"; transcript_id \"TX_CHR2A\"; exon_number \"1\";\n",
+            "chr2\tsrc\tgene\t401\t700\t.\t-\t.\tgene_id \"GENE_CHR2B\"; gene_name \"CHR2B\";\n",
+            "chr2\tsrc\ttranscript\t421\t680\t.\t-\t.\tgene_id \"GENE_CHR2B\"; gene_name \"CHR2B\"; transcript_id \"TX_CHR2B\";\n",
+            "chr2\tsrc\texon\t421\t680\t.\t-\t.\tgene_id \"GENE_CHR2B\"; gene_name \"CHR2B\"; transcript_id \"TX_CHR2B\"; exon_number \"1\";\n",
+        ),
+    );
+    let cache_dir = root.join("reference_cache");
+    let catalog_path = root.join("gene_sets_reference_catalog.json");
+    let catalog_json = format!(
+        r#"{{
+  "{genome_id}": {{
+    "description": "gene-set toy genome",
+    "sequence_remote": "{}",
+    "annotations_remote": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+        file_url(&fasta_gz),
+        file_url(&ann_gz),
+        cache_dir.display()
+    );
+    fs::write(&catalog_path, catalog_json).expect("write gene-set reference catalog");
+    catalog_path.to_string_lossy().to_string()
+}
+
+fn write_gene_set_test_group_catalog(root: &Path) -> String {
+    let path = root.join("gene_groups.json");
+    fs::write(
+        &path,
+        format!(
+            r#"{{
+  "schema": "{}",
+  "groups": [
+    {{
+      "id": "go_alpha",
+      "label": "GO alpha",
+      "curation_status": "reviewed",
+      "external_mappings": [{{"namespace": "GO", "id": "GO:0000381"}}],
+      "members": [
+        {{"symbol": "POS1", "aliases": ["POS-alpha"]}},
+        {{"symbol": "NEG1"}}
+      ]
+    }},
+    {{
+      "id": "go_beta",
+      "label": "GO beta",
+      "curation_status": "reviewed",
+      "external_mappings": [{{"namespace": "GO", "id": "GO:0000381"}}],
+      "members": [
+        {{"symbol": "pos1", "aliases": ["POS-beta"]}},
+        {{"symbol": "MID1"}}
+      ]
+    }},
+    {{
+      "id": "draft_go",
+      "label": "Draft GO",
+      "curation_status": "draft",
+      "external_mappings": [{{"namespace": "GO", "id": "GO:0000999"}}],
+      "members": [{{"symbol": "MID1"}}]
+    }},
+    {{
+      "id": "deprecated_go",
+      "label": "Deprecated GO",
+      "curation_status": "deprecated",
+      "external_mappings": [{{"namespace": "GO", "id": "GO:0000888"}}],
+      "members": [{{"symbol": "EDGE1"}}]
+    }}
+  ]
+}}"#,
+            gentle_protocol::GENE_GROUP_CATALOG_SCHEMA
+        ),
+    )
+    .expect("write gene-set test gene-group catalog");
+    path.to_string_lossy().to_string()
+}
+
+fn prepare_gene_set_test_genome(root: &Path, engine: &mut GentleEngine) -> String {
+    let catalog_path = write_gene_set_test_reference_catalog(root, "ToyGenome");
+    let _guard = EnvVarGuard::set(
+        crate::genomes::MAKEBLASTDB_ENV_BIN,
+        "__gentle_makeblastdb_missing_for_test__",
+    );
+    engine
+        .apply(Operation::PrepareGenome {
+            genome_id: "ToyGenome".to_string(),
+            catalog_path: Some(catalog_path.clone()),
+            cache_dir: None,
+            timeout_seconds: None,
+        })
+        .expect("prepare gene-set toy genome");
+    catalog_path
+}
+
+fn gene_set_cutrun_promoter_cohort(windows: Vec<GeneSetPromoterWindow>) -> GeneSetPromoterCohortReport {
+    GeneSetPromoterCohortReport {
+        schema: GENE_SET_PROMOTER_COHORT_SCHEMA.to_string(),
+        genome_id: "ToyGenome".to_string(),
+        upstream_bp: 100,
+        downstream_bp: 20,
+        requested_member_count: windows.len(),
+        returned_window_count: windows.len(),
+        gene_set_resolution: GeneSetResolutionReport {
+            schema: GENE_SET_RESOLUTION_SCHEMA.to_string(),
+            request: GeneSetRequest::ExplicitMembers {
+                members: windows.iter().map(|window| window.symbol.clone()).collect(),
+            },
+            resolved_member_count: windows.len(),
+            ..GeneSetResolutionReport::default()
+        },
+        windows,
+        ..GeneSetPromoterCohortReport::default()
+    }
+}
+
+fn gene_set_cutrun_window(
+    symbol: &str,
+    start_1based: usize,
+    end_1based: usize,
+) -> GeneSetPromoterWindow {
+    GeneSetPromoterWindow {
+        member_dedup_key: format!("symbol:{}", symbol.to_ascii_lowercase()),
+        symbol: symbol.to_string(),
+        gene_query: symbol.to_string(),
+        occurrence: 1,
+        transcript_id: format!("TX_{symbol}"),
+        display_label: symbol.to_string(),
+        chromosome: "chr1".to_string(),
+        strand: "+".to_string(),
+        promoter_start_1based: start_1based,
+        promoter_end_1based: end_1based,
+        promoter_length_bp: end_1based.saturating_sub(start_1based).saturating_add(1),
+        tss_1based: start_1based,
+        sequence_orientation: "transcription_aligned".to_string(),
+        used_fuzzy_gene_match: false,
+        ..GeneSetPromoterWindow::default()
+    }
+}
+
+#[test]
+fn resolve_gene_set_external_mapping_unions_local_groups_and_gates_status() {
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let mut engine = GentleEngine::new();
+    let genome_catalog_path = prepare_gene_set_test_genome(root, &mut engine);
+    let group_catalog_path = write_gene_set_test_group_catalog(root);
+
+    let resolution = engine
+        .resolve_gene_set(
+            GeneSetRequest::ExternalMapping {
+                namespace: "GO".to_string(),
+                id: "GO:0000381".to_string(),
+            },
+            Some("ToyGenome"),
+            Some(&group_catalog_path),
+            Some(&genome_catalog_path),
+            None,
+            false,
+            false,
+        )
+        .expect("resolve GO union gene set");
+    assert_eq!(resolution.resolved_member_count, 3);
+    assert_eq!(
+        resolution.contributing_group_ids,
+        vec!["go_alpha".to_string(), "go_beta".to_string()]
+    );
+    assert_eq!(
+        resolution
+            .resolved_members
+            .iter()
+            .map(|member| member.symbol.as_str())
+            .collect::<Vec<_>>(),
+        vec!["POS1", "MID1", "NEG1"]
+    );
+    let pos = resolution
+        .resolved_members
+        .iter()
+        .find(|member| member.symbol == "POS1")
+        .expect("deduplicated POS1");
+    assert_eq!(
+        pos.contributing_group_ids,
+        vec!["go_alpha".to_string(), "go_beta".to_string()]
+    );
+    assert!(pos.aliases.contains(&"POS-alpha".to_string()));
+    assert!(pos.aliases.contains(&"POS-beta".to_string()));
+    assert_eq!(pos.provenance.len(), 2);
+
+    let zero = engine
+        .resolve_gene_set(
+            GeneSetRequest::ExternalMapping {
+                namespace: "GO".to_string(),
+                id: "GO:9999999".to_string(),
+            },
+            Some("ToyGenome"),
+            Some(&group_catalog_path),
+            Some(&genome_catalog_path),
+            None,
+            false,
+            false,
+        )
+        .expect("zero GO mappings are reported, not fatal");
+    assert_eq!(zero.resolved_member_count, 0);
+    assert_eq!(zero.unresolved_member_count, 1);
+    assert!(zero
+        .warnings
+        .iter()
+        .any(|warning| warning.contains("No local gene groups map")));
+
+    let draft_err = engine
+        .resolve_gene_set(
+            GeneSetRequest::ExternalMapping {
+                namespace: "GO".to_string(),
+                id: "GO:0000999".to_string(),
+            },
+            Some("ToyGenome"),
+            Some(&group_catalog_path),
+            Some(&genome_catalog_path),
+            None,
+            false,
+            false,
+        )
+        .expect_err("draft GO group requires allow flag");
+    assert!(draft_err.message.contains("--allow-draft"));
+    let draft = engine
+        .resolve_gene_set(
+            GeneSetRequest::ExternalMapping {
+                namespace: "GO".to_string(),
+                id: "GO:0000999".to_string(),
+            },
+            Some("ToyGenome"),
+            Some(&group_catalog_path),
+            Some(&genome_catalog_path),
+            None,
+            true,
+            false,
+        )
+        .expect("draft GO group allowed by flag");
+    assert_eq!(draft.resolved_member_count, 1);
+    assert!(draft
+        .warnings
+        .iter()
+        .any(|warning| warning.contains("Using draft gene group 'draft_go'")));
+
+    let deprecated_err = engine
+        .resolve_gene_set(
+            GeneSetRequest::ExternalMapping {
+                namespace: "GO".to_string(),
+                id: "GO:0000888".to_string(),
+            },
+            Some("ToyGenome"),
+            Some(&group_catalog_path),
+            Some(&genome_catalog_path),
+            None,
+            false,
+            false,
+        )
+        .expect_err("deprecated GO group requires allow flag");
+    assert!(deprecated_err.message.contains("--allow-deprecated"));
+    let deprecated = engine
+        .resolve_gene_set(
+            GeneSetRequest::ExternalMapping {
+                namespace: "GO".to_string(),
+                id: "GO:0000888".to_string(),
+            },
+            Some("ToyGenome"),
+            Some(&group_catalog_path),
+            Some(&genome_catalog_path),
+            None,
+            false,
+            true,
+        )
+        .expect("deprecated GO group allowed by flag");
+    assert_eq!(deprecated.resolved_member_count, 1);
+    assert!(deprecated
+        .warnings
+        .iter()
+        .any(|warning| warning.contains("Using deprecated gene group 'deprecated_go'")));
+}
+
+#[test]
+fn build_gene_set_promoter_cohort_uses_default_strand_geometry_and_keeps_unresolved() {
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let mut engine = GentleEngine::new();
+    let genome_catalog_path = prepare_gene_set_test_genome(root, &mut engine);
+    let resolution = engine
+        .resolve_gene_set(
+            GeneSetRequest::ExplicitMembers {
+                members: vec![
+                    "POS1".to_string(),
+                    "NEG1".to_string(),
+                    "MISSING".to_string(),
+                ],
+            },
+            Some("ToyGenome"),
+            None,
+            Some(&genome_catalog_path),
+            None,
+            false,
+            false,
+        )
+        .expect("resolve explicit gene set");
+    assert_eq!(resolution.resolved_member_count, 2);
+    assert_eq!(resolution.unresolved_member_count, 1);
+
+    let cohort = engine
+        .build_gene_set_promoter_cohort(
+            "ToyGenome",
+            resolution,
+            DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP,
+            DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP,
+            Some(&genome_catalog_path),
+            None,
+        )
+        .expect("build promoter cohort");
+    assert_eq!(cohort.upstream_bp, DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP);
+    assert_eq!(cohort.downstream_bp, DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP);
+    assert_eq!(cohort.returned_window_count, 2);
+    assert!(cohort
+        .unresolved_members
+        .iter()
+        .any(|member| member.query == "MISSING"));
+
+    let pos = cohort
+        .windows
+        .iter()
+        .find(|window| window.symbol == "POS1")
+        .expect("POS1 promoter");
+    assert_eq!(pos.strand, "+");
+    assert_eq!(pos.tss_1based, 1601);
+    assert_eq!(pos.promoter_start_1based, 601);
+    assert_eq!(pos.promoter_end_1based, 1801);
+
+    let neg = cohort
+        .windows
+        .iter()
+        .find(|window| window.symbol == "NEG1")
+        .expect("NEG1 promoter");
+    assert_eq!(neg.strand, "-");
+    assert_eq!(neg.tss_1based, 3500);
+    assert_eq!(neg.promoter_start_1based, 3300);
+    assert_eq!(neg.promoter_end_1based, 4500);
+}
+
+#[test]
+fn summarize_multi_gene_promoter_tfbs_expands_gene_set_and_keeps_plain_gene_path() {
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let mut engine = GentleEngine::new();
+    let genome_catalog_path = prepare_gene_set_test_genome(root, &mut engine);
+    let gene = PromoterTfbsGeneQuery {
+        gene_query: "POS1".to_string(),
+        occurrence: None,
+        transcript_id: Some("TX_POS".to_string()),
+        display_label: None,
+    };
+
+    let plain = engine
+        .apply(Operation::SummarizeMultiGenePromoterTfbs {
+            genome_id: "ToyGenome".to_string(),
+            genes: vec![gene.clone()],
+            motifs: vec!["SP1".to_string()],
+            upstream_bp: 100,
+            downstream_bp: 20,
+            score_kind: TfbsScoreTrackValueKind::LlrBackgroundTailLog10,
+            clip_negative: true,
+            catalog_path: Some(genome_catalog_path.clone()),
+            gene_group_catalog_path: None,
+            cache_dir: None,
+            gene_set: None,
+            gene_set_resolution: None,
+            allow_draft: false,
+            allow_deprecated: false,
+            path: None,
+        })
+        .expect("plain multi-gene promoter TFBS");
+    let plain_report = plain
+        .multi_gene_promoter_tfbs
+        .expect("plain promoter TFBS report");
+    assert_eq!(plain_report.returned_gene_count, 1);
+    assert!(plain_report.gene_set.is_none());
+    assert!(plain_report.gene_set_resolution.is_none());
+    assert!(plain_report.genes.iter().any(|row| row.gene_query == "POS1"));
+
+    let expanded = engine
+        .apply(Operation::SummarizeMultiGenePromoterTfbs {
+            genome_id: "ToyGenome".to_string(),
+            genes: vec![gene],
+            motifs: vec!["SP1".to_string()],
+            upstream_bp: 100,
+            downstream_bp: 20,
+            score_kind: TfbsScoreTrackValueKind::LlrBackgroundTailLog10,
+            clip_negative: true,
+            catalog_path: Some(genome_catalog_path),
+            gene_group_catalog_path: None,
+            cache_dir: None,
+            gene_set: Some(GeneSetRequest::ExplicitMembers {
+                members: vec!["NEG1".to_string()],
+            }),
+            gene_set_resolution: None,
+            allow_draft: false,
+            allow_deprecated: false,
+            path: None,
+        })
+        .expect("gene-set expanded promoter TFBS");
+    let expanded_report = expanded
+        .multi_gene_promoter_tfbs
+        .expect("expanded promoter TFBS report");
+    assert_eq!(expanded_report.returned_gene_count, 2);
+    assert!(expanded_report.gene_set.is_some());
+    let resolution = expanded_report
+        .gene_set_resolution
+        .as_ref()
+        .expect("gene-set resolution provenance");
+    assert_eq!(resolution.resolved_member_count, 1);
+    assert_eq!(resolution.resolved_members[0].symbol, "NEG1");
+    assert!(expanded_report
+        .genes
+        .iter()
+        .any(|row| row.display_label == "NEG1"));
+}
+
+#[test]
+fn inspect_cutrun_gene_set_regulatory_support_keeps_evaluated_denominators_honest() {
+    let _serial = cutrun_test_env_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let project_catalog_dir = root.join(".gentle").join("catalogs");
+    fs::create_dir_all(&project_catalog_dir).expect("create project CUT&RUN catalog dir");
+    let peaks_path = root.join("gene_set_peaks.bed");
+    let signal_path = root.join("gene_set_signal.bedgraph");
+    fs::write(&peaks_path, "chr1\t119\t160\tpeak_a\t42\t+\n").expect("write peaks");
+    fs::write(&signal_path, "chr1\t299\t340\t0.0\n").expect("write zero signal");
+    let cutrun_catalog_path = project_catalog_dir.join("cutrun.json");
+    fs::write(
+        &cutrun_catalog_path,
+        format!(
+            r#"{{
+  "toy_gene_set_cutrun": {{
+    "summary": "Toy gene-set CUT&RUN",
+    "target_factor": "CTCF",
+    "supported_reference_genome_ids": ["ToyGenome"],
+    "peaks_local": "{}",
+    "signal_local": "{}"
+  }}
+}}"#,
+            peaks_path.display(),
+            signal_path.display()
+        ),
+    )
+    .expect("write project CUT&RUN catalog");
+    let cutrun_cache_dir = root.join("cutrun_cache");
+    let _project_root_guard =
+        EnvVarGuard::set(crate::genomes::PROJECT_ROOT_ENV, &root.to_string_lossy());
+    let _cutrun_cache_guard = EnvVarGuard::set("GENTLE_CUTRUN_CACHE_DIR", &cutrun_cache_dir.to_string_lossy());
+
+    let mut engine = GentleEngine::new();
+    let status = engine
+        .prepare_cutrun_dataset(
+            "toy_gene_set_cutrun",
+            Some(&cutrun_catalog_path.to_string_lossy()),
+            Some(&cutrun_cache_dir.to_string_lossy()),
+        )
+        .expect("prepare gene-set CUT&RUN dataset");
+    assert!(status.prepared);
+
+    engine
+        .upsert_cutrun_read_report(CutRunReadReport {
+            schema: "gentle.cutrun_read_report.v1".to_string(),
+            report_id: "toy_gene_set_report".to_string(),
+            seq_id: "toy_gene_set_roi".to_string(),
+            input_r1_path: "synthetic://reads.fa".to_string(),
+            input_format: CutRunInputFormat::Fasta,
+            read_layout: CutRunReadLayout::SingleEnd,
+            genome_id: "ToyGenome".to_string(),
+            chromosome: "chr1".to_string(),
+            reference_window_start_1based: 100,
+            reference_window_end_1based: 200,
+            reference_window_orientation: "+".to_string(),
+            roi_local_start_1based: 1,
+            roi_local_end_1based: 101,
+            reference_window_length_bp: 101,
+            total_units: 2,
+            mapped_units: 2,
+            fragment_count: 2,
+            support_clusters: vec![CutRunSupportCluster {
+                cluster_index: 0,
+                local_start_1based: 31,
+                local_end_1based: 51,
+                genomic_start_1based: 130,
+                genomic_end_1based: 150,
+                total_cut_sites: 4,
+                fragment_count: 2,
+                ..CutRunSupportCluster::default()
+            }],
+            ..CutRunReadReport::default()
+        })
+        .expect("store synthetic CUT&RUN read report");
+
+    let report = engine
+        .inspect_cutrun_gene_set_regulatory_support(
+            gene_set_cutrun_promoter_cohort(vec![
+                gene_set_cutrun_window("EvalSupport", 100, 200),
+                gene_set_cutrun_window("EvalZero", 300, 350),
+                gene_set_cutrun_window("Unevaluated", 800, 900),
+            ]),
+            &["toy_gene_set_cutrun".to_string()],
+            &["toy_gene_set_report".to_string()],
+            150,
+            &[],
+        )
+        .expect("inspect gene-set CUT&RUN support");
+    assert_eq!(report.aggregate.member_count, 3);
+    assert_eq!(report.aggregate.evaluated_member_count, 2);
+    assert_eq!(report.aggregate.unevaluated_member_count, 1);
+    assert_eq!(report.aggregate.members_with_support_windows, 1);
+    assert_eq!(report.aggregate.members_with_strong_support, 1);
+    assert_eq!(report.aggregate.evaluated_fraction_with_support_windows, 0.5);
+    assert_eq!(report.aggregate.evaluated_fraction_with_strong_support, 0.5);
+    assert_eq!(report.aggregate.mean_support_window_count_evaluated, 1.0);
+
+    let supported = report
+        .member_support
+        .iter()
+        .find(|row| row.symbol == "EvalSupport")
+        .expect("supported member");
+    assert_eq!(
+        supported.evaluation_state,
+        GeneSetCutRunEvaluationState::Evaluated
+    );
+    assert_eq!(supported.support_window_count, 2);
+    assert_eq!(supported.strongest_support_strength.as_deref(), Some("strong"));
+    assert_eq!(
+        supported.contributing_dataset_ids,
+        vec!["toy_gene_set_cutrun".to_string()]
+    );
+    assert_eq!(
+        supported.contributing_read_report_ids,
+        vec!["toy_gene_set_report".to_string()]
+    );
+
+    let zero = report
+        .member_support
+        .iter()
+        .find(|row| row.symbol == "EvalZero")
+        .expect("zero-support evaluated member");
+    assert_eq!(zero.evaluation_state, GeneSetCutRunEvaluationState::Evaluated);
+    assert_eq!(zero.support_window_count, 0);
+    assert!(zero.strongest_support_strength.is_none());
+
+    let unevaluated = report
+        .member_support
+        .iter()
+        .find(|row| row.symbol == "Unevaluated")
+        .expect("unevaluated member");
+    assert_eq!(
+        unevaluated.evaluation_state,
+        GeneSetCutRunEvaluationState::Unevaluated
+    );
+    assert!(unevaluated.unevaluated_reason.is_some());
+
+    let all_unevaluated = engine
+        .inspect_cutrun_gene_set_regulatory_support(
+            gene_set_cutrun_promoter_cohort(vec![
+                gene_set_cutrun_window("NoOverlapA", 900, 950),
+                gene_set_cutrun_window("NoOverlapB", 1000, 1050),
+            ]),
+            &["toy_gene_set_cutrun".to_string()],
+            &[],
+            150,
+            &[],
+        )
+        .expect("inspect all-unevaluated gene-set CUT&RUN support");
+    assert_eq!(all_unevaluated.aggregate.member_count, 2);
+    assert_eq!(all_unevaluated.aggregate.evaluated_member_count, 0);
+    assert_eq!(all_unevaluated.aggregate.unevaluated_member_count, 2);
+    assert_eq!(
+        all_unevaluated
+            .aggregate
+            .evaluated_fraction_with_support_windows,
+        0.0
+    );
+    assert_eq!(
+        all_unevaluated
+            .aggregate
+            .evaluated_fraction_with_strong_support,
+        0.0
+    );
+    assert_eq!(
+        all_unevaluated
+            .aggregate
+            .mean_support_window_count_evaluated,
+        0.0
+    );
+}
+
 struct EnvVarGuard {
     key: &'static str,
     previous: Option<String>,

@@ -934,3 +934,416 @@ impl GentleEngine {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::gene_groups::LoadedGeneGroupRecord;
+    use gentle_protocol::{GeneGroupMember, GeneGroupRecord};
+
+    fn gene(symbol: &str, gene_id: &str, chromosome: &str, start_1based: usize) -> IndexedGeneRow {
+        GentleEngine::gene_set_indexed_row(GenomeGeneRecord {
+            chromosome: chromosome.to_string(),
+            start_1based,
+            end_1based: start_1based + 49,
+            strand: Some('+'),
+            gene_id: Some(gene_id.to_string()),
+            gene_name: Some(symbol.to_string()),
+            biotype: Some("protein_coding".to_string()),
+        })
+    }
+
+    fn member(symbol: &str, status: Option<&str>) -> GeneGroupMember {
+        GeneGroupMember {
+            symbol: symbol.to_string(),
+            gene_id: Some(format!("{symbol}_ID")),
+            aliases: vec![format!("{symbol}_alias")],
+            status: status.map(str::to_string),
+            confidence: Some("reviewed".to_string()),
+            provenance: Some("synthetic test member".to_string()),
+            ..GeneGroupMember::default()
+        }
+    }
+
+    fn loaded_group(id: &str, curation_status: &str) -> LoadedGeneGroupRecord {
+        LoadedGeneGroupRecord {
+            record: GeneGroupRecord {
+                id: id.to_string(),
+                label: id.to_string(),
+                curation_status: curation_status.to_string(),
+                ..GeneGroupRecord::default()
+            },
+            source_scope: "test".to_string(),
+            source_path: "synthetic://gene-groups".to_string(),
+        }
+    }
+
+    fn member_from_status(
+        status: Option<&str>,
+    ) -> (
+        Option<GeneSetResolvedMember>,
+        Vec<String>,
+        Vec<GeneSetUnresolvedMember>,
+    ) {
+        let mut warnings = vec![];
+        let mut unresolved = vec![];
+        let resolved = GentleEngine::gene_set_member_from_catalog_member(
+            &member("TP53", status),
+            Some("test_group"),
+            Some("synthetic://gene-groups"),
+            &[],
+            &mut warnings,
+            &mut unresolved,
+            "catalog_group",
+        );
+        (resolved, warnings, unresolved)
+    }
+
+    fn symbols(rows: &[GeneSetResolvedMember]) -> Vec<String> {
+        rows.iter().map(|row| row.symbol.clone()).collect()
+    }
+
+    #[test]
+    fn gene_set_member_status_gating_includes_warns_or_skips() {
+        for status in [None, Some("included")] {
+            let (resolved, warnings, unresolved) = member_from_status(status);
+            assert!(resolved.is_some());
+            assert!(warnings.is_empty());
+            assert!(unresolved.is_empty());
+        }
+
+        let (resolved, warnings, unresolved) = member_from_status(Some("draft"));
+        assert!(resolved.is_some());
+        assert!(unresolved.is_empty());
+        assert!(
+            warnings
+                .iter()
+                .any(|warning| warning.contains("draft") && warning.contains("including"))
+        );
+
+        let (resolved, warnings, unresolved) = member_from_status(Some("excluded"));
+        assert!(resolved.is_none());
+        assert!(unresolved.is_empty());
+        assert!(
+            warnings
+                .iter()
+                .any(|warning| warning.contains("Skipping excluded gene-set member"))
+        );
+
+        let (resolved, warnings, unresolved) = member_from_status(Some("curator_maybe"));
+        assert!(resolved.is_some());
+        assert!(unresolved.is_empty());
+        assert!(warnings.iter().any(|warning| {
+            warning.contains("Unrecognized member status 'curator_maybe'")
+                && warning.contains("treating as included")
+        }));
+    }
+
+    #[test]
+    fn gene_set_group_curation_gating_rejects_or_warns_by_flag() {
+        for status in ["", "reviewed", "included", "curated"] {
+            let mut warnings = vec![];
+            GentleEngine::gene_set_group_allowed(
+                &loaded_group("ok_group", status),
+                false,
+                false,
+                &mut warnings,
+            )
+            .expect("accepted curation status");
+            assert!(warnings.is_empty());
+        }
+
+        let mut warnings = vec![];
+        let err = GentleEngine::gene_set_group_allowed(
+            &loaded_group("draft_group", "draft"),
+            false,
+            false,
+            &mut warnings,
+        )
+        .expect_err("draft rejected without allow flag");
+        assert!(err.message.contains("--allow-draft"));
+        assert!(warnings.is_empty());
+
+        GentleEngine::gene_set_group_allowed(
+            &loaded_group("draft_group", "draft"),
+            true,
+            false,
+            &mut warnings,
+        )
+        .expect("draft accepted with allow flag");
+        assert!(
+            warnings
+                .iter()
+                .any(|warning| warning.contains("Using draft gene group 'draft_group'"))
+        );
+
+        warnings.clear();
+        let err = GentleEngine::gene_set_group_allowed(
+            &loaded_group("old_group", "deprecated"),
+            false,
+            false,
+            &mut warnings,
+        )
+        .expect_err("deprecated rejected without allow flag");
+        assert!(err.message.contains("--allow-deprecated"));
+        assert!(warnings.is_empty());
+
+        GentleEngine::gene_set_group_allowed(
+            &loaded_group("old_group", "deprecated"),
+            false,
+            true,
+            &mut warnings,
+        )
+        .expect("deprecated accepted with allow flag");
+        assert!(
+            warnings
+                .iter()
+                .any(|warning| warning.contains("Using deprecated gene group 'old_group'"))
+        );
+
+        warnings.clear();
+        GentleEngine::gene_set_group_allowed(
+            &loaded_group("unknown_group", "locally_reviewed"),
+            false,
+            false,
+            &mut warnings,
+        )
+        .expect("unknown curation status is usable");
+        assert!(warnings.iter().any(|warning| {
+            warning.contains("Unrecognized curation_status 'locally_reviewed'")
+                && warning.contains("treating as usable")
+        }));
+    }
+
+    #[test]
+    fn gene_set_random_is_deterministic_source_pinned_and_foreground_filtered() {
+        let genes = (0..10)
+            .map(|idx| gene(&format!("Gene{idx}"), &format!("G{idx}"), "chr1", 100 + idx * 100))
+            .collect::<Vec<_>>();
+
+        let mut first_warnings = vec![];
+        let (first, first_random) = GentleEngine::gene_set_resolve_random(
+            "ToyGenome",
+            4,
+            17,
+            &[],
+            &genes,
+            "ToyGenome|catalog_a|cache",
+            &mut first_warnings,
+        );
+        let mut second_warnings = vec![];
+        let (second, second_random) = GentleEngine::gene_set_resolve_random(
+            "ToyGenome",
+            4,
+            17,
+            &[],
+            &genes,
+            "ToyGenome|catalog_a|cache",
+            &mut second_warnings,
+        );
+        assert_eq!(symbols(&first), symbols(&second));
+        assert_eq!(first_random.random_seed, second_random.random_seed);
+        assert_eq!(first_random.gene_index_source, second_random.gene_index_source);
+        assert!(first_warnings.is_empty());
+        assert!(second_warnings.is_empty());
+
+        let mut different_source_warnings = vec![];
+        let (different_source, _) = GentleEngine::gene_set_resolve_random(
+            "ToyGenome",
+            4,
+            17,
+            &[],
+            &genes,
+            "ToyGenome|catalog_b|cache",
+            &mut different_source_warnings,
+        );
+        assert_ne!(symbols(&first), symbols(&different_source));
+
+        let mut excluded_warnings = vec![];
+        let excluded = vec!["Gene1".to_string(), "G2".to_string()];
+        let (filtered, filtered_random) = GentleEngine::gene_set_resolve_random(
+            "ToyGenome",
+            3,
+            23,
+            &excluded,
+            &genes,
+            "ToyGenome|catalog_a|cache",
+            &mut excluded_warnings,
+        );
+        assert_eq!(filtered.len(), 3);
+        assert!(filtered
+            .iter()
+            .all(|row| row.gene_id.as_deref() != Some("G1") && row.gene_id.as_deref() != Some("G2")));
+        assert_eq!(filtered_random.universe_size, genes.len());
+        assert!(filtered_random.foreground_exclusion_count >= 2);
+        assert!(excluded_warnings.is_empty());
+
+        let tiny_genes = genes.iter().take(2).cloned().collect::<Vec<_>>();
+        let mut too_large_warnings = vec![];
+        let (too_large, _) = GentleEngine::gene_set_resolve_random(
+            "ToyGenome",
+            5,
+            42,
+            &[],
+            &tiny_genes,
+            "ToyGenome|catalog_a|cache",
+            &mut too_large_warnings,
+        );
+        assert_eq!(too_large.len(), tiny_genes.len());
+        assert!(too_large_warnings
+            .iter()
+            .any(|warning| warning.contains("fewer than requested 5")));
+    }
+
+    #[test]
+    fn gene_set_neighbors_are_same_chromosome_and_report_edge_cases() {
+        let genes = vec![
+            gene("A", "GA", "chr1", 100),
+            gene("B", "GB", "chr1", 180),
+            gene("C", "GC", "chr1", 250),
+            gene("D", "GD", "chr1", 330),
+            gene("E", "GE", "chr1", 500),
+            gene("Chr2Near", "GCHR2", "chr2", 260),
+        ];
+
+        let mut warnings = vec![];
+        let mut unresolved = vec![];
+        let rows = GentleEngine::gene_set_resolve_neighbors(
+            "C",
+            Some(2),
+            None,
+            false,
+            &genes,
+            &mut warnings,
+            &mut unresolved,
+        )
+        .expect("resolve count neighbors");
+        assert_eq!(symbols(&rows), vec!["A", "B", "C", "D", "E"]);
+        assert!(!symbols(&rows).contains(&"Chr2Near".to_string()));
+        assert!(warnings.is_empty());
+        assert!(unresolved.is_empty());
+
+        let rows = GentleEngine::gene_set_resolve_neighbors(
+            "C",
+            Some(1),
+            Some(80),
+            true,
+            &genes,
+            &mut vec![],
+            &mut vec![],
+        )
+        .expect("resolve bp neighbors");
+        assert_eq!(symbols(&rows), vec!["B", "D"]);
+
+        let rows = GentleEngine::gene_set_resolve_neighbors(
+            "A",
+            Some(2),
+            None,
+            false,
+            &genes,
+            &mut warnings,
+            &mut unresolved,
+        )
+        .expect("resolve boundary neighbors");
+        assert_eq!(symbols(&rows), vec!["A", "B", "C"]);
+        assert!(warnings
+            .iter()
+            .any(|warning| warning.contains("near the start of chromosome chr1")));
+
+        warnings.clear();
+        unresolved.clear();
+        let rows = GentleEngine::gene_set_resolve_neighbors(
+            "missing",
+            Some(1),
+            None,
+            false,
+            &genes,
+            &mut warnings,
+            &mut unresolved,
+        )
+        .expect("missing anchor is unresolved, not fatal");
+        assert!(rows.is_empty());
+        assert_eq!(unresolved.len(), 1);
+        assert!(unresolved[0].reason.contains("neighbor anchor did not resolve"));
+
+        let mut duplicated = genes.clone();
+        duplicated.push(gene("C", "GC2", "chr2", 700));
+        let err = GentleEngine::gene_set_resolve_neighbors(
+            "C",
+            Some(1),
+            None,
+            false,
+            &duplicated,
+            &mut vec![],
+            &mut vec![],
+        )
+        .expect_err("ambiguous anchor is fatal");
+        assert!(err.message.contains("resolved to 2 loci"));
+        assert!(err.message.contains("chr1:250-299"));
+        assert!(err.message.contains("chr2:700-749"));
+    }
+
+    #[test]
+    fn gene_set_insert_member_collapses_identity_and_preserves_provenance() {
+        let mut members = vec![];
+        GentleEngine::gene_set_insert_member(
+            &mut members,
+            GeneSetResolvedMember {
+                dedup_key: GentleEngine::gene_set_dedup_key("Tp53", Some("ENSG00000141510")),
+                symbol: "Tp53".to_string(),
+                gene_id: Some("ENSG00000141510".to_string()),
+                aliases: vec!["p53".to_string()],
+                chromosome: Some("chr17".to_string()),
+                start_1based: Some(7_000),
+                contributing_group_ids: vec!["group_a".to_string()],
+                provenance: vec![GeneSetProvenanceRow {
+                    source_kind: "catalog_group".to_string(),
+                    source_id: "group_a".to_string(),
+                    ..GeneSetProvenanceRow::default()
+                }],
+                ..GeneSetResolvedMember::default()
+            },
+        );
+        GentleEngine::gene_set_insert_member(
+            &mut members,
+            GeneSetResolvedMember {
+                dedup_key: GentleEngine::gene_set_dedup_key("TP53", Some("ENSG00000141510")),
+                symbol: "TP53".to_string(),
+                gene_id: Some("ENSG00000141510".to_string()),
+                aliases: vec!["TRP53".to_string(), "p53".to_string()],
+                chromosome: Some("chr17".to_string()),
+                start_1based: Some(7_000),
+                contributing_group_ids: vec!["group_b".to_string()],
+                provenance: vec![GeneSetProvenanceRow {
+                    source_kind: "external_mapping".to_string(),
+                    source_id: "GO:0000123".to_string(),
+                    ..GeneSetProvenanceRow::default()
+                }],
+                ..GeneSetResolvedMember::default()
+            },
+        );
+
+        assert_eq!(members.len(), 1);
+        let merged = &members[0];
+        assert_eq!(merged.symbol, "Tp53");
+        assert_eq!(merged.contributing_group_ids, vec!["group_a", "group_b"]);
+        assert_eq!(merged.provenance.len(), 2);
+        assert_eq!(merged.aliases, vec!["p53", "TRP53"]);
+
+        members.push(GeneSetResolvedMember {
+            dedup_key: "symbol:no coordinates".to_string(),
+            symbol: "NoCoordinates".to_string(),
+            ..GeneSetResolvedMember::default()
+        });
+        members.push(GeneSetResolvedMember {
+            dedup_key: "gene_id:gata1".to_string(),
+            symbol: "Gata1".to_string(),
+            gene_id: Some("GATA1".to_string()),
+            chromosome: Some("chrX".to_string()),
+            start_1based: Some(1_000),
+            ..GeneSetResolvedMember::default()
+        });
+        GentleEngine::gene_set_sort_members(&mut members);
+        assert_eq!(symbols(&members), vec!["Tp53", "Gata1", "NoCoordinates"]);
+    }
+}

@@ -15464,7 +15464,7 @@ impl GentleEngine {
         &self,
         genome_id: &str,
         gene_set: Option<GeneSetRequest>,
-        gene_set_resolution: Option<GeneSetResolutionReport>,
+        gene_set_resolution: Option<Box<GeneSetResolutionReport>>,
         gene_group_catalog_path: Option<&str>,
         genome_catalog_path: Option<&str>,
         cache_dir: Option<&str>,
@@ -15472,7 +15472,7 @@ impl GentleEngine {
         allow_deprecated: bool,
     ) -> Result<(Vec<PromoterTfbsGeneQuery>, Option<GeneSetResolutionReport>), EngineError> {
         let resolution = match (gene_set_resolution, gene_set) {
-            (Some(resolution), _) => Some(resolution),
+            (Some(resolution), _) => Some(*resolution),
             (None, Some(source)) => Some(self.resolve_gene_set(
                 source,
                 Some(genome_id),
@@ -15843,7 +15843,7 @@ impl GentleEngine {
                     .expand_gene_set_for_promoter_tfbs(
                         &genome_id,
                         gene_set.clone(),
-                        gene_set_resolution.clone(),
+                        gene_set_resolution,
                         gene_group_catalog_path.as_deref(),
                         catalog_path.as_deref(),
                         cache_dir.as_deref(),
@@ -16836,7 +16836,7 @@ impl GentleEngine {
                         .expand_gene_set_for_promoter_tfbs(
                             &genome_id,
                             gene_set.clone(),
-                            gene_set_resolution.clone(),
+                            gene_set_resolution,
                             gene_group_catalog_path.as_deref(),
                             catalog_path.as_deref(),
                             cache_dir.as_deref(),
@@ -19932,7 +19932,7 @@ impl GentleEngine {
                     path,
                 } => {
                     let resolution = match resolution {
-                        Some(report) => report,
+                        Some(report) => *report,
                         None => {
                             let source = source.ok_or_else(|| EngineError {
                                 code: ErrorCode::InvalidInput,
@@ -19994,10 +19994,10 @@ impl GentleEngine {
                     path,
                 } => {
                     let promoter_cohort = match promoter_cohort {
-                        Some(report) => report,
+                        Some(report) => *report,
                         None => {
                             let resolution = match resolution {
-                                Some(report) => report,
+                                Some(report) => *report,
                                 None => {
                                     let source = source.ok_or_else(|| EngineError {
                                         code: ErrorCode::InvalidInput,

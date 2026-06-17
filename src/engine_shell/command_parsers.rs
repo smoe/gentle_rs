@@ -9018,8 +9018,8 @@ pub(super) fn parse_cutrun_command(tokens: &[String]) -> Result<ShellCommand, St
             Ok(ShellCommand::CutRunGeneSetRegulatorySupport {
                 genome_id,
                 source,
-                resolution,
-                promoter_cohort,
+                resolution: resolution.map(Box::new),
+                promoter_cohort: promoter_cohort.map(Box::new),
                 dataset_ids,
                 read_report_ids,
                 upstream_bp,
