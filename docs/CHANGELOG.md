@@ -14,6 +14,9 @@ Maintenance rule:
 
 ## 2026-06-17
 
+- Added portable construct-reasoning inspection actions for repeat/similarity
+  dotplot handoffs, carrying deterministic action ids and driving evidence ids
+  in the graph payload instead of deriving GUI buttons from labels.
 - Added optional true PM probe-intensity matrix input to
   `arrays import-apt-probe-region-output` and the Clariom D GUI panel, with
   probe-level sample, condition-summary, and logFC columns preserved in

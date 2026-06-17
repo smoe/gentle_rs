@@ -22,15 +22,18 @@ use std::{
 pub use construct_reasoning::{
     AdapterCaptureProtectionMode, AdapterCaptureStyle, AdapterRestrictionCapturePlan,
     AnnotationCandidate, AnnotationCandidateSummary, AnnotationCandidateWriteback,
-    ConstructCandidate, ConstructObjective, ConstructReasoningGraph, ConstructReasoningStore,
-    ConstructRole, DecisionMethod, DesignDecisionNode, DesignEvidence, DesignFact, EditableStatus,
+    ConstructCandidate, ConstructObjective, ConstructReasoningGraph,
+    ConstructReasoningInspectionAction, ConstructReasoningInspectionActionKind,
+    ConstructReasoningRepeatFamilyProvenance, ConstructReasoningStore, ConstructRole,
+    DecisionMethod, DesignDecisionNode, DesignEvidence, DesignFact, EditableStatus,
     EvidenceClass, EvidenceScope, HelperConstructProfile, HostLifecycleRole, HostProfileCatalog,
     HostProfileRecord, HostRouteStep, ProteinToDnaHandoffCandidate, ProteinToDnaHandoffCoverage,
     ProteinToDnaHandoffRankingGoal, ProteinToDnaHandoffStrategy, ANNOTATION_CANDIDATE_SCHEMA,
     ANNOTATION_CANDIDATE_SUMMARY_SCHEMA, ANNOTATION_CANDIDATE_WRITEBACK_SCHEMA,
     CONSTRUCT_CANDIDATE_SCHEMA, CONSTRUCT_OBJECTIVE_SCHEMA, CONSTRUCT_REASONING_GRAPH_SCHEMA,
-    CONSTRUCT_REASONING_STORE_SCHEMA, DESIGN_DECISION_NODE_SCHEMA, DESIGN_EVIDENCE_SCHEMA,
-    DESIGN_FACT_SCHEMA, HOST_PROFILE_CATALOG_SCHEMA,
+    CONSTRUCT_REASONING_INSPECTION_ACTION_SCHEMA, CONSTRUCT_REASONING_STORE_SCHEMA,
+    DESIGN_DECISION_NODE_SCHEMA, DESIGN_EVIDENCE_SCHEMA, DESIGN_FACT_SCHEMA,
+    HOST_PROFILE_CATALOG_SCHEMA,
 };
 pub use dna_ladder::{
     default_dna_ladders, default_rna_ladders, DNALadder, DNALadderBand, DNALadders, Ladder,

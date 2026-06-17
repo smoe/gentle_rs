@@ -1075,6 +1075,10 @@ UniProt mapping capability status:
     - `summary_lines`
     - `warning_lines`
     - `fact_summaries`
+    - graph-level `inspection_actions[]` entries for deterministic
+      repeat/similarity dotplot handoffs, including `action_id`,
+      `driving_evidence_ids[]`, source fact/annotation/summary ids, mode, and
+      focus range
     - current fact summaries now include adapter-capture review plus the new
       similarity-derived predictor rows for PCR/amplification,
       nanopore/direct-sequencing, repeat-driven mapping, and cloning stability

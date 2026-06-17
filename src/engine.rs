@@ -93,11 +93,15 @@ use std::{
 use tempfile::NamedTempFile;
 
 pub use gentle_protocol::{
-    Arrangement, ArrangementMode, Container, ContainerId, ContainerKind, ContainerState,
-    ExonSkipReturnKind, ExonSkipReturnPayload, ExonSkipSelectionCriterion, GelBufferModel,
-    GelRunConditions, GelTopologyForm, LineageEdge, LineageGraph, LineageMacroInstance,
-    LineageMacroPortBinding, LineageNode, MacroInstanceStatus, NodeId, OpId,
-    ProteinExternalOpinionSource, ProteinFeatureFilter, Rack, RackAuthoringTemplate,
+    AnnotationCandidate, AnnotationCandidateSummary, AnnotationCandidateWriteback, Arrangement,
+    ArrangementMode, ConstructCandidate, ConstructObjective, ConstructReasoningGraph,
+    ConstructReasoningInspectionAction, ConstructReasoningInspectionActionKind,
+    ConstructReasoningStore, ConstructRole, Container, ContainerId, ContainerKind, ContainerState,
+    DecisionMethod, DesignDecisionNode, DesignEvidence, DesignFact, DotplotMode, EditableStatus,
+    EvidenceClass, EvidenceScope, ExonSkipReturnKind, ExonSkipReturnPayload,
+    ExonSkipSelectionCriterion, GelBufferModel, GelRunConditions, GelTopologyForm, LineageEdge,
+    LineageGraph, LineageMacroInstance, LineageMacroPortBinding, LineageNode, MacroInstanceStatus,
+    NodeId, OpId, ProteinExternalOpinionSource, ProteinFeatureFilter, Rack, RackAuthoringTemplate,
     RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset, RackOccupant,
     RackPhysicalTemplateFamily, RackPhysicalTemplateKind, RackPhysicalTemplateSpec,
     RackPlacementEntry, RackProfileKind, RackProfileSnapshot, ReadAcquisitionAnalysisFormat,
@@ -16875,6 +16879,267 @@ impl GentleEngine {
         }
     }
 
+    fn construct_reasoning_dotplot_modes_for_evidence_rows(
+        rows: &[&DesignEvidence],
+    ) -> Vec<DotplotMode> {
+        let context_tags = rows
+            .iter()
+            .flat_map(|row| row.context_tags.iter().map(String::as_str))
+            .collect::<BTreeSet<_>>();
+        let has_tag = |tags: &BTreeSet<&str>, tag: &str| tags.contains(tag);
+
+        let should_offer_forward = rows
+            .iter()
+            .any(|row| row.role == ConstructRole::MobileElement)
+            || [
+                "low_complexity",
+                "homopolymer_run",
+                "tandem_repeat",
+                "direct_repeat",
+                "repeat_dense",
+                "mapping_ambiguity_risk",
+                "polymerase_slippage_risk",
+                "alu_like",
+            ]
+            .iter()
+            .any(|tag| has_tag(&context_tags, tag));
+
+        let should_offer_revcomp = [
+            "inverted_repeat",
+            "palindromic_repeat_risk",
+            "inversion_risk",
+        ]
+        .iter()
+        .any(|tag| has_tag(&context_tags, tag));
+
+        let mut modes = vec![];
+        if should_offer_forward {
+            modes.push(DotplotMode::SelfForward);
+        }
+        if should_offer_revcomp {
+            modes.push(DotplotMode::SelfReverseComplement);
+        }
+        modes
+    }
+
+    fn construct_reasoning_context_tags_for_evidence_rows(rows: &[&DesignEvidence]) -> Vec<String> {
+        rows.iter()
+            .flat_map(|row| row.context_tags.iter().cloned())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect()
+    }
+
+    fn construct_reasoning_driving_ids_for_evidence_rows(rows: &[&DesignEvidence]) -> Vec<String> {
+        rows.iter()
+            .map(|row| row.evidence_id.clone())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect()
+    }
+
+    fn construct_reasoning_inspection_action_source_ids(mut ids: Vec<String>) -> Vec<String> {
+        ids = ids
+            .into_iter()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect();
+        ids.sort();
+        ids.dedup();
+        ids
+    }
+
+    fn construct_reasoning_build_inspection_actions_for_source(
+        graph_id: &str,
+        seq_id: &str,
+        source_kind: &str,
+        source_id: &str,
+        source_label: &str,
+        source_fact_ids: Vec<String>,
+        source_annotation_ids: Vec<String>,
+        source_summary_ids: Vec<String>,
+        focus_range: Option<(usize, usize)>,
+        rows: Vec<&DesignEvidence>,
+    ) -> Vec<ConstructReasoningInspectionAction> {
+        let rows = rows
+            .into_iter()
+            .filter(|row| {
+                row.scope == EvidenceScope::SequenceSpan
+                    && row.end_0based_exclusive > row.start_0based
+            })
+            .collect::<Vec<_>>();
+        if rows.is_empty() {
+            return vec![];
+        }
+
+        let focus_range = focus_range.filter(|(start, end)| end > start).or_else(|| {
+            let start = rows.iter().map(|row| row.start_0based).min()?;
+            let end = rows.iter().map(|row| row.end_0based_exclusive).max()?;
+            (end > start).then_some((start, end))
+        });
+        let Some((focus_start_0based, focus_end_0based_exclusive)) = focus_range else {
+            return vec![];
+        };
+
+        let source_id = source_id.trim();
+        let source_label = source_label.trim();
+        let title = if source_label.is_empty() {
+            source_id
+        } else {
+            source_label
+        };
+        let title = if title.is_empty() {
+            "reasoning row"
+        } else {
+            title
+        };
+        let graph_token = Self::normalize_id_token(graph_id);
+        let source_token = Self::normalize_id_token(if source_id.is_empty() {
+            title
+        } else {
+            source_id
+        });
+        let source_kind_token = Self::normalize_id_token(source_kind);
+        let start_1based = focus_start_0based.saturating_add(1);
+        let end_1based = focus_end_0based_exclusive;
+        let context_tags = Self::construct_reasoning_context_tags_for_evidence_rows(&rows);
+        let driving_evidence_ids = Self::construct_reasoning_driving_ids_for_evidence_rows(&rows);
+        let source_fact_ids =
+            Self::construct_reasoning_inspection_action_source_ids(source_fact_ids);
+        let source_annotation_ids =
+            Self::construct_reasoning_inspection_action_source_ids(source_annotation_ids);
+        let source_summary_ids =
+            Self::construct_reasoning_inspection_action_source_ids(source_summary_ids);
+
+        Self::construct_reasoning_dotplot_modes_for_evidence_rows(&rows)
+            .into_iter()
+            .map(|mode| {
+                let (button_label, hover_kind) = match mode {
+                    DotplotMode::SelfForward => ("Dotplot", "self-forward"),
+                    DotplotMode::SelfReverseComplement => {
+                        ("RevComp Dotplot", "self-reverse-complement")
+                    }
+                    DotplotMode::PairForward => ("Pair Dotplot", "pair-forward"),
+                    DotplotMode::PairReverseComplement => {
+                        ("Pair RevComp Dotplot", "pair-reverse-complement")
+                    }
+                };
+                ConstructReasoningInspectionAction {
+                    action_id: format!(
+                        "inspection_{}_{}_{}_{}_{}_{}",
+                        graph_token,
+                        source_kind_token,
+                        source_token,
+                        mode.as_str(),
+                        focus_start_0based,
+                        focus_end_0based_exclusive
+                    ),
+                    action_kind: ConstructReasoningInspectionActionKind::Dotplot,
+                    button_label: button_label.to_string(),
+                    hover_text: format!(
+                        "Open a {hover_kind} dotplot centered on {start_1based}..{end_1based} for '{title}'"
+                    ),
+                    seq_id: seq_id.to_string(),
+                    mode,
+                    focus_start_0based,
+                    focus_end_0based_exclusive,
+                    driving_evidence_ids: driving_evidence_ids.clone(),
+                    source_fact_ids: source_fact_ids.clone(),
+                    source_annotation_ids: source_annotation_ids.clone(),
+                    source_summary_ids: source_summary_ids.clone(),
+                    context_tags: context_tags.clone(),
+                    ..ConstructReasoningInspectionAction::default()
+                }
+            })
+            .collect()
+    }
+
+    fn construct_reasoning_build_inspection_actions(
+        graph: &ConstructReasoningGraph,
+    ) -> Vec<ConstructReasoningInspectionAction> {
+        let evidence_by_id = graph
+            .evidence
+            .iter()
+            .map(|row| (row.evidence_id.as_str(), row))
+            .collect::<HashMap<_, _>>();
+        let candidates_by_id = graph
+            .annotation_candidates
+            .iter()
+            .map(|row| (row.annotation_id.as_str(), row))
+            .collect::<HashMap<_, _>>();
+        let mut actions_by_id: BTreeMap<String, ConstructReasoningInspectionAction> =
+            BTreeMap::new();
+
+        for fact in &graph.facts {
+            let rows = fact
+                .based_on_evidence_ids
+                .iter()
+                .filter_map(|id| evidence_by_id.get(id.as_str()).copied())
+                .collect::<Vec<_>>();
+            for action in Self::construct_reasoning_build_inspection_actions_for_source(
+                &graph.graph_id,
+                &graph.seq_id,
+                "fact",
+                &fact.fact_id,
+                &fact.label,
+                vec![fact.fact_id.clone()],
+                vec![],
+                vec![],
+                None,
+                rows,
+            ) {
+                actions_by_id.insert(action.action_id.clone(), action);
+            }
+        }
+
+        for candidate in &graph.annotation_candidates {
+            let rows = evidence_by_id
+                .get(candidate.evidence_id.as_str())
+                .copied()
+                .into_iter()
+                .collect::<Vec<_>>();
+            for action in Self::construct_reasoning_build_inspection_actions_for_source(
+                &graph.graph_id,
+                &graph.seq_id,
+                "annotation",
+                &candidate.annotation_id,
+                &candidate.label,
+                vec![],
+                vec![candidate.annotation_id.clone()],
+                vec![],
+                Some((candidate.start_0based, candidate.end_0based_exclusive)),
+                rows,
+            ) {
+                actions_by_id.insert(action.action_id.clone(), action);
+            }
+        }
+
+        for summary in &graph.annotation_candidate_summaries {
+            let rows = summary
+                .annotation_ids
+                .iter()
+                .filter_map(|annotation_id| candidates_by_id.get(annotation_id.as_str()))
+                .filter_map(|candidate| evidence_by_id.get(candidate.evidence_id.as_str()).copied())
+                .collect::<Vec<_>>();
+            for action in Self::construct_reasoning_build_inspection_actions_for_source(
+                &graph.graph_id,
+                &graph.seq_id,
+                "summary",
+                &summary.summary_id,
+                &summary.title,
+                vec![],
+                summary.annotation_ids.clone(),
+                vec![summary.summary_id.clone()],
+                Some((summary.start_0based, summary.end_0based_exclusive)),
+                rows,
+            ) {
+                actions_by_id.insert(action.action_id.clone(), action);
+            }
+        }
+
+        actions_by_id.into_values().collect()
+    }
+
     fn normalize_construct_reasoning_graph(
         mut graph: ConstructReasoningGraph,
     ) -> ConstructReasoningGraph {
@@ -16986,6 +17251,7 @@ impl GentleEngine {
                 .then(a.title.cmp(&b.title))
                 .then(a.summary_id.cmp(&b.summary_id))
         });
+        graph.inspection_actions = Self::construct_reasoning_build_inspection_actions(&graph);
         Self::normalize_optional_note_text(&mut graph.notes);
         graph
     }

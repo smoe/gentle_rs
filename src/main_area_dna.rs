@@ -94,8 +94,9 @@ use crate::{
         AttractPwmMappingPolicy, AttractRegionClass, AttractSplicingEvidenceHitRow,
         AttractSplicingEvidenceSettings, AttractSplicingEvidenceView,
         CandidateFeatureStrandRelation, CandidateRecord, CandidateSetOperator,
-        ConstructReasoningGraph, ConstructRole, CutRunMotifAbsentOccupancyInterpretation,
-        CutRunMotifContextScope, CutRunRegulatoryEvidenceSourceKind, CutRunRegulatorySupportReport,
+        ConstructReasoningGraph, ConstructReasoningInspectionAction, ConstructRole,
+        CutRunMotifAbsentOccupancyInterpretation, CutRunMotifContextScope,
+        CutRunRegulatoryEvidenceSourceKind, CutRunRegulatorySupportReport,
         CutRunRegulatoryTfbsConfirmationStatus, CutRunSupportStrength, DecisionMethod,
         DesignDecisionNode, DesignFact, DisplaySettings, DisplayTarget, DotplotMode,
         DotplotOverlayAnchorExonRef, DotplotOverlayXAxisMode, DotplotView, EditableStatus, Engine,
@@ -1549,15 +1550,7 @@ struct ConstructReasoningInspectorCache {
     note_lines: Vec<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct ConstructReasoningDotplotAction {
-    stable_id: String,
-    button_label: String,
-    hover_text: String,
-    mode: DotplotMode,
-    focus_start_0based: usize,
-    focus_end_0based_exclusive: usize,
-}
+type ConstructReasoningDotplotAction = ConstructReasoningInspectionAction;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct ConstructReasoningOverlaySyncKey {
@@ -12950,7 +12943,7 @@ impl MainAreaDna {
         ui.horizontal_wrapped(|ui| {
             for action in actions {
                 ui.push_id(
-                    ("construct_reasoning_dotplot_action", &action.stable_id),
+                    ("construct_reasoning_dotplot_action", &action.action_id),
                     |ui| {
                         if ui
                             .button(action.button_label.as_str())
@@ -13735,6 +13728,7 @@ impl MainAreaDna {
     }
 
     fn construct_reasoning_inspector_entry_for_annotation_summary(
+        graph: &ConstructReasoningGraph,
         summary: &AnnotationCandidateSummary,
     ) -> ConstructReasoningInspectorEntry {
         let mut detail_lines = vec![
@@ -13803,22 +13797,15 @@ impl MainAreaDna {
             annotation_id: None,
             editable_status: None,
             source_kind: None,
-            dotplot_actions: Self::construct_reasoning_dotplot_actions_for_range(
-                if summary.summary_id.trim().is_empty() {
-                    summary.title.as_str()
-                } else {
-                    summary.summary_id.as_str()
-                },
-                summary.title.as_str(),
-                summary.role,
-                summary.start_0based,
-                summary.end_0based_exclusive,
-                &[],
+            dotplot_actions: Self::construct_reasoning_dotplot_actions_for_summary(
+                graph,
+                &summary.summary_id,
             ),
         }
     }
 
     fn construct_reasoning_inspector_entry_for_annotation_candidate(
+        graph: &ConstructReasoningGraph,
         candidate: &AnnotationCandidate,
     ) -> ConstructReasoningInspectorEntry {
         let mut detail_lines = vec![
@@ -13879,25 +13866,9 @@ impl MainAreaDna {
             annotation_id: Some(candidate.annotation_id.clone()),
             editable_status: Some(candidate.editable_status),
             source_kind: Some(candidate.source_kind.clone()),
-            dotplot_actions: Self::construct_reasoning_dotplot_actions_for_range(
-                if candidate.annotation_id.trim().is_empty() {
-                    if candidate.label.trim().is_empty() {
-                        Self::construct_reasoning_role_label(candidate.role)
-                    } else {
-                        candidate.label.as_str()
-                    }
-                } else {
-                    candidate.annotation_id.as_str()
-                },
-                if candidate.label.trim().is_empty() {
-                    Self::construct_reasoning_role_label(candidate.role)
-                } else {
-                    candidate.label.as_str()
-                },
-                candidate.role,
-                candidate.start_0based,
-                candidate.end_0based_exclusive,
-                &[],
+            dotplot_actions: Self::construct_reasoning_dotplot_actions_for_annotation(
+                graph,
+                &candidate.annotation_id,
             ),
         }
     }
@@ -13908,12 +13879,16 @@ impl MainAreaDna {
         let mut annotation_summary_entries = graph
             .annotation_candidate_summaries
             .iter()
-            .map(Self::construct_reasoning_inspector_entry_for_annotation_summary)
+            .map(|summary| {
+                Self::construct_reasoning_inspector_entry_for_annotation_summary(graph, summary)
+            })
             .collect::<Vec<_>>();
         let mut annotation_entries = graph
             .annotation_candidates
             .iter()
-            .map(Self::construct_reasoning_inspector_entry_for_annotation_candidate)
+            .map(|candidate| {
+                Self::construct_reasoning_inspector_entry_for_annotation_candidate(graph, candidate)
+            })
             .collect::<Vec<_>>();
         let mut fact_entries = graph
             .facts
@@ -13941,149 +13916,58 @@ impl MainAreaDna {
         }
     }
 
-    fn construct_reasoning_dotplot_title_has_inverted_signal(title: &str) -> bool {
-        let lower = title.trim().to_ascii_lowercase();
-        lower.contains("inverted")
-            || lower.contains("palindromic")
-            || lower.contains("inversion")
-            || lower.contains("revcomp")
-    }
-
-    fn construct_reasoning_dotplot_should_offer_forward(
-        role: ConstructRole,
-        title: &str,
-        context_tags: &[String],
-    ) -> bool {
-        role == ConstructRole::MobileElement
-            || context_tags.iter().any(|tag| {
-                matches!(
-                    tag.as_str(),
-                    "low_complexity"
-                        | "homopolymer_run"
-                        | "tandem_repeat"
-                        | "direct_repeat"
-                        | "repeat_dense"
-                        | "mapping_ambiguity_risk"
-                        | "polymerase_slippage_risk"
-                        | "alu_like"
-                )
-            })
-            || title.trim().to_ascii_lowercase().contains("direct")
-            || title.trim().to_ascii_lowercase().contains("tandem")
-            || title.trim().to_ascii_lowercase().contains("low-complexity")
-            || title.trim().to_ascii_lowercase().contains("homopolymer")
-            || title.trim().to_ascii_lowercase().contains("alu")
-            || title.trim().to_ascii_lowercase().contains("mobile")
-    }
-
-    fn construct_reasoning_dotplot_should_offer_revcomp(
-        title: &str,
-        context_tags: &[String],
-    ) -> bool {
-        context_tags.iter().any(|tag| {
-            matches!(
-                tag.as_str(),
-                "inverted_repeat" | "palindromic_repeat_risk" | "inversion_risk"
-            )
-        }) || Self::construct_reasoning_dotplot_title_has_inverted_signal(title)
-    }
-
-    fn construct_reasoning_dotplot_actions_for_range(
-        stable_id: &str,
-        title: &str,
-        role: ConstructRole,
-        start_0based: usize,
-        end_0based_exclusive: usize,
-        context_tags: &[String],
-    ) -> Vec<ConstructReasoningDotplotAction> {
-        if end_0based_exclusive <= start_0based {
-            return vec![];
-        }
-        let mut actions = vec![];
-        let start_1based = start_0based.saturating_add(1);
-        let end_1based = end_0based_exclusive;
-        if Self::construct_reasoning_dotplot_should_offer_forward(role, title, context_tags) {
-            actions.push(ConstructReasoningDotplotAction {
-                stable_id: format!("{stable_id}:dotplot:self_forward"),
-                button_label: "Dotplot".to_string(),
-                hover_text: format!(
-                    "Open a self-forward dotplot centered on {start_1based}..{end_1based} for '{title}'"
-                ),
-                mode: DotplotMode::SelfForward,
-                focus_start_0based: start_0based,
-                focus_end_0based_exclusive: end_0based_exclusive,
-            });
-        }
-        if Self::construct_reasoning_dotplot_should_offer_revcomp(title, context_tags) {
-            actions.push(ConstructReasoningDotplotAction {
-                stable_id: format!("{stable_id}:dotplot:self_revcomp"),
-                button_label: "RevComp Dotplot".to_string(),
-                hover_text: format!(
-                    "Open a self-reverse-complement dotplot centered on {start_1based}..{end_1based} for '{title}'"
-                ),
-                mode: DotplotMode::SelfReverseComplement,
-                focus_start_0based: start_0based,
-                focus_end_0based_exclusive: end_0based_exclusive,
-            });
-        }
-        actions
-    }
-
     fn construct_reasoning_dotplot_actions_for_fact(
         graph: &ConstructReasoningGraph,
         fact: &DesignFact,
     ) -> Vec<ConstructReasoningDotplotAction> {
-        let rows = graph
-            .evidence
-            .iter()
-            .filter(|row| {
-                row.scope == crate::engine::EvidenceScope::SequenceSpan
-                    && fact
-                        .based_on_evidence_ids
-                        .iter()
-                        .any(|evidence_id| evidence_id == &row.evidence_id)
-                    && row.end_0based_exclusive > row.start_0based
-            })
-            .collect::<Vec<_>>();
-        if rows.is_empty() {
+        let fact_id = fact.fact_id.trim();
+        if fact_id.is_empty() {
             return vec![];
         }
-        let focus_start_0based = rows
+        graph
+            .inspection_actions
             .iter()
-            .map(|row| row.start_0based)
-            .min()
-            .unwrap_or_default();
-        let focus_end_0based_exclusive = rows
+            .filter(|action| action.source_fact_ids.iter().any(|id| id == fact_id))
+            .cloned()
+            .collect()
+    }
+
+    fn construct_reasoning_dotplot_actions_for_annotation(
+        graph: &ConstructReasoningGraph,
+        annotation_id: &str,
+    ) -> Vec<ConstructReasoningDotplotAction> {
+        let annotation_id = annotation_id.trim();
+        if annotation_id.is_empty() {
+            return vec![];
+        }
+        graph
+            .inspection_actions
             .iter()
-            .map(|row| row.end_0based_exclusive)
-            .max()
-            .unwrap_or(focus_start_0based.saturating_add(1));
-        let mut context_tags = rows
+            .filter(|action| {
+                action
+                    .source_annotation_ids
+                    .iter()
+                    .any(|id| id == annotation_id)
+                    && action.source_summary_ids.is_empty()
+            })
+            .cloned()
+            .collect()
+    }
+
+    fn construct_reasoning_dotplot_actions_for_summary(
+        graph: &ConstructReasoningGraph,
+        summary_id: &str,
+    ) -> Vec<ConstructReasoningDotplotAction> {
+        let summary_id = summary_id.trim();
+        if summary_id.is_empty() {
+            return vec![];
+        }
+        graph
+            .inspection_actions
             .iter()
-            .flat_map(|row| row.context_tags.iter().cloned())
-            .collect::<Vec<_>>();
-        context_tags.sort();
-        context_tags.dedup();
-        let role = if rows
-            .iter()
-            .any(|row| row.role == ConstructRole::MobileElement)
-        {
-            ConstructRole::MobileElement
-        } else {
-            ConstructRole::RepeatRegion
-        };
-        Self::construct_reasoning_dotplot_actions_for_range(
-            if fact.fact_id.trim().is_empty() {
-                fact.label.as_str()
-            } else {
-                fact.fact_id.as_str()
-            },
-            fact.label.as_str(),
-            role,
-            focus_start_0based,
-            focus_end_0based_exclusive,
-            &context_tags,
-        )
+            .filter(|action| action.source_summary_ids.iter().any(|id| id == summary_id))
+            .cloned()
+            .collect()
     }
 
     fn construct_reasoning_title(span: &ConstructReasoningOverlaySpan) -> String {
@@ -23312,14 +23196,20 @@ impl MainAreaDna {
                         span.supporting_fact_labels.join(", ")
                     ));
                 }
-                let selected_span_dotplot_actions = Self::construct_reasoning_dotplot_actions_for_range(
-                    span.annotation_id.as_str(),
-                    Self::construct_reasoning_title(&span).as_str(),
-                    span.role,
-                    span.start_0based,
-                    span.end_0based_exclusive,
-                    &span.context_tags,
-                );
+                let selected_span_dotplot_actions = self
+                    .description_cache_construct_reasoning
+                    .as_ref()
+                    .map(|reasoning| {
+                        reasoning
+                            .annotation_entries
+                            .iter()
+                            .filter(|entry| {
+                                entry.annotation_id.as_deref() == Some(span.annotation_id.as_str())
+                            })
+                            .flat_map(|entry| entry.dotplot_actions.iter().cloned())
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default();
                 self.render_construct_reasoning_dotplot_actions(
                     ui,
                     &selected_span_dotplot_actions,

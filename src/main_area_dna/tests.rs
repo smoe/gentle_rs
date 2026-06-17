@@ -11988,7 +11988,9 @@ fn refresh_description_cache_includes_annotation_summary_entries() {
 
 #[test]
 fn construct_reasoning_summary_entries_use_stable_ids_not_titles() {
+    let graph = crate::engine::ConstructReasoningGraph::default();
     let first = MainAreaDna::construct_reasoning_inspector_entry_for_annotation_summary(
+        &graph,
         &AnnotationCandidateSummary {
             summary_id: "summary-1".to_string(),
             title: "Inverted repeat cluster".to_string(),
@@ -11996,6 +11998,7 @@ fn construct_reasoning_summary_entries_use_stable_ids_not_titles() {
         },
     );
     let second = MainAreaDna::construct_reasoning_inspector_entry_for_annotation_summary(
+        &graph,
         &AnnotationCandidateSummary {
             summary_id: "summary-2".to_string(),
             title: "Inverted repeat cluster".to_string(),

@@ -37106,6 +37106,52 @@ fn build_construct_reasoning_graph_derives_low_complexity_repeat_and_operational
     assert!(graph.annotation_candidates.iter().any(|row| {
         row.role == ConstructRole::RepeatRegion && row.source_kind == "generated_annotation"
     }));
+
+    let repeat_actions = graph
+        .inspection_actions
+        .iter()
+        .filter(|action| {
+            action
+                .source_fact_ids
+                .iter()
+                .any(|id| id == &repeat_fact.fact_id)
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        repeat_actions
+            .iter()
+            .any(|action| action.mode == DotplotMode::SelfForward),
+        "repeat architecture should recommend a forward dotplot action"
+    );
+    let revcomp_action = repeat_actions
+        .iter()
+        .find(|action| action.mode == DotplotMode::SelfReverseComplement)
+        .expect("inverted repeat evidence should recommend revcomp dotplot");
+    assert!(revcomp_action.action_id.contains(&graph.graph_id));
+    assert!(
+        revcomp_action.driving_evidence_ids.iter().any(|id| graph
+            .evidence
+            .iter()
+            .any(|row| row.evidence_id == *id
+                && row.context_tags.iter().any(|tag| tag == "inverted_repeat"))),
+        "revcomp action should name the specific inverted-repeat evidence rows"
+    );
+    assert!(
+        revcomp_action
+            .context_tags
+            .iter()
+            .any(|tag| tag == "inverted_repeat")
+    );
+    assert!(
+        graph.inspection_actions.iter().any(|action| {
+            action.source_annotation_ids.iter().any(|id| {
+                graph.annotation_candidates.iter().any(|candidate| {
+                    candidate.annotation_id == *id && candidate.role == ConstructRole::RepeatRegion
+                })
+            })
+        }),
+        "repeat annotation candidates should be linked to protocol inspection actions"
+    );
 }
 
 #[test]
@@ -37168,6 +37214,32 @@ fn build_construct_reasoning_graph_detects_alu_like_mobile_element_candidates() 
     assert!(graph.annotation_candidates.iter().any(|row| {
         row.role == ConstructRole::MobileElement && row.source_kind == "generated_annotation"
     }));
+    let mobile_action = graph
+        .inspection_actions
+        .iter()
+        .find(|action| {
+            action.mode == DotplotMode::SelfForward
+                && action
+                    .source_fact_ids
+                    .iter()
+                    .any(|id| id == &mobile_fact.fact_id)
+        })
+        .expect("mobile-element fact should recommend a forward dotplot action");
+    assert!(
+        mobile_action
+            .driving_evidence_ids
+            .iter()
+            .any(|id| graph.evidence.iter().any(|row| {
+                row.evidence_id == *id
+                    && row.role == ConstructRole::MobileElement
+                    && row.context_tags.iter().any(|tag| tag == "alu_like")
+            })),
+        "mobile-element action should carry the specific Alu-like evidence rows"
+    );
+    assert!(
+        mobile_action.repeat_family_provenance.is_none(),
+        "soft Alu-like heuristics should not claim curated repeat-family provenance yet"
+    );
 }
 
 #[test]

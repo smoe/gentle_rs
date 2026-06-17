@@ -5311,6 +5311,7 @@ Construct reasoning graph foundation (implemented first slice):
   - `gentle.design_fact.v1`
   - `gentle.design_decision_node.v1`
   - `gentle.construct_candidate.v1`
+  - `gentle.construct_reasoning_inspection_action.v1`
   - `gentle.construct_reasoning_graph.v1`
   - `gentle.construct_reasoning_store.v1`
   - `gentle.host_profile_catalog.v1`
@@ -5441,6 +5442,19 @@ Construct reasoning graph foundation (implemented first slice):
     - `gentle.annotation_candidate_writeback.v1`
     - reports whether one accepted/locked generated candidate created a new
       ordinary sequence feature or was already backed by one
+  - graph-level `inspection_actions[]`:
+    - portable recommended inspection actions currently used for
+      repeat/similarity dotplot handoffs
+    - deterministic `action_id` derived from graph/source/mode/focus
+    - dotplot mode (`self_forward` or `self_reverse_complement`) chosen from
+      structured evidence roles, tags, and orientation signals rather than
+      display labels
+    - `driving_evidence_ids[]` names the specific evidence rows behind the
+      action, while source fact/annotation/summary id lists let adapters attach
+      the same action to the right inspector row
+    - optional repeat-family provenance is reserved for future curated
+      repeat-family catalog integration; current Alu-like heuristic rows remain
+      soft hypotheses without filling that provenance slot
 - Current GUI-backed scope:
   - sequence-window `Reasoning` display toggle
   - read-only linear DNA-map overlay that auto-refreshes from the engine-owned
@@ -5513,6 +5527,9 @@ Construct reasoning graph foundation (implemented first slice):
     - current intent is inspectable structural context and operational review,
       not final repeat-family taxonomy; curated repeat catalogs can refine the
       same graph later without changing the adapter contract shape
+    - repeat/similarity dotplot handoff buttons consume graph-level
+      `inspection_actions[]`; adapters no longer need to infer those actions
+      from labels or GUI-only context matching
 - Current evidence-class rules:
   - restriction sites => `hard_fact`
   - dbSNP / VCF-generated variant markers => `hard_fact`
