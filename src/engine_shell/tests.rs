@@ -13910,6 +13910,7 @@ fn parse_gene_sets_resolve_and_promoter_cohort_commands() {
                     exclude_anchor,
                     ..
                 }),
+            relationship,
             upstream_bp,
             downstream_bp,
             output,
@@ -13919,6 +13920,7 @@ fn parse_gene_sets_resolve_and_promoter_cohort_commands() {
             assert_eq!(anchor, "TP53");
             assert_eq!(flank_gene_count, Some(2));
             assert!(exclude_anchor);
+            assert_eq!(relationship, GeneSetCohortRelationship::Unspecified);
             assert_eq!(upstream_bp, 500);
             assert_eq!(downstream_bp, 100);
             assert_eq!(output.as_deref(), Some("cohort.json"));
@@ -13930,13 +13932,14 @@ fn parse_gene_sets_resolve_and_promoter_cohort_commands() {
 #[test]
 fn parse_cutrun_gene_set_regulatory_support_command() {
     let cmd = parse_shell_line(
-        "cutrun gene-set-regulatory-support ToyGenome --group regulation_of_alternative_splicing --dataset toy_ctcf --read-report toy_reads --upstream-bp 700 --downstream-bp 150 --neighbor-window-bp 77 --allow-deprecated --path support.json",
+        "cutrun gene-set-regulatory-support ToyGenome --group regulation_of_alternative_splicing --relationship co_regulated --dataset toy_ctcf --read-report toy_reads --upstream-bp 700 --downstream-bp 150 --neighbor-window-bp 77 --allow-deprecated --path support.json",
     )
     .expect("parse CUT&RUN gene-set-regulatory-support");
     match cmd {
         ShellCommand::CutRunGeneSetRegulatorySupport {
             genome_id,
             source: Some(GeneSetRequest::CatalogGroup { query }),
+            relationship,
             dataset_ids,
             read_report_ids,
             upstream_bp,
@@ -13948,6 +13951,7 @@ fn parse_cutrun_gene_set_regulatory_support_command() {
         } => {
             assert_eq!(genome_id.as_deref(), Some("ToyGenome"));
             assert_eq!(query, "regulation_of_alternative_splicing");
+            assert_eq!(relationship, GeneSetCohortRelationship::CoRegulated);
             assert_eq!(dataset_ids, vec!["toy_ctcf"]);
             assert_eq!(read_report_ids, vec!["toy_reads"]);
             assert_eq!(upstream_bp, 700);

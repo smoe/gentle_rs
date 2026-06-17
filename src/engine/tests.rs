@@ -3055,12 +3055,14 @@ fn build_gene_set_promoter_cohort_uses_default_strand_geometry_and_keeps_unresol
         .build_gene_set_promoter_cohort(
             "ToyGenome",
             resolution,
+            GeneSetCohortRelationship::Manual,
             DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP,
             DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP,
             Some(&genome_catalog_path),
             None,
         )
         .expect("build promoter cohort");
+    assert_eq!(cohort.relationship, GeneSetCohortRelationship::Manual);
     assert_eq!(cohort.upstream_bp, DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP);
     assert_eq!(cohort.downstream_bp, DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP);
     assert_eq!(cohort.returned_window_count, 2);

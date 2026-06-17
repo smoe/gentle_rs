@@ -46,9 +46,10 @@ use crate::{
         DotplotOverlayQuerySpec, DotplotOverlayXAxisMode, EditableStatus, Engine,
         ExonSkipReturnKind, ExonSkipSelectionCriterion, FeatureBedCoordinateMode,
         FeatureExpertTarget, FeatureExpertView, FlexibilityModel, GUIDE_DESIGN_METADATA_KEY,
-        GeneSetPromoterCohortReport, GeneSetRequest, GeneSetResolutionReport, GenomeAnchorSide,
-        GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackSource, GenomeTrackSubscription,
-        GentleEngine, GuideCandidate, GuideOligoExportFormat, GuideOligoPlateFormat,
+        GeneSetCohortRelationship, GeneSetPromoterCohortReport, GeneSetRequest,
+        GeneSetResolutionReport, GenomeAnchorSide, GenomeAnnotationScope, GenomeGeneExtractMode,
+        GenomeTrackSource, GenomeTrackSubscription, GentleEngine, GuideCandidate,
+        GuideOligoExportFormat, GuideOligoPlateFormat,
         GuidePracticalFilterConfig, InlineSequenceTopology, LabAssistantInstructionsFormat,
         LineageMacroInstance, LineageMacroPortBinding, MacroInstanceStatus,
         OligoOrderFormCreateRequest, Operation, OperationProgress,
@@ -1053,6 +1054,7 @@ pub enum ShellCommand {
         genome_id: String,
         source: Option<GeneSetRequest>,
         resolution: Option<Box<GeneSetResolutionReport>>,
+        relationship: GeneSetCohortRelationship,
         gene_group_catalog_path: Option<String>,
         genome_catalog_path: Option<String>,
         cache_dir: Option<String>,
@@ -1610,6 +1612,7 @@ pub enum ShellCommand {
         source: Option<GeneSetRequest>,
         resolution: Option<Box<GeneSetResolutionReport>>,
         promoter_cohort: Option<Box<GeneSetPromoterCohortReport>>,
+        relationship: GeneSetCohortRelationship,
         dataset_ids: Vec<String>,
         read_report_ids: Vec<String>,
         upstream_bp: usize,
@@ -4785,6 +4788,24 @@ fn build_gene_set_request_from_args(
     Ok(None)
 }
 
+fn parse_gene_set_relationship(
+    raw: &str,
+    context: &str,
+) -> Result<GeneSetCohortRelationship, String> {
+    match raw.trim().to_ascii_lowercase().replace('-', "_").as_str() {
+        "" => Err(format!("{context} --relationship must not be empty")),
+        "unspecified" => Ok(GeneSetCohortRelationship::Unspecified),
+        "manual" => Ok(GeneSetCohortRelationship::Manual),
+        "co_regulated" | "coregulated" => Ok(GeneSetCohortRelationship::CoRegulated),
+        "anti_co_regulated" | "anti_coregulated" => {
+            Ok(GeneSetCohortRelationship::AntiCoRegulated)
+        }
+        other => Err(format!(
+            "Unknown gene-set relationship '{other}' for {context}; expected unspecified, manual, co-regulated, or anti-co-regulated"
+        )),
+    }
+}
+
 fn parse_tfbs_score_track_value_kind_shell(
     raw: &str,
     context: &str,
@@ -7068,18 +7089,20 @@ impl ShellCommand {
                 genome_id,
                 source,
                 resolution,
+                relationship,
                 upstream_bp,
                 downstream_bp,
                 output,
                 ..
             } => format!(
-                "build gene-set promoter cohort for '{}' (source={}, upstream_bp={}, downstream_bp={}, output='{}')",
+                "build gene-set promoter cohort for '{}' (source={}, relationship={:?}, upstream_bp={}, downstream_bp={}, output='{}')",
                 genome_id,
                 source
                     .as_ref()
                     .map(GeneSetRequest::source_kind_label)
                     .or_else(|| resolution.as_ref().map(|_| "resolution"))
                     .unwrap_or("-"),
+                relationship,
                 upstream_bp,
                 downstream_bp,
                 output.as_deref().unwrap_or("-"),
@@ -8690,12 +8713,13 @@ impl ShellCommand {
                 source,
                 resolution,
                 promoter_cohort,
+                relationship,
                 dataset_ids,
                 read_report_ids,
                 output_path,
                 ..
             } => format!(
-                "inspect CUT&RUN gene-set regulatory support (genome='{}', source={}, datasets={}, read_reports={}, output='{}')",
+                "inspect CUT&RUN gene-set regulatory support (genome='{}', source={}, relationship={:?}, datasets={}, read_reports={}, output='{}')",
                 genome_id.as_deref().unwrap_or_else(|| {
                     promoter_cohort
                         .as_ref()
@@ -8708,6 +8732,7 @@ impl ShellCommand {
                     .or_else(|| resolution.as_ref().map(|_| "resolution"))
                     .or_else(|| promoter_cohort.as_ref().map(|_| "promoter_cohort"))
                     .unwrap_or("-"),
+                relationship,
                 dataset_ids.len(),
                 read_report_ids.len(),
                 output_path.as_deref().unwrap_or("-"),
@@ -20162,6 +20187,7 @@ fn parse_gene_sets_command(tokens: &[String]) -> Result<ShellCommand, String> {
             let mut gene_group_catalog_path: Option<String> = None;
             let mut genome_catalog_path: Option<String> = None;
             let mut cache_dir: Option<String> = None;
+            let mut relationship = GeneSetCohortRelationship::Unspecified;
             let mut upstream_bp = DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP;
             let mut downstream_bp = DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP;
             let mut allow_draft = false;
@@ -20188,6 +20214,10 @@ fn parse_gene_sets_command(tokens: &[String]) -> Result<ShellCommand, String> {
                             &raw,
                             "gene-set resolution",
                         )?);
+                    }
+                    "--relationship" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--relationship", context)?;
+                        relationship = parse_gene_set_relationship(&raw, context)?;
                     }
                     "--catalog" | "--gene-group-catalog" | "--gene_group_catalog" => {
                         let flag = tokens[idx].clone();
@@ -20244,6 +20274,7 @@ fn parse_gene_sets_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 genome_id,
                 source,
                 resolution: resolution.map(Box::new),
+                relationship,
                 gene_group_catalog_path,
                 genome_catalog_path,
                 cache_dir,
@@ -29045,6 +29076,7 @@ fn execute_export_import_and_resource_command(
             genome_id,
             source,
             resolution,
+            relationship,
             gene_group_catalog_path,
             genome_catalog_path,
             cache_dir,
@@ -29059,6 +29091,7 @@ fn execute_export_import_and_resource_command(
                     genome_id: genome_id.clone(),
                     source: source.clone(),
                     resolution: resolution.clone(),
+                    relationship: *relationship,
                     upstream_bp: *upstream_bp,
                     downstream_bp: *downstream_bp,
                     gene_group_catalog_path: gene_group_catalog_path.clone(),
@@ -29805,6 +29838,7 @@ fn execute_cutrun_command(
             source,
             resolution,
             promoter_cohort,
+            relationship,
             dataset_ids,
             read_report_ids,
             upstream_bp,
@@ -29831,6 +29865,14 @@ fn execute_cutrun_command(
                     source: source.clone(),
                     resolution: resolution.clone(),
                     promoter_cohort: promoter_cohort.clone(),
+                    relationship: if *relationship != GeneSetCohortRelationship::Unspecified {
+                        *relationship
+                    } else {
+                        promoter_cohort
+                            .as_ref()
+                            .map(|report| report.relationship)
+                            .unwrap_or(GeneSetCohortRelationship::Unspecified)
+                    },
                     dataset_ids: dataset_ids.clone(),
                     read_report_ids: read_report_ids.clone(),
                     upstream_bp: *upstream_bp,

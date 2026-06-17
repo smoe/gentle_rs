@@ -4502,6 +4502,8 @@ impl GentleEngine {
             .filter(|row| row.evaluation_state == GeneSetCutRunEvaluationState::Evaluated)
             .map(|row| row.support_window_count)
             .sum::<usize>();
+        let relationship = promoter_cohort.relationship;
+        let relationship_flags = promoter_cohort.relationship_flags.clone();
         Ok(GeneSetCutRunRegulatorySupportReport {
             schema: GENE_SET_CUTRUN_REGULATORY_SUPPORT_SCHEMA.to_string(),
             generated_at_unix_ms: Self::now_unix_ms(),
@@ -4509,6 +4511,7 @@ impl GentleEngine {
             run_id: None,
             genome_id: promoter_cohort.genome_id.clone(),
             promoter_cohort,
+            relationship,
             dataset_ids: resolved_dataset_ids,
             read_report_ids: resolved_read_report_ids,
             aggregate: GeneSetCutRunSupportAggregate {
@@ -4525,6 +4528,7 @@ impl GentleEngine {
                     / evaluated_denominator,
             },
             member_support,
+            relationship_flags,
             warnings,
         })
     }

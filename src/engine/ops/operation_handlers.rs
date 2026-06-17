@@ -19922,6 +19922,7 @@ impl GentleEngine {
                     genome_id,
                     source,
                     resolution,
+                    relationship,
                     upstream_bp,
                     downstream_bp,
                     gene_group_catalog_path,
@@ -19954,6 +19955,7 @@ impl GentleEngine {
                     let mut report = self.build_gene_set_promoter_cohort(
                         &genome_id,
                         resolution,
+                        relationship,
                         upstream_bp,
                         downstream_bp,
                         genome_catalog_path.as_deref(),
@@ -19980,6 +19982,7 @@ impl GentleEngine {
                     source,
                     resolution,
                     promoter_cohort,
+                    relationship,
                     dataset_ids,
                     read_report_ids,
                     upstream_bp,
@@ -19993,7 +19996,7 @@ impl GentleEngine {
                     allow_deprecated,
                     path,
                 } => {
-                    let promoter_cohort = match promoter_cohort {
+                    let mut promoter_cohort = match promoter_cohort {
                         Some(report) => *report,
                         None => {
                             let resolution = match resolution {
@@ -20020,6 +20023,7 @@ impl GentleEngine {
                             self.build_gene_set_promoter_cohort(
                                 &genome_id,
                                 resolution,
+                                relationship,
                                 upstream_bp,
                                 downstream_bp,
                                 genome_catalog_path.as_deref(),
@@ -20027,6 +20031,9 @@ impl GentleEngine {
                             )?
                         }
                     };
+                    if relationship != GeneSetCohortRelationship::Unspecified {
+                        promoter_cohort.relationship = relationship;
+                    }
                     let mut report = self.inspect_cutrun_gene_set_regulatory_support(
                         promoter_cohort,
                         &dataset_ids,

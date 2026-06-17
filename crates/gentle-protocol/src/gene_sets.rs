@@ -63,6 +63,30 @@ impl GeneSetRequest {
     }
 }
 
+/// User-declared regulatory expectation among members of a resolved cohort.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum GeneSetCohortRelationship {
+    #[default]
+    Unspecified,
+    Manual,
+    CoRegulated,
+    AntiCoRegulated,
+}
+
+/// Non-blocking relationship-expectation flag derived from available evidence.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct GeneSetCohortRelationshipFlag {
+    pub flag_kind: String,
+    pub evidence_kind: String,
+    #[serde(default)]
+    pub member_symbols: Vec<String>,
+    #[serde(default)]
+    pub member_dedup_keys: Vec<String>,
+    pub detail: String,
+}
+
 /// One row of provenance attached to a resolved gene-set member or report.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(default)]
@@ -202,11 +226,14 @@ pub struct GeneSetPromoterCohortReport {
     pub genome_id: String,
     pub upstream_bp: usize,
     pub downstream_bp: usize,
+    pub relationship: GeneSetCohortRelationship,
     pub gene_set_resolution: GeneSetResolutionReport,
     pub requested_member_count: usize,
     pub returned_window_count: usize,
     #[serde(default)]
     pub windows: Vec<GeneSetPromoterWindow>,
+    #[serde(default)]
+    pub relationship_flags: Vec<GeneSetCohortRelationshipFlag>,
     #[serde(default)]
     pub unresolved_members: Vec<GeneSetUnresolvedMember>,
     #[serde(default)]
@@ -274,6 +301,7 @@ pub struct GeneSetCutRunRegulatorySupportReport {
     pub run_id: Option<String>,
     pub genome_id: String,
     pub promoter_cohort: GeneSetPromoterCohortReport,
+    pub relationship: GeneSetCohortRelationship,
     #[serde(default)]
     pub dataset_ids: Vec<String>,
     #[serde(default)]
@@ -281,6 +309,8 @@ pub struct GeneSetCutRunRegulatorySupportReport {
     pub aggregate: GeneSetCutRunSupportAggregate,
     #[serde(default)]
     pub member_support: Vec<GeneSetCutRunMemberSupport>,
+    #[serde(default)]
+    pub relationship_flags: Vec<GeneSetCohortRelationshipFlag>,
     #[serde(default)]
     pub warnings: Vec<String>,
 }
@@ -312,5 +342,26 @@ mod tests {
         let json = serde_json::to_string(&report).expect("serialize report");
         assert!(json.contains("gentle.gene_set_resolution.v1"));
         assert!(json.contains("catalog_group"));
+    }
+
+    #[test]
+    fn old_promoter_cohort_payload_defaults_relationship_to_unspecified() {
+        let report: GeneSetPromoterCohortReport = serde_json::from_value(serde_json::json!({
+            "schema": GENE_SET_PROMOTER_COHORT_SCHEMA,
+            "generated_at_unix_ms": 1,
+            "genome_id": "ToyGenome",
+            "upstream_bp": 100,
+            "downstream_bp": 20,
+            "gene_set_resolution": {
+                "schema": GENE_SET_RESOLUTION_SCHEMA,
+                "generated_at_unix_ms": 1,
+                "request": {"source_kind": "explicit_members", "members": ["A"]}
+            },
+            "requested_member_count": 1,
+            "returned_window_count": 0
+        }))
+        .expect("deserialize old gene-set promoter cohort");
+        assert_eq!(report.relationship, GeneSetCohortRelationship::Unspecified);
+        assert!(report.relationship_flags.is_empty());
     }
 }

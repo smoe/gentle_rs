@@ -3114,6 +3114,8 @@ pub enum Operation {
         source: Option<GeneSetRequest>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         resolution: Option<Box<GeneSetResolutionReport>>,
+        #[serde(default)]
+        relationship: GeneSetCohortRelationship,
         #[serde(default = "default_promoter_window_upstream_bp")]
         upstream_bp: usize,
         #[serde(default = "default_promoter_window_downstream_bp")]
@@ -3139,6 +3141,8 @@ pub enum Operation {
         resolution: Option<Box<GeneSetResolutionReport>>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         promoter_cohort: Option<Box<GeneSetPromoterCohortReport>>,
+        #[serde(default)]
+        relationship: GeneSetCohortRelationship,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         dataset_ids: Vec<String>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]

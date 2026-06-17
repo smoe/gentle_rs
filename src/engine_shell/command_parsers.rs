@@ -8888,6 +8888,7 @@ pub(super) fn parse_cutrun_command(tokens: &[String]) -> Result<ShellCommand, St
             let mut source_args = GeneSetSourceArgs::default();
             let mut resolution: Option<GeneSetResolutionReport> = None;
             let mut promoter_cohort: Option<GeneSetPromoterCohortReport> = None;
+            let mut relationship = GeneSetCohortRelationship::Unspecified;
             let mut dataset_ids = vec![];
             let mut read_report_ids = vec![];
             let mut upstream_bp = DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP;
@@ -8925,6 +8926,10 @@ pub(super) fn parse_cutrun_command(tokens: &[String]) -> Result<ShellCommand, St
                         >(
                             &raw, "gene-set promoter cohort"
                         )?);
+                    }
+                    "--relationship" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--relationship", context)?;
+                        relationship = parse_gene_set_relationship(&raw, context)?;
                     }
                     "--dataset" => {
                         let raw = parse_option_path(tokens, &mut idx, "--dataset", context)?;
@@ -9020,6 +9025,7 @@ pub(super) fn parse_cutrun_command(tokens: &[String]) -> Result<ShellCommand, St
                 source,
                 resolution: resolution.map(Box::new),
                 promoter_cohort: promoter_cohort.map(Box::new),
+                relationship,
                 dataset_ids,
                 read_report_ids,
                 upstream_bp,

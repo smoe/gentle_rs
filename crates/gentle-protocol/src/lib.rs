@@ -49,7 +49,8 @@ pub use gene_groups::{
 };
 pub use gene_sets::{
     GENE_SET_CUTRUN_REGULATORY_SUPPORT_SCHEMA, GENE_SET_PROMOTER_COHORT_SCHEMA,
-    GENE_SET_RESOLUTION_SCHEMA, GeneSetCutRunEvaluationState, GeneSetCutRunMemberSupport,
+    GENE_SET_RESOLUTION_SCHEMA, GeneSetCohortRelationship, GeneSetCohortRelationshipFlag,
+    GeneSetCutRunEvaluationState, GeneSetCutRunMemberSupport,
     GeneSetCutRunRegulatorySupportReport, GeneSetCutRunSupportAggregate,
     GeneSetPromoterCohortReport, GeneSetPromoterWindow, GeneSetProvenanceRow,
     GeneSetRandomProvenance, GeneSetRequest, GeneSetResolutionReport, GeneSetResolvedMember,
