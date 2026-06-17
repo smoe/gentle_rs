@@ -5,6 +5,7 @@
 //! running R, APT, or any summarization backend.
 
 use super::*;
+use crate::publication_resources;
 
 const PROBE_REGION_STAGE: &str = "plan_only";
 const PROBE_REGION_IMPLEMENTATION_STATUS: &str =
@@ -207,22 +208,28 @@ impl GentleEngine {
 
         let mut warnings = Vec::new();
         let mut errors = Vec::new();
+        let user_supplied_cel_paths = !request.cel_paths.is_empty();
         let input_mode = Self::probe_region_input_mode(&request);
+        Self::probe_region_apply_publication_dataset_defaults(
+            &mut request,
+            &mut warnings,
+            &mut errors,
+        );
         if request.cel_paths.is_empty() && request.dataset.is_none() {
             errors.push(
                 "arrays probe-regions requires at least one --cel path or a --dataset id"
                     .to_string(),
             );
         }
-        if !request.cel_paths.is_empty() && request.dataset.is_some() {
+        if user_supplied_cel_paths && request.dataset.is_some() {
             warnings.push(
-                "Both explicit CEL files and --dataset were supplied; the current stage records both but does not discover dataset-owned CEL files"
+                "Both explicit CEL files and --dataset were supplied; the current stage records the explicit CEL files and uses the dataset only for resource context"
                     .to_string(),
             );
         }
         if request.dataset.is_some() && request.cel_paths.is_empty() {
             warnings.push(
-                "Publication-resource dataset discovery is planned but not executed in this stage"
+                "Publication-resource dataset did not declare any CEL files for probe-region planning"
                     .to_string(),
             );
         }
@@ -3219,6 +3226,95 @@ impl GentleEngine {
             (true, false) => "explicit_cel".to_string(),
             (false, true) => "publication_resource_dataset".to_string(),
             (false, false) => "missing".to_string(),
+        }
+    }
+
+    fn probe_region_apply_publication_dataset_defaults(
+        request: &mut ProbeRegionRequest,
+        warnings: &mut Vec<String>,
+        errors: &mut Vec<String>,
+    ) {
+        let Some(dataset_id) = request
+            .dataset
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+        else {
+            return;
+        };
+
+        let status =
+            match publication_resources::publication_dataset_status(&dataset_id, None, None) {
+                Ok(status) => status,
+                Err(err) => {
+                    errors.push(format!(
+                        "Publication-resource dataset '{dataset_id}' could not be resolved: {err}"
+                    ));
+                    return;
+                }
+            };
+
+        let declared_cel_paths: Vec<String> = status
+            .files
+            .iter()
+            .filter(|file| {
+                file.category.eq_ignore_ascii_case("raw_microarray")
+                    && file.file_name.to_ascii_lowercase().ends_with(".cel")
+            })
+            .map(|file| file.local_path.clone())
+            .collect();
+        let missing_cel_count = status
+            .files
+            .iter()
+            .filter(|file| {
+                file.category.eq_ignore_ascii_case("raw_microarray")
+                    && file.file_name.to_ascii_lowercase().ends_with(".cel")
+                    && !file.exists
+            })
+            .count();
+
+        let using_declared_cel_paths = request.cel_paths.is_empty();
+        if using_declared_cel_paths && !declared_cel_paths.is_empty() {
+            let declared_count = declared_cel_paths.len();
+            request.cel_paths = declared_cel_paths;
+            warnings.push(format!(
+                "Publication-resource dataset '{}' resolved {declared_count} declared CEL file(s) under '{}'",
+                status.accession, status.install_dir
+            ));
+        }
+        if using_declared_cel_paths && missing_cel_count > 0 {
+            warnings.push(format!(
+                "Publication-resource dataset '{}' is not locally ready: {missing_cel_count} declared CEL file(s) are missing; run `resources prepare-publication-dataset {} --categories raw_microarray --download-files` explicitly before execution",
+                status.accession, status.accession
+            ));
+        }
+
+        if request.metadata_path.is_none() {
+            if let Some(sdrf) = status.files.iter().find(|file| {
+                file.category.eq_ignore_ascii_case("metadata")
+                    && file.file_name.to_ascii_lowercase().contains("sdrf")
+            }) {
+                if sdrf.exists {
+                    request.metadata_path = Some(sdrf.local_path.clone());
+                    if request.sample_column.is_none() {
+                        request.sample_column = Some("Array Data File".to_string());
+                    }
+                    if request.condition_column.is_none() {
+                        request.condition_column =
+                            Some("Characteristics[genetic modification]".to_string());
+                    }
+                    warnings.push(format!(
+                        "Using publication-resource SDRF metadata '{}' with sample column 'Array Data File' and condition column 'Characteristics[genetic modification]'",
+                        sdrf.local_path
+                    ));
+                } else {
+                    warnings.push(format!(
+                        "Publication-resource dataset '{}' declares SDRF metadata '{}', but it is not present locally; metadata parsing is skipped",
+                        status.accession, sdrf.local_path
+                    ));
+                }
+            }
         }
     }
 

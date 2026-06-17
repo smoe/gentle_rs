@@ -5348,6 +5348,9 @@ Notes:
   PGF/CLF and optional MPS files are detected, and local `Rscript` / APT /
   R-package dependency status; it does not run CEL summarization itself and
   never downloads or installs missing files/packages.
+  With `--dataset E-MTAB-14704`, the preflight resolves the publication
+  resource's declared local CEL paths and any locally present SDRF metadata, then
+  reports missing raw files as ordinary file-status errors.
   For `Clariom_D_Human`, the same preflight reports the expected local Thermo
   Fisher na36 hg38 support ZIPs under
   `annotation_source.vendor_support_files[]`; place them manually in

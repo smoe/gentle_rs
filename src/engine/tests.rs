@@ -12,6 +12,7 @@ use super::*;
 use crate::attract_motifs::{
     ATTRACT_MOTIF_SNAPSHOT_SCHEMA, AttractMotifRecord, AttractMotifSnapshot, AttractPfmRows,
 };
+use crate::engine_shell::{ShellCommand, execute_shell_command};
 use crate::ensembl_gene::{
     EnsemblGeneEntry, EnsemblGeneExonSummary, EnsemblGeneTranscriptSummary,
     EnsemblGeneTranslationSummary,
@@ -19,7 +20,6 @@ use crate::ensembl_gene::{
 use crate::ensembl_protein::{
     EnsemblProteinEntry, EnsemblProteinFeature, EnsemblTranscriptExon, EnsemblTranscriptTranslation,
 };
-use crate::engine_shell::{execute_shell_command, ShellCommand};
 use crate::genomes::BlastHit;
 use crate::lineage_export::{LineageSvgNodeKind, build_lineage_svg_graph, export_lineage_svg};
 use bio::io::fasta;
@@ -163,6 +163,56 @@ fn microarray_anchored_engine_at(
             ]
         }),
     );
+    engine
+}
+
+fn probe_region_tp73_validation_fixture_dir() -> String {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("test_files/fixtures/probe_region_outputs/clariom_e_mtab_14704_tp73_validation")
+        .to_string_lossy()
+        .to_string()
+}
+
+fn add_tp73_validation_transcripts(dna: &mut DNAsequence) {
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(4, 43),
+            gb_io::seq::Location::simple_range(54, 80),
+            gb_io::seq::Location::simple_range(104, 135),
+        ]),
+        qualifiers: vec![
+            ("gene".into(), Some("TP73".to_string())),
+            ("transcript_id".into(), Some("TP73-201".to_string())),
+            ("label".into(), Some("TP73-201".to_string())),
+            ("strand".into(), Some("+".to_string())),
+        ],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(4, 43),
+            gb_io::seq::Location::simple_range(74, 100),
+            gb_io::seq::Location::simple_range(144, 175),
+        ]),
+        qualifiers: vec![
+            ("gene".into(), Some("TP73".to_string())),
+            ("transcript_id".into(), Some("TP73-202".to_string())),
+            ("label".into(), Some("TP73-202".to_string())),
+            ("strand".into(), Some("+".to_string())),
+        ],
+    });
+}
+
+fn tp73_validation_anchored_engine() -> GentleEngine {
+    let mut engine = microarray_anchored_engine_at("hg38", "chr1", 3652516, 3736201, "+");
+    let dna = engine
+        .state_mut()
+        .sequences
+        .get_mut("array_slice")
+        .expect("array slice");
+    *dna = DNAsequence::from_sequence(&"A".repeat(256)).expect("valid TP73 validation slice");
+    add_tp73_validation_transcripts(dna);
     engine
 }
 
@@ -1423,14 +1473,127 @@ fn import_project_interpret_pm_probe_region_output_end_to_end() {
         .find(|row| row.feature_id == "probe_1")
         .expect("probe_1 interpretation row");
     assert_eq!(first_row.parent_feature_id.as_deref(), Some("PSR1"));
-    assert!(first_row
-        .ambiguity_tags
+    assert!(
+        first_row
+            .ambiguity_tags
+            .iter()
+            .any(|tag| tag == "multi_hit_not_assessed")
+    );
+    assert!(
+        first_row
+            .ambiguity_tags
+            .iter()
+            .any(|tag| tag == "isoform_support_not_inferred")
+    );
+}
+
+#[test]
+fn e_mtab_14704_tp73_validation_fixture_projects_and_interprets_pm_probe_evidence() {
+    let tmp = tempdir().expect("tempdir");
+    let fixture_dir = probe_region_tp73_validation_fixture_dir();
+    let mut engine = tp73_validation_anchored_engine();
+
+    let inspection = engine
+        .inspect_probe_region_output(&fixture_dir)
+        .expect("inspect committed E-MTAB-14704 TP73 validation fixture");
+    assert_eq!(inspection.row_count, 4);
+    assert_eq!(inspection.probe_row_count, 8);
+
+    let result = engine
+        .apply(Operation::ProjectProbeRegionOutput {
+            seq_id: "array_slice".to_string(),
+            output_dir: fixture_dir.clone(),
+            contrasts: vec!["AdTAp73alpha-AdGFP".to_string()],
+            level: Some("pm_probe".to_string()),
+            min_abs_logfc: Some(0.5),
+            max_features: Some(20),
+            clear_existing: Some(true),
+        })
+        .expect("project committed PM probe validation fixture");
+    let projection = result.microarray_projection.expect("projection report");
+    assert_eq!(projection.schema, MICROARRAY_PROJECTION_REPORT_SCHEMA);
+    assert_eq!(projection.level, "pm_probe");
+    assert_eq!(projection.parsed_rows, 8);
+    assert_eq!(projection.imported_features, 6);
+    assert_eq!(projection.skipped_filter, 2);
+
+    let dna = engine.state().sequences.get("array_slice").unwrap();
+    let pm_probe_3 = dna
+        .features()
         .iter()
-        .any(|tag| tag == "multi_hit_not_assessed"));
-    assert!(first_row
-        .ambiguity_tags
+        .find(|feature| first_qualifier(feature, "feature_id").as_deref() == Some("PM_TP73_0003"))
+        .expect("projected PM_TP73_0003 feature");
+    assert_eq!(pm_probe_3.location.find_bounds().unwrap(), (56, 71));
+    assert_eq!(
+        first_qualifier(pm_probe_3, "gentle_array_parent_feature_id").as_deref(),
+        Some("PSR0100145780.hg.1")
+    );
+    assert_eq!(
+        first_qualifier(pm_probe_3, "gentle_array_intensity_source").as_deref(),
+        Some("probe_level_input")
+    );
+    assert_eq!(
+        first_qualifier(pm_probe_3, "genomic_start_1based").as_deref(),
+        Some("3652572")
+    );
+
+    let report_path = tmp
+        .path()
+        .join("clariom_e_mtab_14704_tp73_interpretation.json");
+    let result = engine
+        .apply(Operation::InterpretProbeRegionEvidence {
+            seq_id: "array_slice".to_string(),
+            gene_label: Some("TP73".to_string()),
+            level: Some("pm_probe".to_string()),
+            min_abs_logfc: Some(0.5),
+            path: Some(report_path.to_string_lossy().to_string()),
+        })
+        .expect("interpret committed PM probe validation fixture");
+    assert!(report_path.exists());
+    let report = result
+        .probe_region_evidence_interpretation
+        .expect("interpretation report");
+    assert_eq!(report.schema, PROBE_REGION_EVIDENCE_INTERPRETATION_SCHEMA);
+    assert_eq!(report.level, "pm_probe");
+    assert_eq!(report.array_feature_count, 6);
+    assert_eq!(report.transcript_count, 2);
+    assert_eq!(report.evidence_rows.len(), 6);
+
+    let row = report
+        .evidence_rows
         .iter()
-        .any(|tag| tag == "isoform_support_not_inferred"));
+        .find(|row| row.feature_id == "PM_TP73_0003")
+        .expect("PM_TP73_0003 interpretation row");
+    assert_eq!(row.parent_feature_id.as_deref(), Some("PSR0100145780.hg.1"));
+    assert_eq!(row.start_1based, Some(3652572));
+    assert_eq!(row.end_1based, Some(3652586));
+    assert_eq!(row.overlapping_transcript_ids, vec!["TP73-201".to_string()]);
+    assert!(
+        row.ambiguity_tags
+            .iter()
+            .any(|tag| tag == "multi_hit_not_assessed")
+    );
+    assert!(
+        row.ambiguity_tags
+            .iter()
+            .any(|tag| tag == "probe_sequence_alignment_not_assessed")
+    );
+    assert!(
+        row.ambiguity_tags
+            .iter()
+            .any(|tag| tag == "isoform_support_not_inferred")
+    );
+
+    assert!(report.transcript_rows.iter().any(|row| {
+        row.transcript_id == "TP73-201"
+            && row.unique_evidence_count > 0
+            && row.relationship_summary != "no_compatible_evidence"
+    }));
+    assert!(report.transcript_rows.iter().any(|row| {
+        row.transcript_id == "TP73-202"
+            && row.shared_evidence_count > 0
+            && row.relationship_summary != "no_compatible_evidence"
+    }));
 }
 
 #[test]

@@ -50,39 +50,38 @@ use crate::{
         GeneSetCohortRelationship, GeneSetPromoterCohortReport, GeneSetRequest,
         GeneSetResolutionReport, GenomeAnchorSide, GenomeAnnotationScope, GenomeGeneExtractMode,
         GenomeTrackSource, GenomeTrackSubscription, GentleEngine, GuideCandidate,
-        GuideOligoExportFormat, GuideOligoPlateFormat,
-        GuidePracticalFilterConfig, InlineSequenceTopology, LabAssistantInstructionsFormat,
-        LineageMacroInstance, LineageMacroPortBinding, MacroInstanceStatus,
-        OligoOrderFormCreateRequest, Operation, OperationProgress,
-        PLANNING_CLONING_CONSULTATION_SCHEMA, PLANNING_ESTIMATE_SCHEMA, PLANNING_OBJECTIVE_SCHEMA,
-        PLANNING_PROFILE_SCHEMA, PLANNING_SUGGESTION_SCHEMA, PLANNING_SYNC_STATUS_SCHEMA,
-        PRIMER_DESIGN_REPORTS_METADATA_KEY, PROTEIN_EXPRESSION_HANDOFF_SCHEMA,
-        PairwiseAlignmentMode, PlanningCloningConsultation, PlanningCloningHelperVectorSummary,
-        PlanningCloningHostProfileSummary, PlanningCloningLocalConstraint,
-        PlanningCloningMissingQuestion, PlanningCloningStrategyCandidate,
-        PlanningCloningSuggestedNextAction, PlanningCloningVectorCandidate, PlanningEstimate,
-        PlanningObjective, PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus,
-        PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignReport,
-        PrimerDesignSideConstraint, PrimerSpecificityPolicy, ProbeRegionRequest, ProjectState,
-        PromoterArtifactManifestEntry, PromoterCohortKind, PromoterExpressionEvidenceInput,
-        PromoterTfbsGeneQuery, PromoterWindowCollapseMode, ProteinExpressionCdsAssessment,
-        ProteinExpressionHandoffReport, ProteinExpressionHostChassisCandidate,
-        ProteinExpressionProductDefinition, ProteinExpressionProductReadiness,
-        ProteinExpressionSequenceContext, ProteinExpressionServiceHandoffCandidate,
-        ProteinExpressionTagAssessment, ProteinExpressionVectorRouteCandidate,
-        ProteinExternalOpinionSource, ProteinFeatureFilter, ProteinToDnaHandoffRankingGoal,
-        QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting, QpcrTranscriptTargetingMode,
-        RNA_READ_ALIGNMENT_DISPLAY_BATCH_SCHEMA, RackAuthoringTemplate, RackCarrierLabelPreset,
-        RackFillDirection, RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind,
-        RackProfileKind, ReadAcquisitionAnalysisFormat, ReadAcquisitionReadLayout, RenderSvgMode,
-        RepeatAnnotationFilter, RepeatEnvironmentCohortReport, RepeatEnvironmentGeometryMode,
-        ReporterConstraints, ReporterCorpusExportFormat, RestrictionCloningPcrHandoffMode,
-        ReverseTranslationReport, ReverseTranslationReportSummary, RnaReadAlignConfig,
-        RnaReadAlignmentDisplayBatch, RnaReadAlignmentInspectionEffectFilter,
-        RnaReadAlignmentInspectionSortKey, RnaReadAlignmentInspectionSubsetSpec,
-        RnaReadConcatemerInspectionSettings, RnaReadGeneSupportAuditCohortFilter,
-        RnaReadGeneSupportCompleteRule, RnaReadHitSelection, RnaReadInputFormat,
-        RnaReadInterpretationProfile, RnaReadOriginMode, RnaReadReportMode,
+        GuideOligoExportFormat, GuideOligoPlateFormat, GuidePracticalFilterConfig,
+        InlineSequenceTopology, LabAssistantInstructionsFormat, LineageMacroInstance,
+        LineageMacroPortBinding, MacroInstanceStatus, OligoOrderFormCreateRequest, Operation,
+        OperationProgress, PLANNING_CLONING_CONSULTATION_SCHEMA, PLANNING_ESTIMATE_SCHEMA,
+        PLANNING_OBJECTIVE_SCHEMA, PLANNING_PROFILE_SCHEMA, PLANNING_SUGGESTION_SCHEMA,
+        PLANNING_SYNC_STATUS_SCHEMA, PRIMER_DESIGN_REPORTS_METADATA_KEY,
+        PROTEIN_EXPRESSION_HANDOFF_SCHEMA, PairwiseAlignmentMode, PlanningCloningConsultation,
+        PlanningCloningHelperVectorSummary, PlanningCloningHostProfileSummary,
+        PlanningCloningLocalConstraint, PlanningCloningMissingQuestion,
+        PlanningCloningStrategyCandidate, PlanningCloningSuggestedNextAction,
+        PlanningCloningVectorCandidate, PlanningEstimate, PlanningObjective, PlanningProfile,
+        PlanningProfileScope, PlanningSuggestionStatus, PrimerDesignBackend,
+        PrimerDesignPairConstraint, PrimerDesignReport, PrimerDesignSideConstraint,
+        PrimerSpecificityPolicy, ProbeRegionRequest, ProjectState, PromoterArtifactManifestEntry,
+        PromoterCohortKind, PromoterExpressionEvidenceInput, PromoterTfbsGeneQuery,
+        PromoterWindowCollapseMode, ProteinExpressionCdsAssessment, ProteinExpressionHandoffReport,
+        ProteinExpressionHostChassisCandidate, ProteinExpressionProductDefinition,
+        ProteinExpressionProductReadiness, ProteinExpressionSequenceContext,
+        ProteinExpressionServiceHandoffCandidate, ProteinExpressionTagAssessment,
+        ProteinExpressionVectorRouteCandidate, ProteinExternalOpinionSource, ProteinFeatureFilter,
+        ProteinToDnaHandoffRankingGoal, QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting,
+        QpcrTranscriptTargetingMode, RNA_READ_ALIGNMENT_DISPLAY_BATCH_SCHEMA,
+        RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
+        RackOccupant, RackPhysicalTemplateKind, RackProfileKind, ReadAcquisitionAnalysisFormat,
+        ReadAcquisitionReadLayout, RenderSvgMode, RepeatAnnotationFilter,
+        RepeatEnvironmentCohortReport, RepeatEnvironmentGeometryMode, ReporterConstraints,
+        ReporterCorpusExportFormat, RestrictionCloningPcrHandoffMode, ReverseTranslationReport,
+        ReverseTranslationReportSummary, RnaReadAlignConfig, RnaReadAlignmentDisplayBatch,
+        RnaReadAlignmentInspectionEffectFilter, RnaReadAlignmentInspectionSortKey,
+        RnaReadAlignmentInspectionSubsetSpec, RnaReadConcatemerInspectionSettings,
+        RnaReadGeneSupportAuditCohortFilter, RnaReadGeneSupportCompleteRule, RnaReadHitSelection,
+        RnaReadInputFormat, RnaReadInterpretationProfile, RnaReadOriginMode, RnaReadReportMode,
         RnaReadScoreDensityScale, RnaReadScoreDensityVariant, RnaReadSeedFilterConfig,
         RoutinePreferenceContext, SEQUENCING_CONFIRMATION_SUPPORT_TSV_SCHEMA, SequenceAnchor,
         SequenceFeatureQualifierFilter, SequenceFeatureQuery, SequenceFeatureRangeRelation,
@@ -4801,9 +4800,7 @@ fn parse_gene_set_relationship(
         "unspecified" => Ok(GeneSetCohortRelationship::Unspecified),
         "manual" => Ok(GeneSetCohortRelationship::Manual),
         "co_regulated" | "coregulated" => Ok(GeneSetCohortRelationship::CoRegulated),
-        "anti_co_regulated" | "anti_coregulated" => {
-            Ok(GeneSetCohortRelationship::AntiCoRegulated)
-        }
+        "anti_co_regulated" | "anti_coregulated" => Ok(GeneSetCohortRelationship::AntiCoRegulated),
         other => Err(format!(
             "Unknown gene-set relationship '{other}' for {context}; expected unspecified, manual, co-regulated, or anti-co-regulated"
         )),
@@ -4891,7 +4888,10 @@ fn parse_promoter_tfbs_gene_query_token(
     })
 }
 
-fn parse_promoter_cohort_kind_shell(raw: &str, context: &str) -> Result<PromoterCohortKind, String> {
+fn parse_promoter_cohort_kind_shell(
+    raw: &str,
+    context: &str,
+) -> Result<PromoterCohortKind, String> {
     match raw.trim().to_ascii_lowercase().as_str() {
         "manual" => Ok(PromoterCohortKind::Manual),
         "co_regulated" | "co-regulated" | "coregulated" => Ok(PromoterCohortKind::CoRegulated),
@@ -17796,8 +17796,12 @@ fn parse_reference_promoter_cohort_comparison_command(
                 expression_rows.extend(parse_promoter_expression_rows_json_shell(&raw)?);
             }
             "--source-label" | "--expression-source-label" => {
-                expression_source_label =
-                    Some(parse_option_path(tokens, &mut idx, "--source-label", label)?);
+                expression_source_label = Some(parse_option_path(
+                    tokens,
+                    &mut idx,
+                    "--source-label",
+                    label,
+                )?);
             }
             "--cutrun-dataset-id" | "--cutrun-dataset" => {
                 let raw = parse_option_path(tokens, &mut idx, "--cutrun-dataset-id", label)?;
@@ -26032,8 +26036,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
 #[inline(never)]
 pub fn parse_shell_line(line: &str) -> Result<ShellCommand, String> {
     let trimmed = line.trim_start();
-    if trimmed.starts_with("genomes ") && !SHELL_EXPANDED_STACK_ACTIVE.with(|active| active.get())
-    {
+    if trimmed.starts_with("genomes ") && !SHELL_EXPANDED_STACK_ACTIVE.with(|active| active.get()) {
         let line = line.to_string();
         let worker = thread::Builder::new()
             .name("gentle-shell-parse-genomes-command".to_string())

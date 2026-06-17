@@ -1,0 +1,12 @@
+{
+  "schema": "gentle.probe_region_backend_provenance.v1",
+  "backend": "derived_validation_fixture",
+  "platform": "Clariom_D_Human",
+  "coordinate_system": "hg38",
+  "genome_build": "GRCh38.p14",
+  "normalization": "synthetic-rma-on-real-tp73-coordinates",
+  "probe_intensity_source": "probe_level_input",
+  "probe_intensity_probe_id_column": "probe_id",
+  "source_accession": "E-MTAB-14704",
+  "source_note": "Derived validation fixture for the E-MTAB-14704 TP73 Clariom D workflow. Coordinates and sample labels mirror the public publication-resource context, while intensity values are synthetic; no CEL files, vendor binaries, R, or APT were used to create this committed fixture."
+}

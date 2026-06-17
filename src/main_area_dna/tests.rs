@@ -138,6 +138,85 @@ fn with_linear_map_response(
     let _ = ctx.end_pass();
 }
 
+fn probe_region_validation_fixture_dir() -> String {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("test_files/fixtures/probe_region_outputs/clariom_e_mtab_14704_tp73_validation")
+        .to_string_lossy()
+        .to_string()
+}
+
+fn add_tp73_probe_region_validation_transcripts(dna: &mut DNAsequence) {
+    dna.features_mut().push(Feature {
+        kind: "mRNA".into(),
+        location: Location::Join(vec![
+            Location::simple_range(4, 43),
+            Location::simple_range(54, 80),
+            Location::simple_range(104, 135),
+        ]),
+        qualifiers: vec![
+            ("gene".into(), Some("TP73".to_string())),
+            ("transcript_id".into(), Some("TP73-201".to_string())),
+            ("label".into(), Some("TP73-201".to_string())),
+            ("strand".into(), Some("+".to_string())),
+        ],
+    });
+    dna.features_mut().push(Feature {
+        kind: "mRNA".into(),
+        location: Location::Join(vec![
+            Location::simple_range(4, 43),
+            Location::simple_range(74, 100),
+            Location::simple_range(144, 175),
+        ]),
+        qualifiers: vec![
+            ("gene".into(), Some("TP73".to_string())),
+            ("transcript_id".into(), Some("TP73-202".to_string())),
+            ("label".into(), Some("TP73-202".to_string())),
+            ("strand".into(), Some("+".to_string())),
+        ],
+    });
+}
+
+fn make_tp73_probe_region_validation_engine() -> GentleEngine {
+    let mut dna =
+        DNAsequence::from_sequence(&"A".repeat(256)).expect("valid TP73 validation sequence");
+    add_tp73_probe_region_validation_transcripts(&mut dna);
+    let mut state = ProjectState::default();
+    state.sequences.insert("array_slice".to_string(), dna);
+    state.metadata.insert(
+        "provenance".to_string(),
+        json!({
+            "genome_extractions": [
+                {
+                    "seq_id": "array_slice",
+                    "genome_id": "hg38",
+                    "chromosome": "chr1",
+                    "start_1based": 3652516,
+                    "end_1based": 3736201,
+                    "anchor_strand": "+",
+                    "anchor_verified": true,
+                    "recorded_at_unix_ms": 123
+                }
+            ]
+        }),
+    );
+    GentleEngine::from_state(state)
+}
+
+fn make_tp73_probe_region_validation_area() -> MainAreaDna {
+    let engine = make_tp73_probe_region_validation_engine();
+    let dna = engine
+        .state()
+        .sequences
+        .get("array_slice")
+        .expect("array slice")
+        .clone();
+    let mut area = MainAreaDna::new(dna, Some("array_slice".to_string()), None);
+    area.engine = Some(Arc::new(RwLock::new(engine)));
+    area.probe_region_output_dir = probe_region_validation_fixture_dir();
+    area.probe_region_projection_seq_id = "array_slice".to_string();
+    area
+}
+
 #[test]
 fn linear_map_drag_handler_rejects_press_origin_outside_map() {
     let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(64)).expect("sequence");
@@ -4420,6 +4499,98 @@ fn handle_operation_success_captures_protocol_cartoon_preview_payload() {
     assert_eq!(cached.seq_id, "array_slice");
     assert_eq!(cached.gene_label.as_deref(), Some("PATZ1"));
     assert_eq!(cached.level, "pm_probe");
+}
+
+#[test]
+fn main_area_dna_projects_probe_region_output_through_shared_shell_capability() {
+    let mut area = make_tp73_probe_region_validation_area();
+    area.probe_region_projection_contrasts = "AdTAp73alpha-AdGFP".to_string();
+    area.probe_region_projection_level = "pm_probe".to_string();
+    area.probe_region_projection_min_abs_logfc = "0.5".to_string();
+    area.probe_region_projection_max_features = "20".to_string();
+    area.probe_region_projection_clear_existing = true;
+
+    area.project_probe_region_output_for_current_path();
+
+    let report = area
+        .cached_probe_region_projection
+        .as_ref()
+        .expect("cached projection report");
+    assert_eq!(report.schema, "gentle.microarray_projection_report.v1");
+    assert_eq!(report.seq_id, "array_slice");
+    assert_eq!(report.level, "pm_probe");
+    assert_eq!(
+        report.projected_contrasts.as_slice(),
+        ["AdTAp73alpha-AdGFP"]
+    );
+    assert_eq!(report.parsed_rows, 8);
+    assert_eq!(report.imported_features, 6);
+    assert!(area.cached_probe_region_interpretation.is_none());
+    assert!(
+        area.op_status
+            .contains("Probe-region projection imported 6 feature(s)")
+    );
+    assert!(area.op_status.contains("contrasts=AdTAp73alpha-AdGFP"));
+}
+
+#[test]
+fn main_area_dna_interprets_probe_region_evidence_through_shared_shell_capability() {
+    let temp = tempdir().expect("tempdir");
+    let report_path = temp.path().join("tp73_probe_region_interpretation.json");
+    let mut area = make_tp73_probe_region_validation_area();
+    area.probe_region_projection_contrasts = "AdTAp73alpha-AdGFP".to_string();
+    area.probe_region_projection_level = "pm_probe".to_string();
+    area.probe_region_projection_min_abs_logfc = "0.5".to_string();
+    area.probe_region_projection_max_features = "20".to_string();
+    area.probe_region_projection_clear_existing = true;
+    area.project_probe_region_output_for_current_path();
+    assert!(
+        area.cached_probe_region_projection.is_some(),
+        "projection must populate features before interpretation"
+    );
+
+    area.probe_region_interpretation_gene_label = "TP73".to_string();
+    area.probe_region_interpretation_level = "pm_probe".to_string();
+    area.probe_region_interpretation_min_abs_logfc = "0.5".to_string();
+    area.probe_region_interpretation_output_path = report_path.to_string_lossy().to_string();
+
+    area.interpret_probe_region_evidence_for_current_sequence();
+
+    assert!(report_path.exists());
+    let report = area
+        .cached_probe_region_interpretation
+        .as_ref()
+        .expect("cached interpretation report");
+    assert_eq!(
+        report.schema,
+        "gentle.probe_region_evidence_interpretation.v1"
+    );
+    assert_eq!(report.seq_id, "array_slice");
+    assert_eq!(report.gene_label.as_deref(), Some("TP73"));
+    assert_eq!(report.level, "pm_probe");
+    assert_eq!(report.array_feature_count, 6);
+    assert_eq!(report.transcript_count, 2);
+    assert_eq!(report.evidence_rows.len(), 6);
+    assert!(report.evidence_rows.iter().any(|row| {
+        row.feature_id == "PM_TP73_0003"
+            && row.parent_feature_id.as_deref() == Some("PSR0100145780.hg.1")
+            && row.start_1based == Some(3652572)
+            && row.end_1based == Some(3652586)
+    }));
+    assert!(report.evidence_rows.iter().all(|row| {
+        row.ambiguity_tags
+            .iter()
+            .any(|tag| tag == "multi_hit_not_assessed")
+            && row
+                .ambiguity_tags
+                .iter()
+                .any(|tag| tag == "isoform_support_not_inferred")
+    }));
+    assert!(area.op_status.contains("Probe-region evidence interpreted"));
+    assert!(
+        area.op_status
+            .contains("6 array feature(s), 2 transcript model(s), 6 evidence row(s)")
+    );
 }
 
 #[test]

@@ -2490,7 +2490,10 @@ Microarray track projection notes:
   paths.
 - `arrays probe-regions` accepts explicit CEL paths or a publication-resource
   dataset id plus gene, locus, transcript-cluster, or probeset selectors. The
-  stage-one report is read-only: it records filesystem status, CEL
+  stage-one report is read-only: for publication-resource datasets such as
+  `E-MTAB-14704`, it resolves declared local CEL paths and an available SDRF
+  metadata file from the resource catalog while reporting any missing payloads
+  without downloading them. It records filesystem status, CEL
   size/mtime-derived cache keys, parsed metadata previews, default condition
   contrasts, annotation/library readiness, explicit output/cache path status,
   backend-candidate readiness, normalized platform hints, planned outputs, and

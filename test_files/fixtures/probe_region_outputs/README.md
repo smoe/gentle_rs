@@ -23,3 +23,27 @@
   directory closely enough for projection and interpretation routing tests; it
   is not biological evidence and is not a substitute for full Clariom
   annotation or CEL-derived analysis.
+
+## `clariom_e_mtab_14704_tp73_validation/`
+
+- Origin: derived validation fixture for the public E-MTAB-14704 Clariom D TP73
+  workflow. It uses TP73-compatible hg38/GRCh38.p14 coordinates and public
+  sample labels, with synthetic fixed intensities.
+- Deterministic recreation:
+  - start from the publication-resource context in
+    `data/publication_resources/rostock_p73_clariomd_e_mtab_14704/`
+  - do not commit or require raw CEL files
+  - choose representative TP73 probe/probeset intervals inside the
+    `test_files/tp73.ncbi.gb` anchor
+  - write four probeset-region rows and eight PM-probe rows with fixed
+    condition means and `log2FC_*` values
+  - mark every PM-probe row as `probe_level_input`
+- Primary usage:
+  - release-grade validation of `arrays project-probe-region-output --level
+    pm_probe`
+  - `arrays interpret-probe-region-evidence --level pm_probe`
+  - GUI action-to-capability parity tests
+- Runtime relevance: stresses shared-vs-unique transcript geometry,
+  junction-spanning review rows, and multiple PM probes per parent region
+  without running R/APT or using CEL/vendor binary payloads. It is not
+  biological evidence and does not support isoform-support claims.

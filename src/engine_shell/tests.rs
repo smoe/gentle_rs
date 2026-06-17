@@ -7538,6 +7538,73 @@ fn execute_arrays_probe_regions_reports_clariom_vendor_support_paths() {
 }
 
 #[test]
+fn execute_arrays_probe_regions_discovers_publication_dataset_files() {
+    let mut engine = GentleEngine::default();
+    let run = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ArraysProbeRegions {
+            cel_paths: vec![],
+            dataset: Some("E-MTAB-14704".to_string()),
+            metadata_path: None,
+            genes: vec!["TP73".to_string()],
+            loci: vec![],
+            transcript_cluster_ids: vec![],
+            probeset_ids: vec![],
+            platform: Some("Clariom_D_Human".to_string()),
+            annotation_library_path: None,
+            condition_column: None,
+            sample_column: None,
+            block_column: None,
+            paired_by_replicate_suffix: false,
+            plot: false,
+            normalization: "none".to_string(),
+            output_dir: None,
+            cache_dir: None,
+            dry_run: true,
+        },
+    )
+    .expect("plan publication-resource probe regions");
+
+    let plan = &run.output["plan"];
+    assert!(!run.state_changed);
+    assert_eq!(plan["schema"].as_str(), Some("gentle.probe_region_plan.v1"));
+    assert_eq!(
+        plan["input_mode"].as_str(),
+        Some("publication_resource_dataset")
+    );
+    assert_eq!(plan["request"]["dataset"].as_str(), Some("E-MTAB-14704"));
+
+    let cel_paths = plan["request"]["cel_paths"]
+        .as_array()
+        .expect("declared dataset CEL paths");
+    assert_eq!(cel_paths.len(), 9);
+    assert!(cel_paths.iter().any(|path| {
+        path.as_str().is_some_and(|path| {
+            path.contains("rostock_p73_clariomd_e_mtab_14704/P_SKMel29_AdGFP_1.CEL")
+        })
+    }));
+
+    let cel_files = plan["cel_files"].as_array().expect("CEL file statuses");
+    assert_eq!(cel_files.len(), 9);
+    assert!(
+        plan["warnings"]
+            .as_array()
+            .is_some_and(|warnings| warnings.iter().any(|warning| warning
+                .as_str()
+                .unwrap_or_default()
+                .contains("resolved 9 declared CEL file")))
+    );
+    assert!(
+        !plan["warnings"]
+            .as_array()
+            .is_some_and(|warnings| warnings.iter().any(|warning| warning
+                .as_str()
+                .unwrap_or_default()
+                .contains("dataset discovery is planned")))
+    );
+}
+
+#[test]
 fn clariomd_gene_panel_fixture_is_small_and_gene_complete() {
     let fixture_dir = Path::new("test_files/fixtures/affymetrix_clariom_d_human_na36_hg38_subset");
     let probesets =
