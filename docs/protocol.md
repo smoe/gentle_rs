@@ -733,6 +733,11 @@ Implemented baseline:
 - V1 is offline-first: GO/external mappings resolve only from local
   `external_mappings`; no live GO download or Ensembl ortholog/paralog API call
   is made.
+- Promoter cohorts may carry an additive declared relationship expectation
+  (`unspecified`, `manual`, `co_regulated`, or `anti_co_regulated`).
+  Downstream CUT&RUN support reports derive non-blocking occupancy
+  relationship flags over evaluated members only; unevaluated members are not
+  coerced into support or absence.
 
 Current shared-shell routes:
 
@@ -2412,8 +2417,9 @@ Current draft operations:
     and saved read reports, and keeps `evaluated` and `unevaluated` member
     states separate so set-level fractions use evaluated members only. The
     optional `--relationship manual|co-regulated|anti-co-regulated` flag echoes
-    the declared cohort expectation and emits relationship flags/warnings
-    without gating the report.
+    the declared cohort expectation and emits non-blocking `relationship_flags`
+    and warnings from promoter occupancy over evaluated members only, without
+    gating the report.
 
 Microarray track projection notes:
 

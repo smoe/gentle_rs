@@ -364,4 +364,36 @@ mod tests {
         assert_eq!(report.relationship, GeneSetCohortRelationship::Unspecified);
         assert!(report.relationship_flags.is_empty());
     }
+
+    #[test]
+    fn old_cutrun_payload_defaults_relationship_to_unspecified() {
+        let report: GeneSetCutRunRegulatorySupportReport =
+            serde_json::from_value(serde_json::json!({
+                "schema": GENE_SET_CUTRUN_REGULATORY_SUPPORT_SCHEMA,
+                "generated_at_unix_ms": 1,
+                "genome_id": "ToyGenome",
+                "promoter_cohort": {
+                    "schema": GENE_SET_PROMOTER_COHORT_SCHEMA,
+                    "generated_at_unix_ms": 1,
+                    "genome_id": "ToyGenome",
+                    "upstream_bp": 100,
+                    "downstream_bp": 20,
+                    "gene_set_resolution": {
+                        "schema": GENE_SET_RESOLUTION_SCHEMA,
+                        "generated_at_unix_ms": 1,
+                        "request": {"source_kind": "explicit_members", "members": ["A"]}
+                    },
+                    "requested_member_count": 1,
+                    "returned_window_count": 0
+                }
+            }))
+            .expect("deserialize old gene-set CUT&RUN support report");
+        assert_eq!(report.relationship, GeneSetCohortRelationship::Unspecified);
+        assert!(report.relationship_flags.is_empty());
+        assert_eq!(
+            report.promoter_cohort.relationship,
+            GeneSetCohortRelationship::Unspecified
+        );
+        assert!(report.promoter_cohort.relationship_flags.is_empty());
+    }
 }

@@ -4350,7 +4350,7 @@ impl GentleEngine {
                 groups.push((class, vec![row]));
             }
         }
-        if groups.len() < 2 {
+        if groups.is_empty() {
             return vec![];
         }
 
@@ -4374,14 +4374,21 @@ impl GentleEngine {
 
         match relationship {
             GeneSetCohortRelationship::CoRegulated => {
+                if groups.len() < 2 {
+                    return vec![];
+                }
                 let max_group_size = groups
                     .iter()
                     .map(|(_, rows)| rows.len())
                     .max()
                     .unwrap_or_default();
+                let max_group_count = groups
+                    .iter()
+                    .filter(|(_, rows)| rows.len() == max_group_size)
+                    .count();
                 groups
                     .into_iter()
-                    .filter(|(_, rows)| rows.len() < max_group_size)
+                    .filter(|(_, rows)| max_group_count > 1 || rows.len() < max_group_size)
                     .map(|(class, rows)| {
                         let symbols = rows
                             .iter()

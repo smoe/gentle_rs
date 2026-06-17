@@ -254,6 +254,7 @@ fn sample_value_for_usage_token(flag: &str, token: &str) -> String {
         "--ranking-metric" => "raw_pearson".to_string(),
         "--relationship" => "co-regulated".to_string(),
         "--report-mode" => "seed_passed_only".to_string(),
+        "--relationship" => "co_regulated".to_string(),
         "--return" => "genbank".to_string(),
         "--scale" => "linear".to_string(),
         "--scope" => "all_overlapping_any_strand".to_string(),
@@ -14089,6 +14090,18 @@ fn parse_gene_sets_resolve_and_promoter_cohort_commands() {
         }
         other => panic!("unexpected command: {other:?}"),
     }
+
+    let unknown = parse_shell_line(
+        "gene-sets promoter-cohort ToyGenome --group yamanaka_factors --relationship unrelated",
+    )
+    .expect_err("unknown relationship is rejected");
+    assert!(unknown.contains("Unknown gene-set relationship"));
+
+    let empty = parse_shell_line(
+        "gene-sets promoter-cohort ToyGenome --group yamanaka_factors --relationship ''",
+    )
+    .expect_err("empty relationship is rejected");
+    assert!(empty.contains("--relationship must not be empty"));
 }
 
 #[test]

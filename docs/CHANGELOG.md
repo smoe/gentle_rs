@@ -14,6 +14,9 @@ Maintenance rule:
 
 ## 2026-06-17
 
+- Completed gene-set cohort relationship support by deriving evaluated-only
+  CUT&RUN occupancy consistency flags for declared co-regulated and
+  anti-co-regulated promoter cohorts.
 - Extended `planning protein-expression-handoff --seq-id` with defaulted
   product-readiness summaries for stored DNA/protein sequences, including CDS
   annotation count, start/stop/internal-stop sanity, ambiguity counts, and
