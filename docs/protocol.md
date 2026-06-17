@@ -2434,8 +2434,10 @@ Microarray track projection notes:
   on the target sequence. Optional `--gene LABEL`, `--level all|probe_region|pm_probe`,
   `--min-abs-logfc N`, and `--path FILE` filter/export the read-only report.
   The report records mapping status, overlap transcript ids, ambiguity tags,
-  and per-transcript compatible/constraining counts; it explicitly does not
-  infer isoform support, probe uniqueness, or biological validation.
+  per-transcript compatible/constraining counts, and structured
+  `transcript_mappings[]` rows with exon ordinals, exon ranges, junction
+  spans, and overlap base counts; it explicitly does not infer isoform
+  support, probe uniqueness, or biological validation.
 - manifests may also include `coordinate_projections[]` entries with
   `source_genome_id`, `target_genome_id`, `method`, and `path`. These paths
   point at tab-delimited interval maps for build-to-build projection, currently

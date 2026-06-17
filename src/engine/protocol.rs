@@ -4158,9 +4158,32 @@ pub struct ProbeRegionEvidenceMappingRow {
     pub logfc: Option<f64>,
     pub overlapping_transcript_ids: Vec<String>,
     pub overlapping_exon_count: usize,
+    pub transcript_mappings: Vec<ProbeRegionEvidenceTranscriptMapping>,
     pub mapping_status: String,
     pub ambiguity_tags: Vec<String>,
     pub relationship: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// Transcript-local geometry mapping for one projected array evidence row.
+pub struct ProbeRegionEvidenceTranscriptMapping {
+    pub transcript_id: String,
+    pub mapping_kind: String,
+    pub exon_ordinals: Vec<usize>,
+    pub exon_ranges_1based: Vec<String>,
+    pub junction_spans: Vec<ProbeRegionEvidenceJunctionSpan>,
+    pub overlap_bp: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One exon-exon boundary spanned by a projected array evidence interval.
+pub struct ProbeRegionEvidenceJunctionSpan {
+    pub from_exon_ordinal: usize,
+    pub to_exon_ordinal: usize,
+    pub genomic_start_1based: usize,
+    pub genomic_end_1based: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]

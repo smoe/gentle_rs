@@ -34,6 +34,9 @@ Maintenance rule:
 - Added first-class sequence-window controls to run and preview
   `InterpretProbeRegionEvidence` reports from the Clariom D / probe-region
   evidence panel, including bounded evidence and transcript geometry tables.
+- Extended `InterpretProbeRegionEvidence` with explicit per-evidence
+  transcript mappings that record exon ordinals, exon ranges, junction spans,
+  and overlap base counts without turning array evidence into isoform calls.
 
 ## 2026-06-16
 

@@ -182,9 +182,10 @@ broad crate surgery that is not tied to the selected release story.
   with transcript/exon geometry and records shared transcript, parent probeset,
   multi-hit-not-assessed, and coordinate-projection ambiguity; the
   sequence-window GUI panel can run and preview that report after projection.
-  Future work should add explicit probe/probeset-to-exon/junction/transcript
-  mapping and audited interpretation scores before identifying compatible
-  splice isoforms or ruling out incompatible ones.
+  The report now includes explicit per-evidence transcript mappings with exon
+  ordinals, exon ranges, junction spans, and overlap base counts. Future work
+  should add audited interpretation scores before identifying compatible splice
+  isoforms or ruling out incompatible ones.
 
 ## Phase D: Visualization And Workflow UX
 

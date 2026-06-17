@@ -105,8 +105,15 @@ struct ProbeRegionTranscriptModel {
     gene: Option<String>,
     label: Option<String>,
     strand: Option<String>,
+    exons: Vec<ProbeRegionTranscriptExon>,
     exon_ranges_0based: Vec<(usize, usize)>,
     span_0based: Option<(usize, usize)>,
+}
+
+#[derive(Clone)]
+struct ProbeRegionTranscriptExon {
+    ordinal: usize,
+    range_0based: (usize, usize),
 }
 
 #[derive(Default)]
@@ -1744,31 +1751,27 @@ impl GentleEngine {
             let mut overlapping_transcripts = Vec::new();
             let mut overlapping_exon_count = 0usize;
             let mut span_overlaps = Vec::new();
+            let mut transcript_mappings = Vec::new();
             for tx in &transcripts {
-                let exon_hits = tx
-                    .exon_ranges_0based
-                    .iter()
-                    .filter(|range| {
-                        item.ranges_0based.iter().any(|evidence_range| {
-                            Self::probe_region_ranges_overlap(*range, evidence_range)
-                        })
-                    })
-                    .count();
-                if exon_hits > 0 {
-                    overlapping_exon_count += exon_hits;
-                    overlapping_transcripts.push(tx.transcript_id.clone());
-                } else if let Some(span) = tx.span_0based
-                    && item.ranges_0based.iter().any(|range| {
-                        Self::probe_region_ranges_overlap(&span, range)
-                    })
-                {
-                    span_overlaps.push(tx.transcript_id.clone());
+                if let Some(mapping) = Self::probe_region_evidence_transcript_mapping(item, tx) {
+                    if !mapping.exon_ordinals.is_empty() {
+                        overlapping_exon_count += mapping.exon_ordinals.len();
+                        overlapping_transcripts.push(tx.transcript_id.clone());
+                    } else {
+                        span_overlaps.push(tx.transcript_id.clone());
+                    }
+                    transcript_mappings.push(mapping);
                 }
             }
             overlapping_transcripts.sort();
             overlapping_transcripts.dedup();
             span_overlaps.sort();
             span_overlaps.dedup();
+            transcript_mappings.sort_by(|left, right| {
+                left.transcript_id
+                    .cmp(&right.transcript_id)
+                    .then(left.mapping_kind.cmp(&right.mapping_kind))
+            });
 
             let mapping_status = if transcripts.is_empty() {
                 "no_transcript_models"
@@ -1848,6 +1851,7 @@ impl GentleEngine {
                 logfc: item.logfc,
                 overlapping_transcript_ids: overlapping_transcripts,
                 overlapping_exon_count,
+                transcript_mappings,
                 mapping_status,
                 ambiguity_tags: ambiguity_tags.into_iter().collect(),
                 relationship,
@@ -2069,6 +2073,21 @@ impl GentleEngine {
             }
             ranges.sort();
             ranges.dedup();
+            let strand = Self::probe_region_first_qualifier(feature, &["strand"]);
+            let is_reverse = strand.as_deref() == Some("-");
+            let exon_count = ranges.len();
+            let exons = ranges
+                .iter()
+                .enumerate()
+                .map(|(idx, range)| ProbeRegionTranscriptExon {
+                    ordinal: if is_reverse {
+                        exon_count.saturating_sub(idx)
+                    } else {
+                        idx.saturating_add(1)
+                    },
+                    range_0based: *range,
+                })
+                .collect::<Vec<_>>();
             out.push(ProbeRegionTranscriptModel {
                 transcript_id,
                 gene: Self::probe_region_first_qualifier(
@@ -2076,7 +2095,8 @@ impl GentleEngine {
                     &["gene", "gene_symbol", "gene_name", "gene_id"],
                 ),
                 label: Self::probe_region_first_qualifier(feature, &["label", "Name"]),
-                strand: Self::probe_region_first_qualifier(feature, &["strand"]),
+                strand,
+                exons,
                 span_0based: Self::probe_region_range_span(&ranges),
                 exon_ranges_0based: ranges,
             });
@@ -2156,10 +2176,145 @@ impl GentleEngine {
         left.0 < right.1 && right.0 < left.1
     }
 
+    fn probe_region_range_overlap_bp(left: &(usize, usize), right: &(usize, usize)) -> usize {
+        let start = left.0.max(right.0);
+        let end = left.1.min(right.1);
+        end.saturating_sub(start)
+    }
+
     fn probe_region_range_span(ranges: &[(usize, usize)]) -> Option<(usize, usize)> {
         let start = ranges.iter().map(|(start, _)| *start).min()?;
         let end = ranges.iter().map(|(_, end)| *end).max()?;
         Some((start, end))
+    }
+
+    fn probe_region_evidence_transcript_mapping(
+        item: &ProbeRegionProjectedEvidence,
+        tx: &ProbeRegionTranscriptModel,
+    ) -> Option<ProbeRegionEvidenceTranscriptMapping> {
+        let mut exon_hits = tx
+            .exons
+            .iter()
+            .filter_map(|exon| {
+                let overlap_bp = item
+                    .ranges_0based
+                    .iter()
+                    .map(|evidence_range| {
+                        Self::probe_region_range_overlap_bp(&exon.range_0based, evidence_range)
+                    })
+                    .sum::<usize>();
+                (overlap_bp > 0).then_some((exon, overlap_bp))
+            })
+            .collect::<Vec<_>>();
+        exon_hits.sort_by(|left, right| left.0.ordinal.cmp(&right.0.ordinal));
+
+        if !exon_hits.is_empty() {
+            let exon_ordinals = exon_hits
+                .iter()
+                .map(|(exon, _)| exon.ordinal)
+                .collect::<Vec<_>>();
+            let exon_ranges_1based = exon_hits
+                .iter()
+                .map(|(exon, _)| {
+                    format!(
+                        "{}..{}",
+                        exon.range_0based.0.saturating_add(1),
+                        exon.range_0based.1
+                    )
+                })
+                .collect::<Vec<_>>();
+            let overlap_bp = exon_hits.iter().map(|(_, overlap)| *overlap).sum();
+            let junction_spans = Self::probe_region_evidence_junction_spans(item, tx, &exon_hits);
+            let mapping_kind = if !junction_spans.is_empty() {
+                "junction_spanning_exon_overlap"
+            } else if exon_ordinals.len() > 1 {
+                "multi_exon_overlap"
+            } else {
+                "exon_overlap"
+            }
+            .to_string();
+            return Some(ProbeRegionEvidenceTranscriptMapping {
+                transcript_id: tx.transcript_id.clone(),
+                mapping_kind,
+                exon_ordinals,
+                exon_ranges_1based,
+                junction_spans,
+                overlap_bp,
+            });
+        }
+
+        let span = tx.span_0based?;
+        let overlap_bp = item
+            .ranges_0based
+            .iter()
+            .map(|range| Self::probe_region_range_overlap_bp(&span, range))
+            .sum::<usize>();
+        (overlap_bp > 0).then(|| ProbeRegionEvidenceTranscriptMapping {
+            transcript_id: tx.transcript_id.clone(),
+            mapping_kind: "transcript_span_non_exonic".to_string(),
+            exon_ordinals: Vec::new(),
+            exon_ranges_1based: Vec::new(),
+            junction_spans: Vec::new(),
+            overlap_bp,
+        })
+    }
+
+    fn probe_region_evidence_junction_spans(
+        item: &ProbeRegionProjectedEvidence,
+        tx: &ProbeRegionTranscriptModel,
+        exon_hits: &[(&ProbeRegionTranscriptExon, usize)],
+    ) -> Vec<ProbeRegionEvidenceJunctionSpan> {
+        let hit_ordinals = exon_hits
+            .iter()
+            .map(|(exon, _)| exon.ordinal)
+            .collect::<BTreeSet<_>>();
+        let mut out = Vec::new();
+        let mut genomic_exons = tx.exons.iter().collect::<Vec<_>>();
+        genomic_exons.sort_by(|left, right| {
+            left.range_0based
+                .0
+                .cmp(&right.range_0based.0)
+                .then(left.range_0based.1.cmp(&right.range_0based.1))
+        });
+        for pair in genomic_exons.windows(2) {
+            let left = pair[0];
+            let right = pair[1];
+            if !hit_ordinals.contains(&left.ordinal) || !hit_ordinals.contains(&right.ordinal) {
+                continue;
+            }
+            let gap = (left.range_0based.1, right.range_0based.0);
+            let one_range_spans_boundary = item.ranges_0based.iter().any(|range| {
+                range.0 < left.range_0based.1 && range.1 > right.range_0based.0
+            });
+            let joined_evidence_hits_both_sides = item.ranges_0based.len() > 1
+                && item.ranges_0based.iter().any(|range| {
+                    Self::probe_region_ranges_overlap(&left.range_0based, range)
+                })
+                && item.ranges_0based.iter().any(|range| {
+                    Self::probe_region_ranges_overlap(&right.range_0based, range)
+                });
+            if !one_range_spans_boundary && !joined_evidence_hits_both_sides {
+                continue;
+            }
+            let is_reverse = tx.strand.as_deref() == Some("-");
+            let (from_exon_ordinal, to_exon_ordinal) = if is_reverse {
+                (right.ordinal, left.ordinal)
+            } else {
+                (left.ordinal, right.ordinal)
+            };
+            out.push(ProbeRegionEvidenceJunctionSpan {
+                from_exon_ordinal,
+                to_exon_ordinal,
+                genomic_start_1based: gap.0.saturating_add(1),
+                genomic_end_1based: gap.1,
+            });
+        }
+        out.sort_by(|left, right| {
+            left.from_exon_ordinal
+                .cmp(&right.from_exon_ordinal)
+                .then(left.to_exon_ordinal.cmp(&right.to_exon_ordinal))
+        });
+        out
     }
 
     fn probe_region_output_supports_anchor(

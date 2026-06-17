@@ -3048,7 +3048,10 @@ The `Help` menu now includes:
   `pm_probe` projects only true probe-level rows marked as `probe_level_input`.
   After projection, the panel can run `arrays interpret-probe-region-evidence`
   and preview the resulting engine-owned evidence/transcript geometry report
-  without invoking R/APT or changing the projected features.
+  without invoking R/APT or changing the projected features. The preview
+  includes compact transcript-mapping summaries for exon overlap and
+  junction-spanning evidence; the full JSON report keeps the structured exon
+  ordinals, ranges, junction spans, and overlap base counts.
 
 ## microRNA Target Scan
 

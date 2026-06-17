@@ -671,6 +671,14 @@ fn interpret_probe_region_evidence_preserves_shared_transcript_ambiguity() {
         row.overlapping_transcript_ids,
         vec!["PATZ1-201".to_string(), "PATZ1-202".to_string()]
     );
+    assert_eq!(row.transcript_mappings.len(), 2);
+    assert!(row.transcript_mappings.iter().all(|mapping| {
+        mapping.mapping_kind == "exon_overlap"
+            && mapping.exon_ordinals == vec![1]
+            && mapping.exon_ranges_1based == vec!["11..28".to_string()]
+            && mapping.junction_spans.is_empty()
+            && mapping.overlap_bp == 18
+    }));
     assert!(row
         .ambiguity_tags
         .iter()
@@ -688,6 +696,93 @@ fn interpret_probe_region_evidence_preserves_shared_transcript_ambiguity() {
             && tx.unique_evidence_count == 0
             && tx.relationship_summary == "only_shared_compatible_evidence"
     }));
+}
+
+#[test]
+fn interpret_probe_region_evidence_reports_junction_spanning_geometry() {
+    let mut engine = microarray_anchored_engine("hg38", "+");
+    let dna = engine
+        .state_mut()
+        .sequences
+        .get_mut("array_slice")
+        .expect("array slice");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "track".into(),
+        location: gb_io::seq::Location::simple_range(20, 70),
+        qualifiers: vec![
+            ("gentle_track_source".into(), Some("Array".to_string())),
+            (
+                "gentle_array_dataset".into(),
+                Some("probe_region_output".to_string()),
+            ),
+            ("gentle_array_level".into(), Some("pm_probe".to_string())),
+            (
+                "gentle_array_feature_id".into(),
+                Some("probe_junction".to_string()),
+            ),
+            (
+                "gentle_array_parent_feature_id".into(),
+                Some("PSR_J".to_string()),
+            ),
+            (
+                "gentle_array_intensity_source".into(),
+                Some("probe_level_input".to_string()),
+            ),
+            (
+                "gentle_array_contrast".into(),
+                Some("TAp73-AdGFP".to_string()),
+            ),
+            ("logFC".into(), Some("1.200".to_string())),
+            ("chromosome".into(), Some("chr1".to_string())),
+        ],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(10, 28),
+            gb_io::seq::Location::simple_range(60, 80),
+        ]),
+        qualifiers: vec![
+            ("gene".into(), Some("PATZ1".to_string())),
+            ("transcript_id".into(), Some("PATZ1-201".to_string())),
+            ("label".into(), Some("PATZ1-201".to_string())),
+            ("strand".into(), Some("+".to_string())),
+        ],
+    });
+
+    let result = engine
+        .apply(Operation::InterpretProbeRegionEvidence {
+            seq_id: "array_slice".to_string(),
+            gene_label: Some("PATZ1".to_string()),
+            level: Some("pm_probe".to_string()),
+            min_abs_logfc: Some(0.5),
+            path: None,
+        })
+        .expect("interpret projected junction-spanning evidence");
+    let report = result
+        .probe_region_evidence_interpretation
+        .expect("interpretation report");
+    assert_eq!(report.array_feature_count, 1);
+    assert_eq!(report.transcript_count, 1);
+    let row = &report.evidence_rows[0];
+    assert_eq!(row.feature_id, "probe_junction");
+    assert_eq!(row.mapping_status, "unique_multi_exon_overlap");
+    assert_eq!(row.transcript_mappings.len(), 1);
+    let mapping = &row.transcript_mappings[0];
+    assert_eq!(mapping.transcript_id, "PATZ1-201");
+    assert_eq!(mapping.mapping_kind, "junction_spanning_exon_overlap");
+    assert_eq!(mapping.exon_ordinals, vec![1, 2]);
+    assert_eq!(
+        mapping.exon_ranges_1based,
+        vec!["11..28".to_string(), "61..80".to_string()]
+    );
+    assert_eq!(mapping.overlap_bp, 18);
+    assert_eq!(mapping.junction_spans.len(), 1);
+    let junction = &mapping.junction_spans[0];
+    assert_eq!(junction.from_exon_ordinal, 1);
+    assert_eq!(junction.to_exon_ordinal, 2);
+    assert_eq!(junction.genomic_start_1based, 29);
+    assert_eq!(junction.genomic_end_1based, 60);
 }
 
 #[test]

@@ -109,7 +109,8 @@ use crate::{
         PrimerDesignBackend, PrimerDesignBaseLock, PrimerDesignPairConstraint,
         PrimerDesignProgress, PrimerDesignReport, PrimerDesignSideConstraint,
         PrimerSpecificityPolicy, ProbeRegionAptImportReport,
-        ProbeRegionEvidenceInterpretationReport, ProbeRegionOutputInspection,
+        ProbeRegionEvidenceInterpretationReport, ProbeRegionEvidenceTranscriptMapping,
+        ProbeRegionOutputInspection,
         PromoterEvidenceMatrixReport, PromoterEvidenceMatrixRow, PromoterExpressionEvidenceInput,
         PromoterExpressionEvidenceReport, PromoterReporterCandidateSet, PromoterWindowCollapseMode,
         ProtocolCartoonPreviewTelemetry, QpcrDesignReport,
@@ -7890,6 +7891,65 @@ impl MainAreaDna {
         format!("{}{}", shown.join(", "), suffix)
     }
 
+    fn probe_region_mapping_preview(
+        mappings: &[ProbeRegionEvidenceTranscriptMapping],
+    ) -> String {
+        if mappings.is_empty() {
+            return "none".to_string();
+        }
+        let shown = mappings
+            .iter()
+            .take(4)
+            .map(|mapping| {
+                let exons = if mapping.exon_ordinals.is_empty() {
+                    "none".to_string()
+                } else {
+                    mapping
+                        .exon_ordinals
+                        .iter()
+                        .map(|ordinal| ordinal.to_string())
+                        .collect::<Vec<_>>()
+                        .join("/")
+                };
+                let junctions = if mapping.junction_spans.is_empty() {
+                    String::new()
+                } else {
+                    let spans = mapping
+                        .junction_spans
+                        .iter()
+                        .take(2)
+                        .map(|span| {
+                            format!(
+                                "{}->{}:{}..{}",
+                                span.from_exon_ordinal,
+                                span.to_exon_ordinal,
+                                span.genomic_start_1based,
+                                span.genomic_end_1based
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                        .join("/");
+                    let suffix = if mapping.junction_spans.len() > 2 {
+                        format!("+{}", mapping.junction_spans.len() - 2)
+                    } else {
+                        String::new()
+                    };
+                    format!(" junctions={spans}{suffix}")
+                };
+                format!(
+                    "{}:{} exons={}{}",
+                    mapping.transcript_id, mapping.mapping_kind, exons, junctions
+                )
+            })
+            .collect::<Vec<_>>();
+        let suffix = if mappings.len() > shown.len() {
+            format!(" (+{} more)", mappings.len() - shown.len())
+        } else {
+            String::new()
+        };
+        format!("{}{}", shown.join("; "), suffix)
+    }
+
     fn optional_probe_region_text(value: &str) -> Option<String> {
         let trimmed = value.trim();
         if trimmed.is_empty() {
@@ -8385,12 +8445,13 @@ impl MainAreaDna {
                             report.seq_id.as_str(),
                         ))
                         .striped(true)
-                        .num_columns(7)
+                        .num_columns(8)
                         .show(ui, |ui| {
                             ui.strong("evidence");
                             ui.strong("level");
                             ui.strong("logFC");
                             ui.strong("mapping");
+                            ui.strong("geometry");
                             ui.strong("transcripts");
                             ui.strong("ambiguity");
                             ui.strong("relationship");
@@ -8404,6 +8465,9 @@ impl MainAreaDna {
                                         .unwrap_or_else(|| "-".to_string()),
                                 );
                                 ui.small(&row.mapping_status);
+                                ui.small(Self::probe_region_mapping_preview(
+                                    &row.transcript_mappings,
+                                ));
                                 ui.small(Self::probe_region_preview_list(
                                     &row.overlapping_transcript_ids,
                                 ));
