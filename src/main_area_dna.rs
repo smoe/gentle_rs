@@ -108,7 +108,8 @@ use crate::{
         OpResult, Operation, OperationProgress, PairwiseAlignmentMode, PcrPrimerSpec,
         PrimerDesignBackend, PrimerDesignBaseLock, PrimerDesignPairConstraint,
         PrimerDesignProgress, PrimerDesignReport, PrimerDesignSideConstraint,
-        PrimerSpecificityPolicy, ProbeRegionAptImportReport, ProbeRegionOutputInspection,
+        PrimerSpecificityPolicy, ProbeRegionAptImportReport,
+        ProbeRegionEvidenceInterpretationReport, ProbeRegionOutputInspection,
         PromoterEvidenceMatrixReport, PromoterEvidenceMatrixRow, PromoterExpressionEvidenceInput,
         PromoterExpressionEvidenceReport, PromoterReporterCandidateSet, PromoterWindowCollapseMode,
         ProtocolCartoonPreviewTelemetry, QpcrDesignReport,
@@ -625,6 +626,14 @@ struct EngineOpsUiState {
     probe_region_projection_max_features: String,
     #[serde(default)]
     probe_region_projection_clear_existing: bool,
+    #[serde(default)]
+    probe_region_interpretation_gene_label: String,
+    #[serde(default)]
+    probe_region_interpretation_level: String,
+    #[serde(default)]
+    probe_region_interpretation_min_abs_logfc: String,
+    #[serde(default = "default_probe_region_interpretation_output_path")]
+    probe_region_interpretation_output_path: String,
     #[serde(default = "default_true")]
     tfbs_display_use_llr_bits: bool,
     #[serde(default = "default_zero_f64")]
@@ -745,6 +754,10 @@ fn default_rmsk_max_features_text() -> String {
 
 fn default_probe_region_projection_max_features_text() -> String {
     "5000".to_string()
+}
+
+fn default_probe_region_interpretation_output_path() -> String {
+    "analysis/probe_regions/probe_region_interpretation.json".to_string()
 }
 
 fn default_poly_t_prefix_min_bp_text() -> String {
@@ -1390,10 +1403,15 @@ pub struct MainAreaDna {
     probe_region_projection_min_abs_logfc: String,
     probe_region_projection_max_features: String,
     probe_region_projection_clear_existing: bool,
+    probe_region_interpretation_gene_label: String,
+    probe_region_interpretation_level: String,
+    probe_region_interpretation_min_abs_logfc: String,
+    probe_region_interpretation_output_path: String,
     cached_cutrun_regulatory_support: Option<CutRunRegulatorySupportReport>,
     cached_probe_region_apt_import: Option<ProbeRegionAptImportReport>,
     cached_probe_region_output_inspection: Option<ProbeRegionOutputInspection>,
     cached_probe_region_projection: Option<MicroarrayProjectionReport>,
+    cached_probe_region_interpretation: Option<ProbeRegionEvidenceInterpretationReport>,
     cached_restriction_site_scan: Option<RestrictionSiteScanReport>,
     cached_tfbs_hit_scan: Option<TfbsHitScanReport>,
     cached_tfbs_score_tracks: Option<TfbsScoreTrackReport>,
@@ -2081,10 +2099,16 @@ impl MainAreaDna {
             probe_region_projection_min_abs_logfc: String::new(),
             probe_region_projection_max_features: default_probe_region_projection_max_features_text(),
             probe_region_projection_clear_existing: false,
+            probe_region_interpretation_gene_label: String::new(),
+            probe_region_interpretation_level: "all".to_string(),
+            probe_region_interpretation_min_abs_logfc: String::new(),
+            probe_region_interpretation_output_path:
+                default_probe_region_interpretation_output_path(),
             cached_cutrun_regulatory_support: None,
             cached_probe_region_apt_import: None,
             cached_probe_region_output_inspection: None,
             cached_probe_region_projection: None,
+            cached_probe_region_interpretation: None,
             cached_restriction_site_scan: None,
             cached_tfbs_hit_scan: None,
             cached_tfbs_score_tracks: None,
@@ -7929,6 +7953,7 @@ impl MainAreaDna {
                     self.cached_probe_region_apt_import = None;
                     self.cached_probe_region_output_inspection = None;
                     self.cached_probe_region_projection = None;
+                    self.cached_probe_region_interpretation = None;
                     self.op_status =
                         "APT probe-region import completed without an import payload".to_string();
                     return;
@@ -7946,6 +7971,7 @@ impl MainAreaDna {
                         self.cached_probe_region_output_inspection =
                             Some(import.inspection.clone());
                         self.cached_probe_region_projection = None;
+                        self.cached_probe_region_interpretation = None;
                         self.op_status = format!(
                             "APT probe-region output imported to '{}' ({} region rows, {} probe rows, {} missing annotation, {} skipped{})",
                             output_dir,
@@ -7962,6 +7988,7 @@ impl MainAreaDna {
                         self.cached_probe_region_apt_import = None;
                         self.cached_probe_region_output_inspection = None;
                         self.cached_probe_region_projection = None;
+                        self.cached_probe_region_interpretation = None;
                         self.op_status =
                             format!("Could not decode APT import payload: {err}");
                     }
@@ -7971,6 +7998,7 @@ impl MainAreaDna {
                 self.cached_probe_region_apt_import = None;
                 self.cached_probe_region_output_inspection = None;
                 self.cached_probe_region_projection = None;
+                self.cached_probe_region_interpretation = None;
                 self.op_status = format!("APT probe-region import failed: {err}");
             }
         }
@@ -7986,6 +8014,7 @@ impl MainAreaDna {
             self.op_status = "Probe-region output directory is empty".to_string();
             self.cached_probe_region_output_inspection = None;
             self.cached_probe_region_projection = None;
+            self.cached_probe_region_interpretation = None;
             return;
         }
 
@@ -8002,6 +8031,7 @@ impl MainAreaDna {
                 let Some(value) = run.output.get("inspection").cloned() else {
                     self.cached_probe_region_output_inspection = None;
                     self.cached_probe_region_projection = None;
+                    self.cached_probe_region_interpretation = None;
                     self.op_status =
                         "Probe-region inspection completed without an inspection payload"
                             .to_string();
@@ -8019,11 +8049,13 @@ impl MainAreaDna {
                             inspection.row_count, inspection.feature_count
                         );
                         self.cached_probe_region_output_inspection = Some(inspection);
+                        self.cached_probe_region_interpretation = None;
                         self.save_engine_ops_state();
                     }
                     Err(err) => {
                         self.cached_probe_region_output_inspection = None;
                         self.cached_probe_region_projection = None;
+                        self.cached_probe_region_interpretation = None;
                         self.op_status =
                             format!("Could not decode probe-region inspection payload: {err}");
                     }
@@ -8032,6 +8064,7 @@ impl MainAreaDna {
             Err(err) => {
                 self.cached_probe_region_output_inspection = None;
                 self.cached_probe_region_projection = None;
+                self.cached_probe_region_interpretation = None;
                 self.op_status = format!("Probe-region inspection failed: {err}");
             }
         }
@@ -8146,6 +8179,7 @@ impl MainAreaDna {
             Ok(run) => {
                 let Some(value) = run.output.get("result").cloned() else {
                     self.cached_probe_region_projection = None;
+                    self.cached_probe_region_interpretation = None;
                     self.op_status =
                         "Probe-region projection completed without an OpResult payload"
                             .to_string();
@@ -8171,9 +8205,11 @@ impl MainAreaDna {
                                 report.skipped_rows
                             );
                             self.cached_probe_region_projection = Some(report);
+                            self.cached_probe_region_interpretation = None;
                             self.save_engine_ops_state();
                         } else {
                             self.cached_probe_region_projection = None;
+                            self.cached_probe_region_interpretation = None;
                             self.op_status =
                                 "Probe-region projection completed without a projection report"
                                     .to_string();
@@ -8181,6 +8217,7 @@ impl MainAreaDna {
                     }
                     Err(err) => {
                         self.cached_probe_region_projection = None;
+                        self.cached_probe_region_interpretation = None;
                         self.op_status =
                             format!("Could not decode probe-region projection payload: {err}");
                     }
@@ -8188,9 +8225,244 @@ impl MainAreaDna {
             }
             Err(err) => {
                 self.cached_probe_region_projection = None;
+                self.cached_probe_region_interpretation = None;
                 self.op_status = format!("Probe-region projection failed: {err}");
             }
         }
+    }
+
+    fn interpret_probe_region_evidence_for_current_sequence(&mut self) {
+        let Some(engine) = self.engine.clone() else {
+            self.op_status = "No engine attached".to_string();
+            return;
+        };
+        let seq_id = if self.probe_region_projection_seq_id.trim().is_empty() {
+            self.seq_id.clone().unwrap_or_default()
+        } else {
+            self.probe_region_projection_seq_id.trim().to_string()
+        };
+        if seq_id.is_empty() {
+            self.op_status = "Probe-region interpretation target sequence ID is empty".to_string();
+            return;
+        }
+        let min_abs_logfc = match Self::parse_optional_f64_text(
+            &self.probe_region_interpretation_min_abs_logfc,
+            "probe-region interpretation min |log2FC|",
+        ) {
+            Ok(Some(value)) if value.is_finite() && value >= 0.0 => Some(value),
+            Ok(Some(_)) => {
+                self.op_status =
+                    "Invalid probe-region interpretation min |log2FC|: expected a finite value >= 0"
+                        .to_string();
+                return;
+            }
+            Ok(None) => None,
+            Err(message) => {
+                self.op_status = message;
+                return;
+            }
+        };
+        let output_path =
+            Self::optional_probe_region_text(&self.probe_region_interpretation_output_path);
+        let command = ShellCommand::ArraysInterpretProbeRegionEvidence {
+            seq_id: seq_id.clone(),
+            gene_label: Self::optional_probe_region_text(
+                &self.probe_region_interpretation_gene_label,
+            ),
+            level: Self::optional_probe_region_text(&self.probe_region_interpretation_level),
+            min_abs_logfc,
+            path: output_path.clone(),
+        };
+        let outcome = {
+            let mut guard = engine.write().expect("Engine lock poisoned");
+            let options = ShellExecutionOptions::from_env();
+            execute_shell_command_with_options(&mut guard, &command, &options)
+        };
+        match outcome {
+            Ok(run) => {
+                let Some(value) = run.output.get("result").cloned() else {
+                    self.cached_probe_region_interpretation = None;
+                    self.op_status =
+                        "Probe-region interpretation completed without an OpResult payload"
+                            .to_string();
+                    return;
+                };
+                match serde_json::from_value::<OpResult>(value) {
+                    Ok(result) => {
+                        let report = result.probe_region_evidence_interpretation.clone();
+                        if let Some(report) = report {
+                            let warnings = if report.warnings.is_empty() {
+                                String::new()
+                            } else {
+                                format!(
+                                    "; warnings: {}",
+                                    Self::probe_region_preview_list(&report.warnings)
+                                )
+                            };
+                            let output = output_path
+                                .as_deref()
+                                .map(|path| format!("; wrote {path}"))
+                                .unwrap_or_default();
+                            self.probe_region_projection_seq_id = seq_id;
+                            self.cached_probe_region_interpretation = Some(report.clone());
+                            self.op_status = format!(
+                                "Probe-region evidence interpreted: {} array feature(s), {} transcript model(s), {} evidence row(s){}{}",
+                                report.array_feature_count,
+                                report.transcript_count,
+                                report.evidence_rows.len(),
+                                output,
+                                warnings
+                            );
+                            self.save_engine_ops_state();
+                        } else {
+                            self.cached_probe_region_interpretation = None;
+                            self.op_status =
+                                "Probe-region interpretation completed without a report"
+                                    .to_string();
+                        }
+                    }
+                    Err(err) => {
+                        self.cached_probe_region_interpretation = None;
+                        self.op_status =
+                            format!("Could not decode probe-region interpretation payload: {err}");
+                    }
+                }
+            }
+            Err(err) => {
+                self.cached_probe_region_interpretation = None;
+                self.op_status = format!("Probe-region interpretation failed: {err}");
+            }
+        }
+    }
+
+    fn render_probe_region_interpretation_summary_panel(
+        &self,
+        ui: &mut egui::Ui,
+        report: &ProbeRegionEvidenceInterpretationReport,
+    ) {
+        ui.add_space(4.0);
+        ui.group(|ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.label(egui::RichText::new("Interpretation report").strong());
+                ui.small(format!("schema: {}", report.schema));
+            });
+            ui.small(format!(
+                "seq_id: {} | gene: {} | level: {} | min |log2FC|: {}",
+                report.seq_id,
+                report.gene_label.as_deref().unwrap_or("all"),
+                report.level,
+                report
+                    .min_abs_logfc
+                    .map(|value| format!("{value:.3}"))
+                    .unwrap_or_else(|| "-".to_string())
+            ));
+            ui.small(format!(
+                "array features: {} | transcript models: {} | evidence rows: {} | transcript rows: {}",
+                report.array_feature_count,
+                report.transcript_count,
+                report.evidence_rows.len(),
+                report.transcript_rows.len()
+            ));
+            if !report.warnings.is_empty() {
+                ui.small(
+                    egui::RichText::new(format!(
+                        "warnings: {}",
+                        Self::probe_region_preview_list(&report.warnings)
+                    ))
+                    .color(egui::Color32::from_rgb(180, 83, 9)),
+                );
+            }
+
+            if !report.evidence_rows.is_empty() {
+                ui.add_space(4.0);
+                ui.label(egui::RichText::new("Evidence geometry").strong());
+                egui::ScrollArea::vertical()
+                    .id_salt(("probe_region_interpretation_evidence", report.seq_id.as_str()))
+                    .max_height(150.0)
+                    .show(ui, |ui| {
+                        egui::Grid::new((
+                            "probe_region_interpretation_evidence_grid",
+                            report.seq_id.as_str(),
+                        ))
+                        .striped(true)
+                        .num_columns(7)
+                        .show(ui, |ui| {
+                            ui.strong("evidence");
+                            ui.strong("level");
+                            ui.strong("logFC");
+                            ui.strong("mapping");
+                            ui.strong("transcripts");
+                            ui.strong("ambiguity");
+                            ui.strong("relationship");
+                            ui.end_row();
+                            for row in report.evidence_rows.iter().take(24) {
+                                ui.small(&row.evidence_id);
+                                ui.small(&row.level);
+                                ui.small(
+                                    row.logfc
+                                        .map(|value| format!("{value:.3}"))
+                                        .unwrap_or_else(|| "-".to_string()),
+                                );
+                                ui.small(&row.mapping_status);
+                                ui.small(Self::probe_region_preview_list(
+                                    &row.overlapping_transcript_ids,
+                                ));
+                                ui.small(Self::probe_region_preview_list(&row.ambiguity_tags));
+                                ui.small(&row.relationship);
+                                ui.end_row();
+                            }
+                        });
+                    });
+                if report.evidence_rows.len() > 24 {
+                    ui.small(format!(
+                        "{} additional evidence row(s) hidden in this preview",
+                        report.evidence_rows.len() - 24
+                    ));
+                }
+            }
+
+            if !report.transcript_rows.is_empty() {
+                ui.add_space(4.0);
+                ui.label(egui::RichText::new("Transcript geometry summary").strong());
+                egui::ScrollArea::vertical()
+                    .id_salt(("probe_region_interpretation_transcripts", report.seq_id.as_str()))
+                    .max_height(150.0)
+                    .show(ui, |ui| {
+                        egui::Grid::new((
+                            "probe_region_interpretation_transcript_grid",
+                            report.seq_id.as_str(),
+                        ))
+                        .striped(true)
+                        .num_columns(7)
+                        .show(ui, |ui| {
+                            ui.strong("transcript");
+                            ui.strong("exons");
+                            ui.strong("compatible");
+                            ui.strong("shared");
+                            ui.strong("unique");
+                            ui.strong("constraining");
+                            ui.strong("summary");
+                            ui.end_row();
+                            for row in report.transcript_rows.iter().take(24) {
+                                ui.small(&row.transcript_id);
+                                ui.small(row.exon_count.to_string());
+                                ui.small(row.compatible_evidence_count.to_string());
+                                ui.small(row.shared_evidence_count.to_string());
+                                ui.small(row.unique_evidence_count.to_string());
+                                ui.small(row.constraining_evidence_count.to_string());
+                                ui.small(&row.relationship_summary);
+                                ui.end_row();
+                            }
+                        });
+                    });
+                if report.transcript_rows.len() > 24 {
+                    ui.small(format!(
+                        "{} additional transcript row(s) hidden in this preview",
+                        report.transcript_rows.len() - 24
+                    ));
+                }
+            }
+        });
     }
 
     fn render_probe_region_output_inspection_panel(&mut self, ui: &mut egui::Ui) {
@@ -8405,6 +8677,7 @@ impl MainAreaDna {
             self.cached_probe_region_apt_import = None;
             self.cached_probe_region_output_inspection = None;
             self.cached_probe_region_projection = None;
+            self.cached_probe_region_interpretation = None;
             self.save_engine_ops_state();
         }
         let mut svg_output_changed = false;
@@ -8452,6 +8725,7 @@ impl MainAreaDna {
             {
                 projection_fields_changed = true;
                 self.cached_probe_region_projection = None;
+                self.cached_probe_region_interpretation = None;
             }
             if ui
                 .button("Use current")
@@ -8461,6 +8735,7 @@ impl MainAreaDna {
                 self.probe_region_projection_seq_id = self.seq_id.clone().unwrap_or_default();
                 projection_fields_changed = true;
                 self.cached_probe_region_projection = None;
+                self.cached_probe_region_interpretation = None;
             }
         });
         ui.horizontal_wrapped(|ui| {
@@ -8475,6 +8750,7 @@ impl MainAreaDna {
             {
                 projection_fields_changed = true;
                 self.cached_probe_region_projection = None;
+                self.cached_probe_region_interpretation = None;
             }
             let inspected_logfc_tracks = self
                 .cached_probe_region_output_inspection
@@ -8492,6 +8768,7 @@ impl MainAreaDna {
                 self.probe_region_projection_contrasts = inspected_logfc_tracks.join(",");
                 projection_fields_changed = true;
                 self.cached_probe_region_projection = None;
+                self.cached_probe_region_interpretation = None;
             }
         });
         ui.horizontal_wrapped(|ui| {
@@ -8506,6 +8783,7 @@ impl MainAreaDna {
             {
                 projection_fields_changed = true;
                 self.cached_probe_region_projection = None;
+                self.cached_probe_region_interpretation = None;
             }
             if ui
                 .button("PM probes")
@@ -8515,6 +8793,7 @@ impl MainAreaDna {
                 self.probe_region_projection_level = "pm_probe".to_string();
                 projection_fields_changed = true;
                 self.cached_probe_region_projection = None;
+                self.cached_probe_region_interpretation = None;
             }
             if ui
                 .button("Regions")
@@ -8524,6 +8803,7 @@ impl MainAreaDna {
                 self.probe_region_projection_level = "probe_region".to_string();
                 projection_fields_changed = true;
                 self.cached_probe_region_projection = None;
+                self.cached_probe_region_interpretation = None;
             }
         });
         ui.horizontal_wrapped(|ui| {
@@ -8540,6 +8820,7 @@ impl MainAreaDna {
             {
                 projection_fields_changed = true;
                 self.cached_probe_region_projection = None;
+                self.cached_probe_region_interpretation = None;
             }
             ui.label("max features");
             if ui
@@ -8554,6 +8835,7 @@ impl MainAreaDna {
             {
                 projection_fields_changed = true;
                 self.cached_probe_region_projection = None;
+                self.cached_probe_region_interpretation = None;
             }
             if ui
                 .checkbox(
@@ -8565,6 +8847,7 @@ impl MainAreaDna {
             {
                 projection_fields_changed = true;
                 self.cached_probe_region_projection = None;
+                self.cached_probe_region_interpretation = None;
             }
         });
         if projection_fields_changed {
@@ -8614,6 +8897,116 @@ impl MainAreaDna {
                     .color(egui::Color32::from_rgb(180, 83, 9)),
                 );
             }
+        }
+
+        ui.add_space(4.0);
+        ui.separator();
+        ui.label(egui::RichText::new("Interpret projected evidence").strong());
+        let mut interpretation_fields_changed = false;
+        ui.horizontal_wrapped(|ui| {
+            ui.label("gene");
+            if ui
+                .add(
+                    egui::TextEdit::singleline(&mut self.probe_region_interpretation_gene_label)
+                        .desired_width(120.0),
+                )
+                .on_hover_text("Optional gene label used to filter transcript models")
+                .changed()
+            {
+                interpretation_fields_changed = true;
+            }
+            ui.label("level");
+            if ui
+                .add(
+                    egui::TextEdit::singleline(&mut self.probe_region_interpretation_level)
+                        .desired_width(110.0),
+                )
+                .on_hover_text("Interpretation level: all, probe_region, or pm_probe")
+                .changed()
+            {
+                interpretation_fields_changed = true;
+            }
+            if ui
+                .button("All")
+                .on_hover_text("Interpret all projected probe-region output features")
+                .clicked()
+            {
+                self.probe_region_interpretation_level = "all".to_string();
+                interpretation_fields_changed = true;
+            }
+            if ui
+                .button("PM probes")
+                .on_hover_text("Interpret only projected PM probe features")
+                .clicked()
+            {
+                self.probe_region_interpretation_level = "pm_probe".to_string();
+                interpretation_fields_changed = true;
+            }
+            if ui
+                .button("Regions")
+                .on_hover_text("Interpret only projected probeset/region features")
+                .clicked()
+            {
+                self.probe_region_interpretation_level = "probe_region".to_string();
+                interpretation_fields_changed = true;
+            }
+        });
+        ui.horizontal_wrapped(|ui| {
+            ui.label("min |log2FC|");
+            if ui
+                .add(
+                    egui::TextEdit::singleline(
+                        &mut self.probe_region_interpretation_min_abs_logfc,
+                    )
+                    .desired_width(80.0),
+                )
+                .on_hover_text("Optional absolute log2 fold-change threshold for interpretation")
+                .changed()
+            {
+                interpretation_fields_changed = true;
+            }
+            ui.label("json_output");
+            if ui
+                .add_sized(
+                    [ui.available_width().min(360.0), 0.0],
+                    egui::TextEdit::singleline(
+                        &mut self.probe_region_interpretation_output_path,
+                    ),
+                )
+                .on_hover_text("Optional JSON report path; empty keeps the report in the GUI cache only")
+                .changed()
+            {
+                interpretation_fields_changed = true;
+            }
+        });
+        if interpretation_fields_changed {
+            self.cached_probe_region_interpretation = None;
+            self.save_engine_ops_state();
+        }
+        let interpretation_enabled = !self.probe_region_projection_seq_id.trim().is_empty()
+            || self.seq_id.as_deref().is_some_and(|seq_id| !seq_id.trim().is_empty());
+        ui.horizontal_wrapped(|ui| {
+            if ui
+                .add_enabled(
+                    interpretation_enabled,
+                    egui::Button::new("Interpret evidence"),
+                )
+                .on_hover_text(
+                    "Run arrays interpret-probe-region-evidence through the shared shell executor",
+                )
+                .clicked()
+            {
+                self.interpret_probe_region_evidence_for_current_sequence();
+            }
+            if self.cached_probe_region_projection.is_none() {
+                ui.small(
+                    egui::RichText::new("Projection must already exist on the target sequence.")
+                        .color(egui::Color32::from_rgb(100, 116, 139)),
+                );
+            }
+        });
+        if let Some(report) = self.cached_probe_region_interpretation.as_ref() {
+            self.render_probe_region_interpretation_summary_panel(ui, report);
         }
 
         let Some(report) = self.cached_probe_region_output_inspection.as_ref() else {
@@ -17915,6 +18308,9 @@ impl MainAreaDna {
         if let Some(report) = result.cutrun_regulatory_support.as_ref() {
             self.cached_cutrun_regulatory_support = Some(report.clone());
         }
+        if let Some(report) = result.probe_region_evidence_interpretation.as_ref() {
+            self.cached_probe_region_interpretation = Some(report.clone());
+        }
         if !result.created_seq_ids.is_empty() {
             self.last_created_seq_ids = result.created_seq_ids.clone();
             self.export_pool_inputs_text = self.last_created_seq_ids.join(", ");
@@ -21841,6 +22237,16 @@ impl MainAreaDna {
                 .probe_region_projection_max_features
                 .clone(),
             probe_region_projection_clear_existing: self.probe_region_projection_clear_existing,
+            probe_region_interpretation_gene_label: self
+                .probe_region_interpretation_gene_label
+                .clone(),
+            probe_region_interpretation_level: self.probe_region_interpretation_level.clone(),
+            probe_region_interpretation_min_abs_logfc: self
+                .probe_region_interpretation_min_abs_logfc
+                .clone(),
+            probe_region_interpretation_output_path: self
+                .probe_region_interpretation_output_path
+                .clone(),
             tfbs_display_use_llr_bits: tfbs_display.use_llr_bits,
             tfbs_display_min_llr_bits: tfbs_display.min_llr_bits,
             tfbs_display_use_llr_quantile: tfbs_display.use_llr_quantile,
@@ -22171,6 +22577,21 @@ impl MainAreaDna {
                 s.probe_region_projection_max_features
             };
         self.probe_region_projection_clear_existing = s.probe_region_projection_clear_existing;
+        self.probe_region_interpretation_gene_label = s.probe_region_interpretation_gene_label;
+        self.probe_region_interpretation_level =
+            if s.probe_region_interpretation_level.trim().is_empty() {
+                "all".to_string()
+            } else {
+                s.probe_region_interpretation_level
+            };
+        self.probe_region_interpretation_min_abs_logfc =
+            s.probe_region_interpretation_min_abs_logfc;
+        self.probe_region_interpretation_output_path =
+            if s.probe_region_interpretation_output_path.trim().is_empty() {
+                default_probe_region_interpretation_output_path()
+            } else {
+                s.probe_region_interpretation_output_path
+            };
         self.cached_restriction_site_scan = None;
         self.cached_tfbs_hit_scan = None;
         self.cached_tfbs_score_tracks = None;
@@ -22179,6 +22600,7 @@ impl MainAreaDna {
         self.cached_probe_region_apt_import = None;
         self.cached_probe_region_output_inspection = None;
         self.cached_probe_region_projection = None;
+        self.cached_probe_region_interpretation = None;
         self.vcf_display_required_info_keys = s.vcf_display_required_info_keys;
         self.isoform_panel_path = s.isoform_panel_path;
         self.isoform_panel_id = s.isoform_panel_id;

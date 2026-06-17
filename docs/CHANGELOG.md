@@ -31,6 +31,9 @@ Maintenance rule:
   `InterpretProbeRegionEvidence` to compare projected probe/probeset-region
   array features with transcript/exon geometry while preserving shared
   transcript, multi-hit, and coordinate-projection ambiguity.
+- Added first-class sequence-window controls to run and preview
+  `InterpretProbeRegionEvidence` reports from the Clariom D / probe-region
+  evidence panel, including bounded evidence and transcript geometry tables.
 
 ## 2026-06-16
 

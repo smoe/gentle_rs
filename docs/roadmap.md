@@ -180,10 +180,11 @@ broad crate surgery that is not tied to the selected release story.
   `probe_level_input` into genome-anchored array features. The first read-only
   `InterpretProbeRegionEvidence` report now compares projected array features
   with transcript/exon geometry and records shared transcript, parent probeset,
-  multi-hit-not-assessed, and coordinate-projection ambiguity. Future work
-  should add explicit probe/probeset-to-exon/junction/transcript mapping and
-  audited interpretation scores before identifying compatible splice isoforms
-  or ruling out incompatible ones.
+  multi-hit-not-assessed, and coordinate-projection ambiguity; the
+  sequence-window GUI panel can run and preview that report after projection.
+  Future work should add explicit probe/probeset-to-exon/junction/transcript
+  mapping and audited interpretation scores before identifying compatible
+  splice isoforms or ruling out incompatible ones.
 
 ## Phase D: Visualization And Workflow UX
 

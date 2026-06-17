@@ -17,7 +17,8 @@ use crate::{
         DotplotOverlayXAxisMode, DotplotView, EditableStatus, Engine, EvidenceClass,
         FlexibilityModel, FlexibilityTrack, GentleEngine, LinearSequenceLetterLayoutMode, OpResult,
         Operation, PairwiseAlignmentMode, PrimerDesignBackend, PrimerDesignPairConstraint,
-        PrimerDesignProgress, PrimerDesignSideConstraint, ProjectState,
+        PrimerDesignProgress, PrimerDesignSideConstraint, ProbeRegionEvidenceInterpretationReport,
+        ProjectState,
         PromoterExpressionEvidenceInput, PromoterReporterCandidateSet,
         ProtocolCartoonPreviewTelemetry, QpcrTranscriptSpecificityEvidence,
         QpcrTranscriptTargeting, QpcrTranscriptTargetingMode, RestrictionCloningPcrHandoffMode,
@@ -4274,6 +4275,15 @@ fn handle_operation_success_captures_protocol_cartoon_preview_payload() {
         insert_bp: 6,
         bindings: pcr_oe_substitution_geometry_bindings(64, 29, 6),
     };
+    let interpretation = ProbeRegionEvidenceInterpretationReport {
+        schema: "gentle.probe_region_evidence_interpretation.v1".to_string(),
+        seq_id: "array_slice".to_string(),
+        gene_label: Some("PATZ1".to_string()),
+        level: "pm_probe".to_string(),
+        array_feature_count: 1,
+        transcript_count: 2,
+        ..Default::default()
+    };
     area.handle_operation_success(
         super::OpResult {
             op_id: "op-preview".to_string(),
@@ -4309,7 +4319,7 @@ fn handle_operation_success_captures_protocol_cartoon_preview_payload() {
             cutrun_regulatory_support: None,
             read_acquisition_report: None,
             microarray_projection: None,
-            probe_region_evidence_interpretation: None,
+            probe_region_evidence_interpretation: Some(interpretation.clone()),
             genome_coordinate_projection: None,
             rna_read_gene_support_summary: None,
             rna_read_gene_support_audit: None,
@@ -4366,6 +4376,13 @@ fn handle_operation_success_captures_protocol_cartoon_preview_payload() {
     assert_eq!(captured.flank_bp, 64);
     assert_eq!(captured.overlap_bp, 29);
     assert_eq!(captured.insert_bp, 6);
+    let cached = area
+        .cached_probe_region_interpretation
+        .as_ref()
+        .expect("cached probe-region interpretation");
+    assert_eq!(cached.seq_id, "array_slice");
+    assert_eq!(cached.gene_label.as_deref(), Some("PATZ1"));
+    assert_eq!(cached.level, "pm_probe");
 }
 
 #[test]

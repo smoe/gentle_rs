@@ -3046,6 +3046,9 @@ The `Help` menu now includes:
   `arrays project-probe-region-output` route. Projection level is explicit:
   `probe_region` keeps the existing probeset/region behavior, while
   `pm_probe` projects only true probe-level rows marked as `probe_level_input`.
+  After projection, the panel can run `arrays interpret-probe-region-evidence`
+  and preview the resulting engine-owned evidence/transcript geometry report
+  without invoking R/APT or changing the projected features.
 
 ## microRNA Target Scan
 
