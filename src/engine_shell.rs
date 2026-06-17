@@ -1588,6 +1588,7 @@ pub enum ShellCommand {
         seq_id: String,
         output_dir: String,
         contrasts: Vec<String>,
+        level: Option<String>,
         min_abs_logfc: Option<f64>,
         max_features: Option<usize>,
         clear_existing: bool,
@@ -8273,11 +8274,12 @@ impl ShellCommand {
                 seq_id,
                 output_dir,
                 contrasts,
+                level,
                 min_abs_logfc,
                 max_features,
                 clear_existing,
             } => format!(
-                "project probe-region helper output '{}' into '{}' (contrasts={}, min_abs_logfc={}, max_features={}, clear_existing={})",
+                "project probe-region helper output '{}' into '{}' (contrasts={}, level={}, min_abs_logfc={}, max_features={}, clear_existing={})",
                 output_dir,
                 seq_id,
                 if contrasts.is_empty() {
@@ -8285,6 +8287,7 @@ impl ShellCommand {
                 } else {
                     contrasts.join(",")
                 },
+                level.as_deref().unwrap_or("probe_region"),
                 min_abs_logfc
                     .map(|value| format!("{value:.3}"))
                     .unwrap_or_else(|| "-".to_string()),
@@ -24053,7 +24056,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 "project-probe-region-output" => {
                     if tokens.len() < 4 {
                         return Err(
-                            "arrays project-probe-region-output requires SEQ_ID OUTPUT_DIR [--contrasts CSV] [--min-abs-logfc N] [--max-features N] [--clear-existing]"
+                            "arrays project-probe-region-output requires SEQ_ID OUTPUT_DIR [--contrasts CSV] [--level probe_region|pm_probe] [--min-abs-logfc N] [--max-features N] [--clear-existing]"
                                 .to_string(),
                         );
                     }
@@ -24066,6 +24069,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     }
                     let output_dir = tokens[3].clone();
                     let mut contrasts = Vec::new();
+                    let mut level = None;
                     let mut min_abs_logfc = None;
                     let mut max_features = None;
                     let mut clear_existing = false;
@@ -24078,6 +24082,14 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                                     return Err("Missing CSV after --contrasts".to_string());
                                 }
                                 contrasts.extend(split_csv_tokens_with_empty_error(&tokens[idx])?);
+                                idx += 1;
+                            }
+                            "--level" | "--projection-level" | "--projection_level" => {
+                                idx += 1;
+                                if idx >= tokens.len() {
+                                    return Err("Missing LEVEL after --level".to_string());
+                                }
+                                level = Some(tokens[idx].clone());
                                 idx += 1;
                             }
                             "--min-abs-logfc" | "--min-abs-logFC" => {
@@ -24129,6 +24141,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         seq_id,
                         output_dir,
                         contrasts,
+                        level,
                         min_abs_logfc,
                         max_features,
                         clear_existing,
@@ -29464,6 +29477,7 @@ fn execute_reference_and_track_command(
             seq_id,
             output_dir,
             contrasts,
+            level,
             min_abs_logfc,
             max_features,
             clear_existing,
@@ -29473,6 +29487,7 @@ fn execute_reference_and_track_command(
                     seq_id: seq_id.clone(),
                     output_dir: output_dir.clone(),
                     contrasts: contrasts.clone(),
+                    level: level.clone(),
                     min_abs_logfc: *min_abs_logfc,
                     max_features: *max_features,
                     clear_existing: Some(*clear_existing),

@@ -19359,6 +19359,7 @@ impl GentleEngine {
                     seq_id,
                     output_dir,
                     contrasts,
+                    level,
                     min_abs_logfc,
                     max_features,
                     clear_existing,
@@ -19381,6 +19382,7 @@ impl GentleEngine {
                         &seq_id,
                         &output_dir,
                         &contrasts,
+                        level.as_deref(),
                         min_abs_logfc,
                         max_features,
                         clear_existing.unwrap_or(false),
@@ -19389,11 +19391,12 @@ impl GentleEngine {
                     result.changed_seq_ids.push(seq_id.clone());
                     result.warnings.extend(report.warnings.clone());
                     result.messages.push(format!(
-                        "Projected {} probe-region helper feature(s) into '{}' from '{}' (platform={}, contrasts={}, anchor={} {}:{}-{} strand {}, parsed={}, skipped={})",
+                        "Projected {} probe-region helper feature(s) into '{}' from '{}' (platform={}, level={}, contrasts={}, anchor={} {}:{}-{} strand {}, parsed={}, skipped={})",
                         report.imported_features,
                         seq_id,
                         output_dir,
                         report.platform,
+                        report.level,
                         report.projected_contrasts.join(","),
                         report.anchor_genome_id,
                         report.anchor_chromosome,

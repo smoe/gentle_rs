@@ -18,6 +18,9 @@ Maintenance rule:
   `arrays import-apt-probe-region-output` and the Clariom D GUI panel, with
   probe-level sample, condition-summary, and logFC columns preserved in
   `probe_intensity_chrom_order.csv`.
+- Added `--level pm_probe` projection for probe-region helper outputs, so true
+  PM probe rows marked `probe_level_input` can become genome-anchored array
+  features without promoting parent-summary fallback rows.
 
 ## 2026-06-16
 

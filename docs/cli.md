@@ -2075,9 +2075,9 @@ Shared shell command:
     - `arrays inspect-microarray-track MANIFEST`
     - `arrays project-microarray-track SEQ_ID MANIFEST [--contrasts CSV] [--level probeset] [--min-abs-logfc N] [--max-adj-p N] [--max-features N] [--clear-existing]`
     - `arrays inspect-probe-region-output OUTPUT_DIR`
-    - `arrays import-apt-probe-region-output SUMMARY.tsv ANNOTATION.csv OUTPUT_DIR [--metadata PATH] [--condition-column NAME] [--sample-column NAME] [--platform NAME] [--normalization NAME] [--coordinate-system ID] [--genome-build ID]`
+    - `arrays import-apt-probe-region-output SUMMARY.tsv ANNOTATION.csv OUTPUT_DIR [--metadata PATH] [--condition-column NAME] [--sample-column NAME] [--probe-intensity PATH] [--probe-id-column NAME] [--platform NAME] [--normalization NAME] [--coordinate-system ID] [--genome-build ID]`
     - `arrays render-probe-region-output-svg OUTPUT_DIR OUTPUT.svg`
-    - `arrays project-probe-region-output SEQ_ID OUTPUT_DIR [--contrasts CSV] [--min-abs-logfc N] [--max-features N] [--clear-existing]`
+    - `arrays project-probe-region-output SEQ_ID OUTPUT_DIR [--contrasts CSV] [--level probe_region|pm_probe] [--min-abs-logfc N] [--max-features N] [--clear-existing]`
     - `arrays probe-regions (--cel PATH ... | --dataset ID) (--gene SYMBOL|--genes CSV|--locus LOCUS|--loci CSV|--transcript-cluster-id ID|--probeset-id ID ...) [--metadata PATH] [--platform NAME] [--annotation-library PATH] [--condition-column NAME] [--sample-column NAME] [--block-column NAME] [--paired-by-replicate-suffix] [--normalization rma|quantile-feature|none] [--plot] [--output DIR] [--cache-dir DIR] [--dry-run]`
     - `macros run [--transactional] [--file PATH | SCRIPT_OR_@FILE]`
     - `macros instance-list`
@@ -3677,13 +3677,17 @@ Tutorial companion:
     plots `mean_log2_*` condition tracks in the upper panel and `log2FC_*`
     tracks in the lower panel, using the existing chromosome-ordered helper
     table and reporting projection blockers without running R/APT.
-- `arrays project-probe-region-output grch38_tp73 analysis/probe_regions --contrasts TAp73-AdGFP --min-abs-logfc 0.5`
+- `arrays project-probe-region-output grch38_tp73 analysis/probe_regions --contrasts TAp73-AdGFP --level pm_probe --min-abs-logfc 0.5`
   - Projects direct-coordinate-compatible or explicitly mapped `log2FC_*`
     helper-output rows into genome-anchored array features on the target
-    sequence. The route refuses projection unless the helper output declares
-    `coordinate_system`/`genome_build` compatible with the target sequence
-    anchor, or a `coordinate_projections[]`/`projection_maps[]` interval map
-    whose source and target builds match the helper output and anchor.
+    sequence. Default `--level probe_region` projects
+    `region_intensity_chrom_order.csv`; `--level pm_probe` projects only true
+    PM probe rows from `probe_intensity_chrom_order.csv` marked as
+    `probe_level_input`. The route refuses projection unless the helper output
+    declares `coordinate_system`/`genome_build` compatible with the target
+    sequence anchor, or a `coordinate_projections[]`/`projection_maps[]`
+    interval map whose source and target builds match the helper output and
+    anchor.
 - `resources sync-ucsc-rmsk INPUT.rmsk.txt_or_txt.gz [OUTPUT.rmsk.json] [--assembly DB] [--limit N]`
   - Normalizes the UCSC RepeatMasker `rmsk` table into
     `gentle.ucsc_rmsk_resource.v1`.

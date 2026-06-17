@@ -6979,7 +6979,7 @@ fn parse_arrays_microarray_track_commands() {
     ));
 
     let project_probe_output = parse_shell_line(
-        "arrays project-probe-region-output array_slice analysis/probe_regions --contrasts TAp73-AdGFP --min-abs-logfc 0.5 --max-features 25 --clear-existing",
+        "arrays project-probe-region-output array_slice analysis/probe_regions --contrasts TAp73-AdGFP --level pm_probe --min-abs-logfc 0.5 --max-features 25 --clear-existing",
     )
     .expect("parse project probe output");
     match project_probe_output {
@@ -6987,6 +6987,7 @@ fn parse_arrays_microarray_track_commands() {
             seq_id,
             output_dir,
             contrasts,
+            level,
             min_abs_logfc,
             max_features,
             clear_existing,
@@ -6994,6 +6995,7 @@ fn parse_arrays_microarray_track_commands() {
             assert_eq!(seq_id, "array_slice");
             assert_eq!(output_dir, "analysis/probe_regions");
             assert_eq!(contrasts, vec!["TAp73-AdGFP".to_string()]);
+            assert_eq!(level.as_deref(), Some("pm_probe"));
             assert_eq!(min_abs_logfc, Some(0.5));
             assert_eq!(max_features, Some(25));
             assert!(clear_existing);

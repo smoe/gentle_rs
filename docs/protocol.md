@@ -2401,12 +2401,16 @@ Microarray track projection notes:
 - `arrays project-probe-region-output SEQ_ID OUTPUT_DIR` projects selected or
   all `log2FC_*` helper-output rows into the existing genome-anchored array
   feature model (`gentle_array_*` qualifiers and
-  `gentle.microarray_projection_report.v1`). The route accepts direct
-  coordinate compatibility when the helper output's declared
-  `coordinate_system` or `genome_build` matches the target sequence anchor
-  genome id, or an explicit `coordinate_projections[]`/`projection_maps[]`
-  interval-map entry whose source matches the helper coordinate/build and whose
-  target matches the anchor genome id.
+  `gentle.microarray_projection_report.v1`). Default `--level probe_region`
+  reads `region_intensity_chrom_order.csv`; `--level pm_probe` reads
+  `probe_intensity_chrom_order.csv` and only projects rows explicitly marked
+  `probe_level_input`, preserving parent probeset ids and intensity-source
+  qualifiers on the generated features. The route accepts direct coordinate
+  compatibility when the helper output's declared `coordinate_system` or
+  `genome_build` matches the target sequence anchor genome id, or an explicit
+  `coordinate_projections[]`/`projection_maps[]` interval-map entry whose
+  source matches the helper coordinate/build and whose target matches the
+  anchor genome id.
 - manifests may also include `coordinate_projections[]` entries with
   `source_genome_id`, `target_genome_id`, `method`, and `path`. These paths
   point at tab-delimited interval maps for build-to-build projection, currently

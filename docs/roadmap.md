@@ -176,10 +176,11 @@ broad crate surgery that is not tied to the selected release story.
 - Clariom D and splice-isoform evidence need an engine-owned interpretation
   layer beyond the current prepared-track projection. Current explicit APT
   imports can preserve supplied PM probe-level intensity matrices in
-  `probe_intensity_chrom_order.csv`; future work should use those mapped
-  probe oligos/probesets with explicit build, liftover, multi-hit, and
-  ambiguity provenance to identify compatible splice isoforms and rule out
-  incompatible ones without hiding uncertain evidence.
+  `probe_intensity_chrom_order.csv` and project rows marked
+  `probe_level_input` into genome-anchored array features; future work should
+  use those mapped probe oligos/probesets with explicit build, liftover,
+  multi-hit, and ambiguity provenance to identify compatible splice isoforms
+  and rule out incompatible ones without hiding uncertain evidence.
 
 ## Phase D: Visualization And Workflow UX
 

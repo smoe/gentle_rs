@@ -2959,6 +2959,8 @@ pub enum Operation {
         #[serde(default)]
         contrasts: Vec<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        level: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         min_abs_logfc: Option<f64>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         max_features: Option<usize>,

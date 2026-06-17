@@ -77,6 +77,8 @@ struct ProbeRegionProjectionRow {
     end_1based: usize,
     strand: Option<char>,
     feature_id: String,
+    parent_feature_id: Option<String>,
+    intensity_source: Option<String>,
     transcript_cluster_id: Option<String>,
     gene_symbol: Option<String>,
     logfc_values: BTreeMap<String, f64>,
@@ -1310,6 +1312,7 @@ impl GentleEngine {
         seq_id: &str,
         output_dir: &str,
         contrasts: &[String],
+        level: Option<&str>,
         min_abs_logfc: Option<f64>,
         max_features: Option<usize>,
         clear_existing: bool,
@@ -1400,6 +1403,7 @@ impl GentleEngine {
                 cause_chain: vec![],
             });
         }
+        let projection_level = Self::probe_region_projection_level(level)?;
         let feature_limit = max_features.unwrap_or(MAX_IMPORTED_SIGNAL_FEATURES);
         if feature_limit == 0 {
             return Err(EngineError {
@@ -1410,9 +1414,26 @@ impl GentleEngine {
             });
         }
 
-        let region_table_path = Path::new(output_dir).join(PROBE_REGION_TABLE_FILE);
+        let region_table_path = Path::new(output_dir).join(match projection_level.as_str() {
+            "pm_probe" => PROBE_REGION_PROBE_TABLE_FILE,
+            _ => PROBE_REGION_TABLE_FILE,
+        });
         let (rows, available_contrasts, parse_warnings) =
-            Self::probe_region_projection_rows_from_table(&region_table_path)?;
+            Self::probe_region_projection_rows_from_table(&region_table_path, &projection_level)?;
+        if rows.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: if projection_level == "pm_probe" {
+                    format!(
+                        "Probe-region output '{}' has no projectable PM probe rows marked as probe_level_input",
+                        output_dir
+                    )
+                } else {
+                    format!("Probe-region output '{}' has no projectable rows", output_dir)
+                },
+                cause_chain: vec![],
+            });
+        }
         let requested_contrasts = contrasts
             .iter()
             .map(|contrast| contrast.trim())
@@ -1481,7 +1502,7 @@ impl GentleEngine {
             anchor_strand: anchor.strand.unwrap_or('+').to_string(),
             requested_contrasts,
             projected_contrasts: selected_contrasts.clone(),
-            level: "probe_region".to_string(),
+            level: projection_level.clone(),
             parsed_rows: rows.len(),
             warnings: parse_warnings,
             ..Default::default()
@@ -1584,6 +1605,7 @@ impl GentleEngine {
                     contrast,
                     &native_row,
                     &row,
+                    &projection_level,
                     projected_interval.as_ref(),
                     logfc,
                     local_start_0based,
@@ -3125,14 +3147,21 @@ impl GentleEngine {
 
     fn probe_region_projection_rows_from_table(
         path: &Path,
+        projection_level: &str,
     ) -> Result<(Vec<ProbeRegionProjectionRow>, Vec<String>, Vec<String>), EngineError> {
+        let table_label = if projection_level == "pm_probe" {
+            "Probe-intensity table"
+        } else {
+            "Probe-region table"
+        };
         let mut reader = csv::ReaderBuilder::new()
             .trim(csv::Trim::All)
             .from_path(path)
             .map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!(
-                    "Could not open probe-region table '{}': {e}",
+                    "Could not open {} '{}': {e}",
+                    table_label.to_ascii_lowercase(),
                     path.to_string_lossy()
                 ),
                 cause_chain: vec![],
@@ -3141,7 +3170,7 @@ impl GentleEngine {
             .headers()
             .map_err(|e| EngineError {
                 code: ErrorCode::InvalidInput,
-                message: format!("Could not read probe-region table header: {e}"),
+                message: format!("Could not read {} header: {e}", table_label.to_ascii_lowercase()),
                 cause_chain: vec![],
             })?
             .iter()
@@ -3151,14 +3180,14 @@ impl GentleEngine {
             Self::probe_region_metadata_column_index(&headers, None, &["chromosome", "chrom"])
                 .ok_or_else(|| EngineError {
                     code: ErrorCode::InvalidInput,
-                    message: "Probe-region table is missing chromosome column".to_string(),
+                    message: format!("{table_label} is missing chromosome column"),
                     cause_chain: vec![],
                 })?;
         let start_idx =
             Self::probe_region_metadata_column_index(&headers, None, &["start", "start_1based"])
                 .ok_or_else(|| EngineError {
                     code: ErrorCode::InvalidInput,
-                    message: "Probe-region table is missing start column".to_string(),
+                    message: format!("{table_label} is missing start column"),
                     cause_chain: vec![],
                 })?;
         let stop_idx = Self::probe_region_metadata_column_index(
@@ -3168,24 +3197,40 @@ impl GentleEngine {
         )
         .ok_or_else(|| EngineError {
             code: ErrorCode::InvalidInput,
-            message: "Probe-region table is missing stop column".to_string(),
+            message: format!("{table_label} is missing stop column"),
             cause_chain: vec![],
         })?;
-        let feature_idx = Self::probe_region_metadata_column_index(
+        let feature_idx = if projection_level == "pm_probe" {
+            Self::probe_region_metadata_column_index(&headers, None, &["probe_id", "probe"])
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: "Probe-intensity table is missing probe_id column".to_string(),
+                    cause_chain: vec![],
+                })?
+        } else {
+            Self::probe_region_metadata_column_index(
+                &headers,
+                None,
+                &[
+                    "probeset_or_region_id",
+                    "feature_id",
+                    "probeset_id",
+                    "psr_id",
+                ],
+            )
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Probe-region table is missing probeset_or_region_id column".to_string(),
+                cause_chain: vec![],
+            })?
+        };
+        let parent_idx = Self::probe_region_metadata_column_index(
             &headers,
             None,
-            &[
-                "probeset_or_region_id",
-                "feature_id",
-                "probeset_id",
-                "psr_id",
-            ],
-        )
-        .ok_or_else(|| EngineError {
-            code: ErrorCode::InvalidInput,
-            message: "Probe-region table is missing probeset_or_region_id column".to_string(),
-            cause_chain: vec![],
-        })?;
+            &["parent_probeset_or_region_id", "parent_probeset_id", "probeset_id"],
+        );
+        let intensity_source_idx =
+            Self::probe_region_metadata_column_index(&headers, None, &["intensity_source"]);
         let strand_idx =
             Self::probe_region_metadata_column_index(&headers, None, &["strand", "orientation"]);
         let transcript_idx = Self::probe_region_metadata_column_index(
@@ -3204,7 +3249,7 @@ impl GentleEngine {
         if logfc_indices.is_empty() {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
-                message: "Probe-region table has no log2FC_* columns to project".to_string(),
+                message: format!("{table_label} has no log2FC_* columns to project"),
                 cause_chain: vec![],
             });
         }
@@ -3214,13 +3259,25 @@ impl GentleEngine {
             .collect::<Vec<_>>();
         let mut rows = Vec::new();
         let mut warnings = Vec::new();
+        let mut skipped_non_probe_input = 0usize;
         for (line_offset, record) in reader.records().enumerate() {
             let record = record.map_err(|e| EngineError {
                 code: ErrorCode::InvalidInput,
-                message: format!("Could not read probe-region row: {e}"),
+                message: format!("Could not read {} row: {e}", table_label.to_ascii_lowercase()),
                 cause_chain: vec![],
             })?;
             let line_no = line_offset + 2;
+            let intensity_source = intensity_source_idx
+                .and_then(|idx| record.get(idx))
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string);
+            if projection_level == "pm_probe"
+                && intensity_source.as_deref() != Some("probe_level_input")
+            {
+                skipped_non_probe_input += 1;
+                continue;
+            }
             let chromosome = record.get(chromosome_idx).unwrap_or("").trim().to_string();
             let start_1based = record
                 .get(start_idx)
@@ -3255,6 +3312,11 @@ impl GentleEngine {
                 .and_then(|value| value.trim().chars().next())
                 .filter(|value| matches!(value, '+' | '-'));
             let feature_id = record.get(feature_idx).unwrap_or("").trim().to_string();
+            let parent_feature_id = parent_idx
+                .and_then(|idx| record.get(idx))
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string);
             let transcript_cluster_id = transcript_idx
                 .and_then(|idx| record.get(idx))
                 .map(str::trim)
@@ -3280,10 +3342,18 @@ impl GentleEngine {
                 end_1based,
                 strand,
                 feature_id,
+                parent_feature_id,
+                intensity_source,
                 transcript_cluster_id,
                 gene_symbol,
                 logfc_values,
             });
+        }
+        if skipped_non_probe_input > 0 {
+            warnings.push(format!(
+                "{} PM probe table row(s) were skipped because intensity_source was not probe_level_input",
+                skipped_non_probe_input
+            ));
         }
         Ok((rows, available_contrasts, warnings))
     }
@@ -3296,6 +3366,7 @@ impl GentleEngine {
         contrast: &str,
         native_row: &ProbeRegionProjectionRow,
         row: &ProbeRegionProjectionRow,
+        projection_level: &str,
         projection: Option<&ProjectedGenomeInterval>,
         logfc: f64,
         local_start_0based: usize,
@@ -3399,7 +3470,7 @@ impl GentleEngine {
             ("gentle_array_contrast".into(), Some(contrast.to_string())),
             (
                 "gentle_array_level".into(),
-                Some("probe_region".to_string()),
+                Some(projection_level.to_string()),
             ),
             ("chromosome".into(), Some(row.chromosome.clone())),
             ("start_1based".into(), Some(row.start_1based.to_string())),
@@ -3437,6 +3508,15 @@ impl GentleEngine {
                 "gentle_array_feature_id".into(),
                 Some(row.feature_id.clone()),
             ));
+        }
+        if let Some(value) = &row.parent_feature_id {
+            qualifiers.push((
+                "gentle_array_parent_feature_id".into(),
+                Some(value.clone()),
+            ));
+        }
+        if let Some(value) = &row.intensity_source {
+            qualifiers.push(("gentle_array_intensity_source".into(), Some(value.clone())));
         }
         if let Some(value) = &row.transcript_cluster_id {
             qualifiers.push(("transcript_cluster_id".into(), Some(value.clone())));
@@ -3485,6 +3565,28 @@ impl GentleEngine {
             .or_else(|| header.strip_prefix("log2FC_"))
             .unwrap_or(header)
             .replace('_', " ")
+    }
+
+    fn probe_region_projection_level(level: Option<&str>) -> Result<String, EngineError> {
+        let normalized = level
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("probe_region")
+            .replace('-', "_")
+            .to_ascii_lowercase();
+        match normalized.as_str() {
+            "probe_region" | "region" | "probeset" | "probeset_region" | "psr" => {
+                Ok("probe_region".to_string())
+            }
+            "pm_probe" | "probe" | "probe_level" | "pm" => Ok("pm_probe".to_string()),
+            other => Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "ProjectProbeRegionOutput level '{other}' is not supported; use probe_region or pm_probe"
+                ),
+                cause_chain: vec![],
+            }),
+        }
     }
 
     fn probe_region_parse_plot_value(value: &str) -> Option<f64> {

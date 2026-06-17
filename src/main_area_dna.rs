@@ -616,6 +616,8 @@ struct EngineOpsUiState {
     #[serde(default)]
     probe_region_projection_contrasts: String,
     #[serde(default)]
+    probe_region_projection_level: String,
+    #[serde(default)]
     probe_region_projection_min_abs_logfc: String,
     #[serde(default = "default_probe_region_projection_max_features_text")]
     probe_region_projection_max_features: String,
@@ -1382,6 +1384,7 @@ pub struct MainAreaDna {
     probe_region_svg_output_path: String,
     probe_region_projection_seq_id: String,
     probe_region_projection_contrasts: String,
+    probe_region_projection_level: String,
     probe_region_projection_min_abs_logfc: String,
     probe_region_projection_max_features: String,
     probe_region_projection_clear_existing: bool,
@@ -2074,6 +2077,7 @@ impl MainAreaDna {
                 .to_string(),
             probe_region_projection_seq_id: seq_id_for_defaults.clone().unwrap_or_default(),
             probe_region_projection_contrasts: String::new(),
+            probe_region_projection_level: "probe_region".to_string(),
             probe_region_projection_min_abs_logfc: String::new(),
             probe_region_projection_max_features: default_probe_region_projection_max_features_text(),
             probe_region_projection_clear_existing: false,
@@ -8127,6 +8131,7 @@ impl MainAreaDna {
             seq_id: seq_id.clone(),
             output_dir: output_dir.clone(),
             contrasts: Self::parse_ids(&self.probe_region_projection_contrasts),
+            level: Self::optional_probe_region_text(&self.probe_region_projection_level),
             min_abs_logfc,
             max_features,
             clear_existing: self.probe_region_projection_clear_existing,
@@ -8490,6 +8495,38 @@ impl MainAreaDna {
             }
         });
         ui.horizontal_wrapped(|ui| {
+            ui.label("level");
+            if ui
+                .add(
+                    egui::TextEdit::singleline(&mut self.probe_region_projection_level)
+                        .desired_width(120.0),
+                )
+                .on_hover_text("Projection level: probe_region or pm_probe")
+                .changed()
+            {
+                projection_fields_changed = true;
+                self.cached_probe_region_projection = None;
+            }
+            if ui
+                .button("PM probes")
+                .on_hover_text("Project true PM probe-level rows from probe_intensity_chrom_order.csv")
+                .clicked()
+            {
+                self.probe_region_projection_level = "pm_probe".to_string();
+                projection_fields_changed = true;
+                self.cached_probe_region_projection = None;
+            }
+            if ui
+                .button("Regions")
+                .on_hover_text("Project probeset/region rows from region_intensity_chrom_order.csv")
+                .clicked()
+            {
+                self.probe_region_projection_level = "probe_region".to_string();
+                projection_fields_changed = true;
+                self.cached_probe_region_projection = None;
+            }
+        });
+        ui.horizontal_wrapped(|ui| {
             ui.label("min |log2FC|");
             if ui
                 .add(
@@ -8562,9 +8599,10 @@ impl MainAreaDna {
         });
         if let Some(report) = self.cached_probe_region_projection.as_ref() {
             ui.small(format!(
-                "last projection: {} imported, {} skipped, contrasts: {}",
+                "last projection: {} imported, {} skipped, level: {}, contrasts: {}",
                 report.imported_features,
                 report.skipped_rows,
+                report.level,
                 Self::probe_region_preview_list(&report.projected_contrasts)
             ));
             if !report.warnings.is_empty() {
@@ -21904,6 +21942,7 @@ impl MainAreaDna {
             probe_region_svg_output_path: self.probe_region_svg_output_path.clone(),
             probe_region_projection_seq_id: self.probe_region_projection_seq_id.clone(),
             probe_region_projection_contrasts: self.probe_region_projection_contrasts.clone(),
+            probe_region_projection_level: self.probe_region_projection_level.clone(),
             probe_region_projection_min_abs_logfc: self
                 .probe_region_projection_min_abs_logfc
                 .clone(),
@@ -22228,6 +22267,11 @@ impl MainAreaDna {
             s.probe_region_projection_seq_id
         };
         self.probe_region_projection_contrasts = s.probe_region_projection_contrasts;
+        self.probe_region_projection_level = if s.probe_region_projection_level.trim().is_empty() {
+            "probe_region".to_string()
+        } else {
+            s.probe_region_projection_level
+        };
         self.probe_region_projection_min_abs_logfc = s.probe_region_projection_min_abs_logfc;
         self.probe_region_projection_max_features =
             if s.probe_region_projection_max_features.trim().is_empty() {

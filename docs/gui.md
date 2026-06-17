@@ -3033,7 +3033,9 @@ The `Help` menu now includes:
   native SVG plot from `mean_log2_*` and `log2FC_*` helper-table columns, then
   project direct-compatible or explicitly mapped helper output into
   genome-anchored array features through the shared
-  `arrays project-probe-region-output` route.
+  `arrays project-probe-region-output` route. Projection level is explicit:
+  `probe_region` keeps the existing probeset/region behavior, while
+  `pm_probe` projects only true probe-level rows marked as `probe_level_input`.
 
 ## microRNA Target Scan
 

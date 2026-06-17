@@ -178,6 +178,16 @@ fn write_probe_region_projection_fixture(out: &Path) {
     )
     .expect("probe-region table");
     fs::write(
+        out.join("probe_intensity_chrom_order.csv"),
+        concat!(
+            "chromosome,start,stop,strand,probe_id,x,y,parent_probeset_or_region_id,transcript_cluster_id,gene_symbol,intensity_source,mean_log2_AdGFP,mean_log2_TAp73,log2FC_TAp73-AdGFP\n",
+            "chr1,1011,1028,+,probe_1,10,20,PSR1,TC1,PATZ1,probe_level_input,5.0,6.0,1.0\n",
+            "chr1,1012,1029,+,probe_2,11,20,PSR1,TC1,PATZ1,parent_probeset_summary,8.1,9.2,1.1\n",
+            "chr1,1061,1078,+,probe_3,12,21,PSR2,TC1,PATZ1,probe_level_input,3.0,3.2,0.2\n"
+        ),
+    )
+    .expect("probe-intensity table");
+    fs::write(
         out.join("normalized_feature_matrix_manifest.json"),
         r#"{
   "schema": "gentle.probe_region_normalized_matrix_manifest.v1",
@@ -186,7 +196,7 @@ fn write_probe_region_projection_fixture(out: &Path) {
   "coordinate_system": "hg38",
   "genome_build": "GRCh38",
   "normalization": "rma",
-  "targets": ["probeset"],
+  "targets": ["probeset", "pm_probe"],
   "artifacts": []
 }"#,
     )
@@ -473,6 +483,7 @@ fn project_probe_region_output_direct_anchor_materializes_array_features() {
             seq_id: "array_slice".to_string(),
             output_dir: output_dir.to_string_lossy().to_string(),
             contrasts: vec!["TAp73-AdGFP".to_string()],
+            level: None,
             min_abs_logfc: Some(0.5),
             max_features: Some(10),
             clear_existing: Some(true),
@@ -526,6 +537,62 @@ fn project_probe_region_output_direct_anchor_materializes_array_features() {
 }
 
 #[test]
+fn project_probe_region_output_pm_probe_level_materializes_true_probe_features() {
+    let temp = tempdir().expect("tempdir");
+    let output_dir = temp.path().join("probe_regions");
+    write_probe_region_projection_fixture(&output_dir);
+    let mut engine = microarray_anchored_engine("hg38", "+");
+
+    let result = engine
+        .apply(Operation::ProjectProbeRegionOutput {
+            seq_id: "array_slice".to_string(),
+            output_dir: output_dir.to_string_lossy().to_string(),
+            contrasts: vec!["TAp73-AdGFP".to_string()],
+            level: Some("pm_probe".to_string()),
+            min_abs_logfc: Some(0.5),
+            max_features: Some(10),
+            clear_existing: Some(true),
+        })
+        .expect("project PM probe helper output");
+    let report = result.microarray_projection.expect("projection report");
+    assert_eq!(report.level, "pm_probe");
+    assert_eq!(report.parsed_rows, 2);
+    assert_eq!(report.imported_features, 1);
+    assert_eq!(report.skipped_filter, 1);
+    assert!(report.warnings.iter().any(|warning| warning
+        .contains("intensity_source was not probe_level_input")));
+
+    let dna = engine.state().sequences.get("array_slice").unwrap();
+    let array_features = dna
+        .features()
+        .iter()
+        .filter(|feature| {
+            first_qualifier(feature, "gentle_track_source").as_deref() == Some("Array")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(array_features.len(), 1);
+    let feature = array_features[0];
+    assert_eq!(
+        first_qualifier(feature, "gentle_array_level").as_deref(),
+        Some("pm_probe")
+    );
+    assert_eq!(
+        first_qualifier(feature, "feature_id").as_deref(),
+        Some("probe_1")
+    );
+    assert_eq!(
+        first_qualifier(feature, "gentle_array_parent_feature_id").as_deref(),
+        Some("PSR1")
+    );
+    assert_eq!(
+        first_qualifier(feature, "gentle_array_intensity_source").as_deref(),
+        Some("probe_level_input")
+    );
+    assert_eq!(first_qualifier(feature, "logFC").as_deref(), Some("1.000"));
+    assert_eq!(feature.location.find_bounds().unwrap(), (10, 28));
+}
+
+#[test]
 fn project_probe_region_output_uses_declared_coordinate_projection_map() {
     let temp = tempdir().expect("tempdir");
     let output_dir = temp.path().join("probe_regions_projected");
@@ -543,6 +610,7 @@ fn project_probe_region_output_uses_declared_coordinate_projection_map() {
             seq_id: "array_slice".to_string(),
             output_dir: output_dir.to_string_lossy().to_string(),
             contrasts: vec!["TAp73-AdGFP".to_string()],
+            level: None,
             min_abs_logfc: Some(0.5),
             max_features: Some(10),
             clear_existing: Some(true),
@@ -602,6 +670,7 @@ fn project_probe_region_output_rejects_anchor_coordinate_mismatch() {
             seq_id: "array_slice".to_string(),
             output_dir: output_dir.to_string_lossy().to_string(),
             contrasts: vec![],
+            level: None,
             min_abs_logfc: None,
             max_features: Some(10),
             clear_existing: Some(true),
