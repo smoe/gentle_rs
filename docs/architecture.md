@@ -98,6 +98,8 @@ Sequence collection subject rule (target model):
 - GUI, CLI, JS, Lua, Python, MCP, and agent routes must call the same lifted
   engine/shell operation path. Adapters must not implement their own hidden
   per-member loops with different readiness, error, or provenance behavior.
+- Detailed implementation plan:
+  `docs/gui_gene_set_collection_operations_plan.md`.
 
 Primer/oligo identity rule (target model):
 

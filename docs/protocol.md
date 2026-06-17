@@ -776,6 +776,9 @@ CLI/shared-shell, MCP, JS, Lua, Python, and agent routes can expose the same
 readiness, errors, results, and provenance instead of each adapter looping over
 single-sequence behavior independently.
 
+Detailed implementation plan:
+[`gui_gene_set_collection_operations_plan.md`](gui_gene_set_collection_operations_plan.md).
+
 Collection semantics stay explicit:
 
 | Collection subject | Meaning | Typical producers | Typical projections |

@@ -14,6 +14,9 @@ Maintenance rule:
 
 ## 2026-06-17
 
+- Documented sequence collection subjects as the shared model for gene sets,
+  pools, arrangements, alignments, derived collections, and storage projections,
+  with a GUI implementation plan for adapter-parity operation lifting.
 - Completed gene-set cohort relationship support by deriving evaluated-only
   CUT&RUN occupancy consistency flags for declared co-regulated and
   anti-co-regulated promoter cohorts.

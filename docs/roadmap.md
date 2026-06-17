@@ -266,3 +266,5 @@ wet-lab conclusions or unconfirmed mutations.
 - Weekly/monthly maintenance chore automation rollout from
   [`maintenance_chore_plan.md`](maintenance_chore_plan.md).
 - Browser/WebAssembly frontend portability after core/headless contracts settle.
+- GUI gene-set/collection operation lifting per
+  [`gui_gene_set_collection_operations_plan.md`](gui_gene_set_collection_operations_plan.md).

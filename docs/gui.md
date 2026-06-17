@@ -394,6 +394,8 @@ The project main window (lineage page) supports two views:
   the GUI should collect the collection operand, show per-member and aggregate
   readiness/errors/results, and call the same named operation or shell route
   that CLI/MCP/agent surfaces can invoke.
+- Detailed implementation plan:
+  [`gui_gene_set_collection_operations_plan.md`](gui_gene_set_collection_operations_plan.md).
 - Operations offered for a collection should expose the engine-declared lifting
   behavior in their controls and result view:
   - map per member
