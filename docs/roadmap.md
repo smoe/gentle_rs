@@ -198,10 +198,9 @@ fixtures, and scroll/zoom hardening when they fit the selected release story. Us
 work here improves inspection clarity, deterministic exports, contextual links
 to evidence records, and manual-smoke reliability; defer large visual redesigns
 unrelated to the next release aim.
-- Evidence-viewer follow-up: make Clariom D probe/probeset evidence and
-  splice-isoform constraints inspectable together, so a user can see which
-  oligos, exons, junctions, and mapped intervals support, constrain, or exclude
-  each transcript isoform.
+- Evidence-viewer follow-up: reuse the audited Clariom D probe/probeset
+  interpretation records in richer splicing/feature-detail views before any
+  future UI labels transcript isoforms as supported, constrained, or excluded.
 - External-services GUI follow-up: keep the window a thin inspector over the
   shared provider/preflight/quote contracts, then improve product-specific
   starter templates, validation previews, and exported-bundle review affordances
