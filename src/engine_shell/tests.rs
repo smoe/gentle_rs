@@ -18,7 +18,7 @@ use crate::engine::{
     ConstructObjective, ConstructRole, Container, ContainerKind, CutRunAlignConfig,
     CutRunCoverageKind, CutRunInputFormat, CutRunReadLayout, CutRunSeedFilterConfig, DisplayTarget,
     EditableStatus, ExonSkipReturnKind, InlineSequenceTopology, PrimerDesignProgress,
-    PromoterTfbsGeneQuery, ProteinExternalOpinionSource, ProteinFeatureFilter,
+    PromoterCohortKind, PromoterTfbsGeneQuery, ProteinExternalOpinionSource, ProteinFeatureFilter,
     QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargetingMode, Rack, RackAuthoringTemplate,
     RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset, RackOccupant,
     RackPhysicalTemplateKind, RackPlacementEntry, RackProfileKind, RackProfileSnapshot,
@@ -20174,6 +20174,62 @@ fn parse_genomes_promoter_tfbs_summary_with_multiple_gene_specs() {
 }
 
 #[test]
+fn parse_genomes_promoter_cohort_comparison_with_expression_and_cutrun_sources() {
+    let cmd = parse_shell_line(
+        r#"genomes promoter-cohort-comparison ToyGenome --cohort-label tp73_demo --cohort-kind co_regulated --source-seq-id tp73_context --gene POS1@TX_POS --gene NEG1::2@TX_NEG#NEG1_panel --motif SP1 --motifs TP73,BACH2 --expression-json '{"gene_label":"POS1","condition":"case","value":12.5,"unit":"TPM"}' --source-label rna_demo --cutrun-dataset-id cutrun_demo --cutrun-read-report-id reads_demo --upstream-bp 750 --downstream-bp 80 --score-kind llr_background_tail_log10 --catalog c.json --cache-dir cache --path cohort.json"#,
+    )
+    .expect("parse genomes promoter-cohort-comparison");
+    match cmd {
+        ShellCommand::ReferencePromoterCohortComparison {
+            helper_mode,
+            genome_id,
+            source_seq_ids,
+            cohort_label,
+            cohort_kind,
+            genes,
+            motifs,
+            expression_rows,
+            expression_source_label,
+            cutrun_dataset_ids,
+            cutrun_read_report_ids,
+            upstream_bp,
+            downstream_bp,
+            score_kind,
+            catalog_path,
+            cache_dir,
+            path,
+            ..
+        } => {
+            assert!(!helper_mode);
+            assert_eq!(genome_id, "ToyGenome");
+            assert_eq!(source_seq_ids, vec!["tp73_context".to_string()]);
+            assert_eq!(cohort_label, "tp73_demo");
+            assert_eq!(cohort_kind, PromoterCohortKind::CoRegulated);
+            assert_eq!(genes.len(), 2);
+            assert_eq!(genes[0].transcript_id.as_deref(), Some("TX_POS"));
+            assert_eq!(genes[1].display_label.as_deref(), Some("NEG1_panel"));
+            assert_eq!(
+                motifs,
+                vec!["SP1".to_string(), "TP73".to_string(), "BACH2".to_string()]
+            );
+            assert_eq!(expression_rows.len(), 1);
+            assert_eq!(expression_rows[0].gene_label.as_deref(), Some("POS1"));
+            assert_eq!(expression_rows[0].value, 12.5);
+            assert_eq!(expression_source_label.as_deref(), Some("rna_demo"));
+            assert_eq!(cutrun_dataset_ids, vec!["cutrun_demo".to_string()]);
+            assert_eq!(cutrun_read_report_ids, vec!["reads_demo".to_string()]);
+            assert_eq!(upstream_bp, 750);
+            assert_eq!(downstream_bp, 80);
+            assert_eq!(score_kind, TfbsScoreTrackValueKind::LlrBackgroundTailLog10);
+            assert_eq!(catalog_path.as_deref(), Some("c.json"));
+            assert_eq!(cache_dir.as_deref(), Some("cache"));
+            assert_eq!(path.as_deref(), Some("cohort.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_genomes_extract_gene_with_annotation_flag() {
     let cmd = parse_shell_line(
         "genomes extract-gene ToyGenome MYGENE --include-genomic-annotation --output-id out",
@@ -20734,6 +20790,99 @@ fn execute_genomes_promoter_tfbs_summary_and_svg_return_multi_gene_payloads_on_s
         .expect("spawn small-stack promoter-tfbs regression test")
         .join()
         .expect("small-stack promoter-tfbs regression test panicked");
+}
+
+#[test]
+fn execute_genomes_promoter_cohort_comparison_returns_payload() {
+    let td = tempdir().expect("tempdir");
+    let fasta = td.path().join("toy.fa");
+    let gtf = td.path().join("toy.gtf");
+    let cohort_path = td.path().join("promoter_cohort.json");
+    let sequence: String = (0..5000)
+        .map(|idx| match ((idx * 17) + (idx / 5)) % 4 {
+            0 => 'A',
+            1 => 'C',
+            2 => 'G',
+            _ => 'T',
+        })
+        .collect();
+    fs::write(&fasta, format!(">chr1\n{sequence}\n")).expect("write fasta");
+    fs::write(
+        &gtf,
+        concat!(
+            "chr1\tsrc\tgene\t501\t950\t.\t+\t.\tgene_id \"GENE_POS\"; gene_name \"POS1\";\n",
+            "chr1\tsrc\ttranscript\t601\t920\t.\t+\t.\tgene_id \"GENE_POS\"; gene_name \"POS1\"; transcript_id \"TX_POS\";\n",
+            "chr1\tsrc\texon\t601\t700\t.\t+\t.\tgene_id \"GENE_POS\"; gene_name \"POS1\"; transcript_id \"TX_POS\"; exon_number \"1\";\n",
+            "chr1\tsrc\texon\t801\t920\t.\t+\t.\tgene_id \"GENE_POS\"; gene_name \"POS1\"; transcript_id \"TX_POS\"; exon_number \"2\";\n",
+            "chr1\tsrc\tgene\t2001\t2600\t.\t-\t.\tgene_id \"GENE_NEG\"; gene_name \"NEG1\";\n",
+            "chr1\tsrc\ttranscript\t2051\t2500\t.\t-\t.\tgene_id \"GENE_NEG\"; gene_name \"NEG1\"; transcript_id \"TX_NEG\";\n",
+            "chr1\tsrc\texon\t2051\t2200\t.\t-\t.\tgene_id \"GENE_NEG\"; gene_name \"NEG1\"; transcript_id \"TX_NEG\"; exon_number \"1\";\n",
+            "chr1\tsrc\texon\t2351\t2500\t.\t-\t.\tgene_id \"GENE_NEG\"; gene_name \"NEG1\"; transcript_id \"TX_NEG\"; exon_number \"2\";\n",
+        ),
+    )
+    .expect("write gtf");
+    let catalog = td.path().join("catalog.json");
+    let cache_dir = td.path().join("cache");
+    fs::write(
+        &catalog,
+        format!(
+            r#"{{
+  "ToyGenome": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            fasta.display(),
+            gtf.display(),
+            cache_dir.display()
+        ),
+    )
+    .expect("write catalog");
+    let catalog_path = catalog.to_string_lossy().to_string();
+
+    let mut engine = GentleEngine::new();
+    let _guard = EnvVarGuard::set(
+        crate::genomes::MAKEBLASTDB_ENV_BIN,
+        "__gentle_makeblastdb_missing_for_test__",
+    );
+    execute_shell_command(
+        &mut engine,
+        &ShellCommand::ReferencePrepare {
+            helper_mode: false,
+            genome_id: "ToyGenome".to_string(),
+            catalog_path: Some(catalog_path.clone()),
+            cache_dir: None,
+            timeout_seconds: None,
+        },
+    )
+    .expect("prepare genome");
+
+    let cohort_cmd = parse_shell_line(&format!(
+        "genomes promoter-cohort-comparison ToyGenome --cohort-label toy_cohort --cohort-kind manual --source-seq-id toy_context --gene POS1@TX_POS --gene NEG1@TX_NEG#NEG1_panel --gene MISSING --motif SP1 --motif TP73 --upstream-bp 100 --downstream-bp 20 --score-kind llr_background_tail_log10 --expression-json '{{\"gene_label\":\"POS1\",\"value\":1.5,\"unit\":\"TPM\"}}' --source-label rna_demo --catalog {} --path {}",
+        catalog_path,
+        cohort_path.to_string_lossy(),
+    ))
+    .expect("parse promoter-cohort-comparison");
+    let cohort = execute_shell_command(&mut engine, &cohort_cmd).expect("run promoter cohort");
+    assert!(!cohort.state_changed);
+    assert_eq!(
+        cohort.output["result"]["promoter_cohort_comparison"]["schema"].as_str(),
+        Some("gentle.promoter_cohort_comparison.v1")
+    );
+    assert_eq!(
+        cohort.output["result"]["promoter_cohort_comparison"]["resolved_promoter_count"].as_u64(),
+        Some(2)
+    );
+    assert!(
+        cohort.output["result"]["promoter_cohort_comparison"]["warnings"]
+            .as_array()
+            .expect("warnings array")
+            .iter()
+            .any(|value| value.as_str().unwrap_or_default().contains("MISSING"))
+    );
+    let cohort_json = fs::read_to_string(&cohort_path).expect("read cohort json");
+    assert!(cohort_json.contains("\"schema\": \"gentle.promoter_cohort_comparison.v1\""));
 }
 
 fn assert_execute_genomes_promoter_tfbs_summary_and_svg_return_multi_gene_payloads() {

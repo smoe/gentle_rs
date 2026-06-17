@@ -1657,6 +1657,8 @@ struct VariantFollowupUiState {
     tfbs_track_similarity_ranking_metric: TfbsTrackSimilarityRankingMetric,
     promoter_upstream_bp: String,
     promoter_downstream_bp: String,
+    promoter_expression_rows_json: String,
+    promoter_expression_source_label: String,
     tfbs_focus_half_window_bp: String,
     retain_downstream_from_tss_bp: String,
     retain_upstream_beyond_variant_bp: String,
@@ -1673,8 +1675,6 @@ struct VariantFollowupUiState {
     cached_alternative_promoter_comparison: Option<AlternativePromoterComparisonReport>,
     cached_promoter_evidence_matrix: Option<PromoterEvidenceMatrixReport>,
     cached_isoform_promoter_comparison: Option<IsoformPromoterComparisonReport>,
-    promoter_expression_rows_json: String,
-    promoter_expression_source_label: String,
     cached_promoter_expression_evidence: Option<PromoterExpressionEvidenceReport>,
     cached_candidates: Option<PromoterReporterCandidateSet>,
 }

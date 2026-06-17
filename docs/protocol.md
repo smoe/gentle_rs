@@ -415,6 +415,7 @@ Current shared-shell routes:
 ```bash
 gentle_cli shell 'genomes promoter-tfbs-summary GENOME_ID [--gene QUERY[::OCCURRENCE][@TRANSCRIPT_ID][#DISPLAY_LABEL] ...|--gene-json JSON|--gene-set GROUP_OR_GO|--gene-set-resolution RESOLUTION.json] --motif TOKEN [--motif TOKEN ...|--motifs CSV] [--upstream-bp N] [--downstream-bp N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--catalog PATH] [--gene-group-catalog PATH] [--cache-dir PATH] [--path FILE.json]'
 gentle_cli shell 'genomes promoter-tfbs-svg GENOME_ID [--gene QUERY[::OCCURRENCE][@TRANSCRIPT_ID][#DISPLAY_LABEL] ...|--gene-json JSON|--gene-set GROUP_OR_GO|--gene-set-resolution RESOLUTION.json] --motif TOKEN [--motif TOKEN ...|--motifs CSV] [--upstream-bp N] [--downstream-bp N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--catalog PATH] [--gene-group-catalog PATH] [--cache-dir PATH] OUTPUT.svg'
+gentle_cli shell 'genomes promoter-cohort-comparison GENOME_ID --cohort-label LABEL --cohort-kind manual|co_regulated|anti_co_regulated --gene QUERY[::OCCURRENCE][@TRANSCRIPT_ID][#DISPLAY_LABEL] [--gene ...|--gene-json JSON] --motif TOKEN [--motif TOKEN ...|--motifs CSV] [--source-seq-id SEQ_ID ...] [--upstream-bp N] [--downstream-bp N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--expression-json JSON] [--expression-source-label LABEL] [--cutrun-dataset ID ...] [--cutrun-read-report ID ...] [--catalog PATH] [--cache-dir PATH] [--path FILE.json]'
 ```
 
 First-class operation routes:
@@ -424,12 +425,17 @@ First-class operation routes:
 ```
 
 ```json
+{"SummarizePromoterCohortComparison":{"genome_id":"Human GRCh38 Ensembl 116","cohort_label":"TERT_TP73_manual","cohort_kind":"manual","genes":[{"gene_query":"TERT"},{"gene_query":"TP73"}],"motifs":["Yamanaka factors","SP1"],"upstream_bp":1000,"downstream_bp":200,"score_kind":"llr_background_tail_log10","clip_negative":true,"expression_source_label":"reviewed_table","expression_rows":[{"gene_label":"TERT","sample_id":"case_1","condition":"case","value":9.8,"unit":"TPM"}],"cutrun_dataset_ids":["toy_ctcf"],"path":"artifacts/tert_tp73_promoter_cohort.json"}}
+```
+
+```json
 {"RenderMultiGenePromoterTfbsSvg":{"genome_id":"Human GRCh38 Ensembl 116","genes":[{"gene_query":"TERT"},{"gene_query":"TP73"}],"motifs":["Yamanaka factors","SP1"],"upstream_bp":1000,"downstream_bp":200,"score_kind":"llr_background_tail_log10","clip_negative":true,"path":"artifacts/tert_tp73_promoter_tfbs.svg"}}
 ```
 
 Portable schema:
 
 - `gentle.multi_gene_promoter_tfbs.v1`
+- `gentle.promoter_cohort_comparison.v1`
 
 Behavior notes:
 
@@ -458,6 +464,16 @@ Behavior notes:
   - `positive_fraction`
 - the SVG export renders one small-multiples promoter panel per gene with a
   shared promoter-relative axis convention and explicit TSS markers
+- `SummarizePromoterCohortComparison` is a deterministic first-slice cohort
+  report for `manual`, `co_regulated`, and `anti_co_regulated` cohorts only.
+  It resolves each requested gene/transcript to a strand-aware promoter window,
+  reuses the same multi-gene TFBS scoring and TFBS similarity ranking helpers,
+  reports pairwise motif-track similarity, shared/common score peaks,
+  cohort-specific or outlier peaks, optional expression-row association, and
+  warnings for unresolved genes/transcripts. `source_seq_ids`,
+  CUT&RUN dataset ids, and saved read-report ids are retained for traceability
+  in this slice; GENtle does not infer cross-species orthology or live
+  occupancy verdicts from them here.
 
 ## TFBS score-track similarity contract
 
@@ -574,9 +590,11 @@ Behavior notes:
 - `SummarizePromoterExpressionEvidence` accepts expression rows as external
   evidence with transcript/gene/promoter labels plus optional artifact paths.
   GENtle assigns them to promoter groups and reports unassigned rows, but it
-  does not infer causality or perform normalization; GUI consumers display the
-  same report as promoter-associated sequence evidence rather than a validation
-  verdict
+  does not infer causality or perform normalization. The Promoter design GUI
+  can paste or load the same row JSON, run this shared operation, cache the
+  returned report, and export the same portable
+  `gentle.promoter_expression_evidence.v1` payload; GUI consumers display
+  promoter-associated evidence rather than a causal or validation verdict
 - `ExportPromoterArtifactManifest` is a lightweight component index, not a
   narrative bundle. It records which JSON/SVG artifacts exist and whether
   required components are missing so downstream tools can compose their own
@@ -2353,7 +2371,13 @@ Current draft operations:
       carries additive `support_status` with
       `confirmed|nearby|absent|motif_poor` so UIs can distinguish overlapping
       strong occupancy, nearby occupancy, no nearby occupancy, and weak/no
-      motif sequence contexts without changing the old row vectors
+      motif sequence contexts without changing the old row vectors; rows also
+      include additive `support_distance_bp` when nearest support is available
+    - `confirmed` means a strong support window overlaps the theoretical TFBS;
+      `nearby` means strong support is within the neighbor threshold but does
+      not overlap; `absent` means no such support window was found; and
+      `motif_poor` means the support window is weak for the requested motif or
+      the motif cannot be resolved locally
     - motif-absent strong windows are reported separately and classified as
       `context_supported_by_other_motifs` or `motif_poor_supported`
     - if the assayed target factor cannot be resolved to a local motif, strong

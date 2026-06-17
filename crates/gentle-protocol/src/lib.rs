@@ -7807,6 +7807,8 @@ pub struct CutRunRegulatoryTfbsRow {
     pub strongest_support_window_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub strongest_support_strength: Option<CutRunSupportStrength>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub support_distance_bp: Option<usize>,
     pub overlapping_peak_count: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_signal_value: Option<f64>,
@@ -9238,10 +9240,10 @@ pub struct RnaReadInterpretationReportSummary {
 #[cfg(test)]
 mod dotplot_and_concatemer_setting_tests {
     use super::{
-        DotplotMode, DotplotOverlayAnchorExonRef, DotplotOverlayResolvedAnchorSeries,
-        DotplotOverlayXAxisMode, DotplotQuerySeries, DotplotView, RestrictionSiteExpertView,
+        CutRunRegulatoryTfbsConfirmationStatus, CutRunRegulatoryTfbsRow, DotplotMode,
+        DotplotOverlayAnchorExonRef, DotplotOverlayResolvedAnchorSeries, DotplotOverlayXAxisMode,
+        DotplotQuerySeries, DotplotView, RestrictionSiteExpertView,
         RnaReadConcatemerInspectionSettings, RnaReadMappedIsoformSupportRow,
-        CutRunRegulatoryTfbsConfirmationStatus, CutRunRegulatoryTfbsRow,
     };
 
     #[test]

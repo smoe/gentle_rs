@@ -11422,6 +11422,7 @@ Error: `{err}`"
                 tfbs_score_tracks: None,
                 tfbs_track_similarity: None,
                 multi_gene_promoter_tfbs: None,
+                promoter_cohort_comparison: None,
                 repeat_annotation_query: None,
                 sequence_repeat_overlaps: None,
                 repeat_feature_materialization: None,

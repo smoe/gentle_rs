@@ -4735,23 +4735,26 @@ impl GentleEngine {
                 local_start_1based,
                 local_end_1based,
             );
-            let best_support_window = support_windows
+            let support_span_distance_bp = |window: &CutRunSupportWindowRecord| -> usize {
+                if window.local_end_0based_exclusive > clipped_start_0based
+                    && window.local_start_0based < clipped_end_0based_exclusive
+                {
+                    0
+                } else if window.local_end_0based_exclusive <= clipped_start_0based {
+                    clipped_start_0based.saturating_sub(window.local_end_0based_exclusive)
+                } else {
+                    window
+                        .local_start_0based
+                        .saturating_sub(clipped_end_0based_exclusive)
+                }
+            };
+            let strongest_support_window = support_windows
                 .iter()
-                .filter(|window| {
-                    let distance_bp = if window.local_end_0based_exclusive > clipped_start_0based
-                        && window.local_start_0based < clipped_end_0based_exclusive
-                    {
-                        0
-                    } else if window.local_end_0based_exclusive <= clipped_start_0based {
-                        clipped_start_0based.saturating_sub(window.local_end_0based_exclusive)
-                    } else {
-                        window
-                            .local_start_0based
-                            .saturating_sub(clipped_end_0based_exclusive)
-                    };
-                    distance_bp <= neighbor_window_bp
+                .filter_map(|window| {
+                    let distance_bp = support_span_distance_bp(window);
+                    (distance_bp <= neighbor_window_bp).then_some((window, distance_bp))
                 })
-                .max_by(|left, right| {
+                .max_by(|(left, left_distance_bp), (right, right_distance_bp)| {
                     let left_key = (
                         match left.support_strength {
                             CutRunSupportStrength::Strong => 3usize,
@@ -4772,7 +4775,9 @@ impl GentleEngine {
                         right.cut_site_count,
                         right.overlapping_peak_count,
                     );
-                    left_key.cmp(&right_key)
+                    left_key
+                        .cmp(&right_key)
+                        .then_with(|| right_distance_bp.cmp(left_distance_bp))
                 });
 
             let motif_token = Self::feature_qualifier_text(feature, "tf_id").or_else(|| {
@@ -4805,26 +4810,31 @@ impl GentleEngine {
             } else {
                 (None, None, false)
             };
-            let overlapping_strong_support = best_support_window.is_some_and(|window| {
-                window.support_strength == CutRunSupportStrength::Strong
-                    && window.local_end_0based_exclusive > clipped_start_0based
+            let support_overlaps_tfbs = strongest_support_window.is_some_and(|(window, _)| {
+                window.local_end_0based_exclusive > clipped_start_0based
                     && window.local_start_0based < clipped_end_0based_exclusive
             });
-            let support_status = if !motif_present {
-                CutRunRegulatoryTfbsConfirmationStatus::MotifPoor
-            } else if overlapping_strong_support {
-                CutRunRegulatoryTfbsConfirmationStatus::Confirmed
-            } else if best_support_window.is_some() {
-                CutRunRegulatoryTfbsConfirmationStatus::Nearby
-            } else {
-                CutRunRegulatoryTfbsConfirmationStatus::Absent
+            let support_status = match strongest_support_window {
+                Some((_window, _distance_bp)) if !motif_present => {
+                    CutRunRegulatoryTfbsConfirmationStatus::MotifPoor
+                }
+                Some((window, _distance_bp))
+                    if window.support_strength != CutRunSupportStrength::Strong =>
+                {
+                    CutRunRegulatoryTfbsConfirmationStatus::MotifPoor
+                }
+                Some((_window, _distance_bp)) if support_overlaps_tfbs => {
+                    CutRunRegulatoryTfbsConfirmationStatus::Confirmed
+                }
+                Some((_window, _distance_bp)) => CutRunRegulatoryTfbsConfirmationStatus::Nearby,
+                None => CutRunRegulatoryTfbsConfirmationStatus::Absent,
             };
-            let confirmed = support_status == CutRunRegulatoryTfbsConfirmationStatus::Confirmed;
-            let legacy_confirmation_status = if confirmed {
-                CutRunRegulatoryTfbsConfirmationStatus::Confirmed
-            } else {
-                CutRunRegulatoryTfbsConfirmationStatus::Unconfirmed
-            };
+            let confirmation_status =
+                if support_status == CutRunRegulatoryTfbsConfirmationStatus::Confirmed {
+                    CutRunRegulatoryTfbsConfirmationStatus::Confirmed
+                } else {
+                    CutRunRegulatoryTfbsConfirmationStatus::Unconfirmed
+                };
             let row = CutRunRegulatoryTfbsRow {
                 feature_id,
                 feature_label: Self::feature_display_label(feature, feature_id),
@@ -4839,27 +4849,29 @@ impl GentleEngine {
                 } else {
                     "+".to_string()
                 },
-                confirmation_status: legacy_confirmation_status,
+                confirmation_status,
                 support_status,
-                strongest_support_window_id: best_support_window
-                    .map(|window| window.window_id.clone()),
-                strongest_support_strength: best_support_window
-                    .map(|window| window.support_strength),
-                overlapping_peak_count: best_support_window
-                    .map(|window| window.overlapping_peak_count)
+                strongest_support_window_id: strongest_support_window
+                    .map(|(window, _distance_bp)| window.window_id.clone()),
+                strongest_support_strength: strongest_support_window
+                    .map(|(window, _distance_bp)| window.support_strength),
+                support_distance_bp: strongest_support_window
+                    .map(|(_window, distance_bp)| distance_bp),
+                overlapping_peak_count: strongest_support_window
+                    .map(|(window, _distance_bp)| window.overlapping_peak_count)
                     .unwrap_or(0),
-                max_signal_value: best_support_window
-                    .and_then(|window| window.max_signal_value),
-                mean_signal_value: best_support_window
-                    .and_then(|window| window.mean_signal_value),
-                supporting_fragment_count: best_support_window
-                    .map(|window| window.supporting_fragment_count)
+                max_signal_value: strongest_support_window
+                    .and_then(|(window, _distance_bp)| window.max_signal_value),
+                mean_signal_value: strongest_support_window
+                    .and_then(|(window, _distance_bp)| window.mean_signal_value),
+                supporting_fragment_count: strongest_support_window
+                    .map(|(window, _distance_bp)| window.supporting_fragment_count)
                     .unwrap_or(0),
-                cut_site_count: best_support_window
-                    .map(|window| window.cut_site_count)
+                cut_site_count: strongest_support_window
+                    .map(|(window, _distance_bp)| window.cut_site_count)
                     .unwrap_or(0),
             };
-            if confirmed {
+            if confirmation_status == CutRunRegulatoryTfbsConfirmationStatus::Confirmed {
                 confirmed_tfbs_rows.push(row);
             } else {
                 unconfirmed_tfbs_rows.push(row);

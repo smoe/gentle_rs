@@ -1285,6 +1285,7 @@ impl MainAreaDna {
         self.variant_followup_ui.cached_candidates = None;
         self.variant_followup_ui.cached_promoter_evidence_matrix = None;
         self.variant_followup_ui.cached_isoform_promoter_comparison = None;
+        self.variant_followup_ui.cached_promoter_expression_evidence = None;
         self.op_status = format!(
             "Promoter design now targets '{}' at {}..{}",
             row.representative_transcript_id
@@ -1315,6 +1316,7 @@ impl MainAreaDna {
         self.variant_followup_ui.cached_report = None;
         self.variant_followup_ui.cached_candidates = None;
         self.variant_followup_ui.cached_isoform_promoter_comparison = None;
+        self.variant_followup_ui.cached_promoter_expression_evidence = None;
         self.op_status = format!(
             "Promoter design evidence row '{}' selected at {}..{}",
             row.label, row.start_0based, row.end_0based_exclusive
@@ -1343,6 +1345,7 @@ impl MainAreaDna {
         self.variant_followup_ui.cached_report = None;
         self.variant_followup_ui.cached_candidates = None;
         self.variant_followup_ui.cached_promoter_evidence_matrix = None;
+        self.variant_followup_ui.cached_promoter_expression_evidence = None;
         self.op_status = format!(
             "Promoter design isoform group '{}' selected at {}..{}",
             group.label, group.start_0based, group.end_0based_exclusive
@@ -3460,8 +3463,131 @@ impl MainAreaDna {
                             ui.end_row();
                         }
                     });
-                });
+            });
         });
+    }
+
+    fn render_variant_followup_cutrun_occupancy_support(&mut self, ui: &mut egui::Ui) {
+        egui::CollapsingHeader::new("TFBS + occupancy support")
+            .default_open(false)
+            .show(ui, |ui| {
+                let mut cutrun_settings_changed = false;
+                ui.small(
+                    egui::RichText::new(
+                        "Inspect CUT&RUN occupancy support for the promoter-design span through the shared engine report. Status labels are report fields, not GUI verdicts.",
+                    )
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+                );
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("dataset ids");
+                    if ui
+                        .text_edit_singleline(&mut self.cutrun_regulatory_dataset_ids)
+                        .changed()
+                    {
+                        cutrun_settings_changed = true;
+                    }
+                });
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("read-report ids");
+                    if ui
+                        .text_edit_singleline(&mut self.cutrun_regulatory_read_report_ids)
+                        .changed()
+                    {
+                        cutrun_settings_changed = true;
+                    }
+                    if ui
+                        .small_button("Use latest for sequence")
+                        .on_hover_text(
+                            "Fill read-report ids with the newest saved CUT&RUN read report for this sequence",
+                        )
+                        .clicked()
+                    {
+                        self.seed_latest_cutrun_read_report_for_active_sequence();
+                    }
+                });
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("promoter span 0-based");
+                    if ui
+                        .text_edit_singleline(&mut self.cutrun_regulatory_promoter_start_0based)
+                        .changed()
+                    {
+                        cutrun_settings_changed = true;
+                    }
+                    ui.label("..");
+                    if ui
+                        .text_edit_singleline(
+                            &mut self.cutrun_regulatory_promoter_end_0based_exclusive,
+                        )
+                        .changed()
+                    {
+                        cutrun_settings_changed = true;
+                    }
+                    if ui
+                        .small_button("Use score span")
+                        .on_hover_text(
+                            "Copy the current Promoter design score-track range into the CUT&RUN inspection span",
+                        )
+                        .clicked()
+                    {
+                        self.cutrun_regulatory_promoter_start_0based =
+                            self.variant_followup_ui.score_track_start_0based.clone();
+                        self.cutrun_regulatory_promoter_end_0based_exclusive = self
+                            .variant_followup_ui
+                            .score_track_end_0based_exclusive
+                            .clone();
+                        cutrun_settings_changed = true;
+                    }
+                });
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("neighbor window bp");
+                    if ui
+                        .text_edit_singleline(&mut self.cutrun_regulatory_neighbor_window_bp)
+                        .changed()
+                    {
+                        cutrun_settings_changed = true;
+                    }
+                    ui.label("species filters");
+                    if ui
+                        .text_edit_singleline(&mut self.cutrun_regulatory_species_filters)
+                        .changed()
+                    {
+                        cutrun_settings_changed = true;
+                    }
+                });
+                if cutrun_settings_changed {
+                    self.cached_cutrun_regulatory_support = None;
+                    self.save_engine_ops_state();
+                }
+                ui.horizontal_wrapped(|ui| {
+                    let has_source = !Self::parse_ids(&self.cutrun_regulatory_dataset_ids).is_empty()
+                        || !Self::parse_ids(&self.cutrun_regulatory_read_report_ids).is_empty();
+                    if ui
+                        .add_enabled(
+                            has_source,
+                            egui::Button::new("Inspect TFBS occupancy support"),
+                        )
+                        .on_hover_text(
+                            "Run InspectCutRunRegulatorySupport through the shared engine contract and cache the returned TFBS occupancy support report.",
+                        )
+                        .clicked()
+                    {
+                        self.inspect_cutrun_regulatory_support_for_active_sequence();
+                    }
+                    if ui
+                        .add_enabled(
+                            self.cached_cutrun_regulatory_support.is_some(),
+                            egui::Button::new("Export occupancy support JSON..."),
+                        )
+                        .on_hover_text(
+                            "Write the cached CUT&RUN regulatory-support report by rerunning the shared engine operation with an output path",
+                        )
+                        .clicked()
+                    {
+                        self.export_cached_cutrun_regulatory_support_json();
+                    }
+                });
+                self.render_cutrun_regulatory_support_summary_panel(ui);
+            });
     }
 
     fn render_variant_followup_alternative_promoter_summary(&mut self, ui: &mut egui::Ui) {
@@ -3700,6 +3826,34 @@ impl MainAreaDna {
         }
     }
 
+    fn promoter_expression_value_label(value: Option<f64>) -> String {
+        value
+            .map(|value| format!("{value:.3}"))
+            .unwrap_or_else(|| "-".to_string())
+    }
+
+    fn promoter_expression_matched_by_label(
+        records: &[crate::engine::PromoterExpressionEvidenceRecord],
+    ) -> String {
+        let mut values = records
+            .iter()
+            .flat_map(|record| record.matched_by.iter())
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        let overflow = values.len().saturating_sub(3);
+        values.truncate(3);
+        if values.is_empty() {
+            "-".to_string()
+        } else if overflow == 0 {
+            values.join(", ")
+        } else {
+            format!("{}, +{} more", values.join(", "), overflow)
+        }
+    }
+
     fn render_variant_followup_promoter_expression_summary(&mut self, ui: &mut egui::Ui) {
         let Some(report) = self
             .variant_followup_ui
@@ -3737,90 +3891,112 @@ impl MainAreaDna {
                     egui::RichText::new(warning).color(egui::Color32::from_rgb(180, 83, 9)),
                 );
             }
-            if !report.unassigned_expression_records.is_empty() {
-                ui.collapsing("Unassigned expression rows", |ui| {
-                    for row in report.unassigned_expression_records.iter().take(12) {
-                        ui.small(format!(
-                            "{} / {} / {} = {:.3}{}",
-                            row.gene_label.as_deref().unwrap_or("-"),
-                            row.transcript_id.as_deref().unwrap_or("-"),
-                            row.condition.as_deref().unwrap_or("-"),
-                            row.value,
-                            row.unit
-                                .as_deref()
-                                .map(|unit| format!(" {unit}"))
-                                .unwrap_or_default()
-                        ));
-                    }
-                });
-            }
             if report.rows.is_empty() {
                 ui.small("No promoter groups received assigned expression rows.");
-                return;
             }
-            egui::ScrollArea::vertical()
-                .id_salt((
-                    "variant_followup_promoter_expression_scroll",
-                    report.seq_id.as_str(),
-                ))
-                .max_height(220.0)
-                .show(ui, |ui| {
+            if !report.rows.is_empty() {
+                egui::ScrollArea::vertical()
+                    .id_salt(("variant_followup_promoter_expression_scroll", report.seq_id.as_str()))
+                    .max_height(220.0)
+                    .show(ui, |ui| {
+                        egui::Grid::new((
+                            "variant_followup_promoter_expression_grid",
+                            report.seq_id.as_str(),
+                        ))
+                        .num_columns(8)
+                        .striped(true)
+                        .show(ui, |ui| {
+                            ui.small(egui::RichText::new("group").strong());
+                            ui.small(egui::RichText::new("records").strong());
+                            ui.small(egui::RichText::new("mean").strong());
+                            ui.small(egui::RichText::new("max").strong());
+                            ui.small(egui::RichText::new("unit").strong());
+                            ui.small(egui::RichText::new("conditions").strong());
+                            ui.small(egui::RichText::new("samples").strong());
+                            ui.small(egui::RichText::new("matched by").strong());
+                            ui.end_row();
+                            for row in &report.rows {
+                                let conditions_label = if row.conditions.is_empty() {
+                                    "-".to_string()
+                                } else {
+                                    row.conditions.join(", ")
+                                };
+                            let sample_ids_label = if row.sample_ids.is_empty() {
+                                "-".to_string()
+                            } else {
+                                row.sample_ids.join(", ")
+                            };
+                            ui.small(row.label.as_str()).on_hover_text(format!(
+                                "{}\n{}",
+                                row.promoter_group_id,
+                                row.interpretation
+                            ));
+                            ui.small(row.expression_record_count.to_string());
+                            ui.monospace(Self::promoter_expression_value_label(row.mean_value));
+                            ui.monospace(Self::promoter_expression_value_label(row.max_value));
+                            ui.small(row.unit.as_deref().unwrap_or("-"));
+                            ui.small(conditions_label)
+                                .on_hover_text(row.conditions.join("\n"));
+                            ui.small(sample_ids_label)
+                                .on_hover_text(row.sample_ids.join("\n"));
+                            ui.small(Self::promoter_expression_matched_by_label(&row.records))
+                                .on_hover_text(
+                                    row.records
+                                        .iter()
+                                        .map(|record| {
+                                            format!(
+                                                "{}: {}",
+                                                record.evidence_id,
+                                                record.matched_by.join(", ")
+                                            )
+                                        })
+                                        .collect::<Vec<_>>()
+                                    .join("\n"),
+                                );
+                                ui.end_row();
+                            }
+                        });
+                    });
+            }
+            if !report.unassigned_expression_records.is_empty() {
+                ui.collapsing("Unassigned expression rows", |ui| {
                     egui::Grid::new((
-                        "variant_followup_promoter_expression_grid",
+                        "variant_followup_promoter_expression_unassigned",
                         report.seq_id.as_str(),
                     ))
                     .num_columns(7)
                     .striped(true)
                     .show(ui, |ui| {
+                        ui.small(egui::RichText::new("gene").strong());
+                        ui.small(egui::RichText::new("transcript").strong());
                         ui.small(egui::RichText::new("promoter").strong());
-                        ui.small(egui::RichText::new("records").strong());
-                        ui.small(egui::RichText::new("mean").strong());
-                        ui.small(egui::RichText::new("max").strong());
+                        ui.small(egui::RichText::new("sample").strong());
+                        ui.small(egui::RichText::new("condition").strong());
+                        ui.small(egui::RichText::new("value").strong());
                         ui.small(egui::RichText::new("unit").strong());
-                        ui.small(egui::RichText::new("conditions").strong());
-                        ui.small(egui::RichText::new("matched by").strong());
                         ui.end_row();
-                        for row in &report.rows {
-                            ui.small(row.label.as_str()).on_hover_text(format!(
-                                "{}\n{}",
-                                row.transcript_ids.join(", "),
-                                row.interpretation
-                            ));
-                            ui.small(row.expression_record_count.to_string());
-                            ui.monospace(
-                                row.mean_value
-                                    .map(|value| format!("{value:.3}"))
-                                    .unwrap_or_else(|| "-".to_string()),
-                            );
-                            ui.monospace(
-                                row.max_value
-                                    .map(|value| format!("{value:.3}"))
-                                    .unwrap_or_else(|| "-".to_string()),
-                            );
+                        for row in report.unassigned_expression_records.iter().take(24) {
+                            ui.small(row.gene_label.as_deref().unwrap_or("-"));
+                            ui.small(row.transcript_id.as_deref().unwrap_or("-"));
+                            ui.small(row.promoter_label.as_deref().unwrap_or("-"));
+                            ui.small(row.sample_id.as_deref().unwrap_or("-"));
+                            ui.small(row.condition.as_deref().unwrap_or("-"));
+                            ui.monospace(format!("{:.3}", row.value));
                             ui.small(row.unit.as_deref().unwrap_or("-"));
-                            let condition_label = if row.conditions.is_empty() {
-                                "-".to_string()
-                            } else {
-                                row.conditions.join(", ")
-                            };
-                            ui.small(condition_label);
-                            let matched_by = row
-                                .records
-                                .iter()
-                                .flat_map(|record| record.matched_by.iter().cloned())
-                                .collect::<BTreeSet<_>>()
-                                .into_iter()
-                                .collect::<Vec<_>>();
-                            let matched_by_label = if matched_by.is_empty() {
-                                "-".to_string()
-                            } else {
-                                matched_by.join(", ")
-                            };
-                            ui.small(matched_by_label);
                             ui.end_row();
                         }
                     });
+                    if report.unassigned_expression_records.len() > 24 {
+                        ui.small(
+                            egui::RichText::new(format!(
+                                "showing first 24 of {} unassigned row(s)",
+                                report.unassigned_expression_records.len()
+                            ))
+                            .color(egui::Color32::from_rgb(100, 116, 139)),
+                        );
+                    }
                 });
+            }
         });
     }
 
@@ -4036,6 +4212,7 @@ impl MainAreaDna {
         let mut similarity_params_changed = false;
         let mut summary_params_changed = false;
         let mut candidate_params_changed = false;
+        let mut expression_params_changed = false;
 
         ui.horizontal_wrapped(|ui| {
             ui.label(
@@ -4359,7 +4536,7 @@ impl MainAreaDna {
                         )
                         .changed()
                     {
-                        self.variant_followup_ui.cached_promoter_expression_evidence = None;
+                        expression_params_changed = true;
                     }
                     if ui
                         .small_button("Load JSON...")
@@ -4376,16 +4553,17 @@ impl MainAreaDna {
                         egui::TextEdit::multiline(
                             &mut self.variant_followup_ui.promoter_expression_rows_json,
                         )
-                        .desired_rows(3)
-                        .desired_width(520.0),
+                        .desired_rows(4)
+                        .desired_width(560.0)
+                        .code_editor(),
                     )
                     .changed()
                 {
-                    self.variant_followup_ui.cached_promoter_expression_evidence = None;
+                    expression_params_changed = true;
                 }
                 ui.small(
                     egui::RichText::new(
-                        "Paste `PromoterExpressionEvidenceInput` JSON. Rows are summarized as expression association evidence, not functional validation.",
+                        "Paste one PromoterExpressionEvidenceInput object or an array of rows. Rows are summarized as expression association evidence, not functional validation.",
                     )
                     .color(egui::Color32::from_rgb(100, 116, 139)),
                 );
@@ -4474,6 +4652,9 @@ impl MainAreaDna {
                 .cached_alternative_promoter_comparison = None;
             self.variant_followup_ui.cached_promoter_evidence_matrix = None;
             self.variant_followup_ui.cached_isoform_promoter_comparison = None;
+            self.variant_followup_ui.cached_promoter_expression_evidence = None;
+        }
+        if expression_params_changed {
             self.variant_followup_ui.cached_promoter_expression_evidence = None;
         }
 
@@ -4756,6 +4937,8 @@ impl MainAreaDna {
         ui.add_space(8.0);
         self.render_variant_followup_tfbs_track_similarity_summary(ui);
         ui.add_space(8.0);
+        self.render_variant_followup_cutrun_occupancy_support(ui);
+        ui.add_space(8.0);
         self.render_variant_followup_alternative_promoter_summary(ui);
         ui.add_space(8.0);
         self.render_variant_followup_isoform_promoter_comparison_summary(ui);
@@ -4763,18 +4946,6 @@ impl MainAreaDna {
         self.render_variant_followup_promoter_evidence_matrix_summary(ui);
         ui.add_space(8.0);
         self.render_variant_followup_promoter_expression_summary(ui);
-        ui.add_space(8.0);
-        egui::CollapsingHeader::new("CUT&RUN occupancy support")
-            .default_open(false)
-            .show(ui, |ui| {
-                ui.small(
-                    egui::RichText::new(
-                        "This reuses the shared CUT&RUN regulatory-support report already available in the sequence window; GENtle displays sequence evidence and does not infer validation from occupancy alone.",
-                    )
-                    .color(egui::Color32::from_rgb(100, 116, 139)),
-                );
-                self.render_cutrun_regulatory_support_summary_panel(ui);
-            });
         ui.add_space(8.0);
         self.render_variant_followup_report_summary(ui);
         ui.add_space(8.0);

@@ -1159,6 +1159,136 @@ pub struct MultiGenePromoterTfbsReport {
     pub warnings: Vec<String>,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// First-slice cohort relationship for promoter comparison.
+pub enum PromoterCohortKind {
+    #[default]
+    Manual,
+    CoRegulated,
+    AntiCoRegulated,
+}
+
+impl PromoterCohortKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Manual => "manual",
+            Self::CoRegulated => "co_regulated",
+            Self::AntiCoRegulated => "anti_co_regulated",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One promoter window resolved for a promoter cohort comparison.
+pub struct PromoterCohortResolvedWindow {
+    pub gene_label: String,
+    pub gene_query: String,
+    pub transcript_id: String,
+    pub chromosome: String,
+    pub strand: String,
+    pub promoter_start_1based: usize,
+    pub promoter_end_1based: usize,
+    pub promoter_length_bp: usize,
+    pub tss_1based: usize,
+    pub tss_position_0based: usize,
+    pub sequence_orientation: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One pairwise promoter similarity row derived from shared TFBS score tracks.
+pub struct PromoterCohortPairwiseSimilarity {
+    pub left_gene_label: String,
+    pub right_gene_label: String,
+    pub shared_motif_count: usize,
+    pub mean_raw_pearson: f64,
+    pub mean_smoothed_spearman: f64,
+    #[serde(default)]
+    pub motif_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Summary of a motif peak that is shared across or specific to cohort members.
+pub struct PromoterCohortTfbsPeakSummary {
+    pub tf_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tf_name: Option<String>,
+    pub promoter_count: usize,
+    #[serde(default)]
+    pub gene_labels: Vec<String>,
+    pub max_score: f64,
+    #[serde(default)]
+    pub peak_positions_promoter_relative_bp: Vec<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Expression metadata echoed into a promoter cohort comparison.
+pub struct PromoterCohortExpressionAssociation {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sample_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub condition: Option<String>,
+    pub value: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unit: Option<String>,
+    pub source: String,
+    pub association_note: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Engine-owned first-slice promoter cohort comparison.
+pub struct PromoterCohortComparisonReport {
+    pub schema: String,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    pub cohort_label: String,
+    pub cohort_kind: PromoterCohortKind,
+    pub genome_id: String,
+    #[serde(default)]
+    pub source_seq_ids: Vec<String>,
+    pub upstream_bp: usize,
+    pub downstream_bp: usize,
+    pub score_kind: TfbsScoreTrackValueKind,
+    pub clip_negative: bool,
+    #[serde(default)]
+    pub motifs_requested: Vec<String>,
+    #[serde(default)]
+    pub gene_queries_requested: Vec<PromoterTfbsGeneQuery>,
+    pub resolved_promoter_count: usize,
+    #[serde(default)]
+    pub resolved_promoter_windows: Vec<PromoterCohortResolvedWindow>,
+    #[serde(default)]
+    pub tfbs_score_track_summaries: Vec<MultiGenePromoterTfbsSummaryRow>,
+    #[serde(default)]
+    pub pairwise_similarity: Vec<PromoterCohortPairwiseSimilarity>,
+    #[serde(default)]
+    pub shared_tfbs_peaks: Vec<PromoterCohortTfbsPeakSummary>,
+    #[serde(default)]
+    pub cohort_specific_tfbs_peaks: Vec<PromoterCohortTfbsPeakSummary>,
+    #[serde(default)]
+    pub expression_associations: Vec<PromoterCohortExpressionAssociation>,
+    #[serde(default)]
+    pub cutrun_dataset_ids: Vec<String>,
+    #[serde(default)]
+    pub cutrun_read_report_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub multi_gene_promoter_tfbs: Option<MultiGenePromoterTfbsReport>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(default)]
 /// Filter over UCSC RepeatMasker (`rmsk`) annotations.
@@ -3729,6 +3859,8 @@ pub struct OpResult {
     pub tfbs_track_similarity: Option<TfbsTrackSimilarityReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub multi_gene_promoter_tfbs: Option<MultiGenePromoterTfbsReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promoter_cohort_comparison: Option<PromoterCohortComparisonReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub repeat_annotation_query: Option<RepeatAnnotationQueryReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

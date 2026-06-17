@@ -255,6 +255,9 @@ wet-lab conclusions or unconfirmed mutations.
 - Helper-construct terminology migration away from legacy "helper genome"
   wording.
 - Broader CUT&RUN development beyond the release smoke slice.
+- Promoter cohort follow-up: ortholog/cross-species resolution and true
+  cross-promoter CUT&RUN peak comparison after the manual/co-regulated/
+  anti-co-regulated first slice settles.
 - Primer3 parity, virtual PCR/off-target filtering, multiplex tiling, LAMP, and
   allele-specific assay families.
 - GuideRNA off-target ranking and macro-template packaging.

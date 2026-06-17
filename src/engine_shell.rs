@@ -62,8 +62,8 @@ use crate::{
         PlanningObjective, PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus,
         PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignReport,
         PrimerDesignSideConstraint, PrimerSpecificityPolicy, ProbeRegionRequest, ProjectState,
-        PromoterArtifactManifestEntry, PromoterExpressionEvidenceInput, PromoterTfbsGeneQuery,
-        PromoterWindowCollapseMode, ProteinExpressionHandoffReport,
+        PromoterArtifactManifestEntry, PromoterCohortKind, PromoterExpressionEvidenceInput,
+        PromoterTfbsGeneQuery, PromoterWindowCollapseMode, ProteinExpressionHandoffReport,
         ProteinExpressionHostChassisCandidate, ProteinExpressionProductDefinition,
         ProteinExpressionServiceHandoffCandidate, ProteinExpressionVectorRouteCandidate,
         ProteinExternalOpinionSource, ProteinFeatureFilter, ProteinToDnaHandoffRankingGoal,
@@ -1423,6 +1423,26 @@ pub enum ShellCommand {
         gene_set_resolution: Option<GeneSetResolutionReport>,
         allow_draft: bool,
         allow_deprecated: bool,
+        path: Option<String>,
+    },
+    ReferencePromoterCohortComparison {
+        helper_mode: bool,
+        genome_id: String,
+        source_seq_ids: Vec<String>,
+        cohort_label: String,
+        cohort_kind: PromoterCohortKind,
+        genes: Vec<PromoterTfbsGeneQuery>,
+        motifs: Vec<String>,
+        upstream_bp: usize,
+        downstream_bp: usize,
+        score_kind: TfbsScoreTrackValueKind,
+        clip_negative: bool,
+        expression_rows: Vec<PromoterExpressionEvidenceInput>,
+        expression_source_label: Option<String>,
+        cutrun_dataset_ids: Vec<String>,
+        cutrun_read_report_ids: Vec<String>,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
         path: Option<String>,
     },
     ReferencePromoterTfbsSvg {
@@ -4846,6 +4866,34 @@ fn parse_promoter_tfbs_gene_query_token(
     })
 }
 
+fn parse_promoter_cohort_kind_shell(raw: &str, context: &str) -> Result<PromoterCohortKind, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "manual" => Ok(PromoterCohortKind::Manual),
+        "co_regulated" | "co-regulated" | "coregulated" => Ok(PromoterCohortKind::CoRegulated),
+        "anti_co_regulated" | "anti-co-regulated" | "anticoregulated" => {
+            Ok(PromoterCohortKind::AntiCoRegulated)
+        }
+        other => Err(format!(
+            "Unsupported --cohort-kind value '{other}' for {context} (expected manual, co_regulated, or anti_co_regulated)"
+        )),
+    }
+}
+
+fn parse_promoter_expression_rows_json_shell(
+    raw: &str,
+) -> Result<Vec<PromoterExpressionEvidenceInput>, String> {
+    let value: serde_json::Value = serde_json::from_str(raw)
+        .map_err(|e| format!("Invalid promoter expression evidence JSON: {e}"))?;
+    if value.is_array() {
+        serde_json::from_value::<Vec<PromoterExpressionEvidenceInput>>(value)
+            .map_err(|e| format!("Invalid promoter expression evidence JSON array: {e}"))
+    } else {
+        serde_json::from_value::<PromoterExpressionEvidenceInput>(value)
+            .map(|row| vec![row])
+            .map_err(|e| format!("Invalid promoter expression evidence JSON object: {e}"))
+    }
+}
+
 fn normalize_compact_token(raw: &str) -> String {
     raw.chars()
         .filter(|c| c.is_ascii_alphanumeric())
@@ -8174,6 +8222,61 @@ impl ShellCommand {
                     .unwrap_or("-");
                 format!(
                     "summarize multi-gene {label} promoter TFBS for '{genome_id}' (genes={gene_summary}, gene_set={gene_set_summary}, motifs={motif_summary}, upstream_bp={upstream_bp}, downstream_bp={downstream_bp}, score_kind={}, clip_negative={}, output='{}', catalog='{catalog}', cache='{cache}')",
+                    score_kind.as_str(),
+                    clip_negative,
+                    path.as_deref().unwrap_or("-"),
+                )
+            }
+            Self::ReferencePromoterCohortComparison {
+                helper_mode,
+                genome_id,
+                source_seq_ids,
+                cohort_label,
+                cohort_kind,
+                genes,
+                motifs,
+                upstream_bp,
+                downstream_bp,
+                score_kind,
+                clip_negative,
+                expression_rows,
+                cutrun_dataset_ids,
+                cutrun_read_report_ids,
+                catalog_path,
+                cache_dir,
+                path,
+                ..
+            } => {
+                let label = if *helper_mode { "helper" } else { "genome" };
+                let catalog = catalog_path
+                    .clone()
+                    .unwrap_or_else(|| default_catalog_display_label(*helper_mode).to_string());
+                let cache = cache_dir.clone().unwrap_or_else(|| "-".to_string());
+                let gene_summary = if genes.is_empty() {
+                    "-".to_string()
+                } else {
+                    genes
+                        .iter()
+                        .map(|gene| {
+                            gene.display_label
+                                .clone()
+                                .unwrap_or_else(|| gene.gene_query.clone())
+                        })
+                        .collect::<Vec<_>>()
+                        .join(",")
+                };
+                format!(
+                    "summarize {label} promoter cohort '{}' kind={} for '{genome_id}' (genes={gene_summary}, motifs={}, source_seq_ids={}, expression_rows={}, cutrun_sources={}, upstream_bp={upstream_bp}, downstream_bp={downstream_bp}, score_kind={}, clip_negative={}, output='{}', catalog='{catalog}', cache='{cache}')",
+                    cohort_label,
+                    cohort_kind.as_str(),
+                    if motifs.is_empty() {
+                        "-".to_string()
+                    } else {
+                        motifs.join(",")
+                    },
+                    source_seq_ids.len(),
+                    expression_rows.len(),
+                    cutrun_dataset_ids.len() + cutrun_read_report_ids.len(),
                     score_kind.as_str(),
                     clip_negative,
                     path.as_deref().unwrap_or("-"),
@@ -16993,6 +17096,9 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                 path,
             })
         }
+        "promoter-cohort-comparison" | "promoter-cohort" => {
+            parse_reference_promoter_cohort_comparison_command(helper_mode, label, tokens)
+        }
         "promoter-tfbs-svg" => {
             if tokens.len() < 3 {
                 return Err(format!(
@@ -17277,10 +17383,207 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                 ""
             };
             Err(format!(
-                "Unknown {label} subcommand '{other}' (expected ensembl-available, install-ensembl, list, validate-catalog{helper_only}, preview-ensembl-specs, update-ensembl-specs, status, genes, prepare, remove-prepared, remove-catalog-entry, blast, blast-start, blast-status, blast-cancel, blast-list, blast-track, extract-region, extract-gene, extract-promoter, promoter-tfbs-summary, promoter-tfbs-svg, extend-anchor, verify-anchor)"
+                "Unknown {label} subcommand '{other}' (expected ensembl-available, install-ensembl, list, validate-catalog{helper_only}, preview-ensembl-specs, update-ensembl-specs, status, genes, prepare, remove-prepared, remove-catalog-entry, blast, blast-start, blast-status, blast-cancel, blast-list, blast-track, extract-region, extract-gene, extract-promoter, promoter-tfbs-summary, promoter-cohort-comparison, promoter-tfbs-svg, extend-anchor, verify-anchor)"
             ))
         }
     }
+}
+
+#[inline(never)]
+fn parse_reference_promoter_cohort_comparison_command(
+    helper_mode: bool,
+    label: &str,
+    tokens: &[String],
+) -> Result<ShellCommand, String> {
+    if tokens.len() < 3 {
+        return Err(format!(
+            "{label} promoter-cohort-comparison requires GENOME_ID --gene QUERY[::OCCURRENCE][@TRANSCRIPT_ID][#DISPLAY_LABEL] [--gene ...|--gene-json JSON] --motif TOKEN [--motif TOKEN ...|--motifs CSV] [--cohort-label LABEL] [--cohort-kind manual|co_regulated|anti_co_regulated] [--source-seq-id ID] [--expression-json JSON] [--source-label LABEL] [--cutrun-dataset-id ID] [--cutrun-read-report-id ID] [--upstream-bp N] [--downstream-bp N] [--score-kind KIND] [--allow-negative] [--catalog PATH] [--cache-dir PATH] [--path FILE.json]"
+        ));
+    }
+    let genome_id = tokens[2].clone();
+    let mut source_seq_ids: Vec<String> = vec![];
+    let mut cohort_label = "promoter_cohort".to_string();
+    let mut cohort_kind = PromoterCohortKind::Manual;
+    let mut genes: Vec<PromoterTfbsGeneQuery> = vec![];
+    let mut motifs: Vec<String> = vec![];
+    let mut upstream_bp = DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP;
+    let mut downstream_bp = DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP;
+    let mut score_kind = TfbsScoreTrackValueKind::default();
+    let mut clip_negative = true;
+    let mut expression_rows: Vec<PromoterExpressionEvidenceInput> = vec![];
+    let mut expression_source_label: Option<String> = None;
+    let mut cutrun_dataset_ids: Vec<String> = vec![];
+    let mut cutrun_read_report_ids: Vec<String> = vec![];
+    let mut catalog_path: Option<String> = None;
+    let mut cache_dir: Option<String> = None;
+    let mut path: Option<String> = None;
+    let mut idx = 3usize;
+    while idx < tokens.len() {
+        match tokens[idx].as_str() {
+            "--cohort-label" | "--label" => {
+                cohort_label = parse_option_path(tokens, &mut idx, "--cohort-label", label)?;
+            }
+            "--cohort-kind" | "--kind" => {
+                let raw = parse_option_path(tokens, &mut idx, "--cohort-kind", label)?;
+                cohort_kind = parse_promoter_cohort_kind_shell(
+                    &raw,
+                    &format!("{label} promoter-cohort-comparison"),
+                )?;
+            }
+            "--source-seq-id" | "--seq-id" => {
+                let raw = parse_option_path(tokens, &mut idx, "--source-seq-id", label)?;
+                if !raw.trim().is_empty() {
+                    source_seq_ids.push(raw.trim().to_string());
+                }
+            }
+            "--source-seq-ids" | "--seq-ids" => {
+                let raw = parse_option_path(tokens, &mut idx, "--source-seq-ids", label)?;
+                source_seq_ids.extend(split_csv_tokens_with_empty_error(&raw)?);
+            }
+            "--gene" => {
+                let raw = parse_option_path(tokens, &mut idx, "--gene", label)?;
+                genes.push(parse_promoter_tfbs_gene_query_token(
+                    &raw,
+                    &format!("{label} promoter-cohort-comparison"),
+                )?);
+            }
+            "--gene-json" => {
+                let raw = parse_option_path(tokens, &mut idx, "--gene-json", label)?;
+                let parsed = serde_json::from_str::<PromoterTfbsGeneQuery>(&raw).map_err(|e| {
+                    format!(
+                        "Invalid --gene-json payload '{raw}' for {label} promoter-cohort-comparison: {e}"
+                    )
+                })?;
+                if parsed.gene_query.trim().is_empty() {
+                    return Err(format!(
+                        "{label} promoter-cohort-comparison --gene-json requires non-empty gene_query"
+                    ));
+                }
+                genes.push(parsed);
+            }
+            "--motif" => {
+                let raw = parse_option_path(tokens, &mut idx, "--motif", label)?;
+                let trimmed = raw.trim();
+                if trimmed.is_empty() {
+                    return Err(format!(
+                        "{label} promoter-cohort-comparison --motif requires a non-empty token"
+                    ));
+                }
+                motifs.push(trimmed.to_string());
+            }
+            "--motifs" => {
+                let raw = parse_option_path(tokens, &mut idx, "--motifs", label)?;
+                motifs.extend(split_csv_tokens_with_empty_error(&raw)?);
+            }
+            "--expression-json" | "--expression-row-json" => {
+                let raw = parse_option_path(tokens, &mut idx, "--expression-json", label)?;
+                expression_rows.extend(parse_promoter_expression_rows_json_shell(&raw)?);
+            }
+            "--source-label" | "--expression-source-label" => {
+                expression_source_label =
+                    Some(parse_option_path(tokens, &mut idx, "--source-label", label)?);
+            }
+            "--cutrun-dataset-id" | "--cutrun-dataset" => {
+                let raw = parse_option_path(tokens, &mut idx, "--cutrun-dataset-id", label)?;
+                if !raw.trim().is_empty() {
+                    cutrun_dataset_ids.push(raw.trim().to_string());
+                }
+            }
+            "--cutrun-dataset-ids" => {
+                let raw = parse_option_path(tokens, &mut idx, "--cutrun-dataset-ids", label)?;
+                cutrun_dataset_ids.extend(split_csv_tokens_with_empty_error(&raw)?);
+            }
+            "--cutrun-read-report-id" | "--cutrun-read-report" => {
+                let raw = parse_option_path(tokens, &mut idx, "--cutrun-read-report-id", label)?;
+                if !raw.trim().is_empty() {
+                    cutrun_read_report_ids.push(raw.trim().to_string());
+                }
+            }
+            "--cutrun-read-report-ids" => {
+                let raw = parse_option_path(tokens, &mut idx, "--cutrun-read-report-ids", label)?;
+                cutrun_read_report_ids.extend(split_csv_tokens_with_empty_error(&raw)?);
+            }
+            "--upstream-bp" => {
+                let raw = parse_option_path(tokens, &mut idx, "--upstream-bp", label)?;
+                upstream_bp = raw.parse::<usize>().map_err(|e| {
+                    format!(
+                        "Invalid --upstream-bp value '{raw}' for {label} promoter-cohort-comparison: {e}"
+                    )
+                })?;
+            }
+            "--downstream-bp" => {
+                let raw = parse_option_path(tokens, &mut idx, "--downstream-bp", label)?;
+                downstream_bp = raw.parse::<usize>().map_err(|e| {
+                    format!(
+                        "Invalid --downstream-bp value '{raw}' for {label} promoter-cohort-comparison: {e}"
+                    )
+                })?;
+            }
+            "--score-kind" => {
+                let raw = parse_option_path(tokens, &mut idx, "--score-kind", label)?;
+                score_kind = parse_tfbs_score_track_value_kind_shell(
+                    &raw,
+                    &format!("{label} promoter-cohort-comparison"),
+                )?;
+            }
+            "--allow-negative" => {
+                clip_negative = false;
+                idx += 1;
+            }
+            "--catalog" => {
+                catalog_path = Some(parse_option_path(tokens, &mut idx, "--catalog", label)?)
+            }
+            "--cache-dir" => {
+                cache_dir = Some(parse_option_path(tokens, &mut idx, "--cache-dir", label)?)
+            }
+            "--path" | "--output" => {
+                let flag = tokens[idx].clone();
+                path = Some(parse_option_path(tokens, &mut idx, &flag, label)?)
+            }
+            other if !other.starts_with("--") && path.is_none() => {
+                path = Some(other.to_string());
+                idx += 1;
+            }
+            other => {
+                return Err(format!(
+                    "Unknown option '{other}' for {label} promoter-cohort-comparison"
+                ));
+            }
+        }
+    }
+    if genes.is_empty() {
+        return Err(format!(
+            "{label} promoter-cohort-comparison requires at least one --gene QUERY or --gene-json JSON"
+        ));
+    }
+    if motifs.is_empty() {
+        return Err(format!(
+            "{label} promoter-cohort-comparison requires at least one --motif TOKEN"
+        ));
+    }
+    if cohort_label.trim().is_empty() {
+        cohort_label = "promoter_cohort".to_string();
+    }
+    Ok(ShellCommand::ReferencePromoterCohortComparison {
+        helper_mode,
+        genome_id,
+        source_seq_ids,
+        cohort_label,
+        cohort_kind,
+        genes,
+        motifs,
+        upstream_bp,
+        downstream_bp,
+        score_kind,
+        clip_negative,
+        expression_rows,
+        expression_source_label,
+        cutrun_dataset_ids,
+        cutrun_read_report_ids,
+        catalog_path,
+        cache_dir,
+        path,
+    })
 }
 
 fn parse_panels_command(tokens: &[String]) -> Result<ShellCommand, String> {
@@ -25404,7 +25707,38 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
 }
 
 /// Split and parse one raw shell command line using the shared tokenizer.
+#[inline(never)]
 pub fn parse_shell_line(line: &str) -> Result<ShellCommand, String> {
+    let trimmed = line.trim_start();
+    if trimmed.starts_with("genomes ") && !SHELL_EXPANDED_STACK_ACTIVE.with(|active| active.get())
+    {
+        let line = line.to_string();
+        let worker = thread::Builder::new()
+            .name("gentle-shell-parse-genomes-command".to_string())
+            .stack_size(SHELL_EXPANDED_STACK_SIZE)
+            .spawn(move || {
+                SHELL_EXPANDED_STACK_ACTIVE.with(|active| {
+                    let was_active = active.replace(true);
+                    let result = parse_shell_line_inner(&line);
+                    active.set(was_active);
+                    result
+                })
+            })
+            .map_err(|error| format!("Could not start shell parser worker thread: {error}"))?;
+        return worker.join().map_err(|panic_payload| {
+            let message = panic_payload
+                .downcast_ref::<&str>()
+                .map(|value| (*value).to_string())
+                .or_else(|| panic_payload.downcast_ref::<String>().cloned())
+                .unwrap_or_else(|| "unknown panic payload".to_string());
+            format!("Shell parser worker panicked: {message}")
+        })?;
+    }
+    parse_shell_line_inner(line)
+}
+
+#[inline(never)]
+fn parse_shell_line_inner(line: &str) -> Result<ShellCommand, String> {
     let tokens = split_shell_words(line)?;
     parse_shell_tokens(&tokens)
 }
@@ -26016,6 +26350,7 @@ fn is_reference_or_track_command(command: &ShellCommand) -> bool {
             | ShellCommand::ReferenceExtractGene { .. }
             | ShellCommand::ReferenceExtractPromoter { .. }
             | ShellCommand::ReferencePromoterTfbsSummary { .. }
+            | ShellCommand::ReferencePromoterCohortComparison { .. }
             | ShellCommand::ReferencePromoterTfbsSvg { .. }
             | ShellCommand::ReferenceExtendAnchor { .. }
             | ShellCommand::ReferenceVerifyAnchor { .. }
@@ -30577,6 +30912,52 @@ fn execute_reference_and_track_command(
                     gene_set_resolution: gene_set_resolution.clone(),
                     allow_draft: *allow_draft,
                     allow_deprecated: *allow_deprecated,
+                    path: path.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": op_result }),
+            })
+        }
+        ShellCommand::ReferencePromoterCohortComparison {
+            helper_mode,
+            genome_id,
+            source_seq_ids,
+            cohort_label,
+            cohort_kind,
+            genes,
+            motifs,
+            upstream_bp,
+            downstream_bp,
+            score_kind,
+            clip_negative,
+            expression_rows,
+            expression_source_label,
+            cutrun_dataset_ids,
+            cutrun_read_report_ids,
+            catalog_path,
+            cache_dir,
+            path,
+        } => {
+            let op_result = engine
+                .apply(Operation::SummarizePromoterCohortComparison {
+                    genome_id: genome_id.clone(),
+                    source_seq_ids: source_seq_ids.clone(),
+                    cohort_label: cohort_label.clone(),
+                    cohort_kind: *cohort_kind,
+                    genes: genes.clone(),
+                    motifs: motifs.clone(),
+                    upstream_bp: *upstream_bp,
+                    downstream_bp: *downstream_bp,
+                    score_kind: *score_kind,
+                    clip_negative: *clip_negative,
+                    catalog_path: operation_catalog_path(catalog_path, *helper_mode),
+                    cache_dir: cache_dir.clone(),
+                    expression_source_label: expression_source_label.clone(),
+                    expression_rows: expression_rows.clone(),
+                    cutrun_dataset_ids: cutrun_dataset_ids.clone(),
+                    cutrun_read_report_ids: cutrun_read_report_ids.clone(),
                     path: path.clone(),
                 })
                 .map_err(|e| e.to_string())?;
@@ -38816,6 +39197,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ReferenceExtractGene { .. }
         | ShellCommand::ReferenceExtractPromoter { .. }
         | ShellCommand::ReferencePromoterTfbsSummary { .. }
+        | ShellCommand::ReferencePromoterCohortComparison { .. }
         | ShellCommand::ReferencePromoterTfbsSvg { .. }
         | ShellCommand::ReferenceExtendAnchor { .. }
         | ShellCommand::ReferenceVerifyAnchor { .. }

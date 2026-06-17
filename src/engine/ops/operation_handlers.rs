@@ -15940,6 +15940,68 @@ impl GentleEngine {
                 ));
                 result.tfbs_track_similarity = Some(report);
             }
+            Operation::SummarizePromoterCohortComparison {
+                genome_id,
+                source_seq_ids,
+                cohort_label,
+                cohort_kind,
+                genes,
+                motifs,
+                upstream_bp,
+                downstream_bp,
+                score_kind,
+                clip_negative,
+                catalog_path,
+                cache_dir,
+                expression_source_label,
+                expression_rows,
+                cutrun_dataset_ids,
+                cutrun_read_report_ids,
+                path,
+            } => {
+                let mut report = self.summarize_promoter_cohort_comparison(
+                    &genome_id,
+                    &source_seq_ids,
+                    &cohort_label,
+                    cohort_kind,
+                    &genes,
+                    &motifs,
+                    upstream_bp,
+                    downstream_bp,
+                    score_kind,
+                    clip_negative,
+                    catalog_path.as_deref(),
+                    cache_dir.as_deref(),
+                    &expression_rows,
+                    expression_source_label.as_deref(),
+                    &cutrun_dataset_ids,
+                    &cutrun_read_report_ids,
+                )?;
+                report.op_id = Some(result.op_id.clone());
+                report.run_id = Some(run_id.to_string());
+                if let Some(path) = path.as_deref() {
+                    self.write_pretty_json_file(
+                        &report,
+                        path,
+                        "promoter cohort comparison report",
+                    )?;
+                    result.messages.push(format!(
+                        "Wrote promoter cohort comparison '{}' to '{}'",
+                        report.cohort_label, path
+                    ));
+                }
+                for warning in &report.warnings {
+                    result.warnings.push(warning.clone());
+                }
+                result.messages.push(format!(
+                    "Promoter cohort comparison '{}' resolved {} promoter(s), {} TFBS summary row(s), and {} pairwise similarity row(s)",
+                    report.cohort_label,
+                    report.resolved_promoter_count,
+                    report.tfbs_score_track_summaries.len(),
+                    report.pairwise_similarity.len()
+                ));
+                result.promoter_cohort_comparison = Some(report);
+            }
             Operation::ScanTfbsHits {
                 target,
                 motifs,
@@ -16367,6 +16429,7 @@ impl GentleEngine {
             tfbs_score_tracks: None,
             tfbs_track_similarity: None,
             multi_gene_promoter_tfbs: None,
+            promoter_cohort_comparison: None,
             repeat_annotation_query: None,
             sequence_repeat_overlaps: None,
             repeat_feature_materialization: None,
@@ -16409,6 +16472,7 @@ impl GentleEngine {
                 | Operation::SummarizeTfbsRegion { .. }
                 | Operation::SummarizeTfbsScoreTracks { .. }
                 | Operation::SummarizeMultiGenePromoterTfbs { .. }
+                | Operation::SummarizePromoterCohortComparison { .. }
                 | Operation::SummarizeTfbsTrackSimilarity { .. }
                 | Operation::ScanTfbsHits { .. }
         ) {
@@ -16448,7 +16512,8 @@ impl GentleEngine {
             match op {
                 Operation::QueryRepeatAnnotations { .. }
                 | Operation::BuildRepeatEnvironmentCohort { .. }
-                | Operation::SummarizeWindowCohortTfbs { .. } => {
+                | Operation::SummarizeWindowCohortTfbs { .. }
+                | Operation::SummarizePromoterCohortComparison { .. } => {
                     unreachable!("repeat cohort feature-scan operations are handled above")
                 }
                 Operation::LoadFile { path, as_id } => {

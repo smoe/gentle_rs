@@ -327,7 +327,7 @@ impl MainAreaDna {
                         );
                     }
                 });
-                ui.collapsing("TFBS confirmation", |ui| {
+                ui.collapsing("TFBS + occupancy support", |ui| {
                     let combined = report
                         .confirmed_tfbs_rows
                         .iter()
@@ -339,13 +339,14 @@ impl MainAreaDna {
                         return;
                     }
                     egui::Grid::new(("cutrun_tfbs_rows", report.seq_id.as_str()))
-                        .num_columns(7)
+                        .num_columns(8)
                         .striped(true)
                         .show(ui, |ui| {
                             ui.small(egui::RichText::new("TF").strong());
                             ui.small(egui::RichText::new("local").strong());
                             ui.small(egui::RichText::new("status").strong());
                             ui.small(egui::RichText::new("support").strong());
+                            ui.small(egui::RichText::new("distance").strong());
                             ui.small(egui::RichText::new("peaks").strong());
                             ui.small(egui::RichText::new("frags").strong());
                             ui.small(egui::RichText::new("cuts").strong());
@@ -379,6 +380,11 @@ impl MainAreaDna {
                                     row.strongest_support_strength
                                         .map(Self::cutrun_support_strength_label)
                                         .unwrap_or("-"),
+                                );
+                                ui.small(
+                                    row.support_distance_bp
+                                        .map(|value| format!("{value} bp"))
+                                        .unwrap_or_else(|| "-".to_string()),
                                 );
                                 ui.small(row.overlapping_peak_count.to_string());
                                 ui.small(row.supporting_fragment_count.to_string());

@@ -171,7 +171,9 @@ Catalog path note:
   - `cutrun inspect-regulatory-support` aggregates prepared datasets and/or
     saved ROI read reports into one promoter/ROI support report with:
     - merged `strong`/`moderate`/`weak` support windows
-    - theoretical TFBS rows split into `confirmed` vs `unconfirmed`
+    - theoretical TFBS rows split into legacy `confirmed` vs `unconfirmed`
+      vectors, with additive per-row `support_status` values:
+      `confirmed`, `nearby`, `absent`, or `motif_poor`
     - motif-absent strong windows classified as
       `context_supported_by_other_motifs` or `motif_poor_supported`
     - recurring motif-context summaries across many motif-absent supported
@@ -2146,6 +2148,7 @@ Shared shell command:
     - `features promoter-isoform-comparison SEQ_ID [--gene-label LABEL] [--transcript-id ID] [--promoter-upstream-bp N] [--promoter-downstream-bp N] [--no-feature-overlaps] [--path FILE.json]`
     - `features promoter-expression-evidence SEQ_ID [--gene-label LABEL] [--transcript-id ID] [--promoter-upstream-bp N] [--promoter-downstream-bp N] [--expression-json JSON] [--source-label LABEL] [--path FILE.json]`
     - `features promoter-artifact-manifest SEQ_ID --artifact-json JSON --path FILE.json [--gene-label LABEL]`
+    - `genomes promoter-cohort-comparison GENOME_ID --cohort-label LABEL --cohort-kind manual|co_regulated|anti_co_regulated --gene QUERY [--gene ...|--gene-json JSON] --motif TOKEN [--motif TOKEN ...|--motifs CSV] [--source-seq-id SEQ_ID ...] [--upstream-bp N] [--downstream-bp N] [--score-kind KIND] [--allow-negative] [--expression-json JSON] [--expression-source-label LABEL] [--cutrun-dataset ID ...] [--cutrun-read-report ID ...] [--catalog PATH] [--cache-dir PATH] [--path FILE.json]`
     - `features tfbs-score-tracks-svg SEQ_ID OUTPUT.svg --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative]`
     - `features tfbs-score-tracks-svg --sequence-text DNA --output OUTPUT.svg [--topology linear|circular] [--id-hint TEXT] --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative]`
     - `features tfbs-track-similarity SEQ_ID --anchor-motif TOKEN [--candidate-motif TOKEN ...|--candidate-motifs CSV|--candidate-motif ALL] [--range START..END|--start N --end N] [--ranking-metric raw_pearson|smoothed_pearson|raw_spearman|smoothed_spearman] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--species TEXT] [--include-remote-metadata] [--limit N] [--path FILE.json]`
@@ -2876,6 +2879,7 @@ Shared shell command:
         - `gentle_cli shell 'features tfbs-track-similarity grch38_tert_promoter --anchor-motif SP1 --candidate-motif "Yamanaka factors" --ranking-metric smoothed_spearman --score-kind llr_background_tail_log10 --species "Homo sapiens" --include-remote-metadata --limit 25 --path /tmp/tert_sp1_yamanaka_similarity.json'`
       - multi-gene promoter comparison through the same reference shell family:
         - `gentle_cli shell 'genomes promoter-tfbs-summary "Human GRCh38 Ensembl 116" --gene TERT --gene TP73 --motif "Yamanaka factors" --motif SP1 --upstream-bp 1000 --downstream-bp 200 --score-kind llr_background_tail_log10 --path /tmp/tert_tp73_promoter_tfbs.summary.json'`
+        - `gentle_cli shell 'genomes promoter-cohort-comparison "Human GRCh38 Ensembl 116" --cohort-label tert_tp73_review --cohort-kind manual --gene TERT --gene TP73 --motif "Yamanaka factors" --motif SP1 --expression-json {"gene_label":"TP73","sample_id":"case_1","condition":"case","value":12.4,"unit":"TPM"} --expression-source-label reviewed_table --path /tmp/tert_tp73_promoter_cohort.json'`
         - `gentle_cli shell 'genomes promoter-tfbs-svg "Human GRCh38 Ensembl 116" --gene TERT --gene TP73 --motif "Yamanaka factors" --motif SP1 --upstream-bp 1000 --downstream-bp 200 --score-kind llr_background_tail_log10 /tmp/tert_tp73_promoter_tfbs.svg'`
       - `--score-kind` now lets you inspect raw bit scores, in-window
         quantiles, random-background percentiles, or `-log10(background tail)`
@@ -4165,6 +4169,15 @@ Genome convenience commands:
   - Minus-strand promoters are reverse-complemented before scoring so all gene
     panels share the same transcription-oriented x-axis.
   - Returns portable schema `gentle.multi_gene_promoter_tfbs.v1`.
+- `genomes promoter-cohort-comparison GENOME_ID --cohort-label LABEL --cohort-kind manual|co_regulated|anti_co_regulated --gene QUERY[::OCCURRENCE][@TRANSCRIPT_ID][#DISPLAY_LABEL] [--gene ...|--gene-json JSON] --motif TOKEN [--motif TOKEN ...|--motifs CSV] [--source-seq-id SEQ_ID ...] [--upstream-bp N] [--downstream-bp N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--expression-json JSON] [--expression-source-label LABEL] [--cutrun-dataset ID ...] [--cutrun-read-report ID ...] [--catalog PATH] [--cache-dir PATH] [--path FILE.json]`
+  - Runs engine `SummarizePromoterCohortComparison`.
+  - First slice supports only manual, co-regulated, and anti-co-regulated
+    cohorts. Ortholog/cross-species resolution is intentionally deferred.
+  - Resolves each gene/transcript into a strand-aware promoter window, reuses
+    multi-gene TFBS score summaries and TFBS similarity ranking, and emits
+    pairwise similarity, shared/common peaks, cohort-specific/outlier peaks,
+    optional expression associations, and unresolved-gene warnings.
+  - Returns portable schema `gentle.promoter_cohort_comparison.v1`.
 - `genomes promoter-tfbs-svg GENOME_ID --gene QUERY[::OCCURRENCE][@TRANSCRIPT_ID][#DISPLAY_LABEL] [--gene ...|--gene-json JSON] --motif TOKEN [--motif TOKEN ...|--motifs CSV] [--upstream-bp N] [--downstream-bp N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--catalog PATH] [--cache-dir PATH] OUTPUT.svg`
   - Runs engine `RenderMultiGenePromoterTfbsSvg`.
   - Exports one small-multiples SVG with one promoter-aligned score-track panel
@@ -4252,6 +4265,8 @@ Host convenience commands:
   - Same behavior as `genomes extract-promoter`, with helper-catalog default.
 - `helpers promoter-tfbs-summary HELPER_ID --gene QUERY[::OCCURRENCE][@TRANSCRIPT_ID][#DISPLAY_LABEL] [--gene ...|--gene-json JSON] --motif TOKEN [--motif TOKEN ...|--motifs CSV] [--upstream-bp N] [--downstream-bp N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--catalog PATH] [--cache-dir PATH] [--path FILE.json]`
   - Same behavior as `genomes promoter-tfbs-summary`, with helper-catalog default.
+- `helpers promoter-cohort-comparison HELPER_ID --cohort-label LABEL --cohort-kind manual|co_regulated|anti_co_regulated --gene QUERY[::OCCURRENCE][@TRANSCRIPT_ID][#DISPLAY_LABEL] [--gene ...|--gene-json JSON] --motif TOKEN [--motif TOKEN ...|--motifs CSV] [--source-seq-id SEQ_ID ...] [--upstream-bp N] [--downstream-bp N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--expression-json JSON] [--expression-source-label LABEL] [--cutrun-dataset ID ...] [--cutrun-read-report ID ...] [--catalog PATH] [--cache-dir PATH] [--path FILE.json]`
+  - Same behavior as `genomes promoter-cohort-comparison`, with helper-catalog default.
 - `helpers promoter-tfbs-svg HELPER_ID --gene QUERY[::OCCURRENCE][@TRANSCRIPT_ID][#DISPLAY_LABEL] [--gene ...|--gene-json JSON] --motif TOKEN [--motif TOKEN ...|--motifs CSV] [--upstream-bp N] [--downstream-bp N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--catalog PATH] [--cache-dir PATH] OUTPUT.svg`
   - Same behavior as `genomes promoter-tfbs-svg`, with helper-catalog default.
 - `cache inspect [--references|--helpers|--both] [--cache-dir PATH ...]`

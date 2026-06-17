@@ -13,13 +13,13 @@ use crate::{
         AlternativePromoterComparisonRow, AnnotationCandidateSummary, AttractRegionClass,
         AttractSpeciesMatchMode, AttractSplicingEvidenceHitRow, AttractSplicingEvidenceSettings,
         AttractSplicingEvidenceView, ConstructRole, CutRunAlignConfig, CutRunInputFormat,
-        CutRunReadLayout, CutRunSeedFilterConfig, DotplotMode, DotplotOverlayAnchorExonRef,
-        DotplotOverlayXAxisMode, DotplotView, EditableStatus, Engine, EvidenceClass,
-        FlexibilityModel, FlexibilityTrack, GentleEngine, LinearSequenceLetterLayoutMode, OpResult,
-        Operation, PairwiseAlignmentMode, PrimerDesignBackend, PrimerDesignPairConstraint,
+        CutRunReadLayout, CutRunRegulatoryTfbsConfirmationStatus, CutRunSeedFilterConfig,
+        DotplotMode, DotplotOverlayAnchorExonRef, DotplotOverlayXAxisMode, DotplotView,
+        EditableStatus, Engine, EvidenceClass, FlexibilityModel, FlexibilityTrack, GentleEngine,
+        LinearSequenceLetterLayoutMode, OpResult, Operation, PairwiseAlignmentMode,
+        PrimerDesignBackend, PrimerDesignPairConstraint,
         PrimerDesignProgress, PrimerDesignSideConstraint, ProbeRegionEvidenceInterpretationReport,
-        ProjectState,
-        PromoterExpressionEvidenceInput, PromoterReporterCandidateSet,
+        ProjectState, PromoterExpressionEvidenceInput, PromoterReporterCandidateSet,
         ProtocolCartoonPreviewTelemetry, QpcrTranscriptSpecificityEvidence,
         QpcrTranscriptTargeting, QpcrTranscriptTargetingMode, RestrictionCloningPcrHandoffMode,
         RestrictionEnzymeDisplayMode, RnaReadAlignmentEffect, RnaReadAlignmentInspection,
@@ -60,6 +60,36 @@ use std::{
     time::{Duration, Instant},
 };
 use tempfile::{TempDir, tempdir};
+
+#[test]
+fn cutrun_tfbs_confirmation_label_covers_occupancy_support_statuses() {
+    assert_eq!(
+        MainAreaDna::cutrun_tfbs_confirmation_label(
+            CutRunRegulatoryTfbsConfirmationStatus::Confirmed
+        ),
+        "confirmed"
+    );
+    assert_eq!(
+        MainAreaDna::cutrun_tfbs_confirmation_label(CutRunRegulatoryTfbsConfirmationStatus::Nearby),
+        "nearby"
+    );
+    assert_eq!(
+        MainAreaDna::cutrun_tfbs_confirmation_label(CutRunRegulatoryTfbsConfirmationStatus::Absent),
+        "absent"
+    );
+    assert_eq!(
+        MainAreaDna::cutrun_tfbs_confirmation_label(
+            CutRunRegulatoryTfbsConfirmationStatus::MotifPoor
+        ),
+        "motif-poor"
+    );
+    assert_eq!(
+        MainAreaDna::cutrun_tfbs_confirmation_label(
+            CutRunRegulatoryTfbsConfirmationStatus::Unconfirmed
+        ),
+        "unconfirmed"
+    );
+}
 
 fn make_feature(kind: &str, qualifiers: Vec<(&str, &str)>) -> Feature {
     Feature {
@@ -985,6 +1015,7 @@ fn handle_imported_sequencing_trace_result_selects_trace_and_appends_to_run() {
         tfbs_score_tracks: None,
         tfbs_track_similarity: None,
         multi_gene_promoter_tfbs: None,
+        promoter_cohort_comparison: None,
         repeat_annotation_query: None,
         sequence_repeat_overlaps: None,
         repeat_feature_materialization: None,
@@ -4336,6 +4367,7 @@ fn handle_operation_success_captures_protocol_cartoon_preview_payload() {
             tfbs_score_tracks: None,
             tfbs_track_similarity: None,
             multi_gene_promoter_tfbs: None,
+            promoter_cohort_comparison: None,
             repeat_annotation_query: None,
             sequence_repeat_overlaps: None,
             repeat_feature_materialization: None,
@@ -9021,12 +9053,28 @@ fn variant_followup_promoter_expression_evidence_runs_shared_op_and_caches_repor
         .cached_promoter_expression_evidence
         .as_ref()
         .expect("cached promoter expression evidence report");
+    assert_eq!(report.schema, "gentle.promoter_expression_evidence.v1");
+    assert_eq!(report.seq_id, "tp73_expression_gui");
     assert_eq!(report.promoter_group_count, 1);
     assert_eq!(report.supplied_expression_record_count, 2);
     assert_eq!(report.assigned_expression_record_count, 1);
     assert_eq!(report.unassigned_expression_records.len(), 1);
-    assert_eq!(report.rows[0].mean_value, Some(10.0));
     assert_eq!(report.expression_source_label, "synthetic expression table");
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("could not be assigned")),
+        "warnings were: {:?}",
+        report.warnings
+    );
+    let row = report.rows.first().expect("promoter expression row");
+    assert_eq!(row.expression_record_count, 1);
+    assert_eq!(row.mean_value, Some(10.0));
+    assert_eq!(row.max_value, Some(10.0));
+    assert_eq!(row.unit.as_deref(), Some("TPM"));
+    assert_eq!(row.records[0].matched_by, vec!["transcript_id"]);
+    assert_eq!(row.records[0].source, "synthetic RNA-seq");
 }
 
 #[test]

@@ -536,6 +536,7 @@ const ALTERNATIVE_PROMOTER_COMPARISON_SCHEMA: &str = "gentle.alternative_promote
 const PROMOTER_EVIDENCE_MATRIX_SCHEMA: &str = "gentle.promoter_evidence_matrix.v1";
 const ISOFORM_PROMOTER_COMPARISON_SCHEMA: &str = "gentle.isoform_promoter_comparison.v1";
 const PROMOTER_EXPRESSION_EVIDENCE_SCHEMA: &str = "gentle.promoter_expression_evidence.v1";
+const PROMOTER_COHORT_COMPARISON_SCHEMA: &str = "gentle.promoter_cohort_comparison.v1";
 const PROMOTER_ARTIFACT_MANIFEST_SCHEMA: &str = "gentle.promoter_artifact_manifest.v1";
 const PROMOTER_REPORTER_CANDIDATES_SCHEMA: &str = "gentle.promoter_reporter_candidates.v1";
 const TFBS_REGION_SUMMARY_DEFAULT_LIMIT: usize = 200;
@@ -4104,6 +4105,40 @@ pub enum Operation {
         allow_draft: bool,
         #[serde(default)]
         allow_deprecated: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    SummarizePromoterCohortComparison {
+        genome_id: String,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        source_seq_ids: Vec<String>,
+        cohort_label: String,
+        #[serde(default)]
+        cohort_kind: PromoterCohortKind,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        genes: Vec<PromoterTfbsGeneQuery>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        motifs: Vec<String>,
+        #[serde(default = "default_promoter_window_upstream_bp")]
+        upstream_bp: usize,
+        #[serde(default = "default_promoter_window_downstream_bp")]
+        downstream_bp: usize,
+        #[serde(default = "default_tfbs_score_track_value_kind")]
+        score_kind: TfbsScoreTrackValueKind,
+        #[serde(default = "default_tfbs_score_track_clip_negative")]
+        clip_negative: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_dir: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        expression_source_label: Option<String>,
+        #[serde(default)]
+        expression_rows: Vec<PromoterExpressionEvidenceInput>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        cutrun_dataset_ids: Vec<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        cutrun_read_report_ids: Vec<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
@@ -7899,6 +7934,7 @@ impl GentleEngine {
                 | Operation::SummarizePromoterExpressionEvidence { .. }
                 | Operation::ExportPromoterArtifactManifest { .. }
                 | Operation::SummarizeMultiGenePromoterTfbs { .. }
+                | Operation::SummarizePromoterCohortComparison { .. }
                 | Operation::RenderMultiGenePromoterTfbsSvg { .. }
                 | Operation::ScanTfbsHits { .. }
                 | Operation::InspectJasparEntry { .. }

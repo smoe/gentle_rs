@@ -22587,6 +22587,8 @@ fn test_inspect_cutrun_regulatory_support_classifies_supported_and_unsupported_t
         nearby.support_status,
         CutRunRegulatoryTfbsConfirmationStatus::Nearby
     );
+    assert!(nearby.support_distance_bp.unwrap_or_default() > 0);
+    assert_eq!(nearby.local_start_0based, unsupported_feature_start);
     assert!(nearby.strongest_support_window_id.is_some());
     assert_eq!(
         nearby.strongest_support_strength,
@@ -22614,6 +22616,36 @@ fn test_inspect_cutrun_regulatory_support_classifies_supported_and_unsupported_t
         CutRunRegulatoryTfbsConfirmationStatus::Absent
     );
     assert!(absent.strongest_support_window_id.is_none());
+    assert!(absent.strongest_support_strength.is_none());
+}
+
+#[test]
+fn cutrun_tfbs_row_old_two_state_payload_deserializes_without_support_status() {
+    let row: CutRunRegulatoryTfbsRow = serde_json::from_value(serde_json::json!({
+        "feature_id": 7,
+        "feature_label": "SP1 site",
+        "motif_id": "MA0079.5",
+        "motif_label": "SP1",
+        "local_start_0based": 10,
+        "local_end_0based_exclusive": 19,
+        "genomic_start_1based": 110,
+        "genomic_end_1based": 118,
+        "strand": "+",
+        "confirmation_status": "confirmed",
+        "overlapping_peak_count": 1,
+        "supporting_fragment_count": 2,
+        "cut_site_count": 4
+    }))
+    .expect("old two-state CUT&RUN TFBS row deserializes");
+    assert_eq!(
+        row.confirmation_status,
+        CutRunRegulatoryTfbsConfirmationStatus::Confirmed
+    );
+    assert_eq!(
+        row.support_status,
+        CutRunRegulatoryTfbsConfirmationStatus::Unconfirmed
+    );
+    assert_eq!(row.support_distance_bp, None);
 }
 
 #[test]
@@ -22996,6 +23028,17 @@ fn test_inspect_cutrun_regulatory_support_reports_motif_poor_supported_windows()
         sequence.len(),
     );
     engine
+        .state_mut()
+        .sequences
+        .get_mut("toy_cutrun_roi")
+        .expect("toy CUT&RUN ROI")
+        .features_mut()
+        .push(cutrun_test_tfbs_feature(
+            window_start,
+            window_start + motif_poor_window.len(),
+            "CTCF",
+        ));
+    engine
         .apply(Operation::PrepareCutRunDataset {
             dataset_id: "toy_ctcf_reads".to_string(),
             catalog_path: Some(cutrun_catalog_path.to_string_lossy().to_string()),
@@ -23043,6 +23086,14 @@ fn test_inspect_cutrun_regulatory_support_reports_motif_poor_supported_windows()
         .expect("inspect motif-poor CUT&RUN support");
 
     assert_eq!(report.motif_absent_supported_windows.len(), 1);
+    let motif_poor_row = report
+        .unconfirmed_tfbs_rows
+        .first()
+        .expect("motif-poor TFBS support row");
+    assert_eq!(
+        motif_poor_row.support_status,
+        CutRunRegulatoryTfbsConfirmationStatus::MotifPoor
+    );
     let motif_poor = &report.motif_absent_supported_windows[0];
     let has_context_motifs = !motif_poor.motifs_inside_window.is_empty()
         || !motif_poor.motifs_in_neighbor_window.is_empty();
@@ -36200,6 +36251,139 @@ fn apply_summarize_multi_gene_promoter_tfbs_returns_transcription_aligned_report
                         .unwrap_or(false))
         }),
         "expected one NEG1/SP1 summary row"
+    );
+}
+
+#[test]
+fn apply_summarize_promoter_cohort_comparison_returns_pairwise_payload_and_unresolved_warnings() {
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let fasta = root.join("toy.fa");
+    let gtf = root.join("toy.gtf");
+    let sequence: String = (0..5000)
+        .map(|idx| match ((idx * 17) + (idx / 5)) % 4 {
+            0 => 'A',
+            1 => 'C',
+            2 => 'G',
+            _ => 'T',
+        })
+        .collect();
+    fs::write(&fasta, format!(">chr1\n{sequence}\n")).expect("write fasta");
+    fs::write(
+        &gtf,
+        concat!(
+            "chr1\tsrc\tgene\t501\t950\t.\t+\t.\tgene_id \"GENE_POS\"; gene_name \"POS1\";\n",
+            "chr1\tsrc\ttranscript\t601\t920\t.\t+\t.\tgene_id \"GENE_POS\"; gene_name \"POS1\"; transcript_id \"TX_POS\";\n",
+            "chr1\tsrc\texon\t601\t700\t.\t+\t.\tgene_id \"GENE_POS\"; gene_name \"POS1\"; transcript_id \"TX_POS\"; exon_number \"1\";\n",
+            "chr1\tsrc\tgene\t2001\t2600\t.\t-\t.\tgene_id \"GENE_NEG\"; gene_name \"NEG1\";\n",
+            "chr1\tsrc\ttranscript\t2051\t2500\t.\t-\t.\tgene_id \"GENE_NEG\"; gene_name \"NEG1\"; transcript_id \"TX_NEG\";\n",
+            "chr1\tsrc\texon\t2051\t2200\t.\t-\t.\tgene_id \"GENE_NEG\"; gene_name \"NEG1\"; transcript_id \"TX_NEG\"; exon_number \"1\";\n",
+        ),
+    )
+    .expect("write gtf");
+    let cache_dir = root.join("cache");
+    let catalog_path = root.join("catalog.json");
+    fs::write(
+        &catalog_path,
+        format!(
+            r#"{{
+  "ToyGenome": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            fasta.display(),
+            gtf.display(),
+            cache_dir.display()
+        ),
+    )
+    .expect("write catalog");
+
+    let mut engine = GentleEngine::new();
+    let _guard = EnvVarGuard::set(
+        crate::genomes::MAKEBLASTDB_ENV_BIN,
+        "__gentle_makeblastdb_missing_for_test__",
+    );
+    let catalog_path_str = catalog_path.to_string_lossy().to_string();
+    engine
+        .apply(Operation::PrepareGenome {
+            genome_id: "ToyGenome".to_string(),
+            catalog_path: Some(catalog_path_str.clone()),
+            cache_dir: None,
+            timeout_seconds: None,
+        })
+        .expect("prepare genome");
+
+    let result = engine
+        .apply(Operation::SummarizePromoterCohortComparison {
+            genome_id: "ToyGenome".to_string(),
+            source_seq_ids: vec!["toy_promoter_context".to_string()],
+            cohort_label: "toy_cohort".to_string(),
+            cohort_kind: PromoterCohortKind::CoRegulated,
+            genes: vec![
+                PromoterTfbsGeneQuery {
+                    gene_query: "POS1".to_string(),
+                    transcript_id: Some("TX_POS".to_string()),
+                    ..PromoterTfbsGeneQuery::default()
+                },
+                PromoterTfbsGeneQuery {
+                    gene_query: "NEG1".to_string(),
+                    transcript_id: Some("TX_NEG".to_string()),
+                    display_label: Some("NEG1 promoter".to_string()),
+                    ..PromoterTfbsGeneQuery::default()
+                },
+                PromoterTfbsGeneQuery {
+                    gene_query: "MISSING".to_string(),
+                    ..PromoterTfbsGeneQuery::default()
+                },
+            ],
+            motifs: vec!["SP1".to_string(), "TP73".to_string()],
+            upstream_bp: 100,
+            downstream_bp: 20,
+            score_kind: TfbsScoreTrackValueKind::LlrBackgroundTailLog10,
+            clip_negative: true,
+            catalog_path: Some(catalog_path_str),
+            cache_dir: None,
+            expression_source_label: Some("rna_demo".to_string()),
+            expression_rows: vec![PromoterExpressionEvidenceInput {
+                gene_label: Some("POS1".to_string()),
+                condition: Some("case".to_string()),
+                value: 12.5,
+                unit: Some("TPM".to_string()),
+                ..PromoterExpressionEvidenceInput::default()
+            }],
+            cutrun_dataset_ids: vec!["toy_cutrun".to_string()],
+            cutrun_read_report_ids: vec![],
+            path: None,
+        })
+        .expect("summarize promoter cohort comparison");
+
+    let report = result
+        .promoter_cohort_comparison
+        .expect("promoter cohort comparison report");
+    assert_eq!(report.schema, "gentle.promoter_cohort_comparison.v1");
+    assert_eq!(report.cohort_kind, PromoterCohortKind::CoRegulated);
+    assert_eq!(report.resolved_promoter_count, 2);
+    assert_eq!(report.resolved_promoter_windows.len(), 2);
+    assert!(
+        report
+            .resolved_promoter_windows
+            .iter()
+            .all(|row| row.tss_position_0based == 100)
+    );
+    assert!(!report.tfbs_score_track_summaries.is_empty());
+    assert!(!report.pairwise_similarity.is_empty());
+    assert_eq!(report.expression_associations.len(), 1);
+    assert_eq!(report.cutrun_dataset_ids, vec!["toy_cutrun".to_string()]);
+    assert!(report.multi_gene_promoter_tfbs.is_some());
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("MISSING")),
+        "warnings: {:?}",
+        report.warnings
     );
 }
 

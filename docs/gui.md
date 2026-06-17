@@ -4078,9 +4078,10 @@ dataset ids, saved ROI read-report ids, an optional promoter span, neighbor
 window, and species filters are sent through the shared
 `InspectCutRunRegulatorySupport` engine operation. The panel displays the
 returned `gentle.cutrun_regulatory_support.v1` record: evidence sources,
-support windows, confirmed/unconfirmed TFBS rows, motif-absent supported
-windows, recurring motif context, warnings, and JSON export. It does not add
-GUI-only CUT&RUN scoring or motif interpretation logic.
+support windows, the `TFBS + occupancy support` table with additive
+`support_status` and distance fields, motif-absent supported windows,
+recurring motif context, warnings, and JSON export. It does not add GUI-only
+CUT&RUN scoring or motif interpretation logic.
 
 While TFBS annotation is running, GUI shows live progress indicators and keeps
 repainting until completion:
@@ -4821,15 +4822,22 @@ Tutorial projects:
   - the same window now also exposes pasted or loaded promoter expression rows
     through the shared `SummarizePromoterExpressionEvidence` route:
     - the table reports assigned/unassigned expression rows per promoter group,
-      mean/max values, units, conditions, and match evidence
+      mean/max values, units, conditions/samples, and match evidence
     - text in the panel deliberately frames expression as association evidence,
       not promoter causation or wet-lab validation
+    - warnings and unassigned expression records remain visible
     - `Export expression JSON...` reruns the same shared operation with an
       output path, keeping GUI and shell artifacts identical in shape
-  - the same window can show the cached CUT&RUN regulatory-support report next
-    to promoter summaries; the TFBS table displays the additive four-state
-    `support_status` (`confirmed`, `nearby`, `absent`, `motif-poor`) while the
-    engine report still preserves the legacy confirmed/unconfirmed row vectors
+  - the same window now also exposes `Inspect TFBS occupancy support`, which
+    calls `InspectCutRunRegulatorySupport` for the active promoter span:
+    - dataset ids and saved read-report ids are passed through the engine
+      operation unchanged
+    - the reused support table shows motif, motif score, nearest/overlapping
+      CUT&RUN support, `support_status`, and distance without inventing a GUI
+      verdict
+    - the engine report still preserves the legacy confirmed/unconfirmed row
+      vectors while displaying additive four-state `support_status`
+      (`confirmed`, `nearby`, `absent`, `motif-poor`)
   - the same window now also exposes `Export TF score tracks SVG...`, which
     goes through the shared `RenderTfbsScoreTracksSvg` engine route instead of a
     GUI-only painter and can therefore reproduce the same stacked figure style
