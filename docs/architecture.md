@@ -72,6 +72,33 @@ Wet-lab semantic rule (target model):
 - Filter-like steps (PCR, gel extraction, in silico selection) produce a new
   container with a narrower candidate set.
 
+Sequence collection subject rule (target model):
+
+- A set of sequences should be treated as a first-class engine-owned subject,
+  not as a GUI-only convenience loop over single-sequence actions.
+- Gene sets are one producer of such subjects: they resolve catalog groups,
+  explicit members, local external mappings, genomic neighborhoods, or
+  deterministic samples into auditable member rows. They are not a separate GUI
+  object class with private behavior.
+- Existing collection-like concepts keep their own semantics:
+  - logical sets preserve membership and provenance without implying physical
+    mixing
+  - pools/containers represent one sample that may contain multiple molecules
+  - arrangements preserve semantic order for lanes, racks, plates, or other
+    experimental layouts
+  - alignments preserve member order plus aligned-column correspondence
+  - derived collections preserve source-member provenance for subsequences,
+    promoter windows, fragments, amplicons, and neighboring loci
+  - storage collections preserve physical placement through containers,
+    arrangements, racks, and future inventory/freezer views
+- Any operation that is valid for one stored sequence should declare how it
+  lifts over a collection before a prominent GUI affordance is added:
+  map per member, combine/pool, compare/align, arrange/place, derive new
+  members, or reject with a typed reason.
+- GUI, CLI, JS, Lua, Python, MCP, and agent routes must call the same lifted
+  engine/shell operation path. Adapters must not implement their own hidden
+  per-member loops with different readiness, error, or provenance behavior.
+
 Primer/oligo identity rule (target model):
 
 - A PCR primer should not be modeled as only a DNA string.

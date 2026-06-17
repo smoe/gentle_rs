@@ -377,6 +377,31 @@ The project main window (lineage page) supports two views:
 - Rack placement is a linked physical layer on top of arrangements, not a replacement for them:
   - arrangements keep the semantic sample order
   - racks/plates keep the physical A1-slot placement
+- Gene sets and other multi-sequence selections should enter the GUI through
+  the same collection-subject mental model rather than as a separate editor
+  island:
+  - a gene set is a logical collection source that resolves to auditable
+    members, warnings, and provenance
+  - a pool/container is a physical collection that may contain multiple
+    molecules in one sample
+  - an arrangement is an ordered collection for lanes, racks, plates, and
+    labels
+  - an alignment is an analytical collection with member order plus column
+    correspondence
+  - derived collections, such as promoter windows or neighboring loci, preserve
+    links back to each source member
+- Collection GUI affordances must stay thin over shared engine/shell contracts:
+  the GUI should collect the collection operand, show per-member and aggregate
+  readiness/errors/results, and call the same named operation or shell route
+  that CLI/MCP/agent surfaces can invoke.
+- Operations offered for a collection should expose the engine-declared lifting
+  behavior in their controls and result view:
+  - map per member
+  - combine into one explicit pool/sample
+  - compare members together
+  - arrange/place members
+  - derive new members from each source member
+  - reject with a typed reason when a collection is not valid input
 - Built-in rack/plate profiles include small tube racks, six-well
   cell-culture plates, 96-well plates, and 384-well plates. Physical-template
   export includes PCR tube rack templates plus a cell-culture 6-well plate

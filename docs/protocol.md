@@ -768,6 +768,57 @@ Resolution notes:
   may silently drop or miss draft-member warnings; the engine now reports draft
   members explicitly in gene-set resolution warnings.
 
+### Sequence collection subjects
+
+Gene sets are one source of a broader protocol subject: an auditable collection
+of sequence-like members. The collection subject is engine-owned so GUI,
+CLI/shared-shell, MCP, JS, Lua, Python, and agent routes can expose the same
+readiness, errors, results, and provenance instead of each adapter looping over
+single-sequence behavior independently.
+
+Collection semantics stay explicit:
+
+| Collection subject | Meaning | Typical producers | Typical projections |
+|---|---|---|---|
+| Logical set | Members plus provenance; no physical mixing implied | `GeneSetResolutionReport`, project selection, query result | per-member operations, multi-record export, promoter-window derivation |
+| Physical pool/container | One sample/tube/lane may contain multiple molecules | `ExportPool`, operation-created product containers, imported pools | pool gel, storage, split/filter follow-ups |
+| Arrangement | Ordered semantic layout across containers | `CreateArrangementSerial`, Gibson/bench handoff workflows | serial gel, rack placement, arrangement-scoped labels |
+| Alignment | Ordered members plus aligned-column correspondence | future multiple-sequence alignment reports | alignment inspection, consensus/variant projection |
+| Derived collection | New members derived from source members | promoter windows, restriction fragments, amplicons, neighboring loci | materialized sequences, downstream analysis sets |
+| Storage collection | Physical placement of members or arrangements | rack/plate placement, future inventory/freezer views | labels, carrier templates, inventory reports |
+
+Operation lifting rule:
+
+- New or promoted operations that accept one sequence must state their
+  collection behavior before gaining a prominent collection GUI affordance.
+- Valid lifting modes are:
+  - `map`: run the operation independently for each member and return
+    per-member reports plus a collection summary.
+  - `combine`: intentionally treat all members as one sample/pool.
+  - `compare`: consume multiple members together, as in alignment or cohort
+    comparison.
+  - `arrange`: preserve or create explicit member order/placement.
+  - `derive`: create one or more descendant members per source member while
+    retaining source-member provenance.
+  - `reject`: decline the collection operand with a typed reason when the
+    operation is biologically or contractually single-sequence only.
+- The selected lifting mode is part of the shared engine/shell contract, not a
+  GUI implementation detail. GUI controls should collect the collection
+  operand, show per-member and aggregate readiness/errors/results, and call the
+  same operation path available to CLI/MCP/agent routes.
+
+Initial high-value lifting expectations:
+
+| Single-sequence operation family | Collection behavior |
+|---|---|
+| Sequence export/inspection | `map` per member or write one explicit multi-record artifact when requested |
+| Restriction digest / PCR / primer design | `map` per member, with per-member products/reports and an aggregate warning summary |
+| Pool/gel rendering | `combine` into one pool lane only when explicitly requested; otherwise `arrange` one lane per member/container |
+| BLAST / feature scans / TFBS scans | `map` per member, preserving one result set per source member |
+| Promoter or neighboring-sequence derivation | `derive` one or more windows per resolved member, preserving gene-set/source provenance |
+| Multiple sequence alignment | `compare` members together and return an alignment report with member order and column correspondence |
+| Rack/freezer/inventory placement | `arrange` into a storage projection from containers/arrangements, without changing logical set identity |
+
 ## Stateless sequence-scan contract
 
 Implemented additive contract:
