@@ -3547,6 +3547,8 @@ fn inspect_cutrun_gene_set_regulatory_support_keeps_evaluated_denominators_hones
             &[],
         )
         .expect("inspect gene-set CUT&RUN support");
+    assert_eq!(report.relationship, GeneSetCohortRelationship::Unspecified);
+    assert!(report.relationship_flags.is_empty());
     assert_eq!(report.aggregate.member_count, 3);
     assert_eq!(report.aggregate.evaluated_member_count, 2);
     assert_eq!(report.aggregate.unevaluated_member_count, 1);
@@ -3604,6 +3606,158 @@ fn inspect_cutrun_gene_set_regulatory_support_keeps_evaluated_denominators_hones
         GeneSetCutRunEvaluationState::Unevaluated
     );
     assert!(unevaluated.unevaluated_reason.is_some());
+
+    let mut co_regulated_cohort = gene_set_cutrun_promoter_cohort(vec![
+        gene_set_cutrun_window("EvalSupport", 100, 200),
+        gene_set_cutrun_window("EvalZero", 300, 350),
+        gene_set_cutrun_window("Unevaluated", 800, 900),
+    ]);
+    co_regulated_cohort.relationship = GeneSetCohortRelationship::CoRegulated;
+    let co_regulated = engine
+        .inspect_cutrun_gene_set_regulatory_support(
+            co_regulated_cohort,
+            &["toy_gene_set_cutrun".to_string()],
+            &["toy_gene_set_report".to_string()],
+            150,
+            &[],
+        )
+        .expect("inspect co-regulated gene-set CUT&RUN support");
+    assert_eq!(
+        co_regulated.relationship,
+        GeneSetCohortRelationship::CoRegulated
+    );
+    assert!(!co_regulated.relationship_flags.is_empty());
+    let co_flag = co_regulated
+        .relationship_flags
+        .iter()
+        .find(|flag| flag.member_symbols.contains(&"EvalZero".to_string()))
+        .expect("co-regulated divergence flags unsupported evaluated member");
+    assert_eq!(co_flag.flag_kind, "unexpected_divergence");
+    assert!(co_flag.evidence_kind.starts_with("cutrun_"));
+    assert!(
+        co_flag
+            .member_dedup_keys
+            .contains(&"symbol:evalzero".to_string())
+    );
+    assert!(
+        !co_flag
+            .member_symbols
+            .iter()
+            .any(|symbol| symbol == "Unevaluated")
+    );
+
+    let mut anti_co_regulated_cohort = gene_set_cutrun_promoter_cohort(vec![
+        gene_set_cutrun_window("EvalSupport", 100, 200),
+        gene_set_cutrun_window("EvalZero", 300, 350),
+        gene_set_cutrun_window("Unevaluated", 800, 900),
+    ]);
+    anti_co_regulated_cohort.relationship = GeneSetCohortRelationship::AntiCoRegulated;
+    let anti_co_regulated = engine
+        .inspect_cutrun_gene_set_regulatory_support(
+            anti_co_regulated_cohort,
+            &["toy_gene_set_cutrun".to_string()],
+            &["toy_gene_set_report".to_string()],
+            150,
+            &[],
+        )
+        .expect("inspect anti-co-regulated gene-set CUT&RUN support");
+    assert_eq!(
+        anti_co_regulated.relationship,
+        GeneSetCohortRelationship::AntiCoRegulated
+    );
+    assert!(anti_co_regulated.relationship_flags.is_empty());
+
+    let mut anti_concordant_cohort = gene_set_cutrun_promoter_cohort(vec![
+        gene_set_cutrun_window("EvalSupportA", 100, 200),
+        gene_set_cutrun_window("EvalSupportB", 120, 160),
+    ]);
+    anti_concordant_cohort.relationship = GeneSetCohortRelationship::AntiCoRegulated;
+    let anti_concordant = engine
+        .inspect_cutrun_gene_set_regulatory_support(
+            anti_concordant_cohort,
+            &["toy_gene_set_cutrun".to_string()],
+            &["toy_gene_set_report".to_string()],
+            150,
+            &[],
+        )
+        .expect("inspect anti-co-regulated concordant CUT&RUN support");
+    assert_eq!(
+        anti_concordant.relationship_flags[0].flag_kind,
+        "unexpected_concordance"
+    );
+    assert!(
+        anti_concordant.relationship_flags[0]
+            .member_symbols
+            .contains(&"EvalSupportA".to_string())
+    );
+    assert!(
+        anti_concordant.relationship_flags[0]
+            .member_symbols
+            .contains(&"EvalSupportB".to_string())
+    );
+
+    let mut inherited_cohort = gene_set_cutrun_promoter_cohort(vec![
+        gene_set_cutrun_window("EvalSupport", 100, 200),
+        gene_set_cutrun_window("EvalZero", 300, 350),
+    ]);
+    inherited_cohort.relationship = GeneSetCohortRelationship::CoRegulated;
+    let inherited = engine
+        .apply(Operation::InspectCutRunGeneSetRegulatorySupport {
+            genome_id: "ToyGenome".to_string(),
+            source: None,
+            resolution: None,
+            promoter_cohort: Some(Box::new(inherited_cohort.clone())),
+            relationship: GeneSetCohortRelationship::Unspecified,
+            dataset_ids: vec!["toy_gene_set_cutrun".to_string()],
+            read_report_ids: vec!["toy_gene_set_report".to_string()],
+            upstream_bp: DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP,
+            downstream_bp: DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP,
+            neighbor_window_bp: 150,
+            species_filters: vec![],
+            gene_group_catalog_path: None,
+            genome_catalog_path: None,
+            cache_dir: None,
+            allow_draft: false,
+            allow_deprecated: false,
+            path: None,
+        })
+        .expect("inspect inherited relationship through operation");
+    let inherited_report = inherited
+        .gene_set_cutrun_regulatory_support
+        .expect("inherited gene-set CUT&RUN report");
+    assert_eq!(
+        inherited_report.relationship,
+        GeneSetCohortRelationship::CoRegulated
+    );
+
+    let overridden = engine
+        .apply(Operation::InspectCutRunGeneSetRegulatorySupport {
+            genome_id: "ToyGenome".to_string(),
+            source: None,
+            resolution: None,
+            promoter_cohort: Some(Box::new(inherited_cohort)),
+            relationship: GeneSetCohortRelationship::AntiCoRegulated,
+            dataset_ids: vec!["toy_gene_set_cutrun".to_string()],
+            read_report_ids: vec!["toy_gene_set_report".to_string()],
+            upstream_bp: DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP,
+            downstream_bp: DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP,
+            neighbor_window_bp: 150,
+            species_filters: vec![],
+            gene_group_catalog_path: None,
+            genome_catalog_path: None,
+            cache_dir: None,
+            allow_draft: false,
+            allow_deprecated: false,
+            path: None,
+        })
+        .expect("inspect overridden relationship through operation");
+    let overridden_report = overridden
+        .gene_set_cutrun_regulatory_support
+        .expect("overridden gene-set CUT&RUN report");
+    assert_eq!(
+        overridden_report.relationship,
+        GeneSetCohortRelationship::AntiCoRegulated
+    );
 
     let all_unevaluated = engine
         .inspect_cutrun_gene_set_regulatory_support(

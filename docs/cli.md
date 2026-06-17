@@ -181,7 +181,8 @@ Catalog path note:
   - `cutrun gene-set-regulatory-support` scores prepared datasets and saved
     read reports across a gene-set promoter cohort and reports evaluated versus
     unevaluated members separately; optional `--relationship` records a
-    declared expectation and emits non-blocking relationship flags.
+    declared expectation and emits non-blocking CUT&RUN occupancy relationship
+    flags over evaluated members only.
 
 ## ClawBio/OpenClaw skill scaffold
 
@@ -3847,6 +3848,10 @@ Tutorial companion:
     anti-co-regulated.
   - Builds promoter windows for the resolved set using the shared promoter/TSS
     resolver and the default 1000 upstream / 200 downstream geometry.
+  - `--relationship` records a declared cohort expectation. CUT&RUN gene-set
+    regulatory-support reports can derive non-blocking occupancy consistency
+    flags from that declaration; promoter cohorts simply carry the declaration
+    forward.
   - V1 stays offline-first: GO resolves only from local `external_mappings`,
     and live Ensembl ortholog/paralog retrieval is not implemented.
   - Draft members are included with explicit warnings; recipes that used
