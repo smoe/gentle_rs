@@ -2113,6 +2113,7 @@ Shared shell command:
     - `arrays project-microarray-track SEQ_ID MANIFEST [--contrasts CSV] [--level probeset] [--min-abs-logfc N] [--max-adj-p N] [--max-features N] [--clear-existing]`
     - `arrays inspect-probe-region-output OUTPUT_DIR`
     - `arrays import-apt-probe-region-output SUMMARY.tsv ANNOTATION.csv OUTPUT_DIR [--metadata PATH] [--condition-column NAME] [--sample-column NAME] [--probe-intensity PATH] [--probe-id-column NAME] [--platform NAME] [--normalization NAME] [--coordinate-system ID] [--genome-build ID]`
+    - `arrays run-probe-region-backend PLAN.json [--backend NAME] --allow-external-execution`
     - `arrays render-probe-region-output-svg OUTPUT_DIR OUTPUT.svg`
     - `arrays render-probe-region-evidence-svg REPORT.json OUTPUT.svg`
     - `arrays project-probe-region-output SEQ_ID OUTPUT_DIR [--contrasts CSV] [--level probe_region|pm_probe] [--min-abs-logfc N] [--max-features N] [--clear-existing]`
@@ -3739,9 +3740,17 @@ Tutorial companion:
     plots `mean_log2_*` condition tracks in the upper panel and `log2FC_*`
     tracks in the lower panel, using the existing chromosome-ordered helper
     table and reporting projection blockers without running R/APT.
+- `arrays run-probe-region-backend analysis/probe_regions/plan.json --allow-external-execution`
+  - Explicit local execution of a persisted `gentle.probe_region_plan.v1`.
+    GENtle refuses to run without `--allow-external-execution`, refuses plans
+    whose preflight/backend readiness failed, captures stdout/stderr/exit
+    status, validates the resulting four-file helper-output contract, and
+    writes hardened `gentle.probe_region_backend_provenance.v1` provenance. It
+    does not download or install CEL files, vendor resources, R packages, or
+    APT.
 - `arrays render-probe-region-evidence-svg analysis/probe_regions/tp73_interpretation.json analysis/probe_regions/tp73_probe_geometry.svg`
   - Read-only deterministic SVG export for
-    `gentle.probe_region_evidence_interpretation.v1`. The SVG draws
+    `gentle.probe_region_evidence_interpretation.v2`. The SVG draws
     transcript lanes, only the exon ranges and junction spans present in the
     report, parent probeset spans, and PM probe intervals. It is a review-only
     transcript/exon-geometry constraint visualization; it does not infer
@@ -3761,7 +3770,7 @@ Tutorial companion:
 - `arrays interpret-probe-region-evidence grch38_tp73 --gene TP73 --level pm_probe --min-abs-logfc 0.5 --path analysis/probe_regions/tp73_interpretation.json`
   - Compares projected probe/probeset-region array features with the
     sequence's transcript/exon annotations and writes
-    `gentle.probe_region_evidence_interpretation.v1`. The report preserves
+    `gentle.probe_region_evidence_interpretation.v2`. The report preserves
     shared-transcript overlaps, parent probeset context, structured
     exon/junction/transcript mappings, conservative geometry scores,
     score-basis guardrails, transcript-level review labels, probe sequence
@@ -5435,6 +5444,15 @@ Notes:
   `annotation_source.vendor_support_files[]`; place them manually in
   `data/resources/affymetrix/clariom_d_human_na36_hg38/` when probe/probeset
   coordinate development needs vendor CSV annotations.
+- `arrays run-probe-region-backend PLAN.json --allow-external-execution`
+  (or `arrays run-probe-region-backend --plan PLAN.json --allow-external-execution`)
+  reads a persisted `gentle.probe_region_plan.v1`, checks the recorded
+  preflight/backend readiness, and only then runs the rendered R/oligo or APT
+  command. The `--allow-external-execution` gate is required; without it GENtle
+  refuses external R/APT execution. The command captures stdout/stderr/exit
+  status, validates the resulting four-file helper-output contract, and writes
+  hardened `gentle.probe_region_backend_provenance.v1` provenance. It never
+  downloads or installs CEL files, vendor resources, R packages, or APT.
 - `arrays inspect-probe-region-output OUTPUT_DIR` validates the explicit helper
   outputs after the user has run R themselves. It does not project features;
   it prepares a shared GUI/CLI-readable summary for projection triage.

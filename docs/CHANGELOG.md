@@ -18,6 +18,10 @@ Maintenance rule:
   repeat/similarity warnings can report PCR, nanopore, read-mapping, cloning
   stability, and construct-maintenance severity without creating extra map
   overlays.
+- Completed the Clariom/probe-region real-data-to-figure bridge slice with
+  coordinate-consistent `gentle.probe_region_evidence_interpretation.v2`,
+  gated `arrays run-probe-region-backend`, GUI shared-capability surfacing, and
+  runbook/docs coverage for the explicit E-MTAB-14704 TP73 loop.
 
 ## 2026-06-18
 

@@ -3028,11 +3028,12 @@ The `Help` menu now includes:
   CUT&RUN-style BED fixture, annotates TFBS, enables evidence layers, and
   renders proof SVG/report artifacts through the same shared operations used by
   CLI workflows.
-- Manual CEL/probeset preparation remains explicit: the assistant shows
-  copyable `arrays probe-regions --dry-run`, `scripts/probe_regions_oligo.R`,
-  and `arrays inspect-probe-region-output` commands. Login-walled Thermo Fisher
-  support ZIPs are only listed as expected local inputs; GENtle does not
-  download them or run R package installation from the GUI.
+- CEL/probeset preparation remains explicit: the assistant shows copyable
+  `arrays probe-regions --dry-run`, `arrays run-probe-region-backend PLAN.json
+  --allow-external-execution`, and `arrays inspect-probe-region-output`
+  commands. Login-walled Thermo Fisher support ZIPs are only listed as expected
+  local inputs; GENtle does not download them or run R package installation
+  from the GUI.
 - Prepared Clariom D array output can be projected with
   `arrays project-microarray-track`. The command validates that the manifest
   coordinate system matches the open sequence's genome anchor, or that the
@@ -3061,8 +3062,12 @@ The `Help` menu now includes:
   condition-contrast, annotation/library, platform, backend-candidate, local
   dependency, output, and cache-readiness checks. The `r_oligo` candidate
   advertises the generic `scripts/probe_regions_oligo.R` helper and includes
-  an advisory command for explicit RMA/CEL requests; first-class GUI execution
-  and plots remain a backend follow-up.
+  an advisory command for explicit RMA/CEL requests; the panel can run that
+  selected backend only through the shared
+  `arrays run-probe-region-backend PLAN.json --allow-external-execution`
+  capability after the user enables the external R/APT confirmation checkbox.
+  Missing preflight dependencies stop before R/APT is launched, and GENtle
+  still does not download or install packages.
 - For `Clariom_D_Human`, the same preflight lists the canonical local Thermo
   Fisher na36 hg38 support ZIP paths under
   `annotation_source.vendor_support_files[]`; these login-walled files are

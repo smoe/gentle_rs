@@ -84,26 +84,27 @@ cargo run --bin gentle_cli -- resources prepare-publication-dataset \
 
 Raw CEL files remain uncommitted.
 
-## Manual Backend Execution
+## Explicit Backend Execution
 
-Use the generated preflight command as the starting point for a local R/oligo
-run. The generic helper is:
+After the raw CEL files and required local R/Bioconductor or APT dependencies
+are present, run the selected backend explicitly from the persisted plan:
 
 ```bash
-Rscript scripts/probe_regions_oligo.R \
-  --cel data/publication_resources/rostock_p73_clariomd_e_mtab_14704/P_SKMel29_AdGFP_1.CEL \
-  --metadata data/publication_resources/rostock_p73_clariomd_e_mtab_14704/E-MTAB-14704.sdrf.txt \
-  --sample-column "Array Data File" \
-  --condition-column "Characteristics[genetic modification]" \
-  --gene TP73 \
-  --platform-package pd.clariom.d.human \
-  --normalization rma \
-  --output analysis/probe_regions/e_mtab_14704_tp73
+cargo run --bin gentle_cli -- arrays run-probe-region-backend \
+  analysis/probe_regions/e_mtab_14704_tp73/plan.json \
+  --backend r_oligo \
+  --allow-external-execution
 ```
 
-Add all nine CEL files for the real analysis. If using APT instead, run APT
-manually and then import its summary, annotation, metadata, and PM-probe
-intensity tables with:
+The `--allow-external-execution` gate is mandatory. GENtle refuses to launch
+R/APT when the recorded preflight or selected backend readiness failed, and it
+still does not download raw CEL files, install R packages, install APT, or fetch
+vendor payloads. A successful run writes the four-file helper-output contract
+and hardened `gentle.probe_region_backend_provenance.v1` provenance into
+`analysis/probe_regions/e_mtab_14704_tp73/`.
+
+If using manually run APT instead of the plan-rendered backend command, import
+its summary, annotation, metadata, and PM-probe intensity tables with:
 
 ```bash
 cargo run --bin gentle_cli -- arrays import-apt-probe-region-output \
@@ -163,6 +164,14 @@ cargo run --bin gentle_cli -- arrays interpret-probe-region-evidence \
   --path artifacts/clariom_e_mtab_14704_tp73_interpretation.json
 ```
 
+Render the report into the coordinate-consistent evidence figure:
+
+```bash
+cargo run --bin gentle_cli -- arrays render-probe-region-evidence-svg \
+  artifacts/clariom_e_mtab_14704_tp73_interpretation.json \
+  artifacts/clariom_e_mtab_14704_tp73_probe_geometry.svg
+```
+
 The interpretation report is a constraint/triage artifact only. It records
 geometry compatibility, shared-vs-unique overlap, junction spans, and ambiguity
 tags such as `probe_sequence_alignment_not_assessed`,
@@ -177,6 +186,7 @@ Run the focused validation checks:
 cargo test --lib -- \
   glen_probe_region_adapter_regenerates_committed_e_mtab_fixture \
   main_area_dna_projects_probe_region_output_through_shared_shell_capability \
+  main_area_dna_builds_probe_region_backend_run_through_shared_shell_capability \
   main_area_dna_interprets_probe_region_evidence_through_shared_shell_capability \
   e_mtab_14704_tp73_validation_fixture_projects_and_interprets_pm_probe_evidence \
   e_mtab_14704_tp73_validation_report_is_probe_location_figure_ready

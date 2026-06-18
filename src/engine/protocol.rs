@@ -4174,6 +4174,28 @@ pub struct ProbeRegionPlan {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(default)]
+/// Explicit external-backend execution report for a persisted probe-region plan.
+pub struct ProbeRegionBackendRunReport {
+    pub schema: String,
+    pub plan_path: String,
+    pub backend: String,
+    pub command: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_dir: Option<String>,
+    pub allow_external_execution: bool,
+    pub executed: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i32>,
+    pub stdout: String,
+    pub stderr: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inspection: Option<ProbeRegionOutputInspection>,
+    pub warnings: Vec<String>,
+    pub errors: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
 /// One chromosome-ordered preview row from a completed probe-region output table.
 pub struct ProbeRegionOutputPreviewRow {
     pub chromosome: String,
@@ -4313,6 +4335,11 @@ pub struct ProbeRegionEvidenceInterpretationReport {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gene_label: Option<String>,
     pub level: String,
+    pub coordinate_frame: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub coordinate_system: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub coordinate_chromosome: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_abs_logfc: Option<f64>,
     pub array_feature_count: usize,
@@ -4353,15 +4380,17 @@ pub struct ProbeRegionEvidenceMappingRow {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(default)]
-/// Transcript-local geometry mapping for one projected array evidence row.
+/// Coordinate-normalized geometry mapping for one projected array evidence row.
 pub struct ProbeRegionEvidenceTranscriptMapping {
     pub transcript_id: String,
+    pub coordinate_frame: String,
     pub mapping_kind: String,
     pub geometry_score: f64,
     pub geometry_score_class: String,
     pub score_basis: Vec<String>,
     pub exon_ordinals: Vec<usize>,
     pub exon_ranges_1based: Vec<String>,
+    pub local_exon_ranges_1based: Vec<String>,
     pub junction_spans: Vec<ProbeRegionEvidenceJunctionSpan>,
     pub overlap_bp: usize,
 }
@@ -4369,11 +4398,19 @@ pub struct ProbeRegionEvidenceTranscriptMapping {
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(default)]
 /// One exon-exon boundary spanned by a projected array evidence interval.
+///
+/// The `genomic_*` fields are the report coordinate-frame values used for
+/// rendering. When the report frame is local, the optional `local_*` fields
+/// preserve the same source coordinates explicitly.
 pub struct ProbeRegionEvidenceJunctionSpan {
     pub from_exon_ordinal: usize,
     pub to_exon_ordinal: usize,
     pub genomic_start_1based: usize,
     pub genomic_end_1based: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_start_1based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_end_1based: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]

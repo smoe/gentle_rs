@@ -20,6 +20,7 @@ const PROBE_REGION_PROVENANCE_FILE: &str = "provenance.json";
 const PROBE_REGION_MATRIX_MANIFEST_SCHEMA: &str =
     "gentle.probe_region_normalized_matrix_manifest.v1";
 const PROBE_REGION_BACKEND_PROVENANCE_SCHEMA: &str = "gentle.probe_region_backend_provenance.v1";
+const PROBE_REGION_BACKEND_RUN_SCHEMA: &str = "gentle.probe_region_backend_run.v1";
 const PROBE_REGION_FINGERPRINT_SHA1_MAX_BYTES: u64 = 10 * 1024 * 1024;
 const CLARIOM_D_HUMAN_VENDOR_SUPPORT_DIR: &str =
     "data/resources/affymetrix/clariom_d_human_na36_hg38";
@@ -100,6 +101,11 @@ struct ProbeRegionProjectedEvidence {
     strand: Option<String>,
     logfc: Option<f64>,
     assembly_check: Option<String>,
+    coordinate_frame: String,
+    anchor_genome_id: Option<String>,
+    anchor_start_1based: Option<usize>,
+    anchor_end_1based: Option<usize>,
+    anchor_strand: Option<char>,
     ranges_0based: Vec<(usize, usize)>,
 }
 
@@ -509,6 +515,353 @@ impl GentleEngine {
             cause_chain: vec![],
         })?;
         Ok(plan_path.to_string_lossy().to_string())
+    }
+
+    /// Run an explicitly approved external R/oligo or APT backend from plan.json.
+    pub fn run_probe_region_backend(
+        &self,
+        plan_path: &str,
+        backend: Option<&str>,
+        allow_external_execution: bool,
+    ) -> Result<ProbeRegionBackendRunReport, EngineError> {
+        let plan_path = plan_path.trim();
+        if plan_path.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "arrays run-probe-region-backend requires PLAN.json".to_string(),
+                cause_chain: vec![],
+            });
+        }
+        let plan_text = std::fs::read_to_string(plan_path).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not read probe-region plan '{plan_path}': {e}"),
+            cause_chain: vec![],
+        })?;
+        let plan: ProbeRegionPlan = serde_json::from_str(&plan_text).map_err(|e| EngineError {
+            code: ErrorCode::InvalidInput,
+            message: format!("Could not parse probe-region plan '{plan_path}': {e}"),
+            cause_chain: vec![],
+        })?;
+        if plan.schema != PROBE_REGION_PLAN_SCHEMA {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Probe-region plan '{plan_path}' has schema '{}' but expected '{}'",
+                    plan.schema, PROBE_REGION_PLAN_SCHEMA
+                ),
+                cause_chain: vec![],
+            });
+        }
+        let candidate = Self::probe_region_select_backend_candidate(&plan, backend)?;
+        let command = candidate
+            .suggested_command
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Probe-region backend '{}' has no suggested command in plan '{}'",
+                    candidate.backend, plan_path
+                ),
+                cause_chain: vec![],
+            })?
+            .to_string();
+        let output_dir = Self::probe_region_backend_output_dir(&plan, candidate);
+        let mut report = ProbeRegionBackendRunReport {
+            schema: PROBE_REGION_BACKEND_RUN_SCHEMA.to_string(),
+            plan_path: plan_path.to_string(),
+            backend: candidate.backend.clone(),
+            command: command.clone(),
+            output_dir: Some(output_dir.clone()),
+            allow_external_execution,
+            ..Default::default()
+        };
+        if !allow_external_execution {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "arrays run-probe-region-backend refuses to run external R/APT without --allow-external-execution".to_string(),
+                cause_chain: vec![],
+            });
+        }
+        if !plan.preflight_ok {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Probe-region plan preflight is not OK; fix before running backend: {}",
+                    plan.errors.join("; ")
+                ),
+                cause_chain: vec![],
+            });
+        }
+        let readiness_errors = Self::probe_region_backend_readiness_errors(candidate);
+        if !readiness_errors.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Probe-region backend '{}' is not ready: {}",
+                    candidate.backend,
+                    readiness_errors.join("; ")
+                ),
+                cause_chain: vec![],
+            });
+        }
+        let argv = Self::probe_region_split_backend_command(&command)?;
+        let Some((program, args)) = argv.split_first() else {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Probe-region backend '{}' rendered an empty command",
+                    candidate.backend
+                ),
+                cause_chain: vec![],
+            });
+        };
+        let output = Command::new(program)
+            .args(args)
+            .output()
+            .map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not execute probe-region backend '{}' command '{}': {e}",
+                    candidate.backend, command
+                ),
+                cause_chain: vec![],
+            })?;
+        report.executed = true;
+        report.exit_code = output.status.code();
+        report.stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        report.stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        if !output.status.success() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Probe-region backend '{}' failed with status {:?}: {}{}",
+                    candidate.backend,
+                    output.status.code(),
+                    report.stderr.trim(),
+                    if report.stdout.trim().is_empty() {
+                        ""
+                    } else {
+                        "; see stdout in backend run report"
+                    }
+                ),
+                cause_chain: vec![],
+            });
+        }
+
+        let inspection = self.inspect_probe_region_output(&output_dir)?;
+        if !inspection.usable {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Probe-region backend '{}' completed but output '{}' failed the helper-output contract: {}",
+                    candidate.backend,
+                    output_dir,
+                    inspection.errors.join("; ")
+                ),
+                cause_chain: vec![],
+            });
+        }
+        Self::write_probe_region_backend_run_provenance(&plan, candidate, &report, &inspection)?;
+        report.inspection = Some(inspection);
+        Ok(report)
+    }
+
+    fn probe_region_select_backend_candidate<'a>(
+        plan: &'a ProbeRegionPlan,
+        requested_backend: Option<&str>,
+    ) -> Result<&'a ProbeRegionBackendCandidate, EngineError> {
+        if let Some(requested) = requested_backend
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            return plan
+                .backend_candidates
+                .iter()
+                .find(|candidate| candidate.backend.eq_ignore_ascii_case(requested))
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Probe-region plan has no backend candidate '{requested}' (available: {})",
+                        plan.backend_candidates
+                            .iter()
+                            .map(|candidate| candidate.backend.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ),
+                    cause_chain: vec![],
+                });
+        }
+        plan.backend_candidates
+            .iter()
+            .find(|candidate| {
+                candidate.backend != "plan_only"
+                    && candidate.status == "ready"
+                    && candidate.suggested_command.is_some()
+            })
+            .or_else(|| {
+                plan.backend_candidates.iter().find(|candidate| {
+                    candidate.backend != "plan_only" && candidate.suggested_command.is_some()
+                })
+            })
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::InvalidInput,
+                message:
+                    "Probe-region plan has no executable backend candidate with a suggested command"
+                        .to_string(),
+                cause_chain: vec![],
+            })
+    }
+
+    fn probe_region_backend_readiness_errors(
+        candidate: &ProbeRegionBackendCandidate,
+    ) -> Vec<String> {
+        let mut errors = Vec::new();
+        if candidate.backend == "plan_only" {
+            errors.push("plan_only is not an executable backend".to_string());
+        }
+        if candidate.status != "ready" {
+            errors.push(format!("status={}", candidate.status));
+        }
+        errors.extend(
+            candidate
+                .missing
+                .iter()
+                .map(|missing| format!("missing {missing}")),
+        );
+        if candidate
+            .suggested_command
+            .as_deref()
+            .map(str::trim)
+            .unwrap_or_default()
+            .is_empty()
+        {
+            errors.push("missing suggested_command".to_string());
+        }
+        errors
+    }
+
+    fn probe_region_backend_output_dir(
+        plan: &ProbeRegionPlan,
+        candidate: &ProbeRegionBackendCandidate,
+    ) -> String {
+        plan.request.output_dir.clone().unwrap_or_else(|| {
+            if candidate.backend == "affymetrix_power_tools" {
+                "analysis/probe_regions/apt".to_string()
+            } else {
+                "analysis/probe_regions".to_string()
+            }
+        })
+    }
+
+    fn probe_region_split_backend_command(command: &str) -> Result<Vec<String>, EngineError> {
+        let mut out = Vec::new();
+        let mut current = String::new();
+        let mut chars = command.chars().peekable();
+        let mut in_single = false;
+        let mut in_double = false;
+        while let Some(ch) = chars.next() {
+            match ch {
+                '\'' if !in_double => in_single = !in_single,
+                '"' if !in_single => in_double = !in_double,
+                '\\' if !in_single => {
+                    if let Some(next) = chars.next() {
+                        current.push(next);
+                    }
+                }
+                ch if ch.is_whitespace() && !in_single && !in_double => {
+                    if !current.is_empty() {
+                        out.push(std::mem::take(&mut current));
+                    }
+                }
+                _ => current.push(ch),
+            }
+        }
+        if in_single || in_double {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("Unterminated quote in probe-region backend command: {command}"),
+                cause_chain: vec![],
+            });
+        }
+        if !current.is_empty() {
+            out.push(current);
+        }
+        Ok(out)
+    }
+
+    fn write_probe_region_backend_run_provenance(
+        plan: &ProbeRegionPlan,
+        candidate: &ProbeRegionBackendCandidate,
+        report: &ProbeRegionBackendRunReport,
+        inspection: &ProbeRegionOutputInspection,
+    ) -> Result<(), EngineError> {
+        let output_dir = report.output_dir.as_deref().unwrap_or_default();
+        let output_dir_path = Path::new(output_dir);
+        let provenance_path = output_dir_path.join(PROBE_REGION_PROVENANCE_FILE);
+        let mut input_fingerprints = Vec::new();
+        for cel in &plan.request.cel_paths {
+            input_fingerprints.push(Self::probe_region_input_fingerprint(cel, "cel"));
+        }
+        if let Some(metadata) = &plan.request.metadata_path {
+            input_fingerprints.push(Self::probe_region_input_fingerprint(metadata, "metadata"));
+        }
+        if let Some(path) = plan.annotation_source.path.as_ref() {
+            input_fingerprints.push(Self::probe_region_input_fingerprint(
+                &path.path,
+                "annotation_library",
+            ));
+        }
+        let output_fingerprints = [
+            PROBE_REGION_TABLE_FILE,
+            PROBE_REGION_PROBE_TABLE_FILE,
+            PROBE_REGION_MATRIX_MANIFEST_FILE,
+        ]
+        .iter()
+        .map(|file_name| {
+            Self::probe_region_input_fingerprint(
+                &output_dir_path.join(file_name).to_string_lossy(),
+                "backend_output",
+            )
+        })
+        .collect::<Vec<_>>();
+        let provenance = json!({
+            "schema": PROBE_REGION_BACKEND_PROVENANCE_SCHEMA,
+            "backend": candidate.backend,
+            "declared_backend": candidate.backend,
+            "selected_backend": candidate.backend,
+            "backend_execution_policy": "explicit_user_invoked_by_arrays_run_probe_region_backend",
+            "backend_command_source": "persisted ProbeRegionPlan backend_candidates[].suggested_command",
+            "rendered_backend_command": report.command,
+            "actual_backend_command": report.command,
+            "exit_code": report.exit_code,
+            "tool_version_checks": plan.dependencies,
+            "input_fingerprints": input_fingerprints,
+            "output_fingerprints": output_fingerprints,
+            "output_dir": output_dir,
+            "platform": plan.platform.normalized,
+            "normalization": plan.request.normalization,
+            "coordinate_system": inspection.coordinate_system,
+            "genome_build": inspection.genome_build,
+            "artifacts": inspection.artifact_paths,
+            "stdout": report.stdout,
+            "stderr": report.stderr,
+            "warnings": report.warnings,
+            "errors": report.errors
+        });
+        std::fs::write(
+            &provenance_path,
+            serde_json::to_string_pretty(&provenance).unwrap_or_else(|_| "{}".to_string()),
+        )
+        .map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not write probe-region backend provenance '{}': {e}",
+                provenance_path.to_string_lossy()
+            ),
+            cause_chain: vec![],
+        })
     }
 
     pub fn import_apt_probe_region_output(
@@ -1844,6 +2197,9 @@ impl GentleEngine {
                     .to_string(),
             );
         }
+        let (coordinate_frame, coordinate_system, coordinate_chromosome, coordinate_warnings) =
+            Self::probe_region_evidence_report_coordinate_summary(&evidence);
+        warnings.extend(coordinate_warnings);
 
         let mut transcript_counts = transcripts
             .iter()
@@ -2024,6 +2380,9 @@ impl GentleEngine {
             seq_id: seq_id.to_string(),
             gene_label,
             level,
+            coordinate_frame,
+            coordinate_system,
+            coordinate_chromosome,
             min_abs_logfc,
             array_feature_count: evidence.len(),
             transcript_count: transcripts.len(),
@@ -2106,6 +2465,39 @@ impl GentleEngine {
                 .map(|contrast| format!("{feature_id}:{contrast}"))
                 .unwrap_or_else(|| feature_id.clone());
             let (local_start, local_end) = Self::probe_region_range_span(&ranges).unwrap_or((0, 0));
+            let genomic_start =
+                Self::probe_region_first_qualifier(feature, &["genomic_start_1based"])
+                    .and_then(|value| value.parse::<usize>().ok());
+            let genomic_end = Self::probe_region_first_qualifier(feature, &["genomic_end_1based"])
+                .and_then(|value| value.parse::<usize>().ok());
+            let generic_start =
+                Self::probe_region_first_qualifier(feature, &["start_1based", "start"])
+                    .and_then(|value| value.parse::<usize>().ok());
+            let generic_end =
+                Self::probe_region_first_qualifier(feature, &["end_1based", "stop", "end"])
+                    .and_then(|value| value.parse::<usize>().ok());
+            let anchor_genome_id =
+                Self::probe_region_first_qualifier(feature, &["gentle_array_anchor_genome_id"]);
+            let anchor_start_1based =
+                Self::probe_region_first_qualifier(feature, &["gentle_array_anchor_start_1based"])
+                    .and_then(|value| value.parse::<usize>().ok());
+            let anchor_end_1based =
+                Self::probe_region_first_qualifier(feature, &["gentle_array_anchor_end_1based"])
+                    .and_then(|value| value.parse::<usize>().ok());
+            let anchor_strand =
+                Self::probe_region_first_qualifier(feature, &["gentle_array_anchor_strand"])
+                    .and_then(|value| value.chars().next())
+                    .filter(|value| matches!(value, '+' | '-'));
+            let coordinate_frame = if genomic_start.is_some()
+                || genomic_end.is_some()
+                || anchor_start_1based.is_some()
+                || anchor_end_1based.is_some()
+            {
+                "genomic_1based"
+            } else {
+                "sequence_local_1based"
+            }
+            .to_string();
             out.push(ProbeRegionProjectedEvidence {
                 evidence_id,
                 level: feature_level,
@@ -2119,24 +2511,21 @@ impl GentleEngine {
                     &["gentle_array_intensity_source"],
                 ),
                 chromosome: Self::probe_region_first_qualifier(feature, &["chromosome"]),
-                start_1based: Self::probe_region_first_qualifier(
-                    feature,
-                    &["genomic_start_1based", "start_1based"],
-                )
-                .and_then(|value| value.parse::<usize>().ok())
-                .or_else(|| Some(local_start + 1)),
-                end_1based: Self::probe_region_first_qualifier(
-                    feature,
-                    &["genomic_end_1based", "end_1based"],
-                )
-                .and_then(|value| value.parse::<usize>().ok())
-                .or_else(|| Some(local_end)),
+                start_1based: genomic_start
+                    .or(generic_start)
+                    .or_else(|| Some(local_start + 1)),
+                end_1based: genomic_end.or(generic_end).or_else(|| Some(local_end)),
                 strand: Self::probe_region_first_qualifier(feature, &["strand", "array_strand"]),
                 logfc,
                 assembly_check: Self::probe_region_first_qualifier(
                     feature,
                     &["gentle_array_assembly_check"],
                 ),
+                coordinate_frame,
+                anchor_genome_id,
+                anchor_start_1based,
+                anchor_end_1based,
+                anchor_strand,
                 ranges_0based: ranges,
             });
         }
@@ -2320,6 +2709,111 @@ impl GentleEngine {
         Some((start, end))
     }
 
+    fn probe_region_local_range_string(range: &(usize, usize)) -> String {
+        format!("{}..{}", range.0.saturating_add(1), range.1)
+    }
+
+    fn probe_region_evidence_report_coordinate_summary(
+        evidence: &[ProbeRegionProjectedEvidence],
+    ) -> (String, Option<String>, Option<String>, Vec<String>) {
+        let frames = evidence
+            .iter()
+            .map(|item| item.coordinate_frame.clone())
+            .collect::<BTreeSet<_>>();
+        let coordinate_frame = match frames.len() {
+            0 => "unknown".to_string(),
+            1 => frames
+                .into_iter()
+                .next()
+                .unwrap_or_else(|| "unknown".to_string()),
+            _ => "mixed".to_string(),
+        };
+        let systems = evidence
+            .iter()
+            .filter_map(|item| item.anchor_genome_id.clone())
+            .collect::<BTreeSet<_>>();
+        let coordinate_system = (systems.len() == 1).then(|| {
+            systems
+                .iter()
+                .next()
+                .cloned()
+                .unwrap_or_else(|| "unknown".to_string())
+        });
+        let chromosomes = evidence
+            .iter()
+            .filter_map(|item| item.chromosome.clone())
+            .collect::<BTreeSet<_>>();
+        let coordinate_chromosome = (chromosomes.len() == 1).then(|| {
+            chromosomes
+                .iter()
+                .next()
+                .cloned()
+                .unwrap_or_else(|| "unknown".to_string())
+        });
+        let mut warnings = Vec::new();
+        if coordinate_frame == "mixed" {
+            warnings.push(
+                "probe_region_evidence_report_mixes_coordinate_frames; renderer uses row-level coordinates without local realignment".to_string(),
+            );
+        }
+        if systems.len() > 1 {
+            warnings.push(
+                "probe_region_evidence_report_mixes_coordinate_systems; review coordinates before publication use".to_string(),
+            );
+        }
+        if chromosomes.len() > 1 {
+            warnings.push(
+                "probe_region_evidence_report_mixes_chromosomes; review coordinates before publication use".to_string(),
+            );
+        }
+        (
+            coordinate_frame,
+            coordinate_system,
+            coordinate_chromosome,
+            warnings,
+        )
+    }
+
+    fn probe_region_evidence_local_interval_to_report_span(
+        item: &ProbeRegionProjectedEvidence,
+        range: &(usize, usize),
+    ) -> (usize, usize) {
+        if item.coordinate_frame == "genomic_1based" {
+            if let (Some(anchor_start), Some(anchor_end)) =
+                (item.anchor_start_1based, item.anchor_end_1based)
+            {
+                if item.anchor_strand == Some('-') {
+                    let start = anchor_end.saturating_sub(range.1.saturating_sub(1));
+                    let end = anchor_end.saturating_sub(range.0);
+                    return (start.min(end).max(1), start.max(end).max(1));
+                }
+                let start = anchor_start.saturating_add(range.0);
+                let end = anchor_start.saturating_add(range.1.saturating_sub(1));
+                return (start.min(end).max(1), start.max(end).max(1));
+            }
+            if let (Some((local_start, _)), Some(evidence_start)) = (
+                Self::probe_region_range_span(&item.ranges_0based),
+                item.start_1based,
+            ) {
+                let report_start = evidence_start as i128 + range.0 as i128 - local_start as i128;
+                let report_end = evidence_start as i128 + range.1.saturating_sub(1) as i128
+                    - local_start as i128;
+                let start = report_start.max(1) as usize;
+                let end = report_end.max(1) as usize;
+                return (start.min(end), start.max(end));
+            }
+        }
+        (range.0.saturating_add(1), range.1)
+    }
+
+    fn probe_region_evidence_local_interval_to_report_range_string(
+        item: &ProbeRegionProjectedEvidence,
+        range: &(usize, usize),
+    ) -> String {
+        let (start, end) = Self::probe_region_evidence_local_interval_to_report_span(item, range);
+        format!("{start}..{end}")
+    }
+
     fn probe_region_evidence_transcript_mapping(
         item: &ProbeRegionProjectedEvidence,
         tx: &ProbeRegionTranscriptModel,
@@ -2345,13 +2839,16 @@ impl GentleEngine {
                 .iter()
                 .map(|(exon, _)| exon.ordinal)
                 .collect::<Vec<_>>();
+            let local_exon_ranges_1based = exon_hits
+                .iter()
+                .map(|(exon, _)| Self::probe_region_local_range_string(&exon.range_0based))
+                .collect::<Vec<_>>();
             let exon_ranges_1based = exon_hits
                 .iter()
                 .map(|(exon, _)| {
-                    format!(
-                        "{}..{}",
-                        exon.range_0based.0.saturating_add(1),
-                        exon.range_0based.1
+                    Self::probe_region_evidence_local_interval_to_report_range_string(
+                        item,
+                        &exon.range_0based,
                     )
                 })
                 .collect::<Vec<_>>();
@@ -2373,12 +2870,14 @@ impl GentleEngine {
                 );
             return Some(ProbeRegionEvidenceTranscriptMapping {
                 transcript_id: tx.transcript_id.clone(),
+                coordinate_frame: item.coordinate_frame.clone(),
                 mapping_kind,
                 geometry_score,
                 geometry_score_class,
                 score_basis,
                 exon_ordinals,
                 exon_ranges_1based,
+                local_exon_ranges_1based,
                 junction_spans,
                 overlap_bp,
             });
@@ -2392,6 +2891,7 @@ impl GentleEngine {
             .sum::<usize>();
         (overlap_bp > 0).then(|| ProbeRegionEvidenceTranscriptMapping {
             transcript_id: tx.transcript_id.clone(),
+            coordinate_frame: item.coordinate_frame.clone(),
             mapping_kind: "transcript_span_non_exonic".to_string(),
             geometry_score: -0.25,
             geometry_score_class: "constraining_non_exonic_geometry".to_string(),
@@ -2403,6 +2903,7 @@ impl GentleEngine {
             ],
             exon_ordinals: Vec::new(),
             exon_ranges_1based: Vec::new(),
+            local_exon_ranges_1based: Vec::new(),
             junction_spans: Vec::new(),
             overlap_bp,
         })
@@ -2478,11 +2979,15 @@ impl GentleEngine {
             } else {
                 (left.ordinal, right.ordinal)
             };
+            let (report_gap_start, report_gap_end) =
+                Self::probe_region_evidence_local_interval_to_report_span(item, &gap);
             out.push(ProbeRegionEvidenceJunctionSpan {
                 from_exon_ordinal,
                 to_exon_ordinal,
-                genomic_start_1based: gap.0.saturating_add(1),
-                genomic_end_1based: gap.1,
+                genomic_start_1based: report_gap_start,
+                genomic_end_1based: report_gap_end,
+                local_start_1based: Some(gap.0.saturating_add(1)),
+                local_end_1based: Some(gap.1),
             });
         }
         out.sort_by(|left, right| {

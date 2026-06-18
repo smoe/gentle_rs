@@ -108,23 +108,23 @@ use crate::{
         OpResult, Operation, OperationProgress, PairwiseAlignmentMode, PcrPrimerSpec,
         PrimerDesignBackend, PrimerDesignBaseLock, PrimerDesignPairConstraint,
         PrimerDesignProgress, PrimerDesignReport, PrimerDesignSideConstraint,
-        PrimerSpecificityPolicy, ProbeRegionAptImportReport, ProbeRegionEvidenceInterpretationReport,
-        ProbeRegionEvidenceSvgExport, ProbeRegionEvidenceTranscriptMapping, ProbeRegionOutputInspection,
-        PromoterEvidenceMatrixReport, PromoterEvidenceMatrixRow,
-        PromoterExpressionEvidenceInput, PromoterExpressionEvidenceReport,
-        PromoterReporterCandidateSet, PromoterWindowCollapseMode, ProtocolCartoonPreviewTelemetry,
-        QpcrDesignReport, QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting,
-        QpcrTranscriptTargetingMode, RenderSvgMode, RestrictionCloningPcrHandoffMode,
-        RestrictionCloningPcrHandoffReport, RestrictionCloningPcrHandoffSeedRequest,
-        RestrictionCloningVectorEnzymeSuggestions, RestrictionEnzymeDisplayMode,
-        RestrictionSiteScanReport, RnaReadAlignConfig, RnaReadAlignmentDisplay,
-        RnaReadAlignmentEffect, RnaReadAlignmentInspection, RnaReadAlignmentInspectionEffectFilter,
-        RnaReadAlignmentInspectionRow, RnaReadAlignmentInspectionSortKey,
-        RnaReadAlignmentInspectionSubsetSpec, RnaReadConcatemerInspection,
-        RnaReadConcatemerInspectionSettings, RnaReadExonSupportFrequency,
-        RnaReadGeneSupportCompleteRule, RnaReadGeneSupportSummary, RnaReadHitSelection,
-        RnaReadInputFormat, RnaReadInterpretProgress, RnaReadInterpretationHit,
-        RnaReadInterpretationProfile, RnaReadInterpretationReport,
+        PrimerSpecificityPolicy, ProbeRegionAptImportReport, ProbeRegionBackendRunReport,
+        ProbeRegionEvidenceInterpretationReport, ProbeRegionEvidenceSvgExport,
+        ProbeRegionEvidenceTranscriptMapping, ProbeRegionOutputInspection,
+        PromoterEvidenceMatrixReport, PromoterEvidenceMatrixRow, PromoterExpressionEvidenceInput,
+        PromoterExpressionEvidenceReport, PromoterReporterCandidateSet, PromoterWindowCollapseMode,
+        ProtocolCartoonPreviewTelemetry, QpcrDesignReport, QpcrTranscriptSpecificityEvidence,
+        QpcrTranscriptTargeting, QpcrTranscriptTargetingMode, RenderSvgMode,
+        RestrictionCloningPcrHandoffMode, RestrictionCloningPcrHandoffReport,
+        RestrictionCloningPcrHandoffSeedRequest, RestrictionCloningVectorEnzymeSuggestions,
+        RestrictionEnzymeDisplayMode, RestrictionSiteScanReport, RnaReadAlignConfig,
+        RnaReadAlignmentDisplay, RnaReadAlignmentEffect, RnaReadAlignmentInspection,
+        RnaReadAlignmentInspectionEffectFilter, RnaReadAlignmentInspectionRow,
+        RnaReadAlignmentInspectionSortKey, RnaReadAlignmentInspectionSubsetSpec,
+        RnaReadConcatemerInspection, RnaReadConcatemerInspectionSettings,
+        RnaReadExonSupportFrequency, RnaReadGeneSupportCompleteRule, RnaReadGeneSupportSummary,
+        RnaReadHitSelection, RnaReadInputFormat, RnaReadInterpretProgress,
+        RnaReadInterpretationHit, RnaReadInterpretationProfile, RnaReadInterpretationReport,
         RnaReadInterpretationReportSummary, RnaReadIsoformSupportRow, RnaReadIsoformTriageBin,
         RnaReadJunctionSupportFrequency, RnaReadLengthDistributionSummary, RnaReadOriginMode,
         RnaReadPairwiseAlignmentDetail, RnaReadReportMode, RnaReadScoreDensityScale,
@@ -613,6 +613,12 @@ struct EngineOpsUiState {
     probe_region_apt_genome_build: String,
     #[serde(default)]
     probe_region_output_dir: String,
+    #[serde(default = "default_probe_region_backend_plan_path")]
+    probe_region_backend_plan_path: String,
+    #[serde(default)]
+    probe_region_backend_name: String,
+    #[serde(default)]
+    probe_region_backend_allow_external_execution: bool,
     #[serde(default)]
     probe_region_svg_output_path: String,
     #[serde(default = "default_probe_region_evidence_svg_output_path")]
@@ -757,6 +763,10 @@ fn default_rmsk_max_features_text() -> String {
 
 fn default_probe_region_projection_max_features_text() -> String {
     "5000".to_string()
+}
+
+fn default_probe_region_backend_plan_path() -> String {
+    "analysis/probe_regions/plan.json".to_string()
 }
 
 fn default_probe_region_interpretation_output_path() -> String {
@@ -1403,6 +1413,9 @@ pub struct MainAreaDna {
     probe_region_apt_coordinate_system: String,
     probe_region_apt_genome_build: String,
     probe_region_output_dir: String,
+    probe_region_backend_plan_path: String,
+    probe_region_backend_name: String,
+    probe_region_backend_allow_external_execution: bool,
     probe_region_svg_output_path: String,
     probe_region_evidence_svg_output_path: String,
     probe_region_projection_seq_id: String,
@@ -2099,6 +2112,9 @@ impl MainAreaDna {
             probe_region_apt_coordinate_system: "hg38".to_string(),
             probe_region_apt_genome_build: "GRCh38".to_string(),
             probe_region_output_dir: "analysis/probe_regions".to_string(),
+            probe_region_backend_plan_path: default_probe_region_backend_plan_path(),
+            probe_region_backend_name: String::new(),
+            probe_region_backend_allow_external_execution: false,
             probe_region_svg_output_path: "analysis/probe_regions/probe_region_plot.svg"
                 .to_string(),
             probe_region_evidence_svg_output_path: default_probe_region_evidence_svg_output_path(),
@@ -8140,6 +8156,107 @@ impl MainAreaDna {
         }
     }
 
+    fn build_probe_region_backend_run_command_for_current_path(
+        &self,
+    ) -> Result<ShellCommand, String> {
+        let plan = if self.probe_region_backend_plan_path.trim().is_empty() {
+            default_probe_region_backend_plan_path()
+        } else {
+            self.probe_region_backend_plan_path.trim().to_string()
+        };
+        if plan.trim().is_empty() {
+            return Err("Probe-region plan path is empty".to_string());
+        }
+        let backend = Self::optional_probe_region_text(&self.probe_region_backend_name);
+        Ok(ShellCommand::ArraysRunProbeRegionBackend {
+            plan,
+            backend,
+            allow_external_execution: self.probe_region_backend_allow_external_execution,
+        })
+    }
+
+    fn run_probe_region_backend_for_current_plan(&mut self) {
+        let Some(engine) = self.engine.clone() else {
+            self.op_status = "No engine attached".to_string();
+            return;
+        };
+        if self.probe_region_backend_plan_path.trim().is_empty() {
+            self.probe_region_backend_plan_path = default_probe_region_backend_plan_path();
+        }
+        if !self.probe_region_backend_allow_external_execution {
+            self.op_status =
+                "Probe-region backend execution requires explicit confirmation: enable 'Allow external R/APT execution' first"
+                    .to_string();
+            return;
+        }
+        let command = match self.build_probe_region_backend_run_command_for_current_path() {
+            Ok(command) => command,
+            Err(message) => {
+                self.op_status = message;
+                return;
+            }
+        };
+        let outcome = {
+            let mut guard = engine.write().expect("Engine lock poisoned");
+            let options = ShellExecutionOptions::from_env();
+            execute_shell_command_with_options(&mut guard, &command, &options)
+        };
+        match outcome {
+            Ok(run) => {
+                let Some(value) = run.output.get("run").cloned() else {
+                    self.op_status =
+                        "Probe-region backend run completed without a run report payload"
+                            .to_string();
+                    return;
+                };
+                match serde_json::from_value::<ProbeRegionBackendRunReport>(value) {
+                    Ok(report) => {
+                        if let Some(output_dir) = report.output_dir.as_ref() {
+                            self.probe_region_output_dir = output_dir.clone();
+                        }
+                        self.cached_probe_region_output_inspection = report.inspection.clone();
+                        self.cached_probe_region_projection = None;
+                        self.cached_probe_region_interpretation = None;
+                        let output = report
+                            .output_dir
+                            .as_deref()
+                            .unwrap_or("unknown output directory");
+                        let inspection_suffix = report
+                            .inspection
+                            .as_ref()
+                            .map(|inspection| {
+                                format!(
+                                    "; inspected {} row(s), projection_ready={}",
+                                    inspection.row_count, inspection.projection_ready
+                                )
+                            })
+                            .unwrap_or_default();
+                        let warnings = if report.warnings.is_empty() {
+                            String::new()
+                        } else {
+                            format!(
+                                "; warnings: {}",
+                                Self::probe_region_preview_list(&report.warnings)
+                            )
+                        };
+                        self.op_status = format!(
+                            "Probe-region backend '{}' ran explicitly and wrote '{}' (exit={:?}{}{})",
+                            report.backend, output, report.exit_code, inspection_suffix, warnings
+                        );
+                        self.save_engine_ops_state();
+                    }
+                    Err(err) => {
+                        self.op_status =
+                            format!("Could not decode probe-region backend run report: {err}");
+                    }
+                }
+            }
+            Err(err) => {
+                self.op_status = format!("Probe-region backend run failed: {err}");
+            }
+        }
+    }
+
     fn export_probe_region_output_svg_for_current_path(&mut self) {
         let Some(engine) = self.engine.clone() else {
             self.op_status = "No engine attached".to_string();
@@ -8189,10 +8306,19 @@ impl MainAreaDna {
         &self,
     ) -> Result<ShellCommand, String> {
         if self.cached_probe_region_interpretation.is_none() {
-            return Err("No probe-region interpretation report is cached; run Interpret evidence first".to_string());
+            return Err(
+                "No probe-region interpretation report is cached; run Interpret evidence first"
+                    .to_string(),
+            );
         }
-        let report = self.probe_region_interpretation_output_path.trim().to_string();
-        let output = self.probe_region_evidence_svg_output_path.trim().to_string();
+        let report = self
+            .probe_region_interpretation_output_path
+            .trim()
+            .to_string();
+        let output = self
+            .probe_region_evidence_svg_output_path
+            .trim()
+            .to_string();
         if report.is_empty() {
             return Err(
                 "Probe-region interpretation JSON output path is empty; run interpretation with a JSON output path first"
@@ -8222,12 +8348,22 @@ impl MainAreaDna {
         default_path: String,
     ) -> Result<(), String> {
         let Some(report) = self.cached_probe_region_interpretation.as_ref() else {
-            return Err("No probe-region interpretation report is cached; run Interpret evidence first".to_string());
+            return Err(
+                "No probe-region interpretation report is cached; run Interpret evidence first"
+                    .to_string(),
+            );
         };
-        if self.probe_region_interpretation_output_path.trim().is_empty() {
+        if self
+            .probe_region_interpretation_output_path
+            .trim()
+            .is_empty()
+        {
             self.probe_region_interpretation_output_path = default_path;
         }
-        let report_path = self.probe_region_interpretation_output_path.trim().to_string();
+        let report_path = self
+            .probe_region_interpretation_output_path
+            .trim()
+            .to_string();
         if report_path.is_empty() {
             return Err("Probe-region interpretation JSON output path is empty".to_string());
         }
@@ -8859,6 +8995,71 @@ impl MainAreaDna {
                 Self::probe_region_preview_list(&import.condition_columns),
                 Self::probe_region_preview_list(&import.logfc_columns)
             ));
+        }
+
+        ui.add_space(4.0);
+        ui.separator();
+        ui.label(egui::RichText::new("Run planned backend").strong());
+        let mut backend_fields_changed = false;
+        ui.horizontal_wrapped(|ui| {
+            ui.label("plan_json");
+            if ui
+                .add_sized(
+                    [ui.available_width().min(360.0), 0.0],
+                    egui::TextEdit::singleline(&mut self.probe_region_backend_plan_path),
+                )
+                .on_hover_text(
+                    "Versioned arrays probe-regions plan.json; generate it with arrays probe-regions --dry-run --output DIR",
+                )
+                .changed()
+            {
+                backend_fields_changed = true;
+            }
+            ui.label("backend");
+            if ui
+                .add(
+                    egui::TextEdit::singleline(&mut self.probe_region_backend_name)
+                        .desired_width(110.0),
+                )
+                .on_hover_text("Optional backend id such as r_oligo or apt; empty lets the plan choose")
+                .changed()
+            {
+                backend_fields_changed = true;
+            }
+        });
+        ui.horizontal_wrapped(|ui| {
+            if ui
+                .checkbox(
+                    &mut self.probe_region_backend_allow_external_execution,
+                    "Allow external R/APT execution",
+                )
+                .on_hover_text(
+                    "Required before GENtle runs the command rendered in plan.json; GENtle does not download or install dependencies",
+                )
+                .changed()
+            {
+                backend_fields_changed = true;
+            }
+            if ui
+                .add_enabled(
+                    self.probe_region_backend_allow_external_execution
+                        && !self.probe_region_backend_plan_path.trim().is_empty(),
+                    egui::Button::new("Run backend (external R/APT)"),
+                )
+                .on_hover_text(
+                    "Run arrays run-probe-region-backend through the shared shell executor after explicit confirmation",
+                )
+                .clicked()
+            {
+                self.run_probe_region_backend_for_current_plan();
+            }
+            ui.small(
+                egui::RichText::new("Explicit local execution only; preflight failures stop before R/APT runs.")
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+        });
+        if backend_fields_changed {
+            self.save_engine_ops_state();
         }
 
         ui.add_space(4.0);
@@ -22597,6 +22798,10 @@ impl MainAreaDna {
             probe_region_apt_coordinate_system: self.probe_region_apt_coordinate_system.clone(),
             probe_region_apt_genome_build: self.probe_region_apt_genome_build.clone(),
             probe_region_output_dir: self.probe_region_output_dir.clone(),
+            probe_region_backend_plan_path: self.probe_region_backend_plan_path.clone(),
+            probe_region_backend_name: self.probe_region_backend_name.clone(),
+            probe_region_backend_allow_external_execution: self
+                .probe_region_backend_allow_external_execution,
             probe_region_svg_output_path: self.probe_region_svg_output_path.clone(),
             probe_region_evidence_svg_output_path: self
                 .probe_region_evidence_svg_output_path
@@ -22924,6 +23129,15 @@ impl MainAreaDna {
         } else {
             s.probe_region_output_dir
         };
+        self.probe_region_backend_plan_path = if s.probe_region_backend_plan_path.trim().is_empty()
+        {
+            default_probe_region_backend_plan_path()
+        } else {
+            s.probe_region_backend_plan_path
+        };
+        self.probe_region_backend_name = s.probe_region_backend_name;
+        self.probe_region_backend_allow_external_execution =
+            s.probe_region_backend_allow_external_execution;
         self.probe_region_svg_output_path = if s.probe_region_svg_output_path.trim().is_empty() {
             "analysis/probe_regions/probe_region_plot.svg".to_string()
         } else {

@@ -2528,6 +2528,10 @@ Microarray track projection notes:
 - probe/probeset-region preflight schema: `gentle.probe_region_plan.v1`
 - probe/probeset-region helper-output inspection schema:
   `gentle.probe_region_output_inspection.v1`
+- probe/probeset-region backend execution schema:
+  `gentle.probe_region_backend_run.v1`
+- probe/probeset-region evidence interpretation schema:
+  `gentle.probe_region_evidence_interpretation.v2`
 - the manifest records dataset id, platform, normalization method, contrast
   order, coordinate system, supported `genome_id` aliases, and per-contrast TSV
   paths.
@@ -2559,6 +2563,17 @@ Microarray track projection notes:
   themselves a `gentle.microarray_track_manifest.v1` manifest. DNA-viewer array
   projection continues to consume a prepared manifest plus per-contrast TSVs
   whose coordinate build has been verified.
+- `arrays run-probe-region-backend PLAN.json --allow-external-execution`
+  (or `arrays run-probe-region-backend --plan PLAN.json --allow-external-execution`)
+  consumes the persisted `gentle.probe_region_plan.v1` artifact and returns
+  `gentle.probe_region_backend_run.v1`. Execution is explicit: the command
+  refuses to run without the allow flag, refuses plans whose recorded preflight
+  or selected backend readiness failed, and never downloads or installs CEL
+  files, vendor resources, R packages, or APT. On success it captures
+  stdout/stderr/exit status, validates the four-file helper-output contract,
+  and rewrites `provenance.json` as
+  `gentle.probe_region_backend_provenance.v1` with the actual command,
+  dependency-version probes, input/output fingerprints, warnings, and errors.
 - `arrays inspect-probe-region-output OUTPUT_DIR` consumes a completed explicit
   helper output directory without mutating project state. It validates
   `region_intensity_chrom_order.csv`, optional `sample_table.tsv`,
@@ -2606,7 +2621,7 @@ Microarray track projection notes:
   the lower panel renders `log2FC_*` tracks. It is still read-only with respect
   to project state and does not run R/APT.
 - `arrays render-probe-region-evidence-svg REPORT.json OUTPUT.svg` consumes an
-  exported `gentle.probe_region_evidence_interpretation.v1` report and writes a
+  exported `gentle.probe_region_evidence_interpretation.v2` report and writes a
   deterministic `gentle.probe_region_evidence_svg_export.v1` SVG summary. It
   renders one lane per transcript row, only the overlapped exon ranges and
   junction spans carried by the report, plus parent probeset spans and PM probe
@@ -2628,7 +2643,7 @@ Microarray track projection notes:
   source matches the helper coordinate/build and whose target matches the
   anchor genome id.
 - `arrays interpret-probe-region-evidence SEQ_ID` emits
-  `gentle.probe_region_evidence_interpretation.v1` by comparing already
+  `gentle.probe_region_evidence_interpretation.v2` by comparing already
   projected `probe_region_output` array features with transcript/exon geometry
   on the target sequence. Optional `--gene LABEL`, `--level all|probe_region|pm_probe`,
   `--min-abs-logfc N`, and `--path FILE` filter/export the read-only report.
@@ -2636,9 +2651,13 @@ Microarray track projection notes:
   per-transcript compatible/constraining counts, and structured
   `transcript_mappings[]` rows with exon ordinals, exon ranges, junction
   spans, overlap base counts, conservative geometry scores, and score-basis
-  guardrails. Transcript rows include a review-only `review_status` label for
-  unique, shared, constraining, or absent geometry; the report explicitly does
-  not infer isoform support, probe uniqueness, or biological validation.
+  guardrails. The report-level `coordinate_frame`, `coordinate_system`, and
+  `coordinate_chromosome` fields define the shared plotting frame for evidence
+  rows, exon ranges, and junction spans; each mapping also preserves
+  `local_exon_ranges_1based` for sequence-local auditability. Transcript rows
+  include a review-only `review_status` label for unique, shared,
+  constraining, or absent geometry; the report explicitly does not infer
+  isoform support, probe uniqueness, or biological validation.
 - manifests may also include `coordinate_projections[]` entries with
   `source_genome_id`, `target_genome_id`, `method`, and `path`. These paths
   point at tab-delimited interval maps for build-to-build projection, currently

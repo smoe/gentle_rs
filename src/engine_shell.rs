@@ -1703,6 +1703,11 @@ pub enum ShellCommand {
         report: String,
         output: String,
     },
+    ArraysRunProbeRegionBackend {
+        plan: String,
+        backend: Option<String>,
+        allow_external_execution: bool,
+    },
     ArraysProjectProbeRegionOutput {
         seq_id: String,
         output_dir: String,
@@ -8957,6 +8962,16 @@ impl ShellCommand {
                     report, output
                 )
             }
+            Self::ArraysRunProbeRegionBackend {
+                plan,
+                backend,
+                allow_external_execution,
+            } => format!(
+                "run explicit probe-region backend from plan '{}' (backend={}, allow_external_execution={})",
+                plan,
+                backend.as_deref().unwrap_or("auto"),
+                allow_external_execution
+            ),
             Self::ArraysProjectProbeRegionOutput {
                 seq_id,
                 output_dir,
@@ -12086,6 +12101,24 @@ pub(crate) fn arrays_shell_command_to_line(cmd: &ShellCommand) -> Option<String>
             "inspect-probe-region-output".to_string(),
             output_dir.clone(),
         ])),
+        ShellCommand::ArraysRunProbeRegionBackend {
+            plan,
+            backend,
+            allow_external_execution,
+        } => {
+            let mut tokens = vec![
+                "arrays".to_string(),
+                "run-probe-region-backend".to_string(),
+                plan.clone(),
+            ];
+            if let Some(backend) = backend {
+                push_option(&mut tokens, "--backend", backend);
+            }
+            if *allow_external_execution {
+                tokens.push("--allow-external-execution".to_string());
+            }
+            Some(render(tokens))
+        }
         _ => None,
     }
 }
@@ -26562,7 +26595,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "arrays" => {
             if tokens.len() < 2 {
                 return Err(
-                    "arrays requires a subcommand: inspect-microarray-track, project-microarray-track, inspect-probe-region-output, import-apt-probe-region-output, render-probe-region-output-svg, render-probe-region-evidence-svg, project-probe-region-output, interpret-probe-region-evidence, or probe-regions"
+                    "arrays requires a subcommand: inspect-microarray-track, project-microarray-track, inspect-probe-region-output, import-apt-probe-region-output, render-probe-region-output-svg, render-probe-region-evidence-svg, run-probe-region-backend, project-probe-region-output, interpret-probe-region-evidence, or probe-regions"
                         .to_string(),
                 );
             }
@@ -26847,6 +26880,60 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         output: tokens[3].clone(),
                     })
                 }
+                "run-probe-region-backend" | "run-probe-regions-backend" => {
+                    if tokens.len() < 3 {
+                        return Err(
+                            "arrays run-probe-region-backend requires PLAN.json or --plan PLAN.json [--backend NAME] --allow-external-execution"
+                                .to_string(),
+                        );
+                    }
+                    let (plan, mut idx) = if tokens[2] == "--plan" {
+                        if tokens.len() < 4 {
+                            return Err("Missing PLAN.json after --plan".to_string());
+                        }
+                        (tokens[3].trim().to_string(), 4usize)
+                    } else {
+                        (tokens[2].trim().to_string(), 3usize)
+                    };
+                    if plan.is_empty() {
+                        return Err(
+                            "arrays run-probe-region-backend PLAN.json must not be empty"
+                                .to_string(),
+                        );
+                    }
+                    let mut backend = None;
+                    let mut allow_external_execution = false;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--backend" => {
+                                idx += 1;
+                                if idx >= tokens.len() {
+                                    return Err("Missing NAME after --backend".to_string());
+                                }
+                                let value = tokens[idx].trim().to_string();
+                                if value.is_empty() {
+                                    return Err("--backend must not be empty".to_string());
+                                }
+                                backend = Some(value);
+                                idx += 1;
+                            }
+                            "--allow-external-execution" => {
+                                allow_external_execution = true;
+                                idx += 1;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for arrays run-probe-region-backend"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::ArraysRunProbeRegionBackend {
+                        plan,
+                        backend,
+                        allow_external_execution,
+                    })
+                }
                 "project-probe-region-output" => {
                     if tokens.len() < 4 {
                         return Err(
@@ -27020,7 +27107,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 }
                 "probe-regions" | "probe-region-plan" => parse_arrays_probe_regions_command(tokens),
                 other => Err(format!(
-                    "Unknown arrays subcommand '{other}' (expected inspect-microarray-track, project-microarray-track, inspect-probe-region-output, import-apt-probe-region-output, render-probe-region-output-svg, render-probe-region-evidence-svg, project-probe-region-output, interpret-probe-region-evidence, or probe-regions)"
+                    "Unknown arrays subcommand '{other}' (expected inspect-microarray-track, project-microarray-track, inspect-probe-region-output, import-apt-probe-region-output, render-probe-region-output-svg, render-probe-region-evidence-svg, run-probe-region-backend, project-probe-region-output, interpret-probe-region-evidence, or probe-regions)"
                 )),
             }
         }
@@ -27731,6 +27818,7 @@ fn is_reference_or_track_command(command: &ShellCommand) -> bool {
             | ShellCommand::ArraysImportAptProbeRegionOutput { .. }
             | ShellCommand::ArraysRenderProbeRegionOutputSvg { .. }
             | ShellCommand::ArraysRenderProbeRegionEvidenceSvg { .. }
+            | ShellCommand::ArraysRunProbeRegionBackend { .. }
             | ShellCommand::ArraysProjectProbeRegionOutput { .. }
             | ShellCommand::ArraysInterpretProbeRegionEvidence { .. }
             | ShellCommand::ArraysProbeRegions { .. }
@@ -32717,6 +32805,19 @@ fn execute_reference_and_track_command(
             Ok(ShellRunResult {
                 state_changed: false,
                 output: json!({ "export": export }),
+            })
+        }
+        ShellCommand::ArraysRunProbeRegionBackend {
+            plan,
+            backend,
+            allow_external_execution,
+        } => {
+            let run = engine
+                .run_probe_region_backend(plan, backend.as_deref(), *allow_external_execution)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({ "run": run }),
             })
         }
         ShellCommand::ArraysProjectProbeRegionOutput {
@@ -40925,6 +41026,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ArraysImportAptProbeRegionOutput { .. }
         | ShellCommand::ArraysRenderProbeRegionOutputSvg { .. }
         | ShellCommand::ArraysRenderProbeRegionEvidenceSvg { .. }
+        | ShellCommand::ArraysRunProbeRegionBackend { .. }
         | ShellCommand::ArraysProjectProbeRegionOutput { .. }
         | ShellCommand::ArraysInterpretProbeRegionEvidence { .. }
         | ShellCommand::ArraysProbeRegions { .. }

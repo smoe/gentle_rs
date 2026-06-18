@@ -7190,6 +7190,36 @@ fn parse_arrays_microarray_track_commands() {
             if report == "analysis/tp73_interpretation.json" && output == "out.svg"
     ));
 
+    let run_probe_backend = parse_shell_line(
+        "arrays run-probe-region-backend analysis/probe_regions/plan.json --backend r_oligo --allow-external-execution",
+    )
+    .expect("parse run probe backend");
+    match run_probe_backend {
+        ShellCommand::ArraysRunProbeRegionBackend {
+            plan,
+            backend,
+            allow_external_execution,
+        } => {
+            assert_eq!(plan, "analysis/probe_regions/plan.json");
+            assert_eq!(backend.as_deref(), Some("r_oligo"));
+            assert!(allow_external_execution);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let run_probe_backend_plan_flag = parse_shell_line(
+        "arrays run-probe-region-backend --plan analysis/probe_regions/plan.json --allow-external-execution",
+    )
+    .expect("parse run probe backend --plan form");
+    assert!(matches!(
+        run_probe_backend_plan_flag,
+        ShellCommand::ArraysRunProbeRegionBackend {
+            plan,
+            backend: None,
+            allow_external_execution: true,
+        } if plan == "analysis/probe_regions/plan.json"
+    ));
+
     let project_probe_output = parse_shell_line(
         "arrays project-probe-region-output array_slice analysis/probe_regions --contrasts TAp73-AdGFP --level pm_probe --min-abs-logfc 0.5 --max-features 25 --clear-existing",
     )
@@ -7306,6 +7336,25 @@ fn assert_arrays_probe_region_command_eq(
             },
         ) => assert_eq!(output_dir, expected_output_dir, "rendered line: {line}"),
         (
+            ShellCommand::ArraysRunProbeRegionBackend {
+                plan,
+                backend,
+                allow_external_execution,
+            },
+            ShellCommand::ArraysRunProbeRegionBackend {
+                plan: expected_plan,
+                backend: expected_backend,
+                allow_external_execution: expected_allow_external_execution,
+            },
+        ) => {
+            assert_eq!(plan, expected_plan, "rendered line: {line}");
+            assert_eq!(backend, expected_backend, "rendered line: {line}");
+            assert_eq!(
+                allow_external_execution, expected_allow_external_execution,
+                "rendered line: {line}"
+            );
+        }
+        (
             ShellCommand::ArraysProbeRegions {
                 cel_paths,
                 dataset,
@@ -7398,6 +7447,11 @@ fn arrays_probe_region_shell_lines_round_trip() {
     let commands = [
         ShellCommand::ArraysInspectProbeRegionOutput {
             output_dir: "analysis/probe regions".to_string(),
+        },
+        ShellCommand::ArraysRunProbeRegionBackend {
+            plan: "analysis/probe regions/plan.json".to_string(),
+            backend: Some("r_oligo".to_string()),
+            allow_external_execution: true,
         },
         ShellCommand::ArraysProbeRegions {
             cel_paths: vec![
@@ -7699,6 +7753,69 @@ fn execute_arrays_probe_regions_rma_suggests_oligo_helper_command() {
             .iter()
             .any(|output| output == "plan.json")
     );
+}
+
+#[test]
+fn execute_arrays_run_probe_region_backend_refuses_without_explicit_gate_or_clean_preflight() {
+    let temp = tempdir().expect("tempdir");
+    let plan_path = temp.path().join("plan.json");
+    let plan = crate::engine::ProbeRegionPlan {
+        schema: "gentle.probe_region_plan.v1".to_string(),
+        preflight_ok: true,
+        backend_candidates: vec![crate::engine::ProbeRegionBackendCandidate {
+            backend: "r_oligo".to_string(),
+            status: "ready".to_string(),
+            suggested_command: Some(
+                "Rscript scripts/probe_regions_oligo.R --output out".to_string(),
+            ),
+            ..Default::default()
+        }],
+        request: crate::engine::ProbeRegionRequest {
+            normalization: "rma".to_string(),
+            output_dir: Some(temp.path().join("out").to_string_lossy().to_string()),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    fs::write(
+        &plan_path,
+        serde_json::to_string_pretty(&plan).expect("serialize plan"),
+    )
+    .expect("write plan");
+
+    let mut engine = GentleEngine::default();
+    let missing_gate = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ArraysRunProbeRegionBackend {
+            plan: plan_path.to_string_lossy().to_string(),
+            backend: Some("r_oligo".to_string()),
+            allow_external_execution: false,
+        },
+    )
+    .expect_err("backend execution must require explicit opt-in");
+    assert!(missing_gate.contains("--allow-external-execution"));
+
+    let blocked_plan = crate::engine::ProbeRegionPlan {
+        preflight_ok: false,
+        errors: vec!["synthetic preflight blocker".to_string()],
+        ..plan
+    };
+    fs::write(
+        &plan_path,
+        serde_json::to_string_pretty(&blocked_plan).expect("serialize blocked plan"),
+    )
+    .expect("write blocked plan");
+    let preflight_error = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ArraysRunProbeRegionBackend {
+            plan: plan_path.to_string_lossy().to_string(),
+            backend: Some("r_oligo".to_string()),
+            allow_external_execution: true,
+        },
+    )
+    .expect_err("backend execution must refuse failed preflight before subprocess");
+    assert!(preflight_error.contains("preflight is not OK"));
+    assert!(preflight_error.contains("synthetic preflight blocker"));
 }
 
 #[test]
@@ -8046,78 +8163,88 @@ fn execute_arrays_render_probe_region_evidence_svg_writes_constraint_plot() {
     let temp = tempdir().expect("tempdir");
     let report_path = temp.path().join("tp73_interpretation.json");
     let svg_path = temp.path().join("tp73_probe_evidence.svg");
-    let report = serde_json::json!({
-        "schema": "gentle.probe_region_evidence_interpretation.v1",
-        "seq_id": "array_slice",
-        "gene_label": "TP73",
-        "level": "pm_probe",
-        "array_feature_count": 1,
-        "transcript_count": 1,
-        "evidence_rows": [
+    let report: serde_json::Value = serde_json::from_str(
+        r#"{
+          "schema": "gentle.probe_region_evidence_interpretation.v2",
+          "seq_id": "array_slice",
+          "gene_label": "TP73",
+          "level": "pm_probe",
+          "coordinate_frame": "genomic_1based",
+          "coordinate_system": "hg38",
+          "coordinate_chromosome": "chr1",
+          "array_feature_count": 1,
+          "transcript_count": 1,
+          "evidence_rows": [
             {
-                "evidence_id": "719406:AdTAp73alpha-AdGFP",
-                "level": "pm_probe",
-                "feature_id": "719406",
-                "parent_feature_id": "PSR0100145779.hg.1",
-                "intensity_source": "probe_level_input",
-                "chromosome": "chr1",
-                "start_1based": 3652527,
-                "end_1based": 3652538,
-                "strand": "+",
-                "logfc": 0.72,
-                "overlapping_transcript_ids": ["TP73-201"],
-                "overlapping_exon_count": 2,
-                "transcript_mappings": [
+              "evidence_id": "719406:AdTAp73alpha-AdGFP",
+              "level": "pm_probe",
+              "feature_id": "719406",
+              "parent_feature_id": "PSR0100145779.hg.1",
+              "intensity_source": "probe_level_input",
+              "chromosome": "chr1",
+              "start_1based": 3652527,
+              "end_1based": 3652538,
+              "strand": "+",
+              "logfc": 0.72,
+              "overlapping_transcript_ids": ["TP73-201"],
+              "overlapping_exon_count": 2,
+              "transcript_mappings": [
+                {
+                  "transcript_id": "TP73-201",
+                  "coordinate_frame": "genomic_1based",
+                  "mapping_kind": "junction_spanning_exon_overlap",
+                  "geometry_score": 1.0,
+                  "geometry_score_class": "strong_geometry_constraint",
+                  "score_basis": ["junction_spans=1"],
+                  "exon_ordinals": [1, 2],
+                  "exon_ranges_1based": ["3652527..3652538", "3652550..3652564"],
+                  "local_exon_ranges_1based": ["11..28", "61..90"],
+                  "junction_spans": [
                     {
-                        "transcript_id": "TP73-201",
-                        "mapping_kind": "junction_spanning_exon_overlap",
-                        "geometry_score": 1.0,
-                        "geometry_score_class": "strong_geometry_constraint",
-                        "score_basis": ["junction_spans=1"],
-                        "exon_ordinals": [1, 2],
-                        "exon_ranges_1based": ["11..28", "61..90"],
-                        "junction_spans": [
-                            {
-                                "from_exon_ordinal": 1,
-                                "to_exon_ordinal": 2,
-                                "genomic_start_1based": 29,
-                                "genomic_end_1based": 60
-                            }
-                        ],
-                        "overlap_bp": 22
+                      "from_exon_ordinal": 1,
+                      "to_exon_ordinal": 2,
+                      "genomic_start_1based": 3652539,
+                      "genomic_end_1based": 3652549,
+                      "local_start_1based": 29,
+                      "local_end_1based": 60
                     }
-                ],
-                "mapping_status": "compatible",
-                "ambiguity_tags": [
-                    "probe_sequence_alignment_not_assessed",
-                    "multi_hit_not_assessed",
-                    "isoform_support_not_inferred"
-                ],
-                "relationship": "shared_or_ambiguous"
+                  ],
+                  "overlap_bp": 22
+                }
+              ],
+              "mapping_status": "compatible",
+              "ambiguity_tags": [
+                "probe_sequence_alignment_not_assessed",
+                "multi_hit_not_assessed",
+                "isoform_support_not_inferred"
+              ],
+              "relationship": "shared_or_ambiguous"
             }
-        ],
-        "transcript_rows": [
+          ],
+          "transcript_rows": [
             {
-                "transcript_id": "TP73-201",
-                "gene": "TP73",
-                "label": "TP73-201",
-                "strand": "+",
-                "exon_count": 3,
-                "compatible_evidence_count": 1,
-                "constraining_evidence_count": 1,
-                "shared_evidence_count": 0,
-                "unique_evidence_count": 1,
-                "unmapped_evidence_count": 0,
-                "compatible_geometry_score": 1.0,
-                "shared_geometry_score": 0.0,
-                "unique_geometry_score": 1.0,
-                "constraining_geometry_score": 1.0,
-                "review_status": "unique_geometry_review_only",
-                "relationship_summary": "geometry_constraint_review_only"
+              "transcript_id": "TP73-201",
+              "gene": "TP73",
+              "label": "TP73-201",
+              "strand": "+",
+              "exon_count": 3,
+              "compatible_evidence_count": 1,
+              "constraining_evidence_count": 1,
+              "shared_evidence_count": 0,
+              "unique_evidence_count": 1,
+              "unmapped_evidence_count": 0,
+              "compatible_geometry_score": 1.0,
+              "shared_geometry_score": 0.0,
+              "unique_geometry_score": 1.0,
+              "constraining_geometry_score": 1.0,
+              "review_status": "unique_geometry_review_only",
+              "relationship_summary": "geometry_constraint_review_only"
             }
-        ],
-        "warnings": []
-    });
+          ],
+          "warnings": []
+        }"#,
+    )
+    .expect("parse report fixture JSON");
     fs::write(
         &report_path,
         serde_json::to_string_pretty(&report).expect("serialize report"),
@@ -8149,17 +8276,9 @@ fn execute_arrays_render_probe_region_evidence_svg_writes_constraint_plot() {
         run.output["export"]["junction_span_count"].as_u64(),
         Some(1)
     );
-    assert!(
-        run.output["export"]["warnings"]
-            .as_array()
-            .is_some_and(|warnings| {
-                warnings.iter().any(|warning| {
-                warning.as_str()
-                    == Some(
-                        "report_local_geometry_aligned_to_evidence_axis_without_full_gene_model",
-                    )
-            })
-            })
+    assert_eq!(
+        run.output["export"]["warnings"].as_array().map(Vec::len),
+        Some(0)
     );
     assert!(
         run.output["export"]["ambiguity_tags"]

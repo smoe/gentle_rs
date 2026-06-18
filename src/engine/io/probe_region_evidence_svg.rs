@@ -5,28 +5,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::path::Path;
 
-// Display-only heuristic: current reports can mix genomic evidence intervals
-// with local exon/junction geometry. A large gap means the renderer aligns
-// local geometry to the evidence axis and labels the SVG with that caveat.
-const REPORT_LOCAL_GEOMETRY_ALIGNMENT_THRESHOLD_BP: usize = 1000;
-
 struct EvidenceSvgProjector {
     min_coord: usize,
     max_coord: usize,
-    local_offset: Option<i128>,
-}
-
-impl EvidenceSvgProjector {
-    fn project_report_coord(&self, coord: usize) -> usize {
-        let Some(offset) = self.local_offset else {
-            return coord;
-        };
-        (coord as i128 + offset).max(1) as usize
-    }
-
-    fn uses_local_alignment(&self) -> bool {
-        self.local_offset.is_some()
-    }
 }
 
 impl GentleEngine {
@@ -112,7 +93,7 @@ impl GentleEngine {
         report: &ProbeRegionEvidenceInterpretationReport,
     ) -> String {
         let projector = Self::probe_region_evidence_svg_projector(report);
-        let warnings = Self::probe_region_evidence_svg_warnings(report, &projector);
+        let warnings = Self::probe_region_evidence_svg_warnings(report);
         let transcript_rows = Self::probe_region_evidence_svg_transcript_rows(report);
         let parent_groups = Self::probe_region_evidence_svg_parent_groups(report);
         let transcript_lane_height = 44.0;
@@ -130,9 +111,10 @@ impl GentleEngine {
 
         let _ = writeln!(
             svg,
-            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{width:.0}\" height=\"{height:.0}\" viewBox=\"0 0 {width:.0} {height:.0}\" data-gentle-schema=\"{}\" data-report-schema=\"{}\">",
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{width:.0}\" height=\"{height:.0}\" viewBox=\"0 0 {width:.0} {height:.0}\" data-gentle-schema=\"{}\" data-report-schema=\"{}\" data-coordinate-frame=\"{}\">",
             Self::probe_region_svg_escape(PROBE_REGION_EVIDENCE_SVG_EXPORT_SCHEMA),
-            Self::probe_region_svg_escape(&report.schema)
+            Self::probe_region_svg_escape(&report.schema),
+            Self::probe_region_svg_escape(&report.coordinate_frame)
         );
         svg.push_str("<rect x=\"0\" y=\"0\" width=\"100%\" height=\"100%\" fill=\"#ffffff\"/>\n");
         svg.push_str("<style><![CDATA[\n");
@@ -166,15 +148,20 @@ impl GentleEngine {
             svg,
             "<text class=\"muted\" x=\"36\" y=\"94\" font-size=\"12\">Review-only transcript/exon geometry constraints; no isoform support, probe specificity, or multi-hit verdict is inferred.</text>"
         );
-        if projector.uses_local_alignment() {
-            let _ = writeln!(
-                svg,
-                "<text class=\"muted\" x=\"36\" y=\"114\" font-size=\"11\">Overlapped exon/junction ranges are report-local and are aligned to the evidence coordinate axis for display; full gene models are not reconstructed.</text>"
-            );
-        }
+        let _ = writeln!(
+            svg,
+            "<text class=\"muted\" x=\"36\" y=\"114\" font-size=\"11\">Report coordinate frame: {}; only report-provided exon overlaps and junction spans are drawn, not reconstructed full gene models.</text>",
+            Self::probe_region_svg_escape(&report.coordinate_frame)
+        );
 
         Self::render_probe_region_evidence_axis(
-            &mut svg, &projector, left, 140.0, plot_width, title_gene,
+            &mut svg,
+            &projector,
+            left,
+            140.0,
+            plot_width,
+            title_gene,
+            &report.coordinate_frame,
         );
         Self::render_probe_region_evidence_transcripts(
             &mut svg,
@@ -207,7 +194,6 @@ impl GentleEngine {
         report_path: &str,
         svg_path: &str,
     ) -> ProbeRegionEvidenceSvgExport {
-        let projector = Self::probe_region_evidence_svg_projector(report);
         ProbeRegionEvidenceSvgExport {
             schema: PROBE_REGION_EVIDENCE_SVG_EXPORT_SCHEMA.to_string(),
             report_path: report_path.to_string(),
@@ -217,7 +203,7 @@ impl GentleEngine {
             parent_feature_count: Self::probe_region_evidence_svg_parent_groups(report).len(),
             junction_span_count: Self::probe_region_evidence_svg_junction_span_count(report),
             ambiguity_tags: Self::probe_region_evidence_svg_ambiguity_tags(report),
-            warnings: Self::probe_region_evidence_svg_warnings(report, &projector),
+            warnings: Self::probe_region_evidence_svg_warnings(report),
         }
     }
 
@@ -228,11 +214,14 @@ impl GentleEngine {
         y: f64,
         width: f64,
         label: &str,
+        coordinate_frame: &str,
     ) {
         let _ = writeln!(
             svg,
-            "<g id=\"probe-region-evidence-axis\" class=\"coordinate-axis\" data-min=\"{}\" data-max=\"{}\">",
-            projector.min_coord, projector.max_coord
+            "<g id=\"probe-region-evidence-axis\" class=\"coordinate-axis\" data-min=\"{}\" data-max=\"{}\" data-coordinate-frame=\"{}\">",
+            projector.min_coord,
+            projector.max_coord,
+            Self::probe_region_svg_escape(coordinate_frame)
         );
         let _ = writeln!(
             svg,
@@ -310,11 +299,9 @@ impl GentleEngine {
                 "<line class=\"transcript-baseline\" x1=\"{left:.1}\" y1=\"{lane_mid:.1}\" x2=\"{:.1}\" y2=\"{lane_mid:.1}\"/>",
                 left + width
             );
-            for exon in Self::probe_region_evidence_svg_exons_for_transcript(
-                report,
-                &tx.transcript_id,
-                projector,
-            ) {
+            for exon in
+                Self::probe_region_evidence_svg_exons_for_transcript(report, &tx.transcript_id)
+            {
                 let x1 =
                     Self::probe_region_evidence_svg_x(exon.start_1based, projector, left, width);
                 let x2 = Self::probe_region_evidence_svg_x(exon.end_1based, projector, left, width);
@@ -331,11 +318,9 @@ impl GentleEngine {
                     Self::probe_region_svg_escape(&exon.original_range)
                 );
             }
-            for span in Self::probe_region_evidence_svg_junctions_for_transcript(
-                report,
-                &tx.transcript_id,
-                projector,
-            ) {
+            for span in
+                Self::probe_region_evidence_svg_junctions_for_transcript(report, &tx.transcript_id)
+            {
                 let x1 =
                     Self::probe_region_evidence_svg_x(span.start_1based, projector, left, width);
                 let x2 = Self::probe_region_evidence_svg_x(span.end_1based, projector, left, width);
@@ -518,42 +503,27 @@ impl GentleEngine {
                 evidence_coords.push(end);
             }
         }
-        let local_bounds = Self::probe_region_evidence_svg_local_geometry_bounds(report);
+        let geometry_bounds = Self::probe_region_evidence_svg_geometry_bounds(report);
         let evidence_min = evidence_coords
             .iter()
             .copied()
             .min()
-            .unwrap_or_else(|| local_bounds.map(|bounds| bounds.0).unwrap_or(1).max(1));
-        let evidence_max = evidence_coords
-            .iter()
-            .copied()
-            .max()
-            .unwrap_or_else(|| local_bounds.map(|bounds| bounds.1).unwrap_or(evidence_min));
-        let local_offset = local_bounds.and_then(|(local_min, local_max)| {
-            (evidence_min
-                > local_max.saturating_add(REPORT_LOCAL_GEOMETRY_ALIGNMENT_THRESHOLD_BP))
-                .then_some(evidence_min as i128 - local_min as i128)
+            .unwrap_or_else(|| geometry_bounds.map(|bounds| bounds.0).unwrap_or(1).max(1));
+        let evidence_max = evidence_coords.iter().copied().max().unwrap_or_else(|| {
+            geometry_bounds
+                .map(|bounds| bounds.1)
+                .unwrap_or(evidence_min)
         });
         let mut coords = evidence_coords;
-        if let Some((local_min, local_max)) = local_bounds {
-            let projector = EvidenceSvgProjector {
-                min_coord: evidence_min,
-                max_coord: evidence_max,
-                local_offset,
-            };
-            coords.push(projector.project_report_coord(local_min));
-            coords.push(projector.project_report_coord(local_max));
+        if let Some((geometry_min, geometry_max)) = geometry_bounds {
+            coords.push(geometry_min);
+            coords.push(geometry_max);
         }
         for row in &report.evidence_rows {
             for mapping in &row.transcript_mappings {
                 for span in &mapping.junction_spans {
-                    let projector = EvidenceSvgProjector {
-                        min_coord: evidence_min,
-                        max_coord: evidence_max,
-                        local_offset,
-                    };
-                    coords.push(projector.project_report_coord(span.genomic_start_1based));
-                    coords.push(projector.project_report_coord(span.genomic_end_1based));
+                    coords.push(span.genomic_start_1based);
+                    coords.push(span.genomic_end_1based);
                 }
             }
         }
@@ -571,21 +541,13 @@ impl GentleEngine {
         EvidenceSvgProjector {
             min_coord,
             max_coord,
-            local_offset,
         }
     }
 
     fn probe_region_evidence_svg_warnings(
         report: &ProbeRegionEvidenceInterpretationReport,
-        projector: &EvidenceSvgProjector,
     ) -> Vec<String> {
         let mut warnings = report.warnings.clone();
-        if projector.uses_local_alignment() {
-            warnings.push(
-                "report_local_geometry_aligned_to_evidence_axis_without_full_gene_model"
-                    .to_string(),
-            );
-        }
         if report.evidence_rows.is_empty() {
             warnings.push("no_evidence_rows_to_render".to_string());
         }
@@ -655,7 +617,6 @@ impl GentleEngine {
     fn probe_region_evidence_svg_exons_for_transcript(
         report: &ProbeRegionEvidenceInterpretationReport,
         transcript_id: &str,
-        projector: &EvidenceSvgProjector,
     ) -> Vec<EvidenceSvgExonSegment> {
         let mut seen = BTreeSet::new();
         let mut out = Vec::new();
@@ -673,8 +634,8 @@ impl GentleEngine {
                     if seen.insert((ordinal, start, end)) {
                         out.push(EvidenceSvgExonSegment {
                             ordinal,
-                            start_1based: projector.project_report_coord(start.min(end)),
-                            end_1based: projector.project_report_coord(start.max(end)),
+                            start_1based: start.min(end),
+                            end_1based: start.max(end),
                             original_range: raw_range.clone(),
                         });
                     }
@@ -692,7 +653,6 @@ impl GentleEngine {
     fn probe_region_evidence_svg_junctions_for_transcript(
         report: &ProbeRegionEvidenceInterpretationReport,
         transcript_id: &str,
-        projector: &EvidenceSvgProjector,
     ) -> Vec<EvidenceSvgJunctionSegment> {
         let mut seen = BTreeSet::new();
         let mut out = Vec::new();
@@ -711,8 +671,8 @@ impl GentleEngine {
                         out.push(EvidenceSvgJunctionSegment {
                             from_exon: span.from_exon_ordinal,
                             to_exon: span.to_exon_ordinal,
-                            start_1based: projector.project_report_coord(span.genomic_start_1based),
-                            end_1based: projector.project_report_coord(span.genomic_end_1based),
+                            start_1based: span.genomic_start_1based,
+                            end_1based: span.genomic_end_1based,
                             original_range: format!(
                                 "{}..{}",
                                 span.genomic_start_1based, span.genomic_end_1based
@@ -731,7 +691,7 @@ impl GentleEngine {
         out
     }
 
-    fn probe_region_evidence_svg_local_geometry_bounds(
+    fn probe_region_evidence_svg_geometry_bounds(
         report: &ProbeRegionEvidenceInterpretationReport,
     ) -> Option<(usize, usize)> {
         let mut coords = Vec::new();
