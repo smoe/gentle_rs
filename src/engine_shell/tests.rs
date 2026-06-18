@@ -14471,7 +14471,7 @@ fn parse_gene_sets_resolve_and_promoter_cohort_commands() {
         "gene-sets promoter-cohort ToyGenome --group yamanaka_factors --relationship ''",
     )
     .expect_err("empty relationship is rejected");
-    assert!(empty.contains("--relationship must not be empty"));
+    assert!(empty.contains("Missing value after --relationship"));
 }
 
 #[test]
