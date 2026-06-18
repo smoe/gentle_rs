@@ -4656,6 +4656,63 @@ fn main_area_dna_exports_probe_region_evidence_svg_through_shared_shell_capabili
 }
 
 #[test]
+fn main_area_dna_exports_probe_region_evidence_svg_after_cache_only_interpretation() {
+    let temp = tempdir().expect("tempdir");
+    let report_path = temp.path().join("cache_only_interpretation.json");
+    let svg_path = temp.path().join("cache_only_evidence.svg");
+    let mut area = make_tp73_probe_region_validation_area();
+    area.probe_region_projection_contrasts = "AdTAp73alpha-AdGFP".to_string();
+    area.probe_region_projection_level = "pm_probe".to_string();
+    area.probe_region_projection_min_abs_logfc = "0.5".to_string();
+    area.probe_region_projection_max_features = "20".to_string();
+    area.probe_region_projection_clear_existing = true;
+    area.project_probe_region_output_for_current_path();
+
+    area.probe_region_interpretation_gene_label = "TP73".to_string();
+    area.probe_region_interpretation_level = "pm_probe".to_string();
+    area.probe_region_interpretation_min_abs_logfc = "0.5".to_string();
+    area.probe_region_interpretation_output_path.clear();
+    area.interpret_probe_region_evidence_for_current_sequence();
+    assert!(area.cached_probe_region_interpretation.is_some());
+    assert!(!report_path.exists());
+
+    area.probe_region_interpretation_output_path = report_path.to_string_lossy().to_string();
+    area.probe_region_evidence_svg_output_path = svg_path.to_string_lossy().to_string();
+    area.export_probe_region_evidence_svg_for_current_path();
+
+    assert!(report_path.exists());
+    let report: ProbeRegionEvidenceInterpretationReport = serde_json::from_str(
+        &fs::read_to_string(&report_path).expect("read materialized report"),
+    )
+    .expect("parse materialized report");
+    assert_eq!(
+        report.schema,
+        "gentle.probe_region_evidence_interpretation.v1"
+    );
+    assert!(svg_path.exists());
+    let svg = fs::read_to_string(&svg_path).expect("read evidence svg");
+    assert!(svg.contains("gentle.probe_region_evidence_svg_export.v1"));
+    assert!(svg.contains("class=\"junction-span\""));
+    assert!(svg.contains("class=\"transcript\""));
+    assert!(area.op_status.contains("Probe-region evidence SVG exported"));
+
+    let default_report_path = temp.path().join("defaulted/report.json");
+    let mut default_area = make_tp73_probe_region_validation_area();
+    default_area.cached_probe_region_interpretation = Some(report);
+    default_area.probe_region_interpretation_output_path.clear();
+    default_area
+        .ensure_probe_region_interpretation_report_materialized_with_default(
+            default_report_path.to_string_lossy().to_string(),
+        )
+        .expect("materialize report at test default path");
+    assert_eq!(
+        default_area.probe_region_interpretation_output_path,
+        default_report_path.to_string_lossy().to_string()
+    );
+    assert!(default_report_path.exists());
+}
+
+#[test]
 fn queued_primer_batch_async_worker_completes_and_populates_results() {
     let mut area = make_primer_batch_area();
     area.primer_design_ui.report_id = "batch_async".to_string();

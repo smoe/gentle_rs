@@ -8211,11 +8211,62 @@ impl MainAreaDna {
         Ok(ShellCommand::ArraysRenderProbeRegionEvidenceSvg { report, output })
     }
 
+    fn ensure_probe_region_interpretation_report_materialized(&mut self) -> Result<(), String> {
+        self.ensure_probe_region_interpretation_report_materialized_with_default(
+            default_probe_region_interpretation_output_path(),
+        )
+    }
+
+    fn ensure_probe_region_interpretation_report_materialized_with_default(
+        &mut self,
+        default_path: String,
+    ) -> Result<(), String> {
+        let Some(report) = self.cached_probe_region_interpretation.as_ref() else {
+            return Err("No probe-region interpretation report is cached; run Interpret evidence first".to_string());
+        };
+        if self.probe_region_interpretation_output_path.trim().is_empty() {
+            self.probe_region_interpretation_output_path = default_path;
+        }
+        let report_path = self.probe_region_interpretation_output_path.trim().to_string();
+        if report_path.is_empty() {
+            return Err("Probe-region interpretation JSON output path is empty".to_string());
+        }
+        if Path::new(&report_path).is_file() {
+            return Ok(());
+        }
+        if let Some(parent) = Path::new(&report_path).parent()
+            && !parent.as_os_str().is_empty()
+        {
+            fs::create_dir_all(parent).map_err(|err| {
+                format!(
+                    "Could not create probe-region interpretation report directory '{}': {err}",
+                    parent.to_string_lossy()
+                )
+            })?;
+        }
+        let file = fs::File::create(&report_path).map_err(|err| {
+            format!(
+                "Could not write probe-region interpretation report '{}': {err}",
+                report_path
+            )
+        })?;
+        serde_json::to_writer_pretty(file, report).map_err(|err| {
+            format!(
+                "Could not serialize probe-region interpretation report '{}': {err}",
+                report_path
+            )
+        })
+    }
+
     fn export_probe_region_evidence_svg_for_current_path(&mut self) {
         let Some(engine) = self.engine.clone() else {
             self.op_status = "No engine attached".to_string();
             return;
         };
+        if let Err(message) = self.ensure_probe_region_interpretation_report_materialized() {
+            self.op_status = message;
+            return;
+        }
         let command = match self.build_probe_region_evidence_svg_command_for_current_path() {
             Ok(command) => command,
             Err(message) => {
@@ -9135,7 +9186,7 @@ impl MainAreaDna {
                     egui::TextEdit::singleline(&mut self.probe_region_interpretation_output_path),
                 )
                 .on_hover_text(
-                    "Optional JSON report path; empty keeps the report in the GUI cache only",
+                    "Optional JSON report path; if empty, exporting the evidence SVG writes the cached report to the default path first",
                 )
                 .changed()
             {
@@ -9189,7 +9240,6 @@ impl MainAreaDna {
                 evidence_svg_output_changed = true;
             }
             let export_evidence_enabled = self.cached_probe_region_interpretation.is_some()
-                && !self.probe_region_interpretation_output_path.trim().is_empty()
                 && !self.probe_region_evidence_svg_output_path.trim().is_empty();
             if ui
                 .add_enabled(
