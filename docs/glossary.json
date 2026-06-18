@@ -1728,6 +1728,40 @@
       },
       {
          "aliases": [
+            "ortholog resolve-promoter-cohort",
+            "orthologs promoter-cohort"
+         ],
+         "engine_operations": [
+            "ResolveOrthologPromoterCohort"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "orthologs resolve-promoter-cohort",
+         "summary": "Resolve an offline local ortholog mapping resource into strand-aware cross-species promoter windows using prepared genome catalogs.",
+         "usage": "orthologs resolve-promoter-cohort --anchor-species SPECIES --anchor-genome GENOME_ID --anchor-gene QUERY --target-species SPECIES [--target-species SPECIES ...] [--target-genome SPECIES=GENOME_ID] [--transcript SPECIES=TRANSCRIPT_ID] --orthologs ORTHOLOG_RESOURCE.json [--upstream-bp N] [--downstream-bp N] [--ambiguity-policy reject|first] [--catalog GENOMES.json] [--cache-dir PATH] [--path OUTPUT.json]"
+      },
+      {
+         "aliases": [
+            "ortholog promoter-comparison",
+            "orthologs compare-promoters"
+         ],
+         "engine_operations": [
+            "SummarizeOrthologPromoterComparison"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "orthologs promoter-comparison",
+         "summary": "Compare a resolved ortholog promoter cohort across sequence identity, TFBS score-track similarity, optional expression rows, and explicit CUT&RUN comparability states.",
+         "usage": "orthologs promoter-comparison --cohort COHORT.json --motif TOKEN [--motif TOKEN ...|--motifs CSV] [--score-kind KIND] [--allow-negative] [--expression-json JSON] [--expression-source-label LABEL] [--cutrun-dataset-id ID] [--cutrun-read-report-id ID] [--path OUTPUT.json]"
+      },
+      {
+         "aliases": [
             "resources publication-datasets"
          ],
          "engine_operations": [],

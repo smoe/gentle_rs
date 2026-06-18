@@ -72,6 +72,15 @@ struct GeneSetCutRunMemberAccumulator {
 }
 
 #[derive(Clone, Debug)]
+struct OrthologCutRunDatasetEvidence {
+    dataset_id: String,
+    species: Option<String>,
+    supported_reference_genome_ids: Vec<String>,
+    has_processed_evidence: bool,
+    intervals: Vec<GeneSetCutRunPreparedInterval>,
+}
+
+#[derive(Clone, Debug)]
 struct CutRunCatalogSourceCandidate {
     scope: &'static str,
     path: PathBuf,
@@ -4312,6 +4321,302 @@ impl GentleEngine {
             }
         }
         Ok(intervals)
+    }
+
+    fn ortholog_cutrun_species_key(raw: &str) -> String {
+        raw.chars()
+            .filter(|ch| ch.is_ascii_alphanumeric())
+            .flat_map(char::to_lowercase)
+            .collect()
+    }
+
+    fn ortholog_cutrun_species_matches(source_species: Option<&str>, row_species: &str) -> bool {
+        let Some(source_species) = source_species
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            return true;
+        };
+        Self::ortholog_cutrun_species_key(source_species)
+            == Self::ortholog_cutrun_species_key(row_species)
+    }
+
+    fn ortholog_cutrun_point_interval_distance_bp(
+        point_1based: usize,
+        start_1based: usize,
+        end_1based: usize,
+    ) -> i64 {
+        if point_1based < start_1based {
+            start_1based.saturating_sub(point_1based) as i64
+        } else if point_1based > end_1based {
+            point_1based.saturating_sub(end_1based) as i64
+        } else {
+            0
+        }
+    }
+
+    fn ortholog_cutrun_motif_peak_positions(
+        row: &OrthologPromoterRow,
+        promoter_summaries: &[OrthologTfbsSummaryRow],
+    ) -> Vec<usize> {
+        let strand = row.strand.chars().next();
+        let mut peaks = promoter_summaries
+            .iter()
+            .filter(|summary| {
+                summary.species == row.species && summary.gene_label == row.display_label
+            })
+            .filter(|summary| summary.max_score > 0.0 || summary.positive_fraction > 0.0)
+            .filter_map(|summary| {
+                summary.peak_genomic_position_1based.or_else(|| {
+                    summary.peak_position_0based.and_then(|position| {
+                        Self::promoter_local_position_to_genomic_1based(
+                            strand,
+                            row.promoter_start_1based,
+                            row.promoter_end_1based,
+                            row.promoter_length_bp,
+                            position,
+                        )
+                    })
+                })
+            })
+            .collect::<Vec<_>>();
+        peaks.sort_unstable();
+        peaks.dedup();
+        peaks
+    }
+
+    fn ortholog_cutrun_nearest_motif_distance(
+        motif_peak_positions: &[usize],
+        support_intervals: &[(usize, usize)],
+    ) -> Option<i64> {
+        motif_peak_positions
+            .iter()
+            .flat_map(|peak| {
+                support_intervals.iter().map(|(start, end)| {
+                    Self::ortholog_cutrun_point_interval_distance_bp(*peak, *start, *end)
+                })
+            })
+            .min()
+    }
+
+    pub(crate) fn inspect_ortholog_cutrun_support(
+        &self,
+        cohort: &OrthologPromoterCohortReport,
+        promoter_summaries: &[OrthologTfbsSummaryRow],
+        dataset_ids: &[String],
+        read_report_ids: &[String],
+        warnings: &mut Vec<String>,
+    ) -> Result<Vec<OrthologCutRunSupportRow>, EngineError> {
+        if dataset_ids.is_empty() && read_report_ids.is_empty() {
+            return Ok(cohort
+                .rows
+                .iter()
+                .map(|row| OrthologCutRunSupportRow {
+                    species: row.species.clone(),
+                    gene_label: row.display_label.clone(),
+                    status: OrthologCutRunSupportStatus::NoData,
+                    detail: "No CUT&RUN/occupancy source was supplied for this species promoter."
+                        .to_string(),
+                    ..OrthologCutRunSupportRow::default()
+                })
+                .collect());
+        }
+
+        let mut datasets = Vec::<OrthologCutRunDatasetEvidence>::new();
+        for dataset_query in dataset_ids {
+            let dataset_query = dataset_query.trim();
+            if dataset_query.is_empty() {
+                continue;
+            }
+            let status = self.show_cutrun_dataset_status(dataset_query, None, None)?;
+            warnings.extend(status.warnings.clone());
+            let has_processed_evidence = status.peaks.prepared || status.signal.prepared;
+            if !has_processed_evidence {
+                warnings.push(format!(
+                    "CUT&RUN dataset '{}' has no prepared peaks or signal; ortholog promoter comparison cannot assign occupancy from it",
+                    status.dataset_id
+                ));
+            }
+            let intervals = self.gene_set_cutrun_collect_dataset_intervals(&status, warnings)?;
+            datasets.push(OrthologCutRunDatasetEvidence {
+                dataset_id: status.dataset_id,
+                species: status.species,
+                supported_reference_genome_ids: status.supported_reference_genome_ids,
+                has_processed_evidence,
+                intervals,
+            });
+        }
+
+        let mut read_reports = Vec::<CutRunReadReport>::new();
+        for report_id in read_report_ids {
+            let report_id = report_id.trim();
+            if report_id.is_empty() {
+                continue;
+            }
+            let report = self.get_cutrun_read_report(report_id)?;
+            warnings.extend(report.warnings.clone());
+            read_reports.push(report);
+        }
+
+        let mut rows = Vec::<OrthologCutRunSupportRow>::new();
+        for promoter in &cohort.rows {
+            let motif_peak_positions =
+                Self::ortholog_cutrun_motif_peak_positions(promoter, promoter_summaries);
+            let motif_present = !motif_peak_positions.is_empty();
+            let mut evaluated = false;
+            let mut support_intervals = Vec::<(usize, usize)>::new();
+            let mut contributing_dataset_ids = BTreeSet::<String>::new();
+            let mut contributing_read_report_ids = BTreeSet::<String>::new();
+
+            for dataset in &datasets {
+                if !dataset.has_processed_evidence {
+                    continue;
+                }
+                if !dataset.supported_reference_genome_ids.is_empty()
+                    && !dataset
+                        .supported_reference_genome_ids
+                        .iter()
+                        .any(|genome_id| genome_id == &promoter.genome_id)
+                {
+                    continue;
+                }
+                if !Self::ortholog_cutrun_species_matches(
+                    dataset.species.as_deref(),
+                    &promoter.species,
+                ) {
+                    continue;
+                }
+                if dataset.supported_reference_genome_ids.is_empty() && dataset.species.is_none() {
+                    continue;
+                }
+                evaluated = true;
+                contributing_dataset_ids.insert(dataset.dataset_id.clone());
+                for interval in &dataset.intervals {
+                    if !Self::chromosomes_match(&interval.chromosome, &promoter.chromosome)
+                        || !Self::gene_set_cutrun_intervals_overlap(
+                            interval.start_1based,
+                            interval.end_1based,
+                            promoter.promoter_start_1based,
+                            promoter.promoter_end_1based,
+                        )
+                    {
+                        continue;
+                    }
+                    let has_support = interval.overlapping_peak_count > 0
+                        || interval.max_signal_value.is_some_and(|value| value > 0.0)
+                        || interval.supporting_fragment_count > 0
+                        || interval.cut_site_count > 0;
+                    if has_support {
+                        support_intervals.push((interval.start_1based, interval.end_1based));
+                    }
+                }
+            }
+
+            for report in &read_reports {
+                if report.genome_id != promoter.genome_id
+                    || !Self::ortholog_cutrun_species_matches(
+                        report.species.as_deref(),
+                        &promoter.species,
+                    )
+                    || !Self::chromosomes_match(&report.chromosome, &promoter.chromosome)
+                    || !Self::gene_set_cutrun_intervals_overlap(
+                        report.reference_window_start_1based,
+                        report.reference_window_end_1based,
+                        promoter.promoter_start_1based,
+                        promoter.promoter_end_1based,
+                    )
+                {
+                    continue;
+                }
+                evaluated = true;
+                contributing_read_report_ids.insert(report.report_id.clone());
+                if let Some(dataset_id) = report
+                    .dataset_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                {
+                    contributing_dataset_ids.insert(dataset_id.to_string());
+                }
+                for cluster in &report.support_clusters {
+                    if !Self::gene_set_cutrun_intervals_overlap(
+                        cluster.genomic_start_1based,
+                        cluster.genomic_end_1based,
+                        promoter.promoter_start_1based,
+                        promoter.promoter_end_1based,
+                    ) {
+                        continue;
+                    }
+                    if cluster.fragment_count > 0
+                        || cluster.total_cut_sites > 0
+                        || cluster.peak_coverage > 0
+                    {
+                        support_intervals
+                            .push((cluster.genomic_start_1based, cluster.genomic_end_1based));
+                    }
+                }
+            }
+
+            support_intervals.sort_unstable();
+            support_intervals.dedup();
+            let nearest_peak_distance_bp = Self::ortholog_cutrun_nearest_motif_distance(
+                &motif_peak_positions,
+                &support_intervals,
+            );
+            let has_occupancy = !support_intervals.is_empty();
+            let status = if !evaluated {
+                OrthologCutRunSupportStatus::NotComparable
+            } else if has_occupancy && motif_present {
+                match nearest_peak_distance_bp {
+                    Some(distance) if distance == 0 => OrthologCutRunSupportStatus::Confirmed,
+                    Some(distance) if distance <= CUTRUN_REGULATORY_SUPPORT_MERGE_GAP_BP as i64 => {
+                        OrthologCutRunSupportStatus::Nearby
+                    }
+                    _ => OrthologCutRunSupportStatus::OccupancyOnly,
+                }
+            } else if has_occupancy {
+                OrthologCutRunSupportStatus::OccupancyOnly
+            } else if motif_present {
+                OrthologCutRunSupportStatus::MotifOnly
+            } else {
+                OrthologCutRunSupportStatus::NoData
+            };
+            let detail = match status {
+                OrthologCutRunSupportStatus::Confirmed => {
+                    "Motif peak overlaps species-matched CUT&RUN occupancy evidence.".to_string()
+                }
+                OrthologCutRunSupportStatus::Nearby => format!(
+                    "Nearest species-matched CUT&RUN occupancy evidence is {} bp from a motif peak.",
+                    nearest_peak_distance_bp.unwrap_or_default()
+                ),
+                OrthologCutRunSupportStatus::MotifOnly => {
+                    "A motif peak was scored in this promoter, but no species-matched CUT&RUN occupancy overlapped the promoter."
+                        .to_string()
+                }
+                OrthologCutRunSupportStatus::OccupancyOnly => {
+                    "Species-matched CUT&RUN occupancy overlapped the promoter, but it did not support a scored motif peak."
+                        .to_string()
+                }
+                OrthologCutRunSupportStatus::NoData => {
+                    "Comparable CUT&RUN sources were evaluated, but neither motif nor occupancy evidence was available for this promoter."
+                        .to_string()
+                }
+                OrthologCutRunSupportStatus::NotComparable => {
+                    "No selected CUT&RUN source with matching species/genome provenance covered this promoter; no cross-species occupancy coercion was applied."
+                        .to_string()
+                }
+            };
+            rows.push(OrthologCutRunSupportRow {
+                species: promoter.species.clone(),
+                gene_label: promoter.display_label.clone(),
+                status,
+                nearest_peak_distance_bp,
+                contributing_dataset_ids: contributing_dataset_ids.into_iter().collect(),
+                contributing_read_report_ids: contributing_read_report_ids.into_iter().collect(),
+                detail,
+            });
+        }
+        Ok(rows)
     }
 
     fn gene_set_cutrun_relationship_evidence_class(

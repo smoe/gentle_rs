@@ -58,8 +58,14 @@ pub use gentle_protocol::{
     GeneSetUnresolvedMember, GenomeAnchorSide, GenomeAnnotationScope, GenomeGeneExtractMode,
     GenomeTrackImportProgress, GenomeTrackSource, GenomeTrackSubscription,
     HOST_PROFILE_CATALOG_SCHEMA, HelperConstructProfile, HostLifecycleRole, HostProfileCatalog,
-    HostProfileRecord, HostRouteStep, PairwiseAlignmentMode, PortBindingStatus,
-    PreparedCacheCleanupMode, PreparedCacheCleanupRequest, PrimerDesignBackend,
+    HostProfileRecord, HostRouteStep, ORTHOLOG_PROMOTER_COHORT_SCHEMA,
+    ORTHOLOG_PROMOTER_COMPARISON_SCHEMA, ORTHOLOG_RESOURCE_SCHEMA, OrthologAmbiguityPolicy,
+    OrthologCutRunSupportRow, OrthologCutRunSupportStatus, OrthologExpressionAssignment,
+    OrthologMappingRow, OrthologPairwiseTfbsSimilarity, OrthologPromoterCohortReport,
+    OrthologPromoterCohortRequest, OrthologPromoterComparisonReport, OrthologPromoterRole,
+    OrthologPromoterRow, OrthologResource, OrthologSequenceSimilarityRow, OrthologSpeciesAlias,
+    OrthologTfbsPeakSummary, OrthologTfbsSummaryRow, OrthologUnresolvedRow, PairwiseAlignmentMode,
+    PortBindingStatus, PreparedCacheCleanupMode, PreparedCacheCleanupRequest, PrimerDesignBackend,
     PrimerSpecificityCheckMode, PrimerSpecificityPolicy, ProteinResidueGenomicCoordinateBase,
     ProteinResidueGenomicCoordinateMatch, ProteinResidueGenomicCoordinateReport,
     ProteinToDnaHandoffCandidate, ProteinToDnaHandoffCoverage, ProteinToDnaHandoffRankingGoal,
@@ -3848,6 +3854,10 @@ pub struct OpResult {
     pub gene_set_promoter_cohort: Option<GeneSetPromoterCohortReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gene_set_cutrun_regulatory_support: Option<GeneSetCutRunRegulatorySupportReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ortholog_promoter_cohort: Option<OrthologPromoterCohortReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ortholog_promoter_comparison: Option<OrthologPromoterComparisonReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub read_acquisition_report: Option<ReadAcquisitionReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

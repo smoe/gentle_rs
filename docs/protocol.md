@@ -476,8 +476,44 @@ Behavior notes:
   unexpected divergence or concordance as review cues, never as regulatory
   verdicts. `source_seq_ids`,
   CUT&RUN dataset ids, and saved read-report ids are retained for traceability
-  in this slice; GENtle does not infer cross-species orthology or live
-  occupancy verdicts from them here.
+  in this slice.
+
+## Ortholog promoter resources and comparisons
+
+GENtle’s ortholog promoter v1 is offline-first and engine-owned. It does not
+call Ensembl, GO, or any live orthology service during normal execution.
+
+Portable schemas:
+
+- `gentle.ortholog_resource.v1`
+- `gentle.ortholog_promoter_cohort.v1`
+- `gentle.ortholog_promoter_comparison.v1`
+
+Behavior notes:
+
+- `gentle.ortholog_resource.v1` is a local mapping table with
+  `source_species`, source gene id/symbol, `target_species`, target gene
+  id/symbol, `orthology_type`, `confidence`, `source`, `evidence[]`, and
+  `species_aliases[]`.
+- `ResolveOrthologPromoterCohort` resolves the anchor gene first, maps each
+  target species through the local ortholog table, and derives promoter
+  windows with the same prepared-genome promoter/TSS resolver used by
+  `genomes extract-promoter`.
+- Species aliases are normalized for matching. Ambiguous target mappings are
+  unresolved by default; `ambiguity_policy=first` chooses the stable first
+  candidate and records a warning.
+- Resolved rows carry species, genome id, gene id/symbol, transcript id,
+  strand, TSS, promoter span, transcription-aligned promoter sequence, and
+  orthology evidence/provenance. Unresolved rows make missing or ambiguous
+  mappings explicit.
+- `SummarizeOrthologPromoterComparison` keeps evidence channels separate:
+  promoter-sequence identity, TFBS score-track similarity, motif peak
+  presence, optional expression assignment, and CUT&RUN/occupancy status are
+  reported in distinct arrays.
+- CUT&RUN source ids can assign species/genome-matched occupancy support as
+  `confirmed`, `nearby`, `motif_only`, `occupancy_only`, or `no_data`.
+  Rows without matching provenance are `not_comparable`; raw peak intensity is
+  never compared across species by default.
 
 ## TFBS score-track similarity contract
 

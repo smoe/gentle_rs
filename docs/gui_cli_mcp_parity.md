@@ -17,11 +17,11 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 
 | Adapter | prominent | shell-only | gap |
 |---|---:|---:|---:|
-| GUI | 21 | 552 | 0 |
-| gentle_cli | 332 | 266 | 0 |
-| MCP | 67 | 407 | 27 |
-| JS | 78 | 388 | 27 |
-| Lua | 77 | 389 | 27 |
+| GUI | 21 | 554 | 0 |
+| gentle_cli | 334 | 266 | 0 |
+| MCP | 67 | 409 | 27 |
+| JS | 78 | 390 | 27 |
+| Lua | 77 | 391 | 27 |
 | ClawBio | 0 | 0 | 0 |
 
 ## Glossary Commands
@@ -156,6 +156,8 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | gene-groups draft | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added.<br>JS: Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added.<br>Lua: Catalog inspection is a local shell workflow unless a typed adapter route is explicitly added.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | gene-sets resolve | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | gene-sets promoter-cohort | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| orthologs resolve-promoter-cohort | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| orthologs promoter-comparison | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | resources list-publication-datasets | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Local shell workflow without a portable engine operation; intentionally not projected on this adapter.<br>JS: Local shell workflow without a portable engine operation; intentionally not projected on this adapter.<br>Lua: Local shell workflow without a portable engine operation; intentionally not projected on this adapter.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | resources status-publication-dataset | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Local shell workflow without a portable engine operation; intentionally not projected on this adapter.<br>JS: Local shell workflow without a portable engine operation; intentionally not projected on this adapter.<br>Lua: Local shell workflow without a portable engine operation; intentionally not projected on this adapter.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | resources prepare-publication-dataset | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes.<br>JS: Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes.<br>Lua: Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |

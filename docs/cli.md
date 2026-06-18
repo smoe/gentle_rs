@@ -3865,6 +3865,28 @@ Tutorial companion:
     and live Ensembl ortholog/paralog retrieval is not implemented.
   - Draft members are included with explicit warnings; recipes that used
     `.status // "included"` may miss those warnings.
+- `orthologs resolve-promoter-cohort --anchor-species SPECIES --anchor-genome GENOME_ID --anchor-gene QUERY --target-species SPECIES [--target-species SPECIES ...] [--target-genome SPECIES=GENOME_ID] [--transcript SPECIES=TRANSCRIPT_ID] --orthologs ORTHOLOG_RESOURCE.json [--upstream-bp N] [--downstream-bp N] [--ambiguity-policy reject|first] [--catalog GENOMES.json] [--cache-dir PATH] [--path OUTPUT.json]`
+  - Runs engine `ResolveOrthologPromoterCohort`.
+  - Uses a local `gentle.ortholog_resource.v1` mapping table only; no live
+    Ensembl or orthology API call is made.
+  - Resolves the anchor promoter and target ortholog promoters with the shared
+    prepared-genome promoter/TSS resolver. Species aliases in the resource are
+    honored for matching.
+  - Ambiguous target mappings are unresolved by default. `--ambiguity-policy
+    first` chooses the stable first candidate and records a warning.
+  - Returns portable schema `gentle.ortholog_promoter_cohort.v1`.
+- `orthologs promoter-comparison --cohort COHORT.json --motif TOKEN [--motif TOKEN ...|--motifs CSV] [--score-kind KIND] [--allow-negative] [--expression-json JSON] [--expression-source-label LABEL] [--cutrun-dataset-id ID] [--cutrun-read-report-id ID] [--path OUTPUT.json]`
+  - Runs engine `SummarizeOrthologPromoterComparison`.
+  - Compares a resolved ortholog promoter cohort across separate evidence
+    channels: promoter-sequence identity, TFBS score-track similarity, motif
+    peak presence, optional expression rows, and CUT&RUN/occupancy
+    comparability states.
+  - CUT&RUN source ids can assign species/genome-matched occupancy support
+    (`confirmed`, `nearby`, `motif_only`, `occupancy_only`, or `no_data`).
+    Rows without matching provenance are `not_comparable`; raw cross-species
+    peak intensity is not compared unless future normalized/provenanced
+    evidence is supplied.
+  - Returns portable schema `gentle.ortholog_promoter_comparison.v1`.
 - `resources benchmark-jaspar [--random-length N] [--seed N] [--output OUTPUT.json]`
   - Benchmarks the full active local JASPAR registry through one deterministic
     shared background and writes an export-ready drift snapshot.
@@ -4190,7 +4212,9 @@ Genome convenience commands:
 - `genomes promoter-cohort-comparison GENOME_ID --cohort-label LABEL --cohort-kind manual|co_regulated|anti_co_regulated --gene QUERY[::OCCURRENCE][@TRANSCRIPT_ID][#DISPLAY_LABEL] [--gene ...|--gene-json JSON] --motif TOKEN [--motif TOKEN ...|--motifs CSV] [--source-seq-id SEQ_ID ...] [--upstream-bp N] [--downstream-bp N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--expression-json JSON] [--expression-source-label LABEL] [--cutrun-dataset ID ...] [--cutrun-read-report ID ...] [--catalog PATH] [--cache-dir PATH] [--path FILE.json]`
   - Runs engine `SummarizePromoterCohortComparison`.
   - First slice supports only manual, co-regulated, and anti-co-regulated
-    cohorts. Ortholog/cross-species resolution is intentionally deferred.
+    same-genome cohorts. Use `orthologs resolve-promoter-cohort` and
+    `orthologs promoter-comparison` for offline cross-species promoter
+    reasoning.
   - Resolves each gene/transcript into a strand-aware promoter window, reuses
     multi-gene TFBS score summaries and TFBS similarity ranking, and emits
     pairwise similarity, shared/common peaks, cohort-specific/outlier peaks,

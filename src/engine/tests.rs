@@ -24,7 +24,7 @@ use crate::genomes::BlastHit;
 use crate::lineage_export::{LineageSvgNodeKind, build_lineage_svg_graph, export_lineage_svg};
 use bio::io::fasta;
 use flate2::{Compression, write::GzEncoder};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::env;
 use std::fs;
 use std::io::Write;
@@ -3599,6 +3599,139 @@ fn prepare_gene_set_test_genome(root: &Path, engine: &mut GentleEngine) -> Strin
     catalog_path
 }
 
+fn write_ortholog_test_reference_catalog(root: &Path) -> String {
+    let human_fasta = root.join("ortholog_human.fa.gz");
+    let human_gtf = root.join("ortholog_human.gtf.gz");
+    let mouse_fasta = root.join("ortholog_mouse.fa.gz");
+    let mouse_gtf = root.join("ortholog_mouse.gtf.gz");
+    let mut human_chr1 = "ACGT".repeat(1600);
+    human_chr1.replace_range(1550..1564, "GGGGCGGGGCGGGG");
+    let mouse_chr1 = "TGCA".repeat(1600);
+    write_gzip(&human_fasta, &format!(">chr1\n{human_chr1}\n"));
+    write_gzip(&mouse_fasta, &format!(">chr1\n{mouse_chr1}\n"));
+    write_gzip(
+        &human_gtf,
+        concat!(
+            "chr1\tsrc\tgene\t1501\t1900\t.\t+\t.\tgene_id \"ENSG_TP73\"; gene_name \"TP73\";\n",
+            "chr1\tsrc\ttranscript\t1601\t1850\t.\t+\t.\tgene_id \"ENSG_TP73\"; gene_name \"TP73\"; transcript_id \"TX_HUMAN_TP73\";\n",
+            "chr1\tsrc\texon\t1601\t1850\t.\t+\t.\tgene_id \"ENSG_TP73\"; gene_name \"TP73\"; transcript_id \"TX_HUMAN_TP73\"; exon_number \"1\";\n",
+        ),
+    );
+    write_gzip(
+        &mouse_gtf,
+        concat!(
+            "chr1\tsrc\tgene\t3001\t3600\t.\t-\t.\tgene_id \"ENSMUSG_TRP73\"; gene_name \"Trp73\";\n",
+            "chr1\tsrc\ttranscript\t3101\t3500\t.\t-\t.\tgene_id \"ENSMUSG_TRP73\"; gene_name \"Trp73\"; transcript_id \"TX_MOUSE_TRP73\";\n",
+            "chr1\tsrc\texon\t3101\t3500\t.\t-\t.\tgene_id \"ENSMUSG_TRP73\"; gene_name \"Trp73\"; transcript_id \"TX_MOUSE_TRP73\"; exon_number \"1\";\n",
+            "chr1\tsrc\tgene\t4301\t4700\t.\t+\t.\tgene_id \"ENSMUSG_TRP73B\"; gene_name \"Trp73b\";\n",
+            "chr1\tsrc\ttranscript\t4351\t4650\t.\t+\t.\tgene_id \"ENSMUSG_TRP73B\"; gene_name \"Trp73b\"; transcript_id \"TX_MOUSE_TRP73B\";\n",
+            "chr1\tsrc\texon\t4351\t4650\t.\t+\t.\tgene_id \"ENSMUSG_TRP73B\"; gene_name \"Trp73b\"; transcript_id \"TX_MOUSE_TRP73B\"; exon_number \"1\";\n",
+        ),
+    );
+    let human_cache = root.join("human_reference_cache");
+    let mouse_cache = root.join("mouse_reference_cache");
+    let catalog_path = root.join("ortholog_reference_catalog.json");
+    fs::write(
+        &catalog_path,
+        format!(
+            r#"{{
+  "HumanToy": {{
+    "description": "ortholog human toy genome",
+    "sequence_remote": "{}",
+    "annotations_remote": "{}",
+    "cache_dir": "{}"
+  }},
+  "MouseToy": {{
+    "description": "ortholog mouse toy genome",
+    "sequence_remote": "{}",
+    "annotations_remote": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            file_url(&human_fasta),
+            file_url(&human_gtf),
+            human_cache.display(),
+            file_url(&mouse_fasta),
+            file_url(&mouse_gtf),
+            mouse_cache.display()
+        ),
+    )
+    .expect("write ortholog reference catalog");
+    catalog_path.to_string_lossy().to_string()
+}
+
+fn prepare_ortholog_test_genomes(root: &Path, engine: &mut GentleEngine) -> String {
+    let catalog_path = write_ortholog_test_reference_catalog(root);
+    let _guard = EnvVarGuard::set(
+        crate::genomes::MAKEBLASTDB_ENV_BIN,
+        "__gentle_makeblastdb_missing_for_test__",
+    );
+    for genome_id in ["HumanToy", "MouseToy"] {
+        engine
+            .apply(Operation::PrepareGenome {
+                genome_id: genome_id.to_string(),
+                catalog_path: Some(catalog_path.clone()),
+                cache_dir: None,
+                timeout_seconds: None,
+            })
+            .expect("prepare ortholog toy genome");
+    }
+    catalog_path
+}
+
+fn write_ortholog_test_resource(root: &Path, include_ambiguous_mouse_row: bool) -> String {
+    let ambiguous_row = if include_ambiguous_mouse_row {
+        r#",
+    {
+      "source_species": "Homo sapiens",
+      "source_gene_id": "ENSG_TP73",
+      "source_gene_symbol": "TP73",
+      "target_species": "Mus musculus",
+      "target_gene_id": "ENSMUSG_TRP73B",
+      "target_gene_symbol": "Trp73b",
+      "orthology_type": "one_to_many",
+      "confidence": "medium",
+      "source": "synthetic ambiguous row",
+      "evidence": ["synthetic_one2many"]
+    }"#
+    } else {
+        ""
+    };
+    let path = root.join("ortholog_resource.json");
+    fs::write(
+        &path,
+        format!(
+            r#"{{
+  "schema": "{}",
+  "id": "tp73_synthetic_orthologs",
+  "label": "Synthetic TP73 orthologs",
+  "species_aliases": [
+    {{"species": "Homo sapiens", "aliases": ["human", "hsap"]}},
+    {{"species": "Mus musculus", "aliases": ["mouse", "mmus"]}}
+  ],
+  "rows": [
+    {{
+      "source_species": "Homo sapiens",
+      "source_gene_id": "ENSG_TP73",
+      "source_gene_symbol": "TP73",
+      "target_species": "Mus musculus",
+      "target_gene_id": "ENSMUSG_TRP73",
+      "target_gene_symbol": "Trp73",
+      "orthology_type": "one_to_one",
+      "confidence": "high",
+      "source": "synthetic curated table",
+      "evidence": ["orthology_one2one"]
+    }}{}
+  ]
+}}"#,
+            gentle_protocol::ORTHOLOG_RESOURCE_SCHEMA,
+            ambiguous_row
+        ),
+    )
+    .expect("write ortholog resource");
+    path.to_string_lossy().to_string()
+}
+
 fn gene_set_cutrun_promoter_cohort(
     windows: Vec<GeneSetPromoterWindow>,
 ) -> GeneSetPromoterCohortReport {
@@ -3929,6 +4062,306 @@ fn build_gene_set_promoter_cohort_uses_default_strand_geometry_and_keeps_unresol
     assert_eq!(neg.tss_1based, 3500);
     assert_eq!(neg.promoter_start_1based, 3300);
     assert_eq!(neg.promoter_end_1based, 4500);
+}
+
+#[test]
+fn resolve_ortholog_promoter_cohort_uses_aliases_and_strand_geometry() {
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let mut engine = GentleEngine::new();
+    let catalog_path = prepare_ortholog_test_genomes(root, &mut engine);
+    let resource_path = write_ortholog_test_resource(root, false);
+    let mut target_genome_ids = BTreeMap::new();
+    target_genome_ids.insert("mouse".to_string(), "MouseToy".to_string());
+    let mut transcript_ids = BTreeMap::new();
+    transcript_ids.insert("human".to_string(), "TX_HUMAN_TP73".to_string());
+    transcript_ids.insert("mouse".to_string(), "TX_MOUSE_TRP73".to_string());
+
+    let cohort = engine
+        .resolve_ortholog_promoter_cohort(
+            "human",
+            "HumanToy",
+            "TP73",
+            &["mouse".to_string()],
+            &target_genome_ids,
+            &transcript_ids,
+            &resource_path,
+            100,
+            20,
+            OrthologAmbiguityPolicy::Reject,
+            Some(&catalog_path),
+            None,
+        )
+        .expect("resolve ortholog promoter cohort");
+    assert_eq!(cohort.schema, "gentle.ortholog_promoter_cohort.v1");
+    assert_eq!(cohort.resolved_promoter_count, 2);
+    assert_eq!(cohort.unresolved_count, 0);
+    assert_eq!(cohort.request.anchor_species, "Homo sapiens");
+    assert_eq!(cohort.request.target_species, vec!["Mus musculus"]);
+
+    let anchor = cohort
+        .rows
+        .iter()
+        .find(|row| row.role == OrthologPromoterRole::Anchor)
+        .expect("anchor row");
+    assert_eq!(anchor.species, "Homo sapiens");
+    assert_eq!(anchor.gene_symbol.as_deref(), Some("TP73"));
+    assert_eq!(anchor.strand, "+");
+    assert_eq!(anchor.tss_1based, 1601);
+    assert_eq!(anchor.promoter_start_1based, 1501);
+    assert_eq!(anchor.promoter_end_1based, 1621);
+    assert_eq!(anchor.tss_position_0based, 100);
+    assert!(anchor.promoter_sequence.is_some());
+
+    let mouse = cohort
+        .rows
+        .iter()
+        .find(|row| row.role == OrthologPromoterRole::Target)
+        .expect("mouse row");
+    assert_eq!(mouse.species, "Mus musculus");
+    assert_eq!(mouse.gene_symbol.as_deref(), Some("Trp73"));
+    assert_eq!(mouse.strand, "-");
+    assert_eq!(mouse.tss_1based, 3500);
+    assert_eq!(mouse.promoter_start_1based, 3480);
+    assert_eq!(mouse.promoter_end_1based, 3600);
+    assert_eq!(mouse.tss_position_0based, 100);
+    assert_eq!(mouse.orthology_type.as_deref(), Some("one_to_one"));
+    assert_eq!(mouse.confidence.as_deref(), Some("high"));
+    assert_eq!(mouse.orthology_evidence, vec!["orthology_one2one"]);
+}
+
+#[test]
+fn resolve_ortholog_promoter_cohort_reports_ambiguity_unless_policy_allows_first() {
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let mut engine = GentleEngine::new();
+    let catalog_path = prepare_ortholog_test_genomes(root, &mut engine);
+    let resource_path = write_ortholog_test_resource(root, true);
+    let mut target_genome_ids = BTreeMap::new();
+    target_genome_ids.insert("Mus musculus".to_string(), "MouseToy".to_string());
+
+    let rejected = engine
+        .resolve_ortholog_promoter_cohort(
+            "Homo sapiens",
+            "HumanToy",
+            "ENSG_TP73",
+            &["Mus musculus".to_string()],
+            &target_genome_ids,
+            &BTreeMap::new(),
+            &resource_path,
+            100,
+            20,
+            OrthologAmbiguityPolicy::Reject,
+            Some(&catalog_path),
+            None,
+        )
+        .expect("ambiguous mapping reports unresolved target");
+    assert_eq!(rejected.resolved_promoter_count, 1);
+    assert_eq!(rejected.unresolved_count, 1);
+    assert!(
+        rejected.unresolved_rows[0]
+            .reason
+            .contains("Ambiguous local ortholog mapping")
+    );
+    assert_eq!(rejected.unresolved_rows[0].candidates.len(), 2);
+
+    let first = engine
+        .resolve_ortholog_promoter_cohort(
+            "Homo sapiens",
+            "HumanToy",
+            "ENSG_TP73",
+            &["Mus musculus".to_string()],
+            &target_genome_ids,
+            &BTreeMap::new(),
+            &resource_path,
+            100,
+            20,
+            OrthologAmbiguityPolicy::First,
+            Some(&catalog_path),
+            None,
+        )
+        .expect("first ambiguity policy resolves deterministically");
+    assert_eq!(first.resolved_promoter_count, 2);
+    assert!(
+        first
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("ambiguity_policy=first"))
+    );
+}
+
+#[test]
+fn summarize_ortholog_promoter_comparison_separates_sequence_tfbs_expression_and_cutrun_states() {
+    let _serial = cutrun_test_env_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let mut engine = GentleEngine::new();
+    let catalog_path = prepare_ortholog_test_genomes(root, &mut engine);
+    let resource_path = write_ortholog_test_resource(root, false);
+    let mut target_genome_ids = BTreeMap::new();
+    target_genome_ids.insert("Mus musculus".to_string(), "MouseToy".to_string());
+    let cohort = engine
+        .resolve_ortholog_promoter_cohort(
+            "Homo sapiens",
+            "HumanToy",
+            "TP73",
+            &["Mus musculus".to_string()],
+            &target_genome_ids,
+            &BTreeMap::new(),
+            &resource_path,
+            100,
+            20,
+            OrthologAmbiguityPolicy::Reject,
+            Some(&catalog_path),
+            None,
+        )
+        .expect("resolve cohort");
+
+    let comparison = engine
+        .summarize_ortholog_promoter_comparison(
+            cohort,
+            &["SP1".to_string()],
+            TfbsScoreTrackValueKind::LlrBackgroundTailLog10,
+            true,
+            &[PromoterExpressionEvidenceInput {
+                gene_label: Some("TP73".to_string()),
+                condition: Some("case".to_string()),
+                value: 7.5,
+                unit: Some("TPM".to_string()),
+                ..PromoterExpressionEvidenceInput::default()
+            }],
+            Some("rna_demo"),
+            &[],
+            &[],
+        )
+        .expect("summarize ortholog comparison");
+    assert_eq!(comparison.schema, "gentle.ortholog_promoter_comparison.v1");
+    assert_eq!(comparison.cohort.resolved_promoter_count, 2);
+    assert_eq!(comparison.motifs_requested, vec!["SP1".to_string()]);
+    assert!(!comparison.promoter_summaries.is_empty());
+    assert_eq!(comparison.sequence_similarity.len(), 1);
+    assert!(comparison.sequence_similarity[0].identity_fraction <= 1.0);
+    assert!(!comparison.pairwise_tfbs_similarity.is_empty());
+    assert_eq!(comparison.expression_assignments.len(), 1);
+    assert_eq!(
+        comparison.expression_assignments[0].source.as_str(),
+        "rna_demo"
+    );
+    assert_eq!(comparison.cutrun_support.len(), 2);
+    assert!(
+        comparison
+            .cutrun_support
+            .iter()
+            .all(|row| row.status == OrthologCutRunSupportStatus::NoData)
+    );
+
+    let human_promoter = comparison
+        .cohort
+        .rows
+        .iter()
+        .find(|row| row.species == "Homo sapiens")
+        .expect("human promoter row");
+    let human_peak_1based = comparison
+        .promoter_summaries
+        .iter()
+        .find(|row| {
+            row.species == "Homo sapiens"
+                && row.gene_label == "TP73"
+                && row.peak_position_0based.is_some()
+        })
+        .and_then(|row| {
+            row.peak_genomic_position_1based.or_else(|| {
+                row.peak_position_0based.and_then(|position| {
+                    GentleEngine::promoter_local_position_to_genomic_1based(
+                        human_promoter.strand.chars().next(),
+                        human_promoter.promoter_start_1based,
+                        human_promoter.promoter_end_1based,
+                        human_promoter.promoter_length_bp,
+                        position,
+                    )
+                })
+            })
+        })
+        .expect("human motif peak genomic position");
+    let project_catalog_dir = root.join(".gentle").join("catalogs");
+    fs::create_dir_all(&project_catalog_dir).expect("create ortholog CUT&RUN catalog dir");
+    let peaks_path = root.join("ortholog_human_peaks.bed");
+    fs::write(
+        &peaks_path,
+        format!(
+            "chr1\t{}\t{}\tsp1_supported_peak\t42\t+\n",
+            human_peak_1based.saturating_sub(1),
+            human_peak_1based
+        ),
+    )
+    .expect("write ortholog CUT&RUN peaks");
+    let cutrun_catalog_path = project_catalog_dir.join("cutrun.json");
+    fs::write(
+        &cutrun_catalog_path,
+        format!(
+            r#"{{
+  "ortholog_human_sp1": {{
+    "summary": "Synthetic ortholog human SP1 CUT&RUN",
+    "species": "Homo sapiens",
+    "target_factor": "SP1",
+    "supported_reference_genome_ids": ["HumanToy"],
+    "peaks_local": "{}"
+  }}
+}}"#,
+            peaks_path.display()
+        ),
+    )
+    .expect("write ortholog CUT&RUN catalog");
+    let cutrun_cache_dir = root.join("ortholog_cutrun_cache");
+    let _project_root_guard =
+        EnvVarGuard::set(crate::genomes::PROJECT_ROOT_ENV, &root.to_string_lossy());
+    let _cutrun_cache_guard = EnvVarGuard::set(
+        "GENTLE_CUTRUN_CACHE_DIR",
+        &cutrun_cache_dir.to_string_lossy(),
+    );
+    let status = engine
+        .prepare_cutrun_dataset(
+            "ortholog_human_sp1",
+            Some(&cutrun_catalog_path.to_string_lossy()),
+            Some(&cutrun_cache_dir.to_string_lossy()),
+        )
+        .expect("prepare ortholog CUT&RUN dataset");
+    assert!(status.prepared);
+
+    let supported = engine
+        .summarize_ortholog_promoter_comparison(
+            comparison.cohort.clone(),
+            &["SP1".to_string()],
+            TfbsScoreTrackValueKind::LlrBackgroundTailLog10,
+            true,
+            &[],
+            None,
+            &["ortholog_human_sp1".to_string()],
+            &[],
+        )
+        .expect("summarize ortholog comparison with CUT&RUN support");
+    let human_support = supported
+        .cutrun_support
+        .iter()
+        .find(|row| row.species == "Homo sapiens")
+        .expect("human CUT&RUN support row");
+    assert_eq!(human_support.status, OrthologCutRunSupportStatus::Confirmed);
+    assert_eq!(human_support.nearest_peak_distance_bp, Some(0));
+    assert_eq!(
+        human_support.contributing_dataset_ids,
+        vec!["ortholog_human_sp1".to_string()]
+    );
+    let mouse_support = supported
+        .cutrun_support
+        .iter()
+        .find(|row| row.species == "Mus musculus")
+        .expect("mouse CUT&RUN support row");
+    assert_eq!(
+        mouse_support.status,
+        OrthologCutRunSupportStatus::NotComparable
+    );
 }
 
 #[test]

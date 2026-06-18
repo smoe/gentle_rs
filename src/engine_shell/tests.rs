@@ -18,16 +18,16 @@ use crate::engine::{
     ConstructObjective, ConstructRole, Container, ContainerKind, CutRunAlignConfig,
     CutRunCoverageKind, CutRunInputFormat, CutRunReadLayout, CutRunSeedFilterConfig, DisplayTarget,
     EditableStatus, ExonSkipReturnKind, GeneSetCohortRelationship, InlineSequenceTopology,
-    PrimerDesignProgress, PromoterCohortKind, PromoterTfbsGeneQuery,
+    OrthologAmbiguityPolicy, PrimerDesignProgress, PromoterCohortKind, PromoterTfbsGeneQuery,
     ProteinExternalOpinionSource, ProteinFeatureFilter, QpcrTranscriptSpecificityEvidence,
     QpcrTranscriptTargetingMode, Rack, RackAuthoringTemplate, RackCarrierLabelPreset,
     RackFillDirection, RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind,
     RackPlacementEntry, RackProfileKind, RackProfileSnapshot, ReadAcquisitionAnalysisFormat,
     ReadAcquisitionReadLayout, RepeatEnvironmentGeometryMode, RestrictionCloningPcrHandoffMode,
-    RnaReadAlignConfig, RnaReadInterpretationHit, RnaReadInterpretationReport,
-    RnaReadMappingHit, RnaReadOriginClass, SequenceOrigin,
-    SequenceScanTarget, TfThresholdOverride, TfbsScoreTrackCorrelationSignalSource,
-    TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric,
+    RnaReadAlignConfig, RnaReadInterpretationHit, RnaReadInterpretationReport, RnaReadMappingHit,
+    RnaReadOriginClass, SequenceOrigin, SequenceScanTarget, TfThresholdOverride,
+    TfbsScoreTrackCorrelationSignalSource, TfbsScoreTrackValueKind,
+    TfbsTrackSimilarityRankingMetric,
 };
 use crate::ensembl_gene::{
     EnsemblGeneEntry, EnsemblGeneExonSummary, EnsemblGeneTranscriptSummary,
@@ -190,6 +190,19 @@ fn option_value_for_following_token(flag: &str, raw_next: &str) -> Option<String
 }
 
 fn sample_value_for_usage_token(flag: &str, token: &str) -> String {
+    if token == "KEY=VALUE" {
+        return "key=value".to_string();
+    }
+    if let Some((left, right)) = token.split_once('=')
+        && !left.is_empty()
+        && !right.is_empty()
+    {
+        return format!(
+            "{}={}",
+            sample_value_for_usage_token(flag, left),
+            sample_value_for_usage_token(flag, right)
+        );
+    }
     if flag == "--strand" && token.contains("+|-") {
         return "+".to_string();
     }
@@ -293,7 +306,6 @@ fn sample_value_for_usage_token(flag: &str, token: &str) -> String {
             "ID" | "REPORT_ID" | "RUN_ID" | "TRACE_ID" => "id".to_string(),
             "i,j,k" => "1,2".to_string(),
             "+" | "-" => token.to_string(),
-            "KEY=VALUE" => "key=value".to_string(),
             "N" | "M" | "NM" | "ROWS" | "COLUMNS" | "START" | "END" | "START_0BASED"
             | "END_0BASED" | "START_1BASED" | "END_1BASED" | "FEATURE_ID" | "CUT_POS_1BASED"
             | "RESIDUE_START" | "RESIDUE_END" | "LENGTH_BP" | "LEFT_END_0BASED"
@@ -409,9 +421,9 @@ fn smoke_command_override(path: &str) -> Option<&'static str> {
         "cutrun inspect-regulatory-support" => {
             Some("cutrun inspect-regulatory-support seq --dataset dataset")
         }
-        "cutrun gene-set-regulatory-support" => {
-            Some("cutrun gene-set-regulatory-support ToyGenome --group yamanaka_factors --dataset toy_ctcf")
-        }
+        "cutrun gene-set-regulatory-support" => Some(
+            "cutrun gene-set-regulatory-support ToyGenome --group yamanaka_factors --dataset toy_ctcf",
+        ),
         "gene-sets resolve" => Some("gene-sets resolve --group yamanaka_factors"),
         "gene-sets promoter-cohort" => {
             Some("gene-sets promoter-cohort ToyGenome --group yamanaka_factors")
@@ -7956,8 +7968,14 @@ fn execute_arrays_render_probe_region_evidence_svg_writes_constraint_plot() {
     );
     assert_eq!(run.output["export"]["evidence_row_count"].as_u64(), Some(1));
     assert_eq!(run.output["export"]["transcript_count"].as_u64(), Some(1));
-    assert_eq!(run.output["export"]["parent_feature_count"].as_u64(), Some(1));
-    assert_eq!(run.output["export"]["junction_span_count"].as_u64(), Some(1));
+    assert_eq!(
+        run.output["export"]["parent_feature_count"].as_u64(),
+        Some(1)
+    );
+    assert_eq!(
+        run.output["export"]["junction_span_count"].as_u64(),
+        Some(1)
+    );
     assert!(
         run.output["export"]["warnings"].as_array().is_some_and(|warnings| {
             warnings.iter().any(|warning| {
@@ -9854,9 +9872,12 @@ fn execute_planning_protein_expression_handoff_whole_sequence_cds_suggests_prefl
         report.cds_assessment.context_source,
         "whole_sequence_fallback"
     );
-    assert!(report.suggested_next_actions.iter().any(|action| {
-        action.action_id == "inspect_geneart_protein_expression_preflight"
-    }));
+    assert!(
+        report
+            .suggested_next_actions
+            .iter()
+            .any(|action| { action.action_id == "inspect_geneart_protein_expression_preflight" })
+    );
     assert!(
         report
             .suggested_next_actions
@@ -20783,6 +20804,87 @@ fn parse_genomes_promoter_cohort_comparison_with_expression_and_cutrun_sources()
             assert_eq!(catalog_path.as_deref(), Some("c.json"));
             assert_eq!(cache_dir.as_deref(), Some("cache"));
             assert_eq!(path.as_deref(), Some("cohort.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_orthologs_resolve_promoter_cohort_and_comparison() {
+    let resolve = parse_shell_line(
+        r#"orthologs resolve-promoter-cohort --anchor-species "Homo sapiens" --anchor-genome HumanToy --anchor-gene TP73 --target-species "Mus musculus" --target-genome "Mus musculus=MouseToy" --transcript "Mus musculus=TX_MOUSE_TRP73" --orthologs orthologs.json --upstream-bp 2000 --downstream-bp 200 --ambiguity-policy first --catalog genomes.json --cache-dir cache --path cohort.json"#,
+    )
+    .expect("parse ortholog promoter cohort");
+    match resolve {
+        ShellCommand::OrthologsResolvePromoterCohort {
+            anchor_species,
+            anchor_genome_id,
+            anchor_gene_query,
+            target_species,
+            target_genome_ids,
+            transcript_ids,
+            ortholog_resource_path,
+            upstream_bp,
+            downstream_bp,
+            ambiguity_policy,
+            genome_catalog_path,
+            cache_dir,
+            output,
+        } => {
+            assert_eq!(anchor_species, "Homo sapiens");
+            assert_eq!(anchor_genome_id, "HumanToy");
+            assert_eq!(anchor_gene_query, "TP73");
+            assert_eq!(target_species, vec!["Mus musculus".to_string()]);
+            assert_eq!(
+                target_genome_ids.get("Mus musculus").map(String::as_str),
+                Some("MouseToy")
+            );
+            assert_eq!(
+                transcript_ids.get("Mus musculus").map(String::as_str),
+                Some("TX_MOUSE_TRP73")
+            );
+            assert_eq!(ortholog_resource_path, "orthologs.json");
+            assert_eq!(upstream_bp, 2000);
+            assert_eq!(downstream_bp, 200);
+            assert_eq!(ambiguity_policy, OrthologAmbiguityPolicy::First);
+            assert_eq!(genome_catalog_path.as_deref(), Some("genomes.json"));
+            assert_eq!(cache_dir.as_deref(), Some("cache"));
+            assert_eq!(output.as_deref(), Some("cohort.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let compare = parse_shell_line(
+        r#"orthologs promoter-comparison --cohort cohort.json --motif TP73 --motifs SP1,BACH2 --score-kind llr_background_tail_log10 --allow-negative --expression-json '{"gene_label":"TP73","condition":"case","value":7.5,"unit":"TPM"}' --source-label rna_demo --cutrun-dataset-id cutrun_demo --path comparison.json"#,
+    )
+    .expect("parse ortholog promoter comparison");
+    match compare {
+        ShellCommand::OrthologsPromoterComparison {
+            cohort,
+            cohort_path,
+            motifs,
+            score_kind,
+            clip_negative,
+            expression_rows,
+            expression_source_label,
+            cutrun_dataset_ids,
+            cutrun_read_report_ids,
+            output,
+        } => {
+            assert!(cohort.is_none());
+            assert_eq!(cohort_path.as_deref(), Some("cohort.json"));
+            assert_eq!(
+                motifs,
+                vec!["TP73".to_string(), "SP1".to_string(), "BACH2".to_string()]
+            );
+            assert_eq!(score_kind, TfbsScoreTrackValueKind::LlrBackgroundTailLog10);
+            assert!(!clip_negative);
+            assert_eq!(expression_rows.len(), 1);
+            assert_eq!(expression_rows[0].condition.as_deref(), Some("case"));
+            assert_eq!(expression_source_label.as_deref(), Some("rna_demo"));
+            assert_eq!(cutrun_dataset_ids, vec!["cutrun_demo".to_string()]);
+            assert!(cutrun_read_report_ids.is_empty());
+            assert_eq!(output.as_deref(), Some("comparison.json"));
         }
         other => panic!("unexpected command: {other:?}"),
     }

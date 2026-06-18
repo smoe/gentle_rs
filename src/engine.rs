@@ -101,9 +101,10 @@ pub use gentle_protocol::{
     EvidenceClass, EvidenceScope, ExonSkipReturnKind, ExonSkipReturnPayload,
     ExonSkipSelectionCriterion, GelBufferModel, GelRunConditions, GelTopologyForm, LineageEdge,
     LineageGraph, LineageMacroInstance, LineageMacroPortBinding, LineageNode, MacroInstanceStatus,
-    NodeId, OpId, ProteinExternalOpinionSource, ProteinFeatureFilter, Rack, RackAuthoringTemplate,
-    RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset, RackOccupant,
-    RackPhysicalTemplateFamily, RackPhysicalTemplateKind, RackPhysicalTemplateSpec,
+    NodeId, OpId, OrthologAmbiguityPolicy, OrthologPromoterCohortReport,
+    OrthologPromoterComparisonReport, ProteinExternalOpinionSource, ProteinFeatureFilter, Rack,
+    RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
+    RackOccupant, RackPhysicalTemplateFamily, RackPhysicalTemplateKind, RackPhysicalTemplateSpec,
     RackPlacementEntry, RackProfileKind, RackProfileSnapshot, ReadAcquisitionAnalysisFormat,
     ReadAcquisitionReadLayout, RunId, SeqId, SequenceOrigin,
 };
@@ -669,11 +670,13 @@ mod microarray_tracks;
 mod motif_statistics;
 #[path = "engine/ops/operation_handlers.rs"]
 mod operation_handlers;
+#[path = "engine/analysis/orthologs.rs"]
+mod orthologs;
+#[path = "engine/io/probe_region_evidence_svg.rs"]
+mod probe_region_evidence_svg;
 #[cfg(test)]
 #[path = "engine/io/probe_region_glen_adapter.rs"]
 mod probe_region_glen_adapter;
-#[path = "engine/io/probe_region_evidence_svg.rs"]
-mod probe_region_evidence_svg;
 #[path = "engine/io/probe_regions.rs"]
 mod probe_regions;
 #[path = "engine/analysis/promoter_design.rs"]
@@ -3172,6 +3175,52 @@ pub enum Operation {
         allow_draft: bool,
         #[serde(default)]
         allow_deprecated: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    ResolveOrthologPromoterCohort {
+        anchor_species: String,
+        anchor_genome_id: String,
+        anchor_gene_query: String,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        target_species: Vec<String>,
+        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        target_genome_ids: BTreeMap<String, String>,
+        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        transcript_ids: BTreeMap<String, String>,
+        ortholog_resource_path: String,
+        #[serde(default = "default_promoter_window_upstream_bp")]
+        upstream_bp: usize,
+        #[serde(default = "default_promoter_window_downstream_bp")]
+        downstream_bp: usize,
+        #[serde(default)]
+        ambiguity_policy: OrthologAmbiguityPolicy,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        genome_catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_dir: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    SummarizeOrthologPromoterComparison {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cohort: Option<Box<OrthologPromoterCohortReport>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cohort_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        motifs: Vec<String>,
+        #[serde(default = "default_tfbs_score_track_value_kind")]
+        score_kind: TfbsScoreTrackValueKind,
+        #[serde(default = "default_tfbs_score_track_clip_negative")]
+        clip_negative: bool,
+        #[serde(default)]
+        expression_rows: Vec<PromoterExpressionEvidenceInput>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        expression_source_label: Option<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        cutrun_dataset_ids: Vec<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        cutrun_read_report_ids: Vec<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
@@ -7946,6 +7995,8 @@ impl GentleEngine {
                 | Operation::ExportPromoterArtifactManifest { .. }
                 | Operation::SummarizeMultiGenePromoterTfbs { .. }
                 | Operation::SummarizePromoterCohortComparison { .. }
+                | Operation::ResolveOrthologPromoterCohort { .. }
+                | Operation::SummarizeOrthologPromoterComparison { .. }
                 | Operation::RenderMultiGenePromoterTfbsSvg { .. }
                 | Operation::ScanTfbsHits { .. }
                 | Operation::InspectJasparEntry { .. }

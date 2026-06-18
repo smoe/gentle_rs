@@ -53,19 +53,19 @@ use crate::{
         GuideOligoExportFormat, GuideOligoPlateFormat, GuidePracticalFilterConfig,
         InlineSequenceTopology, LabAssistantInstructionsFormat, LineageMacroInstance,
         LineageMacroPortBinding, MacroInstanceStatus, OligoOrderFormCreateRequest, Operation,
-        OperationProgress, PLANNING_CLONING_CONSULTATION_SCHEMA, PLANNING_ESTIMATE_SCHEMA,
-        PLANNING_OBJECTIVE_SCHEMA, PLANNING_PROFILE_SCHEMA, PLANNING_SUGGESTION_SCHEMA,
-        PLANNING_SYNC_STATUS_SCHEMA, PRIMER_DESIGN_REPORTS_METADATA_KEY,
-        PROTEIN_EXPRESSION_HANDOFF_SCHEMA, PairwiseAlignmentMode, PlanningCloningConsultation,
-        PlanningCloningHelperVectorSummary, PlanningCloningHostProfileSummary,
-        PlanningCloningLocalConstraint, PlanningCloningMissingQuestion,
-        PlanningCloningStrategyCandidate, PlanningCloningSuggestedNextAction,
-        PlanningCloningVectorCandidate, PlanningEstimate, PlanningObjective, PlanningProfile,
-        PlanningProfileScope, PlanningSuggestionStatus, PrimerDesignBackend,
-        PrimerDesignPairConstraint, PrimerDesignReport, PrimerDesignSideConstraint,
-        PrimerSpecificityPolicy, ProbeRegionRequest, ProjectState, PromoterArtifactManifestEntry,
-        PromoterCohortKind, PromoterExpressionEvidenceInput, PromoterTfbsGeneQuery,
-        PromoterWindowCollapseMode, ProteinExpressionCdsAssessment,
+        OperationProgress, OrthologAmbiguityPolicy, OrthologPromoterCohortReport,
+        PLANNING_CLONING_CONSULTATION_SCHEMA, PLANNING_ESTIMATE_SCHEMA, PLANNING_OBJECTIVE_SCHEMA,
+        PLANNING_PROFILE_SCHEMA, PLANNING_SUGGESTION_SCHEMA, PLANNING_SYNC_STATUS_SCHEMA,
+        PRIMER_DESIGN_REPORTS_METADATA_KEY, PROTEIN_EXPRESSION_HANDOFF_SCHEMA,
+        PairwiseAlignmentMode, PlanningCloningConsultation, PlanningCloningHelperVectorSummary,
+        PlanningCloningHostProfileSummary, PlanningCloningLocalConstraint,
+        PlanningCloningMissingQuestion, PlanningCloningStrategyCandidate,
+        PlanningCloningSuggestedNextAction, PlanningCloningVectorCandidate, PlanningEstimate,
+        PlanningObjective, PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus,
+        PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignReport,
+        PrimerDesignSideConstraint, PrimerSpecificityPolicy, ProbeRegionRequest, ProjectState,
+        PromoterArtifactManifestEntry, PromoterCohortKind, PromoterExpressionEvidenceInput,
+        PromoterTfbsGeneQuery, PromoterWindowCollapseMode, ProteinExpressionCdsAssessment,
         ProteinExpressionFeatureSummary, ProteinExpressionHandoffReport,
         ProteinExpressionHostChassisCandidate, ProteinExpressionProductDefinition,
         ProteinExpressionProductReadiness, ProteinExpressionSequenceContext,
@@ -1065,6 +1065,33 @@ pub enum ShellCommand {
         downstream_bp: usize,
         allow_draft: bool,
         allow_deprecated: bool,
+        output: Option<String>,
+    },
+    OrthologsResolvePromoterCohort {
+        anchor_species: String,
+        anchor_genome_id: String,
+        anchor_gene_query: String,
+        target_species: Vec<String>,
+        target_genome_ids: BTreeMap<String, String>,
+        transcript_ids: BTreeMap<String, String>,
+        ortholog_resource_path: String,
+        upstream_bp: usize,
+        downstream_bp: usize,
+        ambiguity_policy: OrthologAmbiguityPolicy,
+        genome_catalog_path: Option<String>,
+        cache_dir: Option<String>,
+        output: Option<String>,
+    },
+    OrthologsPromoterComparison {
+        cohort: Option<Box<OrthologPromoterCohortReport>>,
+        cohort_path: Option<String>,
+        motifs: Vec<String>,
+        score_kind: TfbsScoreTrackValueKind,
+        clip_negative: bool,
+        expression_rows: Vec<PromoterExpressionEvidenceInput>,
+        expression_source_label: Option<String>,
+        cutrun_dataset_ids: Vec<String>,
+        cutrun_read_report_ids: Vec<String>,
         output: Option<String>,
     },
     ResourcesListPublicationDatasets {
@@ -4811,6 +4838,38 @@ fn parse_gene_set_relationship(
     }
 }
 
+fn parse_ortholog_ambiguity_policy(
+    raw: &str,
+    context: &str,
+) -> Result<OrthologAmbiguityPolicy, String> {
+    match raw.trim().to_ascii_lowercase().replace('-', "_").as_str() {
+        "" => Err(format!("{context} --ambiguity-policy must not be empty")),
+        "reject" | "error" | "strict" => Ok(OrthologAmbiguityPolicy::Reject),
+        "first" | "first_match" | "allow_first" => Ok(OrthologAmbiguityPolicy::First),
+        other => Err(format!(
+            "Invalid --ambiguity-policy '{other}' for {context}; expected reject or first"
+        )),
+    }
+}
+
+fn parse_species_value_binding(
+    raw: &str,
+    flag: &str,
+    context: &str,
+) -> Result<(String, String), String> {
+    let (species, value) = raw
+        .split_once('=')
+        .ok_or_else(|| format!("{context} {flag} expects SPECIES=VALUE, got '{raw}'"))?;
+    let species = species.trim();
+    let value = value.trim();
+    if species.is_empty() || value.is_empty() {
+        return Err(format!(
+            "{context} {flag} expects non-empty SPECIES=VALUE, got '{raw}'"
+        ));
+    }
+    Ok((species.to_string(), value.to_string()))
+}
+
 fn parse_tfbs_score_track_value_kind_shell(
     raw: &str,
     context: &str,
@@ -7113,6 +7172,48 @@ impl ShellCommand {
                 relationship,
                 upstream_bp,
                 downstream_bp,
+                output.as_deref().unwrap_or("-"),
+            ),
+            Self::OrthologsResolvePromoterCohort {
+                anchor_species,
+                anchor_genome_id,
+                anchor_gene_query,
+                target_species,
+                ortholog_resource_path,
+                upstream_bp,
+                downstream_bp,
+                ambiguity_policy,
+                output,
+                ..
+            } => format!(
+                "resolve ortholog promoter cohort for '{}' '{}' in genome '{}' to {} target species (orthologs='{}', upstream_bp={}, downstream_bp={}, ambiguity_policy={}, output='{}')",
+                anchor_species,
+                anchor_gene_query,
+                anchor_genome_id,
+                target_species.len(),
+                ortholog_resource_path,
+                upstream_bp,
+                downstream_bp,
+                ambiguity_policy.as_str(),
+                output.as_deref().unwrap_or("-"),
+            ),
+            Self::OrthologsPromoterComparison {
+                cohort,
+                cohort_path,
+                motifs,
+                score_kind,
+                clip_negative,
+                output,
+                ..
+            } => format!(
+                "compare ortholog promoters from {} with {} motif(s) (score_kind={}, clip_negative={}, output='{}')",
+                cohort_path
+                    .as_deref()
+                    .or_else(|| cohort.as_ref().map(|_| "inline cohort"))
+                    .unwrap_or("-"),
+                motifs.len(),
+                score_kind.as_str(),
+                clip_negative,
                 output.as_deref().unwrap_or("-"),
             ),
             Self::ReportersList {
@@ -21193,6 +21294,276 @@ fn parse_gene_sets_command(tokens: &[String]) -> Result<ShellCommand, String> {
     }
 }
 
+fn parse_orthologs_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err(
+            "orthologs requires a subcommand: resolve-promoter-cohort or promoter-comparison"
+                .to_string(),
+        );
+    }
+    match tokens[1].as_str() {
+        "resolve-promoter-cohort" | "resolve_promoter_cohort" | "promoter-cohort" => {
+            let context = "orthologs resolve-promoter-cohort";
+            let mut anchor_species: Option<String> = None;
+            let mut anchor_genome_id: Option<String> = None;
+            let mut anchor_gene_query: Option<String> = None;
+            let mut target_species: Vec<String> = vec![];
+            let mut target_genome_ids: BTreeMap<String, String> = BTreeMap::new();
+            let mut transcript_ids: BTreeMap<String, String> = BTreeMap::new();
+            let mut anchor_transcript_id: Option<String> = None;
+            let mut ortholog_resource_path: Option<String> = None;
+            let mut upstream_bp = DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP;
+            let mut downstream_bp = DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP;
+            let mut ambiguity_policy = OrthologAmbiguityPolicy::Reject;
+            let mut genome_catalog_path: Option<String> = None;
+            let mut cache_dir: Option<String> = None;
+            let mut output: Option<String> = None;
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--anchor-species" | "--species" => {
+                        let flag = tokens[idx].clone();
+                        anchor_species = Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    "--anchor-genome" | "--anchor-genome-id" | "--genome" => {
+                        let flag = tokens[idx].clone();
+                        anchor_genome_id =
+                            Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    "--anchor-gene" | "--gene" => {
+                        let flag = tokens[idx].clone();
+                        anchor_gene_query =
+                            Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    "--target-species" | "--target" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        target_species.push(raw);
+                    }
+                    "--target-species-list" | "--targets" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        target_species.extend(split_csv_tokens_with_empty_error(&raw)?);
+                    }
+                    "--target-genome" | "--target-genome-id" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        let (species, genome_id) =
+                            parse_species_value_binding(&raw, &flag, context)?;
+                        target_genome_ids.insert(species, genome_id);
+                    }
+                    "--transcript" | "--transcript-id" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        let (species, transcript_id) =
+                            parse_species_value_binding(&raw, &flag, context)?;
+                        transcript_ids.insert(species, transcript_id);
+                    }
+                    "--anchor-transcript" | "--anchor-transcript-id" => {
+                        let flag = tokens[idx].clone();
+                        anchor_transcript_id =
+                            Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    "--orthologs" | "--ortholog-resource" | "--ortholog-resource-path" => {
+                        let flag = tokens[idx].clone();
+                        ortholog_resource_path =
+                            Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    "--upstream-bp" | "--upstream_bp" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        upstream_bp = raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid {flag} value '{raw}' for {context}: {e}")
+                        })?;
+                    }
+                    "--downstream-bp" | "--downstream_bp" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        downstream_bp = raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid {flag} value '{raw}' for {context}: {e}")
+                        })?;
+                    }
+                    "--ambiguity-policy" | "--ambiguity" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        ambiguity_policy = parse_ortholog_ambiguity_policy(&raw, context)?;
+                    }
+                    "--allow-ambiguous-first" => {
+                        ambiguity_policy = OrthologAmbiguityPolicy::First;
+                        idx += 1;
+                    }
+                    "--catalog" | "--genome-catalog" | "--genome_catalog" => {
+                        let flag = tokens[idx].clone();
+                        genome_catalog_path =
+                            Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    "--cache-dir" | "--cache_dir" => {
+                        let flag = tokens[idx].clone();
+                        cache_dir = Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    "--output" | "--path" => {
+                        let flag = tokens[idx].clone();
+                        output = Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    other => return Err(format!("Unknown option '{other}' for {context}")),
+                }
+            }
+            let anchor_species =
+                anchor_species.ok_or_else(|| format!("{context} requires --anchor-species"))?;
+            let anchor_genome_id =
+                anchor_genome_id.ok_or_else(|| format!("{context} requires --anchor-genome"))?;
+            let anchor_gene_query =
+                anchor_gene_query.ok_or_else(|| format!("{context} requires --anchor-gene"))?;
+            let ortholog_resource_path = ortholog_resource_path
+                .ok_or_else(|| format!("{context} requires --orthologs PATH"))?;
+            if target_species.is_empty() {
+                return Err(format!("{context} requires at least one --target-species"));
+            }
+            if let Some(transcript_id) = anchor_transcript_id {
+                transcript_ids.insert(anchor_species.clone(), transcript_id);
+            }
+            Ok(ShellCommand::OrthologsResolvePromoterCohort {
+                anchor_species,
+                anchor_genome_id,
+                anchor_gene_query,
+                target_species,
+                target_genome_ids,
+                transcript_ids,
+                ortholog_resource_path,
+                upstream_bp,
+                downstream_bp,
+                ambiguity_policy,
+                genome_catalog_path,
+                cache_dir,
+                output,
+            })
+        }
+        "promoter-comparison" | "promoter_comparison" | "compare-promoters" => {
+            let context = "orthologs promoter-comparison";
+            let mut cohort: Option<OrthologPromoterCohortReport> = None;
+            let mut cohort_path: Option<String> = None;
+            let mut motifs: Vec<String> = vec![];
+            let mut score_kind = TfbsScoreTrackValueKind::default();
+            let mut clip_negative = true;
+            let mut expression_rows: Vec<PromoterExpressionEvidenceInput> = vec![];
+            let mut expression_source_label: Option<String> = None;
+            let mut cutrun_dataset_ids: Vec<String> = vec![];
+            let mut cutrun_read_report_ids: Vec<String> = vec![];
+            let mut output: Option<String> = None;
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--cohort" | "--cohort-path" => {
+                        let flag = tokens[idx].clone();
+                        cohort_path = Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    "--cohort-json" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--cohort-json", context)?;
+                        cohort = Some(parse_required_json_payload::<OrthologPromoterCohortReport>(
+                            &raw,
+                            "ortholog promoter cohort",
+                        )?);
+                    }
+                    "--motif" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--motif", context)?;
+                        if raw.trim().is_empty() {
+                            return Err(format!("{context} --motif requires a non-empty token"));
+                        }
+                        motifs.push(raw.trim().to_string());
+                    }
+                    "--motifs" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--motifs", context)?;
+                        motifs.extend(split_csv_tokens_with_empty_error(&raw)?);
+                    }
+                    "--score-kind" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--score-kind", context)?;
+                        score_kind = parse_tfbs_score_track_value_kind_shell(&raw, context)?;
+                    }
+                    "--allow-negative" => {
+                        clip_negative = false;
+                        idx += 1;
+                    }
+                    "--expression-json" | "--expression-row-json" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        expression_rows.extend(parse_promoter_expression_rows_json_shell(&raw)?);
+                    }
+                    "--source-label" | "--expression-source-label" => {
+                        let flag = tokens[idx].clone();
+                        expression_source_label =
+                            Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    "--cutrun-dataset-id" | "--cutrun-dataset" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        if !raw.trim().is_empty() {
+                            cutrun_dataset_ids.push(raw.trim().to_string());
+                        }
+                    }
+                    "--cutrun-dataset-ids" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--cutrun-dataset-ids", context)?;
+                        cutrun_dataset_ids.extend(split_csv_tokens_with_empty_error(&raw)?);
+                    }
+                    "--cutrun-read-report-id" | "--cutrun-read-report" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        if !raw.trim().is_empty() {
+                            cutrun_read_report_ids.push(raw.trim().to_string());
+                        }
+                    }
+                    "--cutrun-read-report-ids" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--cutrun-read-report-ids",
+                            context,
+                        )?;
+                        cutrun_read_report_ids.extend(split_csv_tokens_with_empty_error(&raw)?);
+                    }
+                    "--output" | "--path" => {
+                        let flag = tokens[idx].clone();
+                        output = Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                    }
+                    other if !other.starts_with("--") && cohort_path.is_none() => {
+                        cohort_path = Some(other.to_string());
+                        idx += 1;
+                    }
+                    other => return Err(format!("Unknown option '{other}' for {context}")),
+                }
+            }
+            if cohort.is_some() && cohort_path.is_some() {
+                return Err(format!(
+                    "{context} accepts either --cohort PATH or --cohort-json JSON, not both"
+                ));
+            }
+            if cohort.is_none() && cohort_path.is_none() {
+                return Err(format!(
+                    "{context} requires --cohort PATH or --cohort-json JSON"
+                ));
+            }
+            if motifs.is_empty() {
+                return Err(format!("{context} requires at least one --motif TOKEN"));
+            }
+            Ok(ShellCommand::OrthologsPromoterComparison {
+                cohort: cohort.map(Box::new),
+                cohort_path,
+                motifs,
+                score_kind,
+                clip_negative,
+                expression_rows,
+                expression_source_label,
+                cutrun_dataset_ids,
+                cutrun_read_report_ids,
+                output,
+            })
+        }
+        other => Err(format!(
+            "Unknown orthologs subcommand '{other}' (expected resolve-promoter-cohort or promoter-comparison)"
+        )),
+    }
+}
+
 fn parse_gene_groups_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
@@ -24496,6 +24867,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "ui" => parse_ui_command(tokens),
         "agents" => parse_agents_command(tokens),
         "routines" => parse_routines_command(tokens),
+        "orthologs" | "ortholog" => parse_orthologs_command(tokens),
         "gene-sets" | "gene_sets" | "genesets" => parse_gene_sets_command(tokens),
         "gene-groups" | "gene_groups" | "genegroups" => parse_gene_groups_command(tokens),
         "reporters" => parse_reporters_command(tokens),
@@ -30023,6 +30395,74 @@ fn execute_export_import_and_resource_command(
                 state_changed: false,
                 output: serde_json::to_value(&report)
                     .map_err(|e| format!("Could not serialize gene-set promoter cohort: {e}"))?,
+            })
+        }
+        ShellCommand::OrthologsResolvePromoterCohort {
+            anchor_species,
+            anchor_genome_id,
+            anchor_gene_query,
+            target_species,
+            target_genome_ids,
+            transcript_ids,
+            ortholog_resource_path,
+            upstream_bp,
+            downstream_bp,
+            ambiguity_policy,
+            genome_catalog_path,
+            cache_dir,
+            output,
+        } => {
+            let op_result = engine
+                .apply(Operation::ResolveOrthologPromoterCohort {
+                    anchor_species: anchor_species.clone(),
+                    anchor_genome_id: anchor_genome_id.clone(),
+                    anchor_gene_query: anchor_gene_query.clone(),
+                    target_species: target_species.clone(),
+                    target_genome_ids: target_genome_ids.clone(),
+                    transcript_ids: transcript_ids.clone(),
+                    ortholog_resource_path: ortholog_resource_path.clone(),
+                    upstream_bp: *upstream_bp,
+                    downstream_bp: *downstream_bp,
+                    ambiguity_policy: *ambiguity_policy,
+                    genome_catalog_path: genome_catalog_path.clone(),
+                    cache_dir: cache_dir.clone(),
+                    path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": op_result }),
+            })
+        }
+        ShellCommand::OrthologsPromoterComparison {
+            cohort,
+            cohort_path,
+            motifs,
+            score_kind,
+            clip_negative,
+            expression_rows,
+            expression_source_label,
+            cutrun_dataset_ids,
+            cutrun_read_report_ids,
+            output,
+        } => {
+            let op_result = engine
+                .apply(Operation::SummarizeOrthologPromoterComparison {
+                    cohort: cohort.clone(),
+                    cohort_path: cohort_path.clone(),
+                    motifs: motifs.clone(),
+                    score_kind: *score_kind,
+                    clip_negative: *clip_negative,
+                    expression_rows: expression_rows.clone(),
+                    expression_source_label: expression_source_label.clone(),
+                    cutrun_dataset_ids: cutrun_dataset_ids.clone(),
+                    cutrun_read_report_ids: cutrun_read_report_ids.clone(),
+                    path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": op_result }),
             })
         }
         ShellCommand::ReportersList {
@@ -39220,6 +39660,8 @@ fn execute_shell_command_with_options_dispatch(
             | ShellCommand::GeneGroupsDraft { .. }
             | ShellCommand::GeneSetsResolve { .. }
             | ShellCommand::GeneSetsPromoterCohort { .. }
+            | ShellCommand::OrthologsResolvePromoterCohort { .. }
+            | ShellCommand::OrthologsPromoterComparison { .. }
             | ShellCommand::ReportersList { .. }
             | ShellCommand::ReportersRecommend { .. }
             | ShellCommand::ReportersExportCorpus { .. }
@@ -39913,6 +40355,8 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::GeneGroupsDraft { .. }
         | ShellCommand::GeneSetsResolve { .. }
         | ShellCommand::GeneSetsPromoterCohort { .. }
+        | ShellCommand::OrthologsResolvePromoterCohort { .. }
+        | ShellCommand::OrthologsPromoterComparison { .. }
         | ShellCommand::ReportersList { .. }
         | ShellCommand::ReportersRecommend { .. }
         | ShellCommand::ReportersExportCorpus { .. }

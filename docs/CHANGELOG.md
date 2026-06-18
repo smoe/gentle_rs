@@ -14,6 +14,11 @@ Maintenance rule:
 
 ## 2026-06-18
 
+- Added offline-first ortholog promoter reasoning with local
+  `gentle.ortholog_resource.v1` mapping resources,
+  `ResolveOrthologPromoterCohort`, `SummarizeOrthologPromoterComparison`, and
+  `orthologs resolve-promoter-cohort` / `orthologs promoter-comparison` shell
+  routes, including species/genome-matched CUT&RUN motif-support states.
 - Added additive `relationship_flags[]` to
   `gentle.promoter_cohort_comparison.v1`, surfacing unexpected TFBS-track
   divergence for declared co-regulated promoter cohorts and unexpected

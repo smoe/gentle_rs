@@ -1852,7 +1852,7 @@ impl GentleEngine {
         })
     }
 
-    fn promoter_aligned_sequence(sequence: &str, strand: Option<char>) -> String {
+    pub(crate) fn promoter_aligned_sequence(sequence: &str, strand: Option<char>) -> String {
         if strand == Some('-') {
             Self::reverse_complement(sequence)
         } else {
@@ -1860,7 +1860,7 @@ impl GentleEngine {
         }
     }
 
-    fn promoter_oriented_tss_position_0based(
+    pub(crate) fn promoter_oriented_tss_position_0based(
         sequence_length_bp: usize,
         extract_start_1based: usize,
         tss_1based: usize,
@@ -1882,7 +1882,7 @@ impl GentleEngine {
         })
     }
 
-    fn promoter_local_position_to_genomic_1based(
+    pub(crate) fn promoter_local_position_to_genomic_1based(
         strand: Option<char>,
         promoter_start_1based: usize,
         promoter_end_1based: usize,
@@ -1899,7 +1899,7 @@ impl GentleEngine {
         })
     }
 
-    fn tfbs_track_positive_support_fraction(track: &TfbsScoreTrackRow) -> f64 {
+    pub(crate) fn tfbs_track_positive_support_fraction(track: &TfbsScoreTrackRow) -> f64 {
         if track.scored_window_count == 0 {
             return 0.0;
         }
@@ -2119,7 +2119,7 @@ impl GentleEngine {
         })
     }
 
-    fn summarize_promoter_cohort_pairwise_similarity(
+    pub(crate) fn summarize_promoter_cohort_pairwise_similarity(
         left: &MultiGenePromoterTfbsGeneReport,
         right: &MultiGenePromoterTfbsGeneReport,
     ) -> Option<PromoterCohortPairwiseSimilarity> {
@@ -2178,7 +2178,7 @@ impl GentleEngine {
         })
     }
 
-    fn summarize_promoter_cohort_peak_sets(
+    pub(crate) fn summarize_promoter_cohort_peak_sets(
         summary_rows: &[MultiGenePromoterTfbsSummaryRow],
         resolved_promoter_count: usize,
     ) -> (

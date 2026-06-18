@@ -16415,6 +16415,8 @@ impl GentleEngine {
             gene_set_resolution: None,
             gene_set_promoter_cohort: None,
             gene_set_cutrun_regulatory_support: None,
+            ortholog_promoter_cohort: None,
+            ortholog_promoter_comparison: None,
             read_acquisition_report: None,
             cutrun_dataset_projection: None,
             microarray_projection: None,
@@ -20060,6 +20062,134 @@ impl GentleEngine {
                         report.aggregate.evaluated_member_count, report.aggregate.member_count
                     ));
                     result.gene_set_cutrun_regulatory_support = Some(report);
+                }
+                Operation::ResolveOrthologPromoterCohort {
+                    anchor_species,
+                    anchor_genome_id,
+                    anchor_gene_query,
+                    target_species,
+                    target_genome_ids,
+                    transcript_ids,
+                    ortholog_resource_path,
+                    upstream_bp,
+                    downstream_bp,
+                    ambiguity_policy,
+                    genome_catalog_path,
+                    cache_dir,
+                    path,
+                } => {
+                    let mut report = self.resolve_ortholog_promoter_cohort(
+                        &anchor_species,
+                        &anchor_genome_id,
+                        &anchor_gene_query,
+                        &target_species,
+                        &target_genome_ids,
+                        &transcript_ids,
+                        &ortholog_resource_path,
+                        upstream_bp,
+                        downstream_bp,
+                        ambiguity_policy,
+                        genome_catalog_path.as_deref(),
+                        cache_dir.as_deref(),
+                    )?;
+                    report.op_id = Some(result.op_id.clone());
+                    report.run_id = Some(run_id.to_string());
+                    if let Some(path) = path.as_deref() {
+                        self.write_pretty_json_file(
+                            &report,
+                            path,
+                            "ortholog promoter cohort report",
+                        )?;
+                        result.messages.push(format!(
+                            "Wrote ortholog promoter cohort report to '{}'",
+                            path
+                        ));
+                    }
+                    result.warnings.extend(report.warnings.clone());
+                    result.messages.push(format!(
+                        "Resolved ortholog promoter cohort for '{}' in '{}' with {} promoter row(s) and {} unresolved target(s)",
+                        report.request.anchor_gene_query,
+                        report.request.anchor_species,
+                        report.resolved_promoter_count,
+                        report.unresolved_count
+                    ));
+                    result.ortholog_promoter_cohort = Some(report);
+                }
+                Operation::SummarizeOrthologPromoterComparison {
+                    cohort,
+                    cohort_path,
+                    motifs,
+                    score_kind,
+                    clip_negative,
+                    expression_rows,
+                    expression_source_label,
+                    cutrun_dataset_ids,
+                    cutrun_read_report_ids,
+                    path,
+                } => {
+                    let cohort = match (cohort, cohort_path.as_deref()) {
+                        (Some(report), _) => *report,
+                        (None, Some(path)) => {
+                            let raw = std::fs::read_to_string(path).map_err(|e| EngineError {
+                                code: ErrorCode::Io,
+                                message: format!(
+                                    "Could not read ortholog promoter cohort '{}': {}",
+                                    path, e
+                                ),
+                                cause_chain: vec![],
+                            })?;
+                            serde_json::from_str::<OrthologPromoterCohortReport>(&raw).map_err(
+                                |e| EngineError {
+                                    code: ErrorCode::InvalidInput,
+                                    message: format!(
+                                        "Could not parse ortholog promoter cohort '{}': {}",
+                                        path, e
+                                    ),
+                                    cause_chain: vec![],
+                                },
+                            )?
+                        }
+                        (None, None) => {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message:
+                                    "SummarizeOrthologPromoterComparison requires cohort or cohort_path"
+                                        .to_string(),
+                                cause_chain: vec![],
+                            });
+                        }
+                    };
+                    let mut report = self.summarize_ortholog_promoter_comparison(
+                        cohort,
+                        &motifs,
+                        score_kind,
+                        clip_negative,
+                        &expression_rows,
+                        expression_source_label.as_deref(),
+                        &cutrun_dataset_ids,
+                        &cutrun_read_report_ids,
+                    )?;
+                    report.op_id = Some(result.op_id.clone());
+                    report.run_id = Some(run_id.to_string());
+                    if let Some(path) = path.as_deref() {
+                        self.write_pretty_json_file(
+                            &report,
+                            path,
+                            "ortholog promoter comparison report",
+                        )?;
+                        result.messages.push(format!(
+                            "Wrote ortholog promoter comparison report to '{}'",
+                            path
+                        ));
+                    }
+                    result.warnings.extend(report.warnings.clone());
+                    result.messages.push(format!(
+                        "Ortholog promoter comparison scored {} motif(s) across {} promoter row(s), with {} pairwise TFBS row(s)",
+                        report.motifs_requested.len(),
+                        report.cohort.resolved_promoter_count,
+                        report.pairwise_tfbs_similarity.len()
+                    ));
+                    result.ortholog_promoter_comparison = Some(report);
                 }
                 Operation::ImportIsoformPanel {
                     seq_id,

@@ -255,9 +255,12 @@ wet-lab conclusions or unconfirmed mutations.
 - Helper-construct terminology migration away from legacy "helper genome"
   wording.
 - Broader CUT&RUN development beyond the release smoke slice.
-- Promoter cohort follow-up: ortholog/cross-species resolution and true
-  cross-promoter CUT&RUN peak comparison after the manual/co-regulated/
-  anti-co-regulated first slice settles.
+- Promoter cohort follow-up: normalized/provenanced cross-promoter CUT&RUN
+  peak comparison after the manual/co-regulated/anti-co-regulated and
+  ortholog promoter slices settle.
+- Ortholog promoter follow-up: add a thin Promoter design GUI action and a
+  tiny tutorial/demo chapter around the existing synthetic ortholog engine
+  fixture once the shell workflow has had one review pass.
 - Primer3 parity, virtual PCR/off-target filtering, multiplex tiling, LAMP, and
   allele-specific assay families.
 - GuideRNA off-target ranking and macro-template packaging.

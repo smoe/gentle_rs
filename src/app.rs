@@ -11408,6 +11408,8 @@ Error: `{err}`"
                 gene_set_resolution: None,
                 gene_set_promoter_cohort: None,
                 gene_set_cutrun_regulatory_support: None,
+                ortholog_promoter_cohort: None,
+                ortholog_promoter_comparison: None,
                 read_acquisition_report: None,
                 cutrun_dataset_projection: None,
                 microarray_projection: None,
