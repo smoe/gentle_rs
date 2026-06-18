@@ -288,6 +288,10 @@ const WINDOW_OPEN_SLOW_THRESHOLD_MS: u128 = 400;
 const EMBEDDED_SEQUENCE_WINDOW_DRAG_MARGIN_X_PX: f32 = 32.0;
 const EMBEDDED_SEQUENCE_WINDOW_DRAG_MARGIN_Y_PX: f32 = 32.0;
 const HELP_MARKDOWN_REFLOW_DELTA_PX: f32 = 8.0;
+const HELP_BODY_MIN_WIDTH_PX: f32 = 120.0;
+const HELP_BODY_MIN_HEIGHT_PX: f32 = 180.0;
+const HELP_BODY_FALLBACK_WIDTH_PX: f32 = 760.0;
+const HELP_BODY_FALLBACK_HEIGHT_PX: f32 = 520.0;
 const MACOS_HOSTED_CHILD_VIEWPORTS_ENV: &str = "GENTLE_MACOS_HOSTED_CHILD_VIEWPORTS";
 const MACOS_NATIVE_CHILD_VIEWPORTS_ENV: &str = "GENTLE_MACOS_NATIVE_CHILD_VIEWPORTS";
 static NATIVE_HELP_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
@@ -22392,11 +22396,38 @@ Error: `{err}`"
 
     fn help_markdown_max_image_width(available_width: f32) -> usize {
         let safe_width = if available_width.is_finite() {
-            available_width.max(120.0)
+            available_width.max(HELP_BODY_MIN_WIDTH_PX)
         } else {
             480.0
         };
         (safe_width * 0.75).round().clamp(220.0, 1600.0) as usize
+    }
+
+    fn bounded_help_body_size(available_size: Vec2, viewport_size: Vec2) -> Vec2 {
+        let width = if available_size.x.is_finite() && available_size.x > 0.0 {
+            available_size.x
+        } else {
+            HELP_BODY_FALLBACK_WIDTH_PX
+        };
+        let height = if available_size.y.is_finite() && available_size.y > 0.0 {
+            available_size.y
+        } else {
+            HELP_BODY_FALLBACK_HEIGHT_PX
+        };
+        let max_width = if viewport_size.x.is_finite() && viewport_size.x > 0.0 {
+            viewport_size.x.max(HELP_BODY_MIN_WIDTH_PX)
+        } else {
+            HELP_BODY_FALLBACK_WIDTH_PX
+        };
+        let max_height = if viewport_size.y.is_finite() && viewport_size.y > 0.0 {
+            viewport_size.y.max(HELP_BODY_MIN_HEIGHT_PX)
+        } else {
+            HELP_BODY_FALLBACK_HEIGHT_PX
+        };
+        Vec2::new(
+            width.clamp(HELP_BODY_MIN_WIDTH_PX, max_width),
+            height.clamp(HELP_BODY_MIN_HEIGHT_PX, max_height),
+        )
     }
 
     fn clamp_help_topic_combo_width(available_width: f32) -> f32 {
@@ -22791,66 +22822,75 @@ Error: `{err}`"
             }
 
             ui.separator();
-            let help_body_size = ui.available_size_before_wrap();
+            let help_body_size = Self::bounded_help_body_size(
+                ui.available_size_before_wrap(),
+                ui.ctx().viewport_rect().size(),
+            );
             ui.allocate_ui_with_layout(
-                Vec2::new(help_body_size.x.max(120.0), help_body_size.y.max(180.0)),
+                help_body_size,
                 egui::Layout::top_down(egui::Align::Min),
                 |ui| {
-                    let help_body_height = ui.available_height().max(180.0);
-                    egui::ScrollArea::vertical()
-                        .id_salt("help_body_scroll")
-                        .auto_shrink([false, false])
-                        .max_height(help_body_height)
-                        .show(ui, |ui| {
-                            scroll_input_policy::apply_scrollarea_keyboard_navigation(
-                                ui,
-                                scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
-                            );
-                            let content_width = ui.available_width().max(120.0);
-                            if Self::help_content_width_requires_relayout(
-                                self.help_last_content_width,
-                                content_width,
-                            ) {
-                                self.help_markdown_cache = CommonMarkCache::default();
-                            }
-                            self.help_last_content_width = content_width;
-                            let max_image_width =
-                                Self::help_markdown_max_image_width(content_width);
-                            let active_doc = self.help_doc;
-                            let raw_markdown = self
-                                .help_selectable_text_mode
-                                .then(|| self.help_source_markdown(active_doc).to_string());
-                            let rendered_markdown = (!self.help_selectable_text_mode)
-                                .then(|| self.rendered_help_markdown_for(active_doc));
-                            ui.set_width(content_width);
-                            ui.set_max_width(content_width);
-                            ui.set_min_height(help_body_height);
-                            ui.allocate_ui_with_layout(
-                                Vec2::new(content_width, help_body_height.max(320.0)),
-                                egui::Layout::top_down(egui::Align::Min),
-                                |ui| {
-                                    if self.help_selectable_text_mode {
-                                        let mut copyable_text =
-                                            raw_markdown.clone().unwrap_or_default();
-                                        ui.add_sized(
-                                            [content_width, ui.available_height().max(320.0)],
-                                            egui::TextEdit::multiline(&mut copyable_text)
-                                                .font(egui::TextStyle::Monospace)
-                                                .desired_width(content_width)
-                                                .lock_focus(true),
-                                        );
-                                    } else {
-                                        CommonMarkViewer::new()
-                                            .max_image_width(Some(max_image_width))
-                                            .show(
-                                                ui,
-                                                &mut self.help_markdown_cache,
-                                                rendered_markdown.as_deref().unwrap_or_default(),
-                                            );
-                                    }
-                                },
-                            );
-                        });
+                    let content_width = ui.available_width().max(HELP_BODY_MIN_WIDTH_PX);
+                    if Self::help_content_width_requires_relayout(
+                        self.help_last_content_width,
+                        content_width,
+                    ) {
+                        self.help_markdown_cache = CommonMarkCache::default();
+                    }
+                    self.help_last_content_width = content_width;
+                    let max_image_width = Self::help_markdown_max_image_width(content_width);
+                    let active_doc = self.help_doc;
+                    let source_hash =
+                        Self::help_markdown_hash(self.help_source_markdown(active_doc));
+                    let scroll_source_id = (
+                        "help_body_scroll",
+                        self.help_render_cache_key(active_doc),
+                        source_hash,
+                    );
+                    ui.set_width(content_width);
+                    ui.set_max_width(content_width);
+                    ui.set_min_height(help_body_size.y);
+                    if self.help_selectable_text_mode {
+                        egui::ScrollArea::vertical()
+                            .id_salt("help_body_text_scroll")
+                            .auto_shrink([false, false])
+                            .max_height(help_body_size.y)
+                            .show(ui, |ui| {
+                                scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                                    ui,
+                                    scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                                );
+                                let mut copyable_text =
+                                    self.help_source_markdown(active_doc).to_string();
+                                ui.add_sized(
+                                    [content_width, help_body_size.y.max(320.0)],
+                                    egui::TextEdit::multiline(&mut copyable_text)
+                                        .font(egui::TextStyle::Monospace)
+                                        .desired_width(content_width)
+                                        .lock_focus(true),
+                                );
+                            });
+                    } else {
+                        ui.allocate_ui_with_layout(
+                            help_body_size,
+                            egui::Layout::top_down(egui::Align::Min),
+                            |ui| {
+                                scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                                    ui,
+                                    scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                                );
+                                let rendered_markdown = self.rendered_help_markdown_for(active_doc);
+                                CommonMarkViewer::new()
+                                    .max_image_width(Some(max_image_width))
+                                    .show_scrollable(
+                                        scroll_source_id,
+                                        ui,
+                                        &mut self.help_markdown_cache,
+                                        rendered_markdown.as_ref(),
+                                    );
+                            },
+                        );
+                    }
                 },
             );
         });
