@@ -12,6 +12,14 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-06-18
+
+- Added additive `relationship_flags[]` to
+  `gentle.promoter_cohort_comparison.v1`, surfacing unexpected TFBS-track
+  divergence for declared co-regulated promoter cohorts and unexpected
+  concordance for declared anti-co-regulated cohorts as non-blocking review
+  cues.
+
 ## 2026-06-17
 
 - Documented sequence collection subjects as the shared model for gene sets,

@@ -37832,6 +37832,199 @@ fn apply_summarize_promoter_cohort_comparison_returns_pairwise_payload_and_unres
 }
 
 #[test]
+fn promoter_cohort_relationship_flags_are_expectation_specific() {
+    let pairwise = vec![
+        PromoterCohortPairwiseSimilarity {
+            left_gene_label: "A".to_string(),
+            right_gene_label: "B".to_string(),
+            shared_motif_count: 2,
+            mean_raw_pearson: 0.91,
+            mean_smoothed_spearman: 0.92,
+            motif_ids: vec!["SP1".to_string(), "TP73".to_string()],
+        },
+        PromoterCohortPairwiseSimilarity {
+            left_gene_label: "A".to_string(),
+            right_gene_label: "C".to_string(),
+            shared_motif_count: 2,
+            mean_raw_pearson: 0.02,
+            mean_smoothed_spearman: 0.04,
+            motif_ids: vec!["SP1".to_string(), "TP73".to_string()],
+        },
+    ];
+
+    assert!(
+        GentleEngine::summarize_promoter_cohort_relationship_flags(
+            PromoterCohortKind::Manual,
+            &pairwise,
+        )
+        .is_empty()
+    );
+
+    let co_regulated = GentleEngine::summarize_promoter_cohort_relationship_flags(
+        PromoterCohortKind::CoRegulated,
+        &pairwise,
+    );
+    assert_eq!(co_regulated.len(), 1);
+    assert_eq!(co_regulated[0].flag_kind, "unexpected_divergence");
+    assert_eq!(co_regulated[0].gene_labels, vec!["A", "C"]);
+
+    let anti_co_regulated = GentleEngine::summarize_promoter_cohort_relationship_flags(
+        PromoterCohortKind::AntiCoRegulated,
+        &pairwise,
+    );
+    assert_eq!(anti_co_regulated.len(), 1);
+    assert_eq!(anti_co_regulated[0].flag_kind, "unexpected_concordance");
+    assert_eq!(anti_co_regulated[0].gene_labels, vec!["A", "B"]);
+}
+
+#[test]
+fn promoter_cohort_comparison_flags_declared_relationship_expectations() {
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let fasta = root.join("toy_relationship.fa");
+    let gtf = root.join("toy_relationship.gtf");
+    let mut bases = vec!['A'; 2200];
+    let shared: String = "GGGGCGGGGTTTGGGGCGGGGTTTGGGGCGGGGTTTGGGGCGGGG"
+        .chars()
+        .take(51)
+        .collect();
+    let divergent: String = (0..51)
+        .map(|idx| if idx % 2 == 0 { 'A' } else { 'T' })
+        .collect();
+    for (start, segment) in [
+        (460usize, shared.as_str()),
+        (960, shared.as_str()),
+        (1460, divergent.as_str()),
+    ] {
+        for (idx, base) in segment.chars().enumerate() {
+            bases[start + idx] = base;
+        }
+    }
+    let sequence: String = bases.into_iter().collect();
+    fs::write(&fasta, format!(">chr1\n{sequence}\n")).expect("write fasta");
+    fs::write(
+        &gtf,
+        concat!(
+            "chr1\tsrc\tgene\t501\t650\t.\t+\t.\tgene_id \"GENE_A\"; gene_name \"GENEA\";\n",
+            "chr1\tsrc\ttranscript\t501\t650\t.\t+\t.\tgene_id \"GENE_A\"; gene_name \"GENEA\"; transcript_id \"TX_A\";\n",
+            "chr1\tsrc\texon\t501\t650\t.\t+\t.\tgene_id \"GENE_A\"; gene_name \"GENEA\"; transcript_id \"TX_A\"; exon_number \"1\";\n",
+            "chr1\tsrc\tgene\t1001\t1150\t.\t+\t.\tgene_id \"GENE_B\"; gene_name \"GENEB\";\n",
+            "chr1\tsrc\ttranscript\t1001\t1150\t.\t+\t.\tgene_id \"GENE_B\"; gene_name \"GENEB\"; transcript_id \"TX_B\";\n",
+            "chr1\tsrc\texon\t1001\t1150\t.\t+\t.\tgene_id \"GENE_B\"; gene_name \"GENEB\"; transcript_id \"TX_B\"; exon_number \"1\";\n",
+            "chr1\tsrc\tgene\t1501\t1650\t.\t+\t.\tgene_id \"GENE_C\"; gene_name \"GENEC\";\n",
+            "chr1\tsrc\ttranscript\t1501\t1650\t.\t+\t.\tgene_id \"GENE_C\"; gene_name \"GENEC\"; transcript_id \"TX_C\";\n",
+            "chr1\tsrc\texon\t1501\t1650\t.\t+\t.\tgene_id \"GENE_C\"; gene_name \"GENEC\"; transcript_id \"TX_C\"; exon_number \"1\";\n",
+        ),
+    )
+    .expect("write gtf");
+    let cache_dir = root.join("cache");
+    let catalog_path = root.join("catalog.json");
+    fs::write(
+        &catalog_path,
+        format!(
+            r#"{{
+  "ToyGenome": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            fasta.display(),
+            gtf.display(),
+            cache_dir.display()
+        ),
+    )
+    .expect("write catalog");
+
+    let mut engine = GentleEngine::new();
+    let _guard = EnvVarGuard::set(
+        crate::genomes::MAKEBLASTDB_ENV_BIN,
+        "__gentle_makeblastdb_missing_for_test__",
+    );
+    let catalog_path_str = catalog_path.to_string_lossy().to_string();
+    engine
+        .apply(Operation::PrepareGenome {
+            genome_id: "ToyGenome".to_string(),
+            catalog_path: Some(catalog_path_str.clone()),
+            cache_dir: None,
+            timeout_seconds: None,
+        })
+        .expect("prepare genome");
+
+    let make_request = |cohort_kind| Operation::SummarizePromoterCohortComparison {
+        genome_id: "ToyGenome".to_string(),
+        source_seq_ids: vec![],
+        cohort_label: "toy_relationship".to_string(),
+        cohort_kind,
+        genes: ["GENEA", "GENEB", "GENEC"]
+            .into_iter()
+            .map(|gene_query| PromoterTfbsGeneQuery {
+                gene_query: gene_query.to_string(),
+                ..PromoterTfbsGeneQuery::default()
+            })
+            .collect(),
+        motifs: vec!["SP1".to_string()],
+        upstream_bp: 40,
+        downstream_bp: 10,
+        score_kind: TfbsScoreTrackValueKind::LlrBackgroundTailLog10,
+        clip_negative: true,
+        catalog_path: Some(catalog_path_str.clone()),
+        cache_dir: None,
+        expression_source_label: None,
+        expression_rows: vec![],
+        cutrun_dataset_ids: vec![],
+        cutrun_read_report_ids: vec![],
+        path: None,
+    };
+
+    let co_report = engine
+        .apply(make_request(PromoterCohortKind::CoRegulated))
+        .expect("co-regulated cohort")
+        .promoter_cohort_comparison
+        .expect("co-regulated report");
+    assert!(
+        co_report
+            .relationship_flags
+            .iter()
+            .any(|flag| flag.flag_kind == "unexpected_divergence"
+                && flag.gene_labels.iter().any(|label| label == "GENEC")),
+        "co-regulated flags: {:?}",
+        co_report.relationship_flags
+    );
+    assert!(
+        co_report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("Declared co-regulated promoter cohort")),
+        "warnings: {:?}",
+        co_report.warnings
+    );
+
+    let anti_report = engine
+        .apply(make_request(PromoterCohortKind::AntiCoRegulated))
+        .expect("anti-co-regulated cohort")
+        .promoter_cohort_comparison
+        .expect("anti-co-regulated report");
+    assert!(
+        anti_report
+            .relationship_flags
+            .iter()
+            .any(|flag| flag.flag_kind == "unexpected_concordance"
+                && flag.gene_labels.iter().any(|label| label == "GENEA")
+                && flag.gene_labels.iter().any(|label| label == "GENEB")),
+        "anti-co-regulated flags: {:?}",
+        anti_report.relationship_flags
+    );
+
+    let manual_report = engine
+        .apply(make_request(PromoterCohortKind::Manual))
+        .expect("manual cohort")
+        .promoter_cohort_comparison
+        .expect("manual report");
+    assert!(manual_report.relationship_flags.is_empty());
+}
+
+#[test]
 fn summarize_jaspar_entries_derives_extreme_sequences_and_random_distribution() {
     let _serial = jaspar_test_lock().lock().unwrap_or_else(|e| e.into_inner());
     crate::tf_motifs::reload();

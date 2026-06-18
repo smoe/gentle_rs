@@ -1212,6 +1212,18 @@ pub struct PromoterCohortPairwiseSimilarity {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// Non-blocking flag comparing available promoter evidence with the declared
+/// cohort relationship expectation.
+pub struct PromoterCohortRelationshipFlag {
+    pub flag_kind: String,
+    pub evidence_kind: String,
+    #[serde(default)]
+    pub gene_labels: Vec<String>,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 /// Summary of a motif peak that is shared across or specific to cohort members.
 pub struct PromoterCohortTfbsPeakSummary {
     pub tf_id: String,
@@ -1274,6 +1286,8 @@ pub struct PromoterCohortComparisonReport {
     pub tfbs_score_track_summaries: Vec<MultiGenePromoterTfbsSummaryRow>,
     #[serde(default)]
     pub pairwise_similarity: Vec<PromoterCohortPairwiseSimilarity>,
+    #[serde(default)]
+    pub relationship_flags: Vec<PromoterCohortRelationshipFlag>,
     #[serde(default)]
     pub shared_tfbs_peaks: Vec<PromoterCohortTfbsPeakSummary>,
     #[serde(default)]

@@ -113,6 +113,7 @@ Tutorial numbers now describe the topic group first and the learning position se
 - `08.03` [Promoter Design Artifact Slice (Offline Synthetic TP73 Locus)](./generated/chapters/08-03_promoter_design_artifact_slice_offline.md) - executable reference; status `generated+checked/human-pending`; review `human_reviewed` `stale` - human 2026-05-18 by smoe - [file feedback](../../.github/ISSUE_TEMPLATE/tutorial-artifact-figure.md). Use this when: Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.
 - `08.04` [VKORC1 / rs9923231 PGx Alert -> Mammalian Luciferase Reporter (GUI Tutorial with Matching CLI Commands)](./08-04_vkorc1_warfarin_promoter_luciferase_gui.md) - guided GUI; status `manual/hybrid`; review `unreviewed` - [file feedback](../../.github/ISSUE_TEMPLATE/tutorial-confusion.md). Use this when: Hand-written GUI-first tutorial for turning the VKORC1/rs9923231 pharmacogenomic alert into one mammalian promoter-reporter planning workflow with explicit engine and CLI mapping.
 - `08.05` [Plan a Reporter Construct Handoff from a Saved Candidate Set](./08-05_reporter_construct_handoff_cli.md) - guided CLI; status `manual/hybrid`; review `unreviewed` - [file feedback](../../.github/ISSUE_TEMPLATE/tutorial-confusion.md). Use this when: CLI/agent walkthrough for turning a saved promoter-reporter candidate set into a read-only luciferase macro handoff plan with typed readiness and explicit follow-up commands.
+- `08.06` [Promoter Motif Control-Set Comparison Tutorial](./08-06_promoter_motif_control_comparison.md) - guided GUI/CLI; status `manual/hybrid`; review `unreviewed` - [file feedback](../../.github/ISSUE_TEMPLATE/tutorial-confusion.md). Use this when: Promoter-region interpretation tutorial for common motif search, foreground-vs-control motif review, and conservative over-/under-representation screening of motif signals and motif co-occurrence.
 
 ### External Services & Handoffs
 
@@ -240,6 +241,13 @@ Use the review badge to decide what kind of feedback is most useful:
 1. Read [`docs/tutorial/08-01_tfbs_similarity_ranking_gui.md`](./08-01_tfbs_similarity_ranking_gui.md)
 2. Load the tiny synthetic FASTA and verify the GUI `TFBS similarity` path end-to-end
 3. Replay the matching offline workflow and ClawBio request if you want parity before release sign-off
+
+### Path B4: Promoter motif foreground/control review
+
+1. Begin with [`docs/tutorial/generated/chapters/08-03_promoter_design_artifact_slice_offline.md`](./generated/chapters/08-03_promoter_design_artifact_slice_offline.md) if you want the offline single-promoter artifact slice first
+2. Read [`docs/tutorial/08-06_promoter_motif_control_comparison.md`](./08-06_promoter_motif_control_comparison.md)
+3. Export foreground and control promoter TFBS summaries with the same motif panel, score kind, and promoter window
+4. Compare common motifs, weaker-than-control motifs, and motif co-occurrence rows before deciding which candidates deserve occupancy, expression, or reporter follow-up
 
 ### Path B2: Protein workflow sanity checks
 

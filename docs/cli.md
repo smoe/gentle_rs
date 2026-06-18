@@ -4194,7 +4194,9 @@ Genome convenience commands:
   - Resolves each gene/transcript into a strand-aware promoter window, reuses
     multi-gene TFBS score summaries and TFBS similarity ranking, and emits
     pairwise similarity, shared/common peaks, cohort-specific/outlier peaks,
-    optional expression associations, and unresolved-gene warnings.
+    optional expression associations, expectation-based `relationship_flags[]`
+    for co-/anti-co-regulated review cues, and unresolved-gene warnings.
+    Relationship flags are evidence-triage hints, not biological verdicts.
   - Returns portable schema `gentle.promoter_cohort_comparison.v1`.
 - `genomes promoter-tfbs-svg GENOME_ID --gene QUERY[::OCCURRENCE][@TRANSCRIPT_ID][#DISPLAY_LABEL] [--gene ...|--gene-json JSON] --motif TOKEN [--motif TOKEN ...|--motifs CSV] [--upstream-bp N] [--downstream-bp N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--catalog PATH] [--cache-dir PATH] OUTPUT.svg`
   - Runs engine `RenderMultiGenePromoterTfbsSvg`.

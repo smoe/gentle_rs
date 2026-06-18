@@ -898,6 +898,29 @@
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     },
     {
+      "id": "promoter_motif_control_comparison",
+      "title": "Promoter Motif Control-Set Comparison Tutorial",
+      "path": "docs/tutorial/08-06_promoter_motif_control_comparison.md",
+      "group": "08",
+      "group_label": "Regulatory, TFBS & Reporter Design",
+      "group_order": 8,
+      "group_position": 6,
+      "decimal_id": "08.06",
+      "type": "gui_cli_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "gui_first",
+        "cli_first",
+        "regulatory_analysis",
+        "contributors"
+      ],
+      "notes": "Promoter-region interpretation tutorial for common motif search, foreground-vs-control motif review, and conservative over-/under-representation screening of motif signals and motif co-occurrence.",
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+    },
+    {
       "id": "stateless_sequence_inspection_gui_cli",
       "title": "Stateless Sequence Inspection Tutorial",
       "path": "docs/tutorial/02-02_stateless_sequence_inspection_gui_cli.md",
