@@ -4690,6 +4690,21 @@ fn help_markdown_max_image_width_tracks_available_width() {
 }
 
 #[test]
+fn bounded_help_body_size_rejects_unbounded_layout_inputs() {
+    assert_eq!(
+        GENtleApp::bounded_help_body_size(
+            egui::vec2(f32::INFINITY, f32::INFINITY),
+            egui::vec2(640.0, 360.0),
+        ),
+        egui::vec2(640.0, 360.0)
+    );
+    assert_eq!(
+        GENtleApp::bounded_help_body_size(egui::vec2(0.0, 0.0), egui::vec2(90.0, 100.0)),
+        egui::vec2(120.0, 180.0)
+    );
+}
+
+#[test]
 fn rewrite_markdown_inline_code_soft_breaks_preserves_fenced_blocks() {
     let markdown = "inline `File -> Open Tutorial Project...`\n\n```bash\ncargo run --bin gentle_cli -- gibson preview\n```\n";
     let rewritten = GENtleApp::rewrite_markdown_inline_code_soft_breaks(markdown);
@@ -8589,6 +8604,50 @@ fn embedded_help_tutorial_viewport_renders_without_second_title_bar_window() {
     assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer_id)));
     assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_viewport_layer_id)));
     let _ = ctx.end_pass();
+}
+
+#[test]
+fn embedded_help_viewport_keeps_huge_markdown_in_bounded_window() {
+    let ctx = egui::Context::default();
+    ctx.set_embed_viewports(true);
+    let screen_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(640.0, 360.0));
+    let mut app = GENtleApp::default();
+    app.show_help_dialog = true;
+    app.help_doc = HelpDoc::Gui;
+    app.help_gui_markdown = std::iter::once("# Huge Help".to_string())
+        .chain((0..600).map(|idx| {
+            format!(
+                "- regression help line {idx}: keep hosted help scrolling responsive and bounded"
+            )
+        }))
+        .collect::<Vec<_>>()
+        .join("\n");
+    app.mark_viewport_open_requested(GENtleApp::help_viewport_id());
+    let hosted_help_id = GENtleApp::hosted_help_window_id();
+    let max_expected_height = screen_rect.height() + 96.0;
+    let mut heights = Vec::new();
+
+    for _ in 0..3 {
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(screen_rect),
+            ..Default::default()
+        });
+        app.render_help_dialog(&ctx);
+        let rect = ctx
+            .memory(|mem| mem.area_rect(hosted_help_id))
+            .expect("hosted help window should be visible");
+        heights.push(rect.height());
+        let _ = ctx.end_pass();
+    }
+
+    assert!(
+        heights.iter().all(|height| *height > 0.0),
+        "help window heights should be recorded: {heights:?}"
+    );
+    assert!(
+        heights.iter().all(|height| *height <= max_expected_height),
+        "huge help markdown should not expand the hosted window beyond the viewport: heights={heights:?}, screen={screen_rect:?}"
+    );
 }
 
 #[test]
