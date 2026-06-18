@@ -2498,6 +2498,17 @@ fn execute_construct_reasoning_inspection_action_commands_list_and_run_dotplot()
                 listed_action["focus_start_0based"].as_u64(),
                 Some(protocol_action.focus_start_0based as u64)
             );
+            assert_eq!(
+                listed_action["rationale"].as_str(),
+                Some(protocol_action.rationale.as_str())
+            );
+            assert!(
+                !listed_action["rationale"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .trim()
+                    .is_empty()
+            );
 
             let td = tempdir().expect("tempdir");
             let svg_path = td.path().join("reasoning_action.svg");

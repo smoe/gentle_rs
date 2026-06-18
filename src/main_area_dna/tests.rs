@@ -4647,7 +4647,10 @@ fn main_area_dna_exports_probe_region_evidence_svg_through_shared_shell_capabili
     assert!(svg.contains("gentle.probe_region_evidence_svg_export.v1"));
     assert!(svg.contains("class=\"junction-span\""));
     assert!(svg.contains("class=\"transcript\""));
-    assert!(area.op_status.contains("Probe-region evidence SVG exported"));
+    assert!(
+        area.op_status
+            .contains("Probe-region evidence SVG exported")
+    );
     assert!(area.op_status.contains("14 evidence row(s)"));
     assert!(
         area.op_status
@@ -4685,10 +4688,9 @@ fn main_area_dna_exports_probe_region_evidence_svg_after_cache_only_interpretati
     area.export_probe_region_evidence_svg_for_current_path();
 
     assert!(report_path.exists());
-    let report: ProbeRegionEvidenceInterpretationReport = serde_json::from_str(
-        &fs::read_to_string(&report_path).expect("read materialized report"),
-    )
-    .expect("parse materialized report");
+    let report: ProbeRegionEvidenceInterpretationReport =
+        serde_json::from_str(&fs::read_to_string(&report_path).expect("read materialized report"))
+            .expect("parse materialized report");
     assert_eq!(
         report.schema,
         "gentle.probe_region_evidence_interpretation.v1"
@@ -4698,7 +4700,10 @@ fn main_area_dna_exports_probe_region_evidence_svg_after_cache_only_interpretati
     assert!(svg.contains("gentle.probe_region_evidence_svg_export.v1"));
     assert!(svg.contains("class=\"junction-span\""));
     assert!(svg.contains("class=\"transcript\""));
-    assert!(area.op_status.contains("Probe-region evidence SVG exported"));
+    assert!(
+        area.op_status
+            .contains("Probe-region evidence SVG exported")
+    );
 
     let default_report_path = temp.path().join("defaulted/report.json");
     let mut default_area = make_tp73_probe_region_validation_area();
@@ -12545,6 +12550,14 @@ fn construct_reasoning_similarity_fact_entries_offer_dotplot_actions() {
         "pcr entry actions: {:?}",
         pcr_entry.dotplot_actions
     );
+    assert!(
+        pcr_entry
+            .detail_lines
+            .iter()
+            .any(|line| line.contains("inspection_action: Dotplot [self_forward]")),
+        "pcr entry details: {:?}",
+        pcr_entry.detail_lines
+    );
 
     let cloning_entry = cache
         .fact_entries
@@ -12558,6 +12571,41 @@ fn construct_reasoning_similarity_fact_entries_offer_dotplot_actions() {
             .any(|action| action.mode == DotplotMode::SelfReverseComplement),
         "cloning entry actions: {:?}",
         cloning_entry.dotplot_actions
+    );
+    let revcomp_action = cloning_entry
+        .dotplot_actions
+        .iter()
+        .find(|action| action.mode == DotplotMode::SelfReverseComplement)
+        .expect("revcomp action");
+    assert!(
+        !revcomp_action.rationale.trim().is_empty(),
+        "revcomp action has rationale: {:?}",
+        revcomp_action
+    );
+    assert!(
+        cloning_entry
+            .detail_lines
+            .iter()
+            .any(|line| line
+                .contains("inspection_action: RevComp Dotplot [self_reverse_complement]")),
+        "cloning entry details: {:?}",
+        cloning_entry.detail_lines
+    );
+    assert!(
+        cloning_entry
+            .detail_lines
+            .iter()
+            .any(|line| line.starts_with("inspection_action_rationale: ")),
+        "cloning entry details: {:?}",
+        cloning_entry.detail_lines
+    );
+    assert!(
+        cloning_entry
+            .detail_lines
+            .iter()
+            .any(|line| line.starts_with("inspection_action_evidence: ")),
+        "cloning entry details: {:?}",
+        cloning_entry.detail_lines
     );
 }
 

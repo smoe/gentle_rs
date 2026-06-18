@@ -5697,6 +5697,9 @@ Construct reasoning graph foundation (implemented first slice):
     - dotplot mode (`self_forward` or `self_reverse_complement`) chosen from
       structured evidence roles, tags, and orientation signals rather than
       display labels
+    - `rationale` carries the source fact/annotation/summary reason for why
+      this action is recommended, so adapters do not need to reconstruct that
+      explanation from GUI labels
     - `driving_evidence_ids[]` names the specific evidence rows behind the
       action, while source fact/annotation/summary id lists let adapters attach
       the same action to the right inspector row

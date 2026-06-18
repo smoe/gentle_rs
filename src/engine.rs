@@ -17157,6 +17157,7 @@ impl GentleEngine {
         source_kind: &str,
         source_id: &str,
         source_label: &str,
+        source_rationale: &str,
         source_fact_ids: Vec<String>,
         source_annotation_ids: Vec<String>,
         source_summary_ids: Vec<String>,
@@ -17206,6 +17207,7 @@ impl GentleEngine {
         let end_1based = focus_end_0based_exclusive;
         let context_tags = Self::construct_reasoning_context_tags_for_evidence_rows(&rows);
         let driving_evidence_ids = Self::construct_reasoning_driving_ids_for_evidence_rows(&rows);
+        let rationale = source_rationale.trim();
         let source_fact_ids =
             Self::construct_reasoning_inspection_action_source_ids(source_fact_ids);
         let source_annotation_ids =
@@ -17241,6 +17243,11 @@ impl GentleEngine {
                     hover_text: format!(
                         "Open a {hover_kind} dotplot centered on {start_1based}..{end_1based} for '{title}'"
                     ),
+                    rationale: if rationale.is_empty() {
+                        format!("Inspect {hover_kind} similarity evidence for '{title}'")
+                    } else {
+                        rationale.to_string()
+                    },
                     seq_id: seq_id.to_string(),
                     mode,
                     focus_start_0based,
@@ -17284,6 +17291,7 @@ impl GentleEngine {
                 "fact",
                 &fact.fact_id,
                 &fact.label,
+                &fact.rationale,
                 vec![fact.fact_id.clone()],
                 vec![],
                 vec![],
@@ -17306,6 +17314,7 @@ impl GentleEngine {
                 "annotation",
                 &candidate.annotation_id,
                 &candidate.label,
+                &candidate.rationale,
                 vec![],
                 vec![candidate.annotation_id.clone()],
                 vec![],
@@ -17329,6 +17338,7 @@ impl GentleEngine {
                 "summary",
                 &summary.summary_id,
                 &summary.title,
+                &summary.subtitle,
                 vec![],
                 summary.annotation_ids.clone(),
                 vec![summary.summary_id.clone()],

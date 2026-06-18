@@ -199,8 +199,12 @@ work should use `construct-reasoning list-inspection-actions` and
 `construct-reasoning run-inspection-action` so ClawBio/MCP/JS/Lua readers can
 inspect the same action object through shared shell/protocol routes.
 
-Later phases stay intentionally separate: richer GUI evidence panes for action
-rationale/support rows, curated RepeatMasker/UCSC repeat-family promotion for
+Phase 2 direction: the existing GUI inspector should expose action rationale,
+focus range, dotplot mode, context tags, and driving evidence ids directly from
+the portable action object while keeping the button itself simple.
+
+Later phases stay intentionally separate: richer action-specific evidence panes,
+curated RepeatMasker/UCSC repeat-family promotion for
 Alu/SINE/LINE/LTR/satellite calls, task-aware repeat severity, and broader
 mapping of single-sequence operations across sequence sets.
 

@@ -894,6 +894,7 @@ pub struct ConstructReasoningInspectionAction {
     pub action_kind: ConstructReasoningInspectionActionKind,
     pub button_label: String,
     pub hover_text: String,
+    pub rationale: String,
     pub seq_id: SeqId,
     pub mode: DotplotMode,
     pub focus_start_0based: usize,
@@ -915,6 +916,7 @@ impl Default for ConstructReasoningInspectionAction {
             action_kind: ConstructReasoningInspectionActionKind::Dotplot,
             button_label: String::new(),
             hover_text: String::new(),
+            rationale: String::new(),
             seq_id: String::new(),
             mode: DotplotMode::SelfForward,
             focus_start_0based: 0,
@@ -1036,6 +1038,7 @@ mod tests {
                 action_id: "graph_demo_fact_demo_self_forward_1_12".to_string(),
                 button_label: "Dotplot".to_string(),
                 hover_text: "Open dotplot".to_string(),
+                rationale: "Inspect repeat evidence for local similarity risk.".to_string(),
                 seq_id: "seq1".to_string(),
                 mode: DotplotMode::SelfForward,
                 focus_start_0based: 0,
@@ -1077,6 +1080,10 @@ mod tests {
         assert_eq!(
             round_trip.inspection_actions[0].driving_evidence_ids,
             vec!["ev1".to_string()]
+        );
+        assert_eq!(
+            round_trip.inspection_actions[0].rationale,
+            "Inspect repeat evidence for local similarity risk."
         );
         assert_eq!(
             round_trip.inspection_actions[0]

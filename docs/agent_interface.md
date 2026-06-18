@@ -306,6 +306,8 @@ an agent has selected a deterministic operation.
 - `mirna catalog-show`
 - `mirna explain-seed`
 - `mirna scan-target`
+- `orthologs promoter-comparison`
+- `orthologs resolve-promoter-cohort`
 - `panels import-isoform`
 - `panels inspect-isoform`
 - `panels render-isoform-svg`

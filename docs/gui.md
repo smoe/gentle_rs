@@ -2151,7 +2151,11 @@ Controls:
          dotplot uses the same region the reasoning row is describing
        - these buttons are backed by graph-level
          `inspection_actions[]` with deterministic action ids and
-         `driving_evidence_ids[]`, not by GUI-local label matching
+         `rationale`, `driving_evidence_ids[]`, mode, context tags, and focus
+         ranges, not by GUI-local label matching
+       - the existing inspector rows surface the same action details before
+         any richer action-specific evidence pane is added, so the button and
+         explanation stay tied to the protocol record
        - CLI/agent layers can list and run the same action objects with
          `construct-reasoning list-inspection-actions` and
          `construct-reasoning run-inspection-action`, so the GUI does not own a

@@ -14,6 +14,9 @@ Maintenance rule:
 
 ## 2026-06-18
 
+- Added construct-reasoning inspection-action rationale to the portable action
+  payload and surfaced action mode, focus, evidence ids, and rationale in the
+  existing GUI inspector rows.
 - Added offline-first ortholog promoter reasoning with local
   `gentle.ortholog_resource.v1` mapping resources,
   `ResolveOrthologPromoterCohort`, `SummarizeOrthologPromoterComparison`, and

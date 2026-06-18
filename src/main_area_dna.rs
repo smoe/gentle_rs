@@ -13613,6 +13613,83 @@ impl MainAreaDna {
         });
     }
 
+    fn construct_reasoning_dotplot_mode_label(mode: DotplotMode) -> &'static str {
+        match mode {
+            DotplotMode::SelfForward => "self_forward",
+            DotplotMode::SelfReverseComplement => "self_reverse_complement",
+            DotplotMode::PairForward => "pair_forward",
+            DotplotMode::PairReverseComplement => "pair_reverse_complement",
+        }
+    }
+
+    fn construct_reasoning_dotplot_action_detail_lines(
+        actions: &[ConstructReasoningDotplotAction],
+    ) -> Vec<String> {
+        let mut lines = vec![];
+        for action in actions {
+            let label = action.button_label.trim();
+            let label = if label.is_empty() {
+                action.action_kind.as_str()
+            } else {
+                label
+            };
+            let start_1based = action.focus_start_0based.saturating_add(1);
+            let end_1based = action.focus_end_0based_exclusive.max(start_1based);
+            let focus_len = action
+                .focus_end_0based_exclusive
+                .saturating_sub(action.focus_start_0based)
+                .max(1);
+            lines.push(format!(
+                "inspection_action: {label} [{}] focus {}..{} ({} bp)",
+                Self::construct_reasoning_dotplot_mode_label(action.mode),
+                start_1based,
+                end_1based,
+                focus_len
+            ));
+            if !action.rationale.trim().is_empty() {
+                lines.push(format!(
+                    "inspection_action_rationale: {}",
+                    action.rationale.trim()
+                ));
+            }
+            if !action.driving_evidence_ids.is_empty() {
+                lines.push(format!(
+                    "inspection_action_evidence: {}",
+                    action.driving_evidence_ids.join(", ")
+                ));
+            }
+            if !action.context_tags.is_empty() {
+                lines.push(format!(
+                    "inspection_action_context: {}",
+                    action.context_tags.join(", ")
+                ));
+            }
+            if let Some(provenance) = &action.repeat_family_provenance {
+                let mut bits = vec![];
+                if !provenance.source_kind.trim().is_empty() {
+                    bits.push(provenance.source_kind.trim().to_string());
+                }
+                if let Some(name) = provenance.family_name.as_deref()
+                    && !name.trim().is_empty()
+                {
+                    bits.push(format!("family={}", name.trim()));
+                }
+                if let Some(id) = provenance.family_id.as_deref()
+                    && !id.trim().is_empty()
+                {
+                    bits.push(format!("family_id={}", id.trim()));
+                }
+                if !bits.is_empty() {
+                    lines.push(format!(
+                        "inspection_action_repeat_family: {}",
+                        bits.join(", ")
+                    ));
+                }
+            }
+        }
+        lines
+    }
+
     fn construct_reasoning_decision_method_label(method: DecisionMethod) -> &'static str {
         match method {
             DecisionMethod::HardRule => "hard_rule",
@@ -14331,6 +14408,10 @@ impl MainAreaDna {
             }
             _ => {}
         }
+        let dotplot_actions = Self::construct_reasoning_dotplot_actions_for_fact(graph, fact);
+        detail_lines.extend(Self::construct_reasoning_dotplot_action_detail_lines(
+            &dotplot_actions,
+        ));
         ConstructReasoningInspectorEntry {
             stable_id: if fact.fact_id.trim().is_empty() {
                 fact.label.clone()
@@ -14343,7 +14424,7 @@ impl MainAreaDna {
             annotation_id: None,
             editable_status: None,
             source_kind: None,
-            dotplot_actions: Self::construct_reasoning_dotplot_actions_for_fact(graph, fact),
+            dotplot_actions,
         }
     }
 
@@ -14437,6 +14518,11 @@ impl MainAreaDna {
         {
             warning_lines.push("Transcript interpretations remain ambiguous".to_string());
         }
+        let dotplot_actions =
+            Self::construct_reasoning_dotplot_actions_for_summary(graph, &summary.summary_id);
+        detail_lines.extend(Self::construct_reasoning_dotplot_action_detail_lines(
+            &dotplot_actions,
+        ));
         ConstructReasoningInspectorEntry {
             stable_id: if summary.summary_id.trim().is_empty() {
                 summary.title.clone()
@@ -14449,10 +14535,7 @@ impl MainAreaDna {
             annotation_id: None,
             editable_status: None,
             source_kind: None,
-            dotplot_actions: Self::construct_reasoning_dotplot_actions_for_summary(
-                graph,
-                &summary.summary_id,
-            ),
+            dotplot_actions,
         }
     }
 
@@ -14498,6 +14581,13 @@ impl MainAreaDna {
         if candidate.transcript_context_status.as_deref() == Some("multi_transcript_ambiguous") {
             warning_lines.push("Transcript interpretation remains ambiguous".to_string());
         }
+        let dotplot_actions = Self::construct_reasoning_dotplot_actions_for_annotation(
+            graph,
+            &candidate.annotation_id,
+        );
+        detail_lines.extend(Self::construct_reasoning_dotplot_action_detail_lines(
+            &dotplot_actions,
+        ));
         ConstructReasoningInspectorEntry {
             stable_id: if candidate.annotation_id.trim().is_empty() {
                 if candidate.label.trim().is_empty() {
@@ -14518,10 +14608,7 @@ impl MainAreaDna {
             annotation_id: Some(candidate.annotation_id.clone()),
             editable_status: Some(candidate.editable_status),
             source_kind: Some(candidate.source_kind.clone()),
-            dotplot_actions: Self::construct_reasoning_dotplot_actions_for_annotation(
-                graph,
-                &candidate.annotation_id,
-            ),
+            dotplot_actions,
         }
     }
 
