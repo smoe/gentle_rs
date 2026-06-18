@@ -1,0 +1,8 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "construct-reasoning-list-inspections",
+  "state_path": ".gentle_state.json",
+  "graph_id": "GRAPH_ID",
+  "action_kind": "dotplot",
+  "timeout_secs": 180
+}

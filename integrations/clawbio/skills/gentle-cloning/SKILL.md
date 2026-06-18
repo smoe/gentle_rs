@@ -1794,8 +1794,9 @@ Apply the following methodology:
 **Key parameters / control points**:
 
 - `mode`: one of `skill-info`, `version`, `capabilities`, `state-summary`,
-  `shell`, `op`, `workflow`, `exon-skip-plan`, `exon-skip-materialize`,
-  or `raw`.
+  `shell`, `op`, `workflow`, `construct-reasoning-list-inspections`,
+  `construct-reasoning-run-inspection`, `exon-skip-plan`,
+  `exon-skip-materialize`, or `raw`.
 - `skill-info`: reports ClawBio skill/catalog schema metadata without invoking
   `gentle_cli`; use it when checking which copied skill scaffold is installed.
 - `capabilities`: runs `gentle_cli capabilities` and then a best-effort shared
@@ -1812,6 +1813,15 @@ Apply the following methodology:
   can prepare it first when that is the only missing step."
 - `workflow_path`: preferred when a saved replayable GENtle workflow already
   exists.
+- `construct-reasoning-list-inspections`: typed wrapper over
+  `construct-reasoning list-inspection-actions`; requires `graph_id` and
+  accepts optional `fact_id`, `annotation_id`, `candidate_id`, `evidence_id`,
+  `seq_id`, `action_kind`, and `summary_id` filters.
+- `construct-reasoning-run-inspection`: typed wrapper over
+  `construct-reasoning run-inspection-action`; requires `graph_id` and
+  `action_id`, and accepts optional dotplot/render fields `word_size`,
+  `step_bp`, `max_mismatches`, `tile_bp`, `dotplot_id`, and
+  `render_svg_path`.
 - `exon-skip-plan`: typed wrapper over `transcripts exon-skip-plan`; use it
   when ClawBio has chosen or inferred exons to skip but wants GENtle to store
   an auditable selection plan first. It accepts explicit candidate/interval
@@ -2028,6 +2038,12 @@ Apply the following methodology:
     - replays the anchored p53-family comparison with TP73 as the shared
       reference axis and TP63 plus TP53 aligned by the conserved motif
       `CATGTGTAACAG`
+  - `examples/request_construct_reasoning_list_inspections.json` and
+    `examples/request_construct_reasoning_run_inspection_dotplot.json`
+    - show the typed ClawBio request modes for listing graph-level portable
+      recommended inspections and running one selected dotplot action by
+      `action_id`; both modes build the shared `construct-reasoning ...`
+      shell commands rather than a ClawBio-only model
   - `examples/request_protocol_cartoon_gibson_svg.json`
     - declares `expected_artifacts[]` so the generated SVG is copied into the
       wrapper output bundle under `generated/...`

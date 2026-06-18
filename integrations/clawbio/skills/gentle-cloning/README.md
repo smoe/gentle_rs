@@ -629,6 +629,12 @@ Mode-specific fields:
 - `shell`: `shell_line`
 - `op`: `operation`
 - `workflow`: `workflow` or `workflow_path`
+- `construct-reasoning-list-inspections`: `graph_id`, with optional
+  `fact_id`, `annotation_id`, `candidate_id`, `evidence_id`, `seq_id`,
+  `action_kind`, and `summary_id` filters
+- `construct-reasoning-run-inspection`: `graph_id`, `action_id`, and optional
+  dotplot/render fields `word_size`, `step_bp`, `max_mismatches`, `tile_bp`,
+  `dotplot_id`, and `render_svg_path`
 - typed primer/qPCR/restriction/exon-skip helper modes remain accepted for
   backward compatibility but now emit `warnings[]`; new ClawBio callers should
   prefer `mode: "shell"` with the equivalent shared shell command
@@ -940,6 +946,16 @@ Included follow-on analysis/planning/graphics requests:
     through shared shell commands as portable actions:
     `construct-reasoning list-inspection-actions GRAPH_ID` and
     `construct-reasoning run-inspection-action GRAPH_ID ACTION_ID`
+  - ClawBio/OpenClaw callers can use typed request modes
+    `construct-reasoning-list-inspections` and
+    `construct-reasoning-run-inspection` for the same shared commands; the
+    list mode accepts graph/fact/candidate/evidence/sequence/action-kind
+    filters, and the run mode resolves one action id into dotplot compute and
+    optional SVG render parameters
+- `examples/request_construct_reasoning_list_inspections.json` and
+  `examples/request_construct_reasoning_run_inspection_dotplot.json`
+  - show the request shape for listing a graph's portable recommended
+    inspections and running one selected dotplot action by `action_id`
 - `examples/request_protocol_cartoon_gibson_svg.json`
   - uses `expected_artifacts[]` so the generated SVG is copied into the
   wrapper output bundle under `generated/...`

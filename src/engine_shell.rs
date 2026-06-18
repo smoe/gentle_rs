@@ -2484,6 +2484,10 @@ pub enum ShellCommand {
         graph_id: String,
         fact_id: Option<String>,
         annotation_id: Option<String>,
+        candidate_id: Option<String>,
+        evidence_id: Option<String>,
+        seq_id: Option<String>,
+        action_kind: Option<String>,
         summary_id: Option<String>,
     },
     ConstructReasoningRunInspectionAction {
@@ -11031,12 +11035,20 @@ impl ShellCommand {
                 graph_id,
                 fact_id,
                 annotation_id,
+                candidate_id,
+                evidence_id,
+                seq_id,
+                action_kind,
                 summary_id,
             } => format!(
-                "list construct-reasoning inspection actions for graph '{}' (fact='{}', annotation='{}', summary='{}')",
+                "list construct-reasoning inspection actions for graph '{}' (fact='{}', annotation='{}', candidate='{}', evidence='{}', seq='{}', kind='{}', summary='{}')",
                 graph_id,
                 fact_id.as_deref().unwrap_or("-"),
                 annotation_id.as_deref().unwrap_or("-"),
+                candidate_id.as_deref().unwrap_or("-"),
+                evidence_id.as_deref().unwrap_or("-"),
+                seq_id.as_deref().unwrap_or("-"),
+                action_kind.as_deref().unwrap_or("-"),
                 summary_id.as_deref().unwrap_or("-")
             ),
             Self::ConstructReasoningRunInspectionAction {
@@ -37959,6 +37971,10 @@ fn execute_protein_sequence_command(
             graph_id,
             fact_id,
             annotation_id,
+            candidate_id,
+            evidence_id,
+            seq_id,
+            action_kind,
             summary_id,
         } => {
             let graph = engine
@@ -37972,6 +37988,24 @@ fn execute_protein_sequence_command(
                 .as_deref()
                 .map(str::trim)
                 .filter(|value| !value.is_empty());
+            let candidate_id = candidate_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty());
+            let evidence_id = evidence_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty());
+            let seq_id = seq_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty());
+            let action_kind = action_kind
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty());
+            let action_kind_normalized =
+                action_kind.map(|value| value.replace('-', "_").to_ascii_lowercase());
             let summary_id = summary_id
                 .as_deref()
                 .map(str::trim)
@@ -37980,13 +38014,33 @@ fn execute_protein_sequence_command(
                 .inspection_actions
                 .iter()
                 .filter(|action| {
-                    fact_id.map_or(true, |id| {
+                    let fact_matches = fact_id.map_or(true, |id| {
                         action.source_fact_ids.iter().any(|row| row == id)
-                    }) && annotation_id.map_or(true, |id| {
+                    });
+                    let annotation_matches = annotation_id.map_or(true, |id| {
                         action.source_annotation_ids.iter().any(|row| row == id)
-                    }) && summary_id.map_or(true, |id| {
+                    });
+                    let candidate_matches = candidate_id.map_or(true, |id| {
+                        action.source_annotation_ids.iter().any(|row| row == id)
+                    });
+                    let evidence_matches = evidence_id.map_or(true, |id| {
+                        action.driving_evidence_ids.iter().any(|row| row == id)
+                    });
+                    let seq_matches =
+                        seq_id.map_or(true, |id| action.seq_id.as_str() == id);
+                    let kind_matches = action_kind_normalized
+                        .as_deref()
+                        .map_or(true, |kind| action.action_kind.as_str() == kind);
+                    let summary_matches = summary_id.map_or(true, |id| {
                         action.source_summary_ids.iter().any(|row| row == id)
-                    })
+                    });
+                    fact_matches
+                        && annotation_matches
+                        && candidate_matches
+                        && evidence_matches
+                        && seq_matches
+                        && kind_matches
+                        && summary_matches
                 })
                 .cloned()
                 .collect::<Vec<_>>();
@@ -37998,6 +38052,10 @@ fn execute_protein_sequence_command(
                     "filters": {
                         "fact_id": fact_id,
                         "annotation_id": annotation_id,
+                        "candidate_id": candidate_id,
+                        "evidence_id": evidence_id,
+                        "seq_id": seq_id,
+                        "action_kind": action_kind,
                         "summary_id": summary_id,
                     },
                     "action_count": actions.len(),
@@ -38113,12 +38171,23 @@ fn execute_protein_sequence_command(
             } else {
                 None
             };
+            let compute_parameters = json!({
+                "seq_id": action.seq_id.as_str(),
+                "span_start_0based": action.focus_start_0based,
+                "span_end_0based": action.focus_end_0based_exclusive,
+                "mode": action.mode.as_str(),
+                "word_size": word_size,
+                "step_bp": step_bp,
+                "max_mismatches": max_mismatches,
+                "tile_bp": tile_bp,
+            });
             Ok(ShellRunResult {
                 state_changed: before != after,
                 output: json!({
                     "schema": "gentle.construct_reasoning_inspection_action_dotplot_run.v1",
                     "graph_id": graph.graph_id,
                     "action": action,
+                    "compute_parameters": compute_parameters,
                     "result": op_result,
                     "dotplot": dotplot,
                     "render_result": render_result,

@@ -76,7 +76,11 @@ Maintenance rule:
 - Added `construct-reasoning list-inspection-actions` and
   `run-inspection-action` so CLI/ClawBio users can list the same portable
   repeat/similarity dotplot recommendations and compute/render the selected
-  action through shared dotplot operations.
+  action through shared dotplot operations; listing now supports fact,
+  annotation/candidate, evidence, sequence, action-kind, and summary filters,
+  and ClawBio exposes typed request modes
+  `construct-reasoning-list-inspections` and
+  `construct-reasoning-run-inspection` over the same shell contract.
 - Added optional true PM probe-intensity matrix input to
   `arrays import-apt-probe-region-output` and the Clariom D GUI panel, with
   probe-level sample, condition-summary, and logFC columns preserved in

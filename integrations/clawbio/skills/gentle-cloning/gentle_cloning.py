@@ -39,6 +39,8 @@ SUPPORTED_REQUEST_MODES = (
     "shell",
     "op",
     "workflow",
+    "construct-reasoning-list-inspections",
+    "construct-reasoning-run-inspection",
     "primer-preflight",
     "primer-seed-from-feature",
     "primer-seed-from-splicing",
@@ -184,8 +186,15 @@ class Request:
     plan: Any = None
     plan_path: str | None = None
     plan_id: str | None = None
+    graph_id: str | None = None
+    fact_id: str | None = None
+    annotation_id: str | None = None
     candidate_id: str | None = None
     candidate_ids: list[str] | None = None
+    evidence_id: str | None = None
+    summary_id: str | None = None
+    action_kind: str | None = None
+    action_id: str | None = None
     confirm: bool | None = None
     transcript_feature_id: int | None = None
     skip_candidate_ids: list[str] | None = None
@@ -219,6 +228,11 @@ class Request:
     min_amplicon_bp: int | None = None
     max_amplicon_bp: int | None = None
     max_mismatches: int | None = None
+    word_size: int | None = None
+    step_bp: int | None = None
+    tile_bp: int | None = None
+    dotplot_id: str | None = None
+    render_svg_path: str | None = None
     require_3prime_exact_bases: int | None = None
     vector_seq_id: str | None = None
     pair_rank: int | None = None
@@ -869,6 +883,37 @@ def _coerce_optional_int(value: Any, field_name: str, *, minimum: int = 0) -> in
     return coerced
 
 
+def _normalise_construct_reasoning_inspection_request(request: Request) -> None:
+    request.graph_id = _require_str(request.graph_id, "graph_id", request.mode)
+    if request.mode == "construct-reasoning-list-inspections":
+        request.fact_id = _normalise_optional_str(request.fact_id, "fact_id")
+        request.annotation_id = _normalise_optional_str(
+            request.annotation_id, "annotation_id"
+        )
+        request.candidate_id = _normalise_optional_str(
+            request.candidate_id, "candidate_id"
+        )
+        request.evidence_id = _normalise_optional_str(request.evidence_id, "evidence_id")
+        request.seq_id = _normalise_optional_str(request.seq_id, "seq_id")
+        request.action_kind = _normalise_optional_str(request.action_kind, "action_kind")
+        request.summary_id = _normalise_optional_str(request.summary_id, "summary_id")
+        return
+
+    request.action_id = _require_str(request.action_id, "action_id", request.mode)
+    request.word_size = _coerce_optional_int(request.word_size, "word_size", minimum=1)
+    request.step_bp = _coerce_optional_int(request.step_bp, "step_bp", minimum=1)
+    request.max_mismatches = _coerce_optional_int(
+        request.max_mismatches, "max_mismatches", minimum=0
+    )
+    request.tile_bp = _coerce_optional_int(request.tile_bp, "tile_bp", minimum=1)
+    request.dotplot_id = _normalise_optional_str(request.dotplot_id, "dotplot_id")
+    request.render_svg_path = _normalise_optional_str(
+        request.render_svg_path, "render_svg_path"
+    )
+    if request.render_svg_path is None:
+        request.render_svg_path = _normalise_optional_str(request.svg_path, "svg_path")
+
+
 def _normalise_primer_backend_options(request: Request) -> None:
     request.backend = _normalise_optional_str(request.backend, "backend")
     if request.backend is not None and request.backend not in {"auto", "internal", "primer3"}:
@@ -1118,8 +1163,15 @@ def _coerce_request(payload: dict[str, Any]) -> Request:
         plan=payload.get("plan"),
         plan_path=payload.get("plan_path"),
         plan_id=payload.get("plan_id"),
+        graph_id=payload.get("graph_id"),
+        fact_id=payload.get("fact_id"),
+        annotation_id=payload.get("annotation_id"),
         candidate_id=payload.get("candidate_id"),
         candidate_ids=payload.get("candidate_ids"),
+        evidence_id=payload.get("evidence_id"),
+        summary_id=payload.get("summary_id"),
+        action_kind=payload.get("action_kind"),
+        action_id=payload.get("action_id"),
         confirm=payload.get("confirm"),
         transcript_feature_id=payload.get("transcript_feature_id"),
         skip_candidate_ids=payload.get("skip_candidate_ids"),
@@ -1155,6 +1207,11 @@ def _coerce_request(payload: dict[str, Any]) -> Request:
         min_amplicon_bp=payload.get("min_amplicon_bp"),
         max_amplicon_bp=payload.get("max_amplicon_bp"),
         max_mismatches=payload.get("max_mismatches"),
+        word_size=payload.get("word_size"),
+        step_bp=payload.get("step_bp"),
+        tile_bp=payload.get("tile_bp"),
+        dotplot_id=payload.get("dotplot_id"),
+        render_svg_path=payload.get("render_svg_path"),
         require_3prime_exact_bases=payload.get("require_3prime_exact_bases"),
         vector_seq_id=payload.get("vector_seq_id"),
         pair_rank=payload.get("pair_rank"),
@@ -1198,6 +1255,11 @@ def _coerce_request(payload: dict[str, Any]) -> Request:
     elif request.mode == "workflow":
         if request.workflow is None and not request.workflow_path:
             raise SkillError("mode=workflow requires 'workflow' or 'workflow_path'")
+    elif request.mode in {
+        "construct-reasoning-list-inspections",
+        "construct-reasoning-run-inspection",
+    }:
+        _normalise_construct_reasoning_inspection_request(request)
     elif request.mode in {"primer-design", "qpcr-design"}:
         _normalise_primer_design_request(request)
     elif request.mode in {
@@ -1252,9 +1314,18 @@ def _coerce_request(payload: dict[str, Any]) -> Request:
         "workflow_path",
         "plan_path",
         "plan_id",
+        "graph_id",
+        "fact_id",
+        "annotation_id",
         "system_id",
         "prompt",
         "candidate_id",
+        "evidence_id",
+        "summary_id",
+        "action_kind",
+        "action_id",
+        "dotplot_id",
+        "render_svg_path",
         "output_prefix",
     ):
         value = getattr(request, field_name)
@@ -1266,6 +1337,9 @@ def _coerce_request(payload: dict[str, Any]) -> Request:
         "max_retries",
         "max_response_bytes",
         "max_candidates",
+        "word_size",
+        "step_bp",
+        "tile_bp",
     ):
         value = getattr(request, field_name)
         if value is None:
@@ -1603,6 +1677,43 @@ def _build_exon_skip_shell_line(request: Request) -> str:
         tokens.extend(["--output-prefix", request.output_prefix])
     for item in request.return_items or []:
         tokens.extend(["--return", item])
+    return shlex.join(tokens)
+
+
+def _build_construct_reasoning_inspection_shell_line(request: Request) -> str:
+    if request.mode == "construct-reasoning-list-inspections":
+        tokens = [
+            "construct-reasoning",
+            "list-inspection-actions",
+            request.graph_id or "GRAPH_ID",
+        ]
+        for flag, value in (
+            ("--fact-id", request.fact_id),
+            ("--annotation-id", request.annotation_id),
+            ("--candidate-id", request.candidate_id),
+            ("--evidence-id", request.evidence_id),
+            ("--seq-id", request.seq_id),
+            ("--action-kind", request.action_kind),
+            ("--summary-id", request.summary_id),
+        ):
+            if value:
+                tokens.extend([flag, value])
+        return shlex.join(tokens)
+
+    tokens = [
+        "construct-reasoning",
+        "run-inspection-action",
+        request.graph_id or "GRAPH_ID",
+        request.action_id or "ACTION_ID",
+    ]
+    _append_optional_int(tokens, "--word-size", request.word_size)
+    _append_optional_int(tokens, "--step", request.step_bp)
+    _append_optional_int(tokens, "--max-mismatches", request.max_mismatches)
+    _append_optional_int(tokens, "--tile-bp", request.tile_bp)
+    if request.dotplot_id:
+        tokens.extend(["--id", request.dotplot_id])
+    if request.render_svg_path:
+        tokens.extend(["--render-svg", request.render_svg_path])
     return shlex.join(tokens)
 
 
@@ -2395,6 +2506,11 @@ def _build_cli_args(request: Request, script_path: Path) -> list[str]:
             args.extend(["workflow", f"@{resolved_workflow_path}"])
         else:
             args.extend(["workflow", _json_arg(request.workflow)])
+    elif request.mode in {
+        "construct-reasoning-list-inspections",
+        "construct-reasoning-run-inspection",
+    }:
+        args.extend(["shell", _build_construct_reasoning_inspection_shell_line(request)])
     elif request.mode in PRIMER_SHELL_REQUEST_MODES:
         args.extend(["shell", _build_primer_mode_shell_line(request)])
     elif request.mode == "protein-residue-genomic-coordinates":
@@ -3089,6 +3205,11 @@ def _request_rerun_shell_line(request: Request | None) -> str:
         return "workflow <inline>"
     if request.mode == "op":
         return "op <inline>"
+    if request.mode in {
+        "construct-reasoning-list-inspections",
+        "construct-reasoning-run-inspection",
+    }:
+        return _build_construct_reasoning_inspection_shell_line(request)
     if request.mode in PRIMER_SHELL_REQUEST_MODES:
         return _build_primer_mode_shell_line(request)
     if request.mode == "protein-residue-genomic-coordinates":
@@ -3152,6 +3273,30 @@ def _request_payload_for_artifact_continuation(
             payload["workflow"] = request.workflow
     elif request.mode == "op":
         payload["operation"] = request.operation
+    elif request.mode in {
+        "construct-reasoning-list-inspections",
+        "construct-reasoning-run-inspection",
+    }:
+        for key in (
+            "graph_id",
+            "fact_id",
+            "annotation_id",
+            "candidate_id",
+            "evidence_id",
+            "seq_id",
+            "action_kind",
+            "summary_id",
+            "action_id",
+            "word_size",
+            "step_bp",
+            "max_mismatches",
+            "tile_bp",
+            "dotplot_id",
+            "render_svg_path",
+        ):
+            value = getattr(request, key)
+            if value is not None:
+                payload[key] = value
     elif request.mode in PRIMER_SHELL_REQUEST_MODES:
         for key in (
             "request_json",

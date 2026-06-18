@@ -8066,7 +8066,7 @@ pub(super) fn parse_construct_reasoning_command(tokens: &[String]) -> Result<She
         "list-inspection-actions" | "list-actions" => {
             if tokens.len() < 3 {
                 return Err(
-                    "construct-reasoning list-inspection-actions requires GRAPH_ID [--fact-id ID] [--annotation-id ID] [--summary-id ID]"
+                    "construct-reasoning list-inspection-actions requires GRAPH_ID [--fact-id ID] [--annotation-id ID] [--candidate-id ID] [--evidence-id ID] [--seq-id ID] [--action-kind KIND] [--summary-id ID]"
                         .to_string(),
                 );
             }
@@ -8079,6 +8079,10 @@ pub(super) fn parse_construct_reasoning_command(tokens: &[String]) -> Result<She
             }
             let mut fact_id: Option<String> = None;
             let mut annotation_id: Option<String> = None;
+            let mut candidate_id: Option<String> = None;
+            let mut evidence_id: Option<String> = None;
+            let mut seq_id: Option<String> = None;
+            let mut action_kind: Option<String> = None;
             let mut summary_id: Option<String> = None;
             let mut idx = 3usize;
             while idx < tokens.len() {
@@ -8095,6 +8099,42 @@ pub(super) fn parse_construct_reasoning_command(tokens: &[String]) -> Result<She
                     "--annotation-id" | "--annotation" => {
                         let flag = tokens[idx].clone();
                         annotation_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "construct-reasoning list-inspection-actions",
+                        )?);
+                    }
+                    "--candidate-id" | "--candidate" => {
+                        let flag = tokens[idx].clone();
+                        candidate_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "construct-reasoning list-inspection-actions",
+                        )?);
+                    }
+                    "--evidence-id" | "--evidence" => {
+                        let flag = tokens[idx].clone();
+                        evidence_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "construct-reasoning list-inspection-actions",
+                        )?);
+                    }
+                    "--seq-id" | "--seq" | "--sequence-id" | "--sequence" => {
+                        let flag = tokens[idx].clone();
+                        seq_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "construct-reasoning list-inspection-actions",
+                        )?);
+                    }
+                    "--action-kind" | "--kind" => {
+                        let flag = tokens[idx].clone();
+                        action_kind = Some(parse_option_path(
                             tokens,
                             &mut idx,
                             &flag,
@@ -8121,6 +8161,10 @@ pub(super) fn parse_construct_reasoning_command(tokens: &[String]) -> Result<She
                 graph_id,
                 fact_id,
                 annotation_id,
+                candidate_id,
+                evidence_id,
+                seq_id,
+                action_kind,
                 summary_id,
             })
         }

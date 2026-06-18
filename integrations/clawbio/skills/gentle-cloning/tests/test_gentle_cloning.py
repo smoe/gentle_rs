@@ -60,6 +60,8 @@ def _examples_dir() -> Path:
 INTENT_EXAMPLE_ALLOWLIST = {
     "request_cdna_pcr_products_gel_demo_direct.json",
     "request_cdna_qpcr_taqman_products_gel_demo_direct.json",
+    "request_construct_reasoning_list_inspections.json",
+    "request_construct_reasoning_run_inspection_dotplot.json",
     "request_dbsnp_fetch_rs9923231.json",
     "request_ensembl_gene_fetch_tp53_human.json",
     "request_ensembl_gene_import_sequence_tp53.json",
@@ -433,6 +435,8 @@ def test_skill_info_reports_catalog_version_without_gentle_cli(
             "shell",
             "op",
             "workflow",
+            "construct-reasoning-list-inspections",
+            "construct-reasoning-run-inspection",
             "primer-preflight",
             "primer-seed-from-feature",
             "primer-seed-from-splicing",
@@ -888,6 +892,132 @@ def test_clawbio_style_input_path_resolves_from_skill_cwd(tmp_path: Path) -> Non
         "Installed local GENtle rewrite runtime in this ClawBio environment: GENtle 0.1.0-test",
         "This skill reports the locally installed ClawBio GENtle rewrite runtime, not the classical GENtle desktop release line.",
     ]
+
+
+def test_construct_reasoning_inspection_modes_build_shared_shell_commands(
+    tmp_path: Path,
+) -> None:
+    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        "if [ \"${1:-}\" = \"--state\" ]; then\n"
+        "  shift 2\n"
+        "fi\n"
+        "if [ \"${1:-}\" != \"shell\" ]; then\n"
+        "  echo 'expected shell command' >&2\n"
+        "  exit 2\n"
+        "fi\n"
+        "case \"${2:-}\" in\n"
+        "  'construct-reasoning list-inspection-actions'*)\n"
+        "    printf '{\"schema\":\"gentle.construct_reasoning_inspection_action_list.v1\",\"graph_id\":\"graph_1\",\"action_count\":1,\"actions\":[{\"action_id\":\"inspection_1\",\"kind\":\"dotplot\",\"seq_id\":\"seq_a\",\"driving_evidence_ids\":[\"evidence_1\"]}]}\\n'\n"
+        "    ;;\n"
+        "  'construct-reasoning run-inspection-action'*)\n"
+        "    printf '{\"schema\":\"gentle.construct_reasoning_inspection_action_dotplot_run.v1\",\"graph_id\":\"graph_1\",\"action\":{\"action_id\":\"inspection_1\"},\"compute_parameters\":{\"seq_id\":\"seq_a\",\"mode\":\"self_forward\"}}\\n'\n"
+        "    ;;\n"
+        "  *)\n"
+        "    echo \"unexpected shell line: ${2:-}\" >&2\n"
+        "    exit 2\n"
+        "    ;;\n"
+        "esac\n",
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+
+    list_request_path = tmp_path / "list_request.json"
+    list_request_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "construct-reasoning-list-inspections",
+                "state_path": ".gentle_state.json",
+                "graph_id": "graph_1",
+                "fact_id": "fact_1",
+                "evidence_id": "evidence_1",
+                "seq_id": "seq_a",
+                "action_kind": "dotplot",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    list_run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(list_request_path),
+            "--output",
+            str(tmp_path / "list_out"),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert list_run.returncode == 0, list_run.stderr
+    list_payload = json.loads(list_run.stdout)
+    assert list_payload["command"] == [
+        str(fake_cli),
+        "--state",
+        ".gentle_state.json",
+        "shell",
+        "construct-reasoning list-inspection-actions graph_1 --fact-id fact_1 --evidence-id evidence_1 --seq-id seq_a --action-kind dotplot",
+    ]
+    assert (
+        list_payload["stdout_json"]["schema"]
+        == "gentle.construct_reasoning_inspection_action_list.v1"
+    )
+
+    run_request_path = tmp_path / "run_request.json"
+    run_request_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "construct-reasoning-run-inspection",
+                "state_path": ".gentle_state.json",
+                "graph_id": "graph_1",
+                "action_id": "inspection_1",
+                "word_size": 4,
+                "step_bp": 1,
+                "max_mismatches": 0,
+                "tile_bp": 128,
+                "dotplot_id": "recommended_plot",
+                "render_svg_path": "artifacts/recommended_plot.svg",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    run_run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(run_request_path),
+            "--output",
+            str(tmp_path / "run_out"),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run_run.returncode == 0, run_run.stderr
+    run_payload = json.loads(run_run.stdout)
+    assert run_payload["command"] == [
+        str(fake_cli),
+        "--state",
+        ".gentle_state.json",
+        "shell",
+        "construct-reasoning run-inspection-action graph_1 inspection_1 --word-size 4 --step 1 --max-mismatches 0 --tile-bp 128 --id recommended_plot --render-svg artifacts/recommended_plot.svg",
+    ]
+    assert (
+        run_payload["stdout_json"]["schema"]
+        == "gentle.construct_reasoning_inspection_action_dotplot_run.v1"
+    )
 
 
 def test_agent_plan_mode_builds_shell_wrapper_command(tmp_path: Path) -> None:
@@ -3740,6 +3870,16 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             "state-summary",
             180,
         ),
+        "request_construct_reasoning_list_inspections.json": (
+            "construct-reasoning-list-inspections",
+            None,
+            180,
+        ),
+        "request_construct_reasoning_run_inspection_dotplot.json": (
+            "construct-reasoning-run-inspection",
+            None,
+            180,
+        ),
         "request_genomes_status_grch38.json": (
             "shell",
             'genomes status "Human GRCh38 Ensembl 116"',
@@ -5268,6 +5408,8 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
         "ensembl_gene_panel_protein_gel",
         "demo_ensembl_gene_protein_2d_gel",
         "demo_trypsin_digest_gel",
+        "construct_reasoning_recommended_inspections",
+        "construct_reasoning_run_recommended_inspection",
         "explicit_demo",
     }
     expected_inputs = {
@@ -5380,6 +5522,8 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
             "examples/request_gene_protein_2d_gel_ensembl_demo.json"
         ),
         "demo_trypsin_digest_gel": "examples/request_workflow_trypsin_digest_gel_demo.json",
+        "construct_reasoning_recommended_inspections": None,
+        "construct_reasoning_run_recommended_inspection": None,
     }
 
     for intent_id, expected_input in expected_inputs.items():
@@ -5490,6 +5634,25 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
                 assert step["input_template"]["expected_artifacts"] == ["{output_path}"]
                 assert step["slots"]["protocol_id"]["required"] is True
                 assert step["slots"]["output_path"]["required"] is True
+            elif intent_id == "construct_reasoning_recommended_inspections":
+                assert (
+                    step["input_template"]["mode"]
+                    == "construct-reasoning-list-inspections"
+                )
+                assert step["input_template"]["graph_id"] == "{graph_id}"
+                assert step["input_template"]["action_kind"] == "{action_kind}"
+                assert step["slots"]["graph_id"]["required"] is True
+                assert step["slots"]["action_kind"]["required"] is False
+                assert step["slots"]["action_kind"]["default"] == "dotplot"
+            elif intent_id == "construct_reasoning_run_recommended_inspection":
+                assert (
+                    step["input_template"]["mode"]
+                    == "construct-reasoning-run-inspection"
+                )
+                assert step["input_template"]["graph_id"] == "{graph_id}"
+                assert step["input_template"]["action_id"] == "{action_id}"
+                assert step["slots"]["graph_id"]["required"] is True
+                assert step["slots"]["action_id"]["required"] is True
             else:
                 assert intent_id == "telegram_guide_isoforms_gene"
                 assert step["input_template"]["mode"] == "shell"

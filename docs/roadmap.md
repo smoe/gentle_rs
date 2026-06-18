@@ -202,9 +202,11 @@ Phase 1 direction: repeat/similarity reasoning should answer "which dotplot
 should I inspect for this warning?" through portable construct-reasoning
 `inspection_actions[]`, not GUI-local label matching. The GUI consumes those
 graph actions for its `Dotplot` / `RevComp Dotplot` buttons; CLI/agent-facing
-work should use `construct-reasoning list-inspection-actions` and
-`construct-reasoning run-inspection-action` so ClawBio/MCP/JS/Lua readers can
-inspect the same action object through shared shell/protocol routes.
+work uses `construct-reasoning list-inspection-actions` and
+`construct-reasoning run-inspection-action`, and ClawBio now exposes typed
+request modes over the same shell contract. Remaining MCP/JS/Lua readers should
+inspect the same action object through shared shell/protocol routes rather than
+adding adapter-local recommendation logic.
 
 Phase 2 direction: the existing GUI inspector should expose action rationale,
 focus range, dotplot mode, context tags, and driving evidence ids directly from

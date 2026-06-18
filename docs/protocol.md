@@ -4260,7 +4260,7 @@ ClawBio/OpenClaw integration scaffold schemas:
   - `gentle_local_checkout_cli.sh` for local editable GENtle checkouts
   - `gentle_apptainer_cli.sh` for Apptainer/Singularity-backed `:cli` images
 - wrapper request schema: `gentle.clawbio_skill_request.v1`
-  - `mode`: `skill-info|capabilities|state-summary|shell|op|workflow|gene-protein-2d-gel|exon-skip-plan|exon-skip-materialize|agent-plan|agent-execute-plan|raw`
+  - `mode`: `skill-info|capabilities|state-summary|shell|op|workflow|construct-reasoning-list-inspections|construct-reasoning-run-inspection|gene-protein-2d-gel|exon-skip-plan|exon-skip-materialize|agent-plan|agent-execute-plan|raw`
   - optional: `state_path`, `timeout_secs`
   - optional: `expected_artifacts[]`
     - wrapper-declared output files to copy into the ClawBio output bundle
@@ -4285,6 +4285,15 @@ ClawBio/OpenClaw integration scaffold schemas:
       - relative `workflow_path` resolves via current working directory, then
         `GENTLE_REPO_ROOT`, then the local GENtle repo containing the scaffold
         when discoverable
+    - `construct-reasoning-list-inspections`: `graph_id`, with optional
+      `fact_id`, `annotation_id`, `candidate_id`, `evidence_id`, `seq_id`,
+      `action_kind`, and `summary_id`; the wrapper builds
+      `construct-reasoning list-inspection-actions ...` and returns the same
+      structured list payload as CLI shell callers
+    - `construct-reasoning-run-inspection`: `graph_id` plus `action_id`, with
+      optional dotplot tuning/render fields `word_size`, `step_bp`,
+      `max_mismatches`, `tile_bp`, `dotplot_id`, and `render_svg_path`; the
+      wrapper builds `construct-reasoning run-inspection-action ...`
     - `gene-protein-2d-gel`: `gene_symbol`, optional `species` (default
       `homo_sapiens`), optional `source` (currently `ensembl`), and optional
       `ladders[]`; the wrapper builds a deterministic workflow that fetches
@@ -5770,12 +5779,13 @@ Construct reasoning graph foundation (implemented first slice):
     - accepted or locked generated candidates now also expose a shared-engine
       `Write Back` action that materializes them as ordinary sequence features
   - shared shell/CLI route:
-    - `construct-reasoning list-inspection-actions GRAPH_ID [--fact-id ID] [--annotation-id ID] [--summary-id ID]`
+    - `construct-reasoning list-inspection-actions GRAPH_ID [--fact-id ID] [--annotation-id ID] [--candidate-id ID] [--evidence-id ID] [--seq-id ID] [--action-kind KIND] [--summary-id ID]`
     - lists the same portable `inspection_actions[]` objects that the GUI
-      attaches to fact, annotation, and summary rows
+      attaches to fact, annotation, evidence, sequence, and summary rows
     - `construct-reasoning run-inspection-action GRAPH_ID ACTION_ID [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID] [--render-svg OUTPUT.svg]`
     - resolves one `action_id`, computes its dotplot through `ComputeDotplot`,
-      and optionally writes SVG evidence through `RenderDotplotSvg`
+      returns the resolved `compute_parameters`, and optionally writes SVG
+      evidence through `RenderDotplotSvg`
     - `construct-reasoning set-annotation-status GRAPH_ID ANNOTATION_ID draft|accepted|rejected|locked`
     - updates the persisted graph in place and returns the updated candidate
       plus the same compact summary block exposed by

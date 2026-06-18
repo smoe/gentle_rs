@@ -1,0 +1,16 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "construct-reasoning-run-inspection",
+  "state_path": ".gentle_state.json",
+  "graph_id": "GRAPH_ID",
+  "action_id": "ACTION_ID",
+  "word_size": 12,
+  "step_bp": 2,
+  "max_mismatches": 0,
+  "dotplot_id": "recommended_inspection_dotplot",
+  "render_svg_path": "artifacts/recommended_inspection_dotplot.svg",
+  "expected_artifacts": [
+    "artifacts/recommended_inspection_dotplot.svg"
+  ],
+  "timeout_secs": 180
+}

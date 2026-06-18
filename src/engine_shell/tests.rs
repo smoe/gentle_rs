@@ -1879,7 +1879,7 @@ fn parse_construct_reasoning_protein_handoff_command_family() {
     ));
 
     let list_actions = parse_shell_line(
-        "construct-reasoning list-inspection-actions graph_1 --fact-id fact_repeat_architecture_context",
+        "construct-reasoning list-inspection-actions graph_1 --fact-id fact_repeat_architecture_context --candidate-id candidate_repeat_1 --evidence-id evidence_repeat_1 --seq-id seq_a --action-kind dotplot --summary-id summary_repeat_1",
     )
     .expect("parse construct-reasoning list-inspection-actions");
     assert!(matches!(
@@ -1888,11 +1888,19 @@ fn parse_construct_reasoning_protein_handoff_command_family() {
             graph_id,
             fact_id,
             annotation_id,
+            candidate_id,
+            evidence_id,
+            seq_id,
+            action_kind,
             summary_id,
         } if graph_id == "graph_1"
             && fact_id.as_deref() == Some("fact_repeat_architecture_context")
             && annotation_id.is_none()
-            && summary_id.is_none()
+            && candidate_id.as_deref() == Some("candidate_repeat_1")
+            && evidence_id.as_deref() == Some("evidence_repeat_1")
+            && seq_id.as_deref() == Some("seq_a")
+            && action_kind.as_deref() == Some("dotplot")
+            && summary_id.as_deref() == Some("summary_repeat_1")
     ));
 
     let run_action = parse_shell_line(
@@ -2468,6 +2476,19 @@ fn execute_construct_reasoning_inspection_action_commands_list_and_run_dotplot()
                 })
                 .cloned()
                 .expect("revcomp repeat inspection action");
+            let direct_action = graph
+                .inspection_actions
+                .iter()
+                .find(|action| {
+                    action.mode == DotplotMode::SelfForward
+                        && action
+                            .source_fact_ids
+                            .iter()
+                            .any(|id| id == &repeat_fact.fact_id)
+                })
+                .cloned()
+                .expect("direct repeat inspection action");
+            assert_ne!(direct_action.action_id, protocol_action.action_id);
 
             let listed = execute_shell_command(
                 &mut engine,
@@ -2475,6 +2496,10 @@ fn execute_construct_reasoning_inspection_action_commands_list_and_run_dotplot()
                     graph_id: graph.graph_id.clone(),
                     fact_id: Some(repeat_fact.fact_id.clone()),
                     annotation_id: None,
+                    candidate_id: None,
+                    evidence_id: None,
+                    seq_id: None,
+                    action_kind: None,
                     summary_id: None,
                 },
             )
@@ -2486,10 +2511,18 @@ fn execute_construct_reasoning_inspection_action_commands_list_and_run_dotplot()
             let listed_actions = listed.output["actions"]
                 .as_array()
                 .expect("listed actions array");
+            assert!(listed_actions.iter().any(|row| {
+                row["action_id"].as_str() == Some(direct_action.action_id.as_str())
+                    && row["mode"].as_str() == Some(DotplotMode::SelfForward.as_str())
+            }));
             let listed_action = listed_actions
                 .iter()
                 .find(|row| row["action_id"].as_str() == Some(protocol_action.action_id.as_str()))
                 .expect("listed protocol action");
+            assert_eq!(
+                listed_action["mode"].as_str(),
+                Some(DotplotMode::SelfReverseComplement.as_str())
+            );
             assert_eq!(
                 listed_action["driving_evidence_ids"],
                 serde_json::to_value(&protocol_action.driving_evidence_ids).expect("evidence ids")
@@ -2508,6 +2541,50 @@ fn execute_construct_reasoning_inspection_action_commands_list_and_run_dotplot()
                     .unwrap_or_default()
                     .trim()
                     .is_empty()
+            );
+            let evidence_filtered = execute_shell_command(
+                &mut engine,
+                &ShellCommand::ConstructReasoningListInspectionActions {
+                    graph_id: graph.graph_id.clone(),
+                    fact_id: None,
+                    annotation_id: None,
+                    candidate_id: None,
+                    evidence_id: protocol_action.driving_evidence_ids.first().cloned(),
+                    seq_id: Some(protocol_action.seq_id.clone()),
+                    action_kind: Some("dotplot".to_string()),
+                    summary_id: None,
+                },
+            )
+            .expect("list construct-reasoning inspection actions by evidence");
+            assert_eq!(
+                evidence_filtered.output["filters"]["evidence_id"].as_str(),
+                protocol_action.driving_evidence_ids.first().map(String::as_str)
+            );
+            assert_eq!(
+                evidence_filtered.output["filters"]["seq_id"].as_str(),
+                Some(protocol_action.seq_id.as_str())
+            );
+            assert_eq!(
+                evidence_filtered.output["filters"]["action_kind"].as_str(),
+                Some("dotplot")
+            );
+            let evidence_filtered_actions = evidence_filtered.output["actions"]
+                .as_array()
+                .expect("evidence-filtered actions array");
+            assert!(
+                evidence_filtered_actions.iter().any(|row| {
+                    row["action_id"].as_str() == Some(protocol_action.action_id.as_str())
+                        && row["driving_evidence_ids"].as_array().is_some_and(|ids| {
+                            ids.iter().any(|id| {
+                                id.as_str()
+                                    == protocol_action
+                                        .driving_evidence_ids
+                                        .first()
+                                        .map(String::as_str)
+                            })
+                        })
+                }),
+                "evidence filter should retain the selected protocol action"
             );
 
             let td = tempdir().expect("tempdir");
@@ -2542,6 +2619,30 @@ fn execute_construct_reasoning_inspection_action_commands_list_and_run_dotplot()
             assert_eq!(
                 run.output["dotplot"]["mode"].as_str(),
                 Some(protocol_action.mode.as_str())
+            );
+            assert_eq!(
+                run.output["compute_parameters"]["seq_id"].as_str(),
+                Some(protocol_action.seq_id.as_str())
+            );
+            assert_eq!(
+                run.output["compute_parameters"]["mode"].as_str(),
+                Some(protocol_action.mode.as_str())
+            );
+            assert_eq!(
+                run.output["compute_parameters"]["word_size"].as_u64(),
+                Some(4)
+            );
+            assert_eq!(
+                run.output["compute_parameters"]["step_bp"].as_u64(),
+                Some(1)
+            );
+            assert_eq!(
+                run.output["compute_parameters"]["max_mismatches"].as_u64(),
+                Some(0)
+            );
+            assert_eq!(
+                run.output["compute_parameters"]["tile_bp"].as_u64(),
+                Some(128)
             );
             assert_eq!(
                 run.output["dotplot"]["span_start_0based"].as_u64(),

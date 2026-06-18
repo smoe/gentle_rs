@@ -1325,6 +1325,80 @@
       ]
     },
     {
+      "intent_id": "construct_reasoning_recommended_inspections",
+      "description": "List portable recommended inspection actions for one persisted construct-reasoning graph, such as repeat/similarity dotplot handoffs.",
+      "trigger_terms": [
+        "construct reasoning recommended inspections",
+        "recommended inspections for graph",
+        "which dotplot should I inspect",
+        "list reasoning inspection actions",
+        "list recommended dotplots",
+        "construct reasoning dotplot recommendations"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "slots": {
+            "graph_id": {
+              "required": true,
+              "description": "Persisted construct-reasoning graph id"
+            },
+            "action_kind": {
+              "required": false,
+              "default": "dotplot",
+              "description": "Optional inspection action kind filter"
+            }
+          },
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "mode": "construct-reasoning-list-inspections",
+            "state_path": ".gentle_state.json",
+            "graph_id": "{graph_id}",
+            "action_kind": "{action_kind}",
+            "timeout_secs": 180
+          }
+        }
+      ]
+    },
+    {
+      "intent_id": "construct_reasoning_run_recommended_inspection",
+      "description": "Run one portable construct-reasoning recommended inspection action by action id, currently resolving dotplot actions through the shared dotplot engine path.",
+      "trigger_terms": [
+        "run reasoning inspection action",
+        "render recommended dotplot",
+        "run recommended dotplot",
+        "open reasoning dotplot action",
+        "compute reasoning inspection action"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "slots": {
+            "graph_id": {
+              "required": true,
+              "description": "Persisted construct-reasoning graph id"
+            },
+            "action_id": {
+              "required": true,
+              "description": "Recommended inspection action id from the graph's inspection_actions[] list"
+            }
+          },
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "mode": "construct-reasoning-run-inspection",
+            "state_path": ".gentle_state.json",
+            "graph_id": "{graph_id}",
+            "action_id": "{action_id}",
+            "timeout_secs": 180
+          }
+        }
+      ]
+    },
+    {
       "intent_id": "explicit_demo",
       "description": "Run the explicit GENtle ClawBio demo when the user asks for a demo.",
       "trigger_terms": [
