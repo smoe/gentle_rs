@@ -1878,6 +1878,48 @@ fn parse_construct_reasoning_protein_handoff_command_family() {
         ShellCommand::ConstructReasoningShowGraph { graph_id } if graph_id == "graph_1"
     ));
 
+    let list_actions = parse_shell_line(
+        "construct-reasoning list-inspection-actions graph_1 --fact-id fact_repeat_architecture_context",
+    )
+    .expect("parse construct-reasoning list-inspection-actions");
+    assert!(matches!(
+        list_actions,
+        ShellCommand::ConstructReasoningListInspectionActions {
+            graph_id,
+            fact_id,
+            annotation_id,
+            summary_id,
+        } if graph_id == "graph_1"
+            && fact_id.as_deref() == Some("fact_repeat_architecture_context")
+            && annotation_id.is_none()
+            && summary_id.is_none()
+    ));
+
+    let run_action = parse_shell_line(
+        "construct-reasoning run-inspection-action graph_1 inspection_1 --word-size 4 --step 1 --max-mismatches 0 --tile-bp 128 --id repeat_plot --render-svg repeat.svg",
+    )
+    .expect("parse construct-reasoning run-inspection-action");
+    assert!(matches!(
+        run_action,
+        ShellCommand::ConstructReasoningRunInspectionAction {
+            graph_id,
+            action_id,
+            word_size,
+            step_bp,
+            max_mismatches,
+            tile_bp,
+            dotplot_id,
+            render_svg_path,
+        } if graph_id == "graph_1"
+            && action_id == "inspection_1"
+            && word_size == 4
+            && step_bp == 1
+            && max_mismatches == 0
+            && tile_bp == Some(128)
+            && dotplot_id.as_deref() == Some("repeat_plot")
+            && render_svg_path.as_deref() == Some("repeat.svg")
+    ));
+
     let set_status = parse_shell_line(
         "construct-reasoning set-annotation-status graph_1 annotation_promoter accepted",
     )
@@ -2384,6 +2426,126 @@ fn execute_construct_reasoning_protein_handoff_commands_store_list_show_and_expo
         .expect("spawn construct-reasoning protein handoff shell test")
         .join()
         .expect("construct-reasoning protein handoff shell test");
+}
+
+#[test]
+fn execute_construct_reasoning_inspection_action_commands_list_and_run_dotplot() {
+    std::thread::Builder::new()
+        .name("construct-reasoning-inspection-action-shell-test".to_string())
+        .stack_size(16 * 1024 * 1024)
+        .spawn(|| {
+            let sequence = format!(
+                "{}{}{}{}{}",
+                "ACGT".repeat(12),
+                "AAAAAAAAAAAAAA",
+                "ATATATATATATATATATAT",
+                "GATTACAGATTACCCGGGGATTACAGATTA",
+                "GCGTACGCTATTTTTAGCGTACGC"
+            );
+            let mut state = ProjectState::default();
+            state.sequences.insert(
+                "seq_reasoning_similarity".to_string(),
+                DNAsequence::from_sequence(&sequence).expect("sequence"),
+            );
+            let mut engine = GentleEngine::from_state(state);
+            let graph = engine
+                .build_construct_reasoning_graph("seq_reasoning_similarity", None, None)
+                .expect("build construct-reasoning graph");
+            let repeat_fact = graph
+                .facts
+                .iter()
+                .find(|fact| fact.fact_type == "repeat_architecture_context")
+                .expect("repeat architecture fact");
+            let protocol_action = graph
+                .inspection_actions
+                .iter()
+                .find(|action| {
+                    action.mode == DotplotMode::SelfReverseComplement
+                        && action
+                            .source_fact_ids
+                            .iter()
+                            .any(|id| id == &repeat_fact.fact_id)
+                })
+                .cloned()
+                .expect("revcomp repeat inspection action");
+
+            let listed = execute_shell_command(
+                &mut engine,
+                &ShellCommand::ConstructReasoningListInspectionActions {
+                    graph_id: graph.graph_id.clone(),
+                    fact_id: Some(repeat_fact.fact_id.clone()),
+                    annotation_id: None,
+                    summary_id: None,
+                },
+            )
+            .expect("list construct-reasoning inspection actions");
+            assert_eq!(
+                listed.output["schema"].as_str(),
+                Some("gentle.construct_reasoning_inspection_action_list.v1")
+            );
+            let listed_actions = listed.output["actions"]
+                .as_array()
+                .expect("listed actions array");
+            let listed_action = listed_actions
+                .iter()
+                .find(|row| row["action_id"].as_str() == Some(protocol_action.action_id.as_str()))
+                .expect("listed protocol action");
+            assert_eq!(
+                listed_action["driving_evidence_ids"],
+                serde_json::to_value(&protocol_action.driving_evidence_ids).expect("evidence ids")
+            );
+            assert_eq!(
+                listed_action["focus_start_0based"].as_u64(),
+                Some(protocol_action.focus_start_0based as u64)
+            );
+
+            let td = tempdir().expect("tempdir");
+            let svg_path = td.path().join("reasoning_action.svg");
+            let run = execute_shell_command(
+                &mut engine,
+                &ShellCommand::ConstructReasoningRunInspectionAction {
+                    graph_id: graph.graph_id.clone(),
+                    action_id: protocol_action.action_id.clone(),
+                    word_size: 4,
+                    step_bp: 1,
+                    max_mismatches: 0,
+                    tile_bp: Some(128),
+                    dotplot_id: Some("reasoning_action_plot".to_string()),
+                    render_svg_path: Some(svg_path.display().to_string()),
+                },
+            )
+            .expect("run construct-reasoning inspection action");
+            assert!(run.state_changed);
+            assert_eq!(
+                run.output["schema"].as_str(),
+                Some("gentle.construct_reasoning_inspection_action_dotplot_run.v1")
+            );
+            assert_eq!(
+                run.output["action"]["action_id"].as_str(),
+                Some(protocol_action.action_id.as_str())
+            );
+            assert_eq!(
+                run.output["dotplot"]["dotplot_id"].as_str(),
+                Some("reasoning_action_plot")
+            );
+            assert_eq!(
+                run.output["dotplot"]["mode"].as_str(),
+                Some(protocol_action.mode.as_str())
+            );
+            assert_eq!(
+                run.output["dotplot"]["span_start_0based"].as_u64(),
+                Some(protocol_action.focus_start_0based as u64)
+            );
+            assert_eq!(
+                run.output["dotplot"]["span_end_0based"].as_u64(),
+                Some(protocol_action.focus_end_0based_exclusive as u64)
+            );
+            assert!(run.output["render_result"].is_object());
+            assert!(svg_path.exists());
+        })
+        .expect("spawn construct-reasoning inspection action shell test")
+        .join()
+        .expect("construct-reasoning inspection action shell test");
 }
 
 #[test]
@@ -7977,14 +8139,16 @@ fn execute_arrays_render_probe_region_evidence_svg_writes_constraint_plot() {
         Some(1)
     );
     assert!(
-        run.output["export"]["warnings"].as_array().is_some_and(|warnings| {
-            warnings.iter().any(|warning| {
+        run.output["export"]["warnings"]
+            .as_array()
+            .is_some_and(|warnings| {
+                warnings.iter().any(|warning| {
                 warning.as_str()
                     == Some(
                         "report_local_geometry_aligned_to_evidence_axis_without_full_gene_model",
                     )
             })
-        })
+            })
     );
     assert!(
         run.output["export"]["ambiguity_tags"]

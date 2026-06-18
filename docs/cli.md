@@ -1072,6 +1072,8 @@ UniProt mapping capability status:
   - `construct-reasoning build-protein-dna-handoff SEQ_ID PROTEIN_SEQ_ID [--transcript TRANSCRIPT_ID] [--projection-id ID] [--ensembl-entry ID] [--feature-query TEXT] [--ranking-goal balanced_provenance|native_fidelity|expression_optimized] [--speed-profile human|mouse|yeast|ecoli] [--speed-mark fast|slow] [--translation-table N] [--target-anneal-tm-c F] [--anneal-window-bp N] [--objective-id ID] [--graph-id ID]`
   - `construct-reasoning list-graphs [SEQ_ID]`
   - `construct-reasoning show-graph GRAPH_ID`
+  - `construct-reasoning list-inspection-actions GRAPH_ID [--fact-id ID] [--annotation-id ID] [--summary-id ID]`
+  - `construct-reasoning run-inspection-action GRAPH_ID ACTION_ID [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID] [--render-svg OUTPUT.svg]`
   - `construct-reasoning set-annotation-status GRAPH_ID ANNOTATION_ID draft|accepted|rejected|locked`
   - `construct-reasoning write-annotation GRAPH_ID ANNOTATION_ID`
   - `construct-reasoning export-graph GRAPH_ID OUTPUT.json`
@@ -1089,6 +1091,14 @@ UniProt mapping capability status:
     - current fact summaries now include adapter-capture review plus the new
       similarity-derived predictor rows for PCR/amplification,
       nanopore/direct-sequencing, repeat-driven mapping, and cloning stability
+  - `construct-reasoning list-inspection-actions` returns the same graph-level
+    `inspection_actions[]` objects, filtered by source fact/annotation/summary
+    ids when requested, so CLI/agent layers do not rediscover GUI dotplot
+    affordances from labels.
+  - `construct-reasoning run-inspection-action` resolves one `action_id`,
+    feeds its mode and focus range to the shared `ComputeDotplot` operation,
+    stores the resulting dotplot payload, and optionally invokes
+    `RenderDotplotSvg` for an evidence artifact.
   - `construct-reasoning set-annotation-status` updates one persisted
     annotation candidate in place and returns:
     - the updated portable graph

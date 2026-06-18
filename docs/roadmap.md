@@ -189,6 +189,21 @@ broad crate surgery that is not tied to the selected release story.
   audited records before identifying compatible splice isoforms or ruling out
   incompatible ones.
 
+### Reserved For Anze: Repeat/Similarity Inspection Follow-Up
+
+Phase 1 direction: repeat/similarity reasoning should answer "which dotplot
+should I inspect for this warning?" through portable construct-reasoning
+`inspection_actions[]`, not GUI-local label matching. The GUI consumes those
+graph actions for its `Dotplot` / `RevComp Dotplot` buttons; CLI/agent-facing
+work should use `construct-reasoning list-inspection-actions` and
+`construct-reasoning run-inspection-action` so ClawBio/MCP/JS/Lua readers can
+inspect the same action object through shared shell/protocol routes.
+
+Later phases stay intentionally separate: richer GUI evidence panes for action
+rationale/support rows, curated RepeatMasker/UCSC repeat-family promotion for
+Alu/SINE/LINE/LTR/satellite calls, task-aware repeat severity, and broader
+mapping of single-sequence operations across sequence sets.
+
 ## Phase D: Visualization And Workflow UX
 
 Use the GUI as the human inspection surface for engine-owned evidence. Continue

@@ -17,11 +17,11 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 
 | Adapter | prominent | shell-only | gap |
 |---|---:|---:|---:|
-| GUI | 21 | 554 | 0 |
-| gentle_cli | 334 | 266 | 0 |
-| MCP | 67 | 409 | 27 |
-| JS | 78 | 390 | 27 |
-| Lua | 77 | 391 | 27 |
+| GUI | 21 | 556 | 0 |
+| gentle_cli | 336 | 266 | 0 |
+| MCP | 71 | 409 | 27 |
+| JS | 78 | 392 | 27 |
+| Lua | 77 | 393 | 27 |
 | ClawBio | 0 | 0 | 0 |
 
 ## Glossary Commands
@@ -310,6 +310,8 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | construct-reasoning build-protein-dna-handoff | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | construct-reasoning list-graphs | glossary-command | shell-only | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | construct-reasoning show-graph | glossary-command | shell-only | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| construct-reasoning list-inspection-actions | glossary-command | shell-only | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| construct-reasoning run-inspection-action | glossary-command | shell-only | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | construct-reasoning set-annotation-status | glossary-command | shell-only | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | construct-reasoning write-annotation | glossary-command | shell-only | prominent | prominent | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | construct-reasoning export-graph | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
@@ -708,6 +710,8 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | ensembl_installable_genomes | mcp-tool | n/a | n/a | prominent | n/a | n/a | n/a | GUI: MCP tools/list descriptors are transport-specific metadata, not GUI actions.<br>gentle_cli: MCP tools/list descriptors are transport-specific metadata, not CLI subcommands.<br>JS: MCP tools/list descriptors are transport-specific metadata, not JavaScript wrapper functions.<br>Lua: MCP tools/list descriptors are transport-specific metadata, not Lua wrapper functions.<br>ClawBio: ClawBio consumes its skill intent descriptor rather than MCP tools/list metadata. |
 | construct_reasoning_graphs | mcp-tool | n/a | n/a | prominent | n/a | n/a | n/a | GUI: MCP tools/list descriptors are transport-specific metadata, not GUI actions.<br>gentle_cli: MCP tools/list descriptors are transport-specific metadata, not CLI subcommands.<br>JS: MCP tools/list descriptors are transport-specific metadata, not JavaScript wrapper functions.<br>Lua: MCP tools/list descriptors are transport-specific metadata, not Lua wrapper functions.<br>ClawBio: ClawBio consumes its skill intent descriptor rather than MCP tools/list metadata. |
 | construct_reasoning_graph | mcp-tool | n/a | n/a | prominent | n/a | n/a | n/a | GUI: MCP tools/list descriptors are transport-specific metadata, not GUI actions.<br>gentle_cli: MCP tools/list descriptors are transport-specific metadata, not CLI subcommands.<br>JS: MCP tools/list descriptors are transport-specific metadata, not JavaScript wrapper functions.<br>Lua: MCP tools/list descriptors are transport-specific metadata, not Lua wrapper functions.<br>ClawBio: ClawBio consumes its skill intent descriptor rather than MCP tools/list metadata. |
+| construct_reasoning_inspection_actions | mcp-tool | n/a | n/a | prominent | n/a | n/a | n/a | GUI: MCP tools/list descriptors are transport-specific metadata, not GUI actions.<br>gentle_cli: MCP tools/list descriptors are transport-specific metadata, not CLI subcommands.<br>JS: MCP tools/list descriptors are transport-specific metadata, not JavaScript wrapper functions.<br>Lua: MCP tools/list descriptors are transport-specific metadata, not Lua wrapper functions.<br>ClawBio: ClawBio consumes its skill intent descriptor rather than MCP tools/list metadata. |
+| construct_reasoning_run_inspection_action | mcp-tool | n/a | n/a | prominent | n/a | n/a | n/a | GUI: MCP tools/list descriptors are transport-specific metadata, not GUI actions.<br>gentle_cli: MCP tools/list descriptors are transport-specific metadata, not CLI subcommands.<br>JS: MCP tools/list descriptors are transport-specific metadata, not JavaScript wrapper functions.<br>Lua: MCP tools/list descriptors are transport-specific metadata, not Lua wrapper functions.<br>ClawBio: ClawBio consumes its skill intent descriptor rather than MCP tools/list metadata. |
 | construct_reasoning_set_annotation_status | mcp-tool | n/a | n/a | prominent | n/a | n/a | n/a | GUI: MCP tools/list descriptors are transport-specific metadata, not GUI actions.<br>gentle_cli: MCP tools/list descriptors are transport-specific metadata, not CLI subcommands.<br>JS: MCP tools/list descriptors are transport-specific metadata, not JavaScript wrapper functions.<br>Lua: MCP tools/list descriptors are transport-specific metadata, not Lua wrapper functions.<br>ClawBio: ClawBio consumes its skill intent descriptor rather than MCP tools/list metadata. |
 | construct_reasoning_write_annotation | mcp-tool | n/a | n/a | prominent | n/a | n/a | n/a | GUI: MCP tools/list descriptors are transport-specific metadata, not GUI actions.<br>gentle_cli: MCP tools/list descriptors are transport-specific metadata, not CLI subcommands.<br>JS: MCP tools/list descriptors are transport-specific metadata, not JavaScript wrapper functions.<br>Lua: MCP tools/list descriptors are transport-specific metadata, not Lua wrapper functions.<br>ClawBio: ClawBio consumes its skill intent descriptor rather than MCP tools/list metadata. |
 | helper_interpretation | mcp-tool | n/a | n/a | prominent | n/a | n/a | n/a | GUI: MCP tools/list descriptors are transport-specific metadata, not GUI actions.<br>gentle_cli: MCP tools/list descriptors are transport-specific metadata, not CLI subcommands.<br>JS: MCP tools/list descriptors are transport-specific metadata, not JavaScript wrapper functions.<br>Lua: MCP tools/list descriptors are transport-specific metadata, not Lua wrapper functions.<br>ClawBio: ClawBio consumes its skill intent descriptor rather than MCP tools/list metadata. |

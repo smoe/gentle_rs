@@ -5728,7 +5728,13 @@ Construct reasoning graph foundation (implemented first slice):
     instead of only read-only inspection
     - accepted or locked generated candidates now also expose a shared-engine
       `Write Back` action that materializes them as ordinary sequence features
-  - shared shell/CLI mutation route:
+  - shared shell/CLI route:
+    - `construct-reasoning list-inspection-actions GRAPH_ID [--fact-id ID] [--annotation-id ID] [--summary-id ID]`
+    - lists the same portable `inspection_actions[]` objects that the GUI
+      attaches to fact, annotation, and summary rows
+    - `construct-reasoning run-inspection-action GRAPH_ID ACTION_ID [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID] [--render-svg OUTPUT.svg]`
+    - resolves one `action_id`, computes its dotplot through `ComputeDotplot`,
+      and optionally writes SVG evidence through `RenderDotplotSvg`
     - `construct-reasoning set-annotation-status GRAPH_ID ANNOTATION_ID draft|accepted|rejected|locked`
     - updates the persisted graph in place and returns the updated candidate
       plus the same compact summary block exposed by

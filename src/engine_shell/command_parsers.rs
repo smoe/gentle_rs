@@ -7826,7 +7826,7 @@ pub(super) fn parse_reverse_translate_command(tokens: &[String]) -> Result<Shell
 pub(super) fn parse_construct_reasoning_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "construct-reasoning requires a subcommand: build-protein-dna-handoff, list-graphs, show-graph, set-annotation-status, export-graph"
+            "construct-reasoning requires a subcommand: build-protein-dna-handoff, list-graphs, show-graph, list-inspection-actions, run-inspection-action, set-annotation-status, export-graph"
                 .to_string(),
         );
     }
@@ -8061,6 +8061,180 @@ pub(super) fn parse_construct_reasoning_command(tokens: &[String]) -> Result<She
             }
             Ok(ShellCommand::ConstructReasoningShowGraph {
                 graph_id: tokens[2].trim().to_string(),
+            })
+        }
+        "list-inspection-actions" | "list-actions" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "construct-reasoning list-inspection-actions requires GRAPH_ID [--fact-id ID] [--annotation-id ID] [--summary-id ID]"
+                        .to_string(),
+                );
+            }
+            let graph_id = tokens[2].trim().to_string();
+            if graph_id.is_empty() {
+                return Err(
+                    "construct-reasoning list-inspection-actions requires non-empty GRAPH_ID"
+                        .to_string(),
+                );
+            }
+            let mut fact_id: Option<String> = None;
+            let mut annotation_id: Option<String> = None;
+            let mut summary_id: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--fact-id" | "--fact" => {
+                        let flag = tokens[idx].clone();
+                        fact_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "construct-reasoning list-inspection-actions",
+                        )?);
+                    }
+                    "--annotation-id" | "--annotation" => {
+                        let flag = tokens[idx].clone();
+                        annotation_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "construct-reasoning list-inspection-actions",
+                        )?);
+                    }
+                    "--summary-id" | "--summary" => {
+                        let flag = tokens[idx].clone();
+                        summary_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "construct-reasoning list-inspection-actions",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for construct-reasoning list-inspection-actions"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::ConstructReasoningListInspectionActions {
+                graph_id,
+                fact_id,
+                annotation_id,
+                summary_id,
+            })
+        }
+        "run-inspection-action" | "compute-inspection-action-dotplot" | "dotplot-action" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "construct-reasoning run-inspection-action requires GRAPH_ID ACTION_ID [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID] [--render-svg OUTPUT.svg]"
+                        .to_string(),
+                );
+            }
+            let graph_id = tokens[2].trim().to_string();
+            let action_id = tokens[3].trim().to_string();
+            if graph_id.is_empty() || action_id.is_empty() {
+                return Err(
+                    "construct-reasoning run-inspection-action requires non-empty GRAPH_ID and ACTION_ID"
+                        .to_string(),
+                );
+            }
+            let mut word_size = 12usize;
+            let mut step_bp = 2usize;
+            let mut max_mismatches = 0usize;
+            let mut tile_bp: Option<usize> = None;
+            let mut dotplot_id: Option<String> = None;
+            let mut render_svg_path: Option<String> = None;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--word-size" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--word-size",
+                            "construct-reasoning run-inspection-action",
+                        )?;
+                        word_size = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --word-size value '{raw}' for construct-reasoning run-inspection-action: {e}"
+                            )
+                        })?;
+                    }
+                    "--step" | "--step-bp" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "construct-reasoning run-inspection-action",
+                        )?;
+                        step_bp = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid {flag} value '{raw}' for construct-reasoning run-inspection-action: {e}"
+                            )
+                        })?;
+                    }
+                    "--max-mismatches" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-mismatches",
+                            "construct-reasoning run-inspection-action",
+                        )?;
+                        max_mismatches = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --max-mismatches value '{raw}' for construct-reasoning run-inspection-action: {e}"
+                            )
+                        })?;
+                    }
+                    "--tile-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--tile-bp",
+                            "construct-reasoning run-inspection-action",
+                        )?;
+                        tile_bp = Some(raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --tile-bp value '{raw}' for construct-reasoning run-inspection-action: {e}"
+                            )
+                        })?);
+                    }
+                    "--id" | "--dotplot-id" => {
+                        let flag = tokens[idx].clone();
+                        dotplot_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "construct-reasoning run-inspection-action",
+                        )?);
+                    }
+                    "--render-svg" | "--output-svg" => {
+                        let flag = tokens[idx].clone();
+                        render_svg_path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "construct-reasoning run-inspection-action",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for construct-reasoning run-inspection-action"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::ConstructReasoningRunInspectionAction {
+                graph_id,
+                action_id,
+                word_size,
+                step_bp,
+                max_mismatches,
+                tile_bp,
+                dotplot_id,
+                render_svg_path,
             })
         }
         "set-annotation-status" => {

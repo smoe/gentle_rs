@@ -818,6 +818,90 @@ fn tool_list() -> Value {
         }
     ]);
     if let Some(items) = tools.as_array_mut() {
+        items.push(json!({
+            "name": "construct_reasoning_inspection_actions",
+            "title": "Construct Reasoning Inspection Actions",
+            "description": "Return recommended inspection actions from one stored construct-reasoning graph through the shared `construct-reasoning list-inspection-actions` shell contract.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "state_path": {
+                        "type": "string",
+                        "description": "Optional project state path. Defaults to server startup state path."
+                    },
+                    "graph_id": {
+                        "type": "string",
+                        "description": "Stored construct-reasoning graph id to inspect."
+                    },
+                    "fact_id": {
+                        "type": "string",
+                        "description": "Optional source fact id filter."
+                    },
+                    "annotation_id": {
+                        "type": "string",
+                        "description": "Optional source annotation id filter."
+                    },
+                    "summary_id": {
+                        "type": "string",
+                        "description": "Optional source summary id filter."
+                    }
+                },
+                "required": ["graph_id"],
+                "additionalProperties": false
+            }
+        }));
+        items.push(json!({
+            "name": "construct_reasoning_run_inspection_action",
+            "title": "Run Construct Reasoning Inspection Action",
+            "description": "Compute the dotplot recommended by one construct-reasoning inspection action through the shared `construct-reasoning run-inspection-action` shell contract.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "state_path": {
+                        "type": "string",
+                        "description": "Optional project state path. Defaults to server startup state path."
+                    },
+                    "graph_id": {
+                        "type": "string",
+                        "description": "Stored construct-reasoning graph id to inspect."
+                    },
+                    "action_id": {
+                        "type": "string",
+                        "description": "Inspection action id from the graph's inspection_actions list."
+                    },
+                    "word_size": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Optional dotplot word size override."
+                    },
+                    "step_bp": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Optional dotplot step size override."
+                    },
+                    "max_mismatches": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "Optional maximum mismatches per word."
+                    },
+                    "tile_bp": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Optional tile size for summary bins."
+                    },
+                    "dotplot_id": {
+                        "type": "string",
+                        "description": "Optional id for the stored dotplot view."
+                    },
+                    "render_svg_path": {
+                        "type": "string",
+                        "description": "Optional path for rendering the resulting dotplot as SVG."
+                    }
+                },
+                "required": ["graph_id", "action_id"],
+                "additionalProperties": false
+            }
+        }));
         items.insert(
             2,
             json!({
@@ -1093,6 +1177,7 @@ fn tool_mutating_descriptor(name: &str) -> Value {
         | "workflow"
         | "exon_skip_plan"
         | "exon_skip_materialize"
+        | "construct_reasoning_run_inspection_action"
         | "construct_reasoning_set_annotation_status"
         | "construct_reasoning_write_annotation" => Value::Bool(true),
         _ => Value::Bool(false),
@@ -1118,6 +1203,12 @@ fn tool_command_paths(name: &str) -> &'static [&'static str] {
         "ensembl_installable_genomes" => &["genomes ensembl-available"],
         "construct_reasoning_graphs" => &["construct-reasoning list-graphs"],
         "construct_reasoning_graph" => &["construct-reasoning show-graph"],
+        "construct_reasoning_inspection_actions" => {
+            &["construct-reasoning list-inspection-actions"]
+        }
+        "construct_reasoning_run_inspection_action" => {
+            &["construct-reasoning run-inspection-action"]
+        }
         "construct_reasoning_set_annotation_status" => {
             &["construct-reasoning set-annotation-status"]
         }
@@ -1636,6 +1727,13 @@ fn append_string_flag(tokens: &mut Vec<String>, flag: &str, value: Option<String
     }
 }
 
+fn append_usize_flag(tokens: &mut Vec<String>, flag: &str, value: Option<usize>) {
+    if let Some(value) = value {
+        tokens.push(flag.to_string());
+        tokens.push(value.to_string());
+    }
+}
+
 fn effective_catalog_path(catalog_path: Option<&str>, helper_mode: bool) -> String {
     catalog_path
         .map(str::trim)
@@ -1811,6 +1909,106 @@ fn construct_reasoning_graph_tool_result(default_state_path: &str, arguments: &V
             graph_id,
         ],
         "construct_reasoning_graph",
+    ) {
+        Ok(output) => tool_result_json(output, false),
+        Err(err) => tool_result_text(err, "text", true),
+    }
+}
+
+fn construct_reasoning_inspection_actions_tool_result(
+    default_state_path: &str,
+    arguments: &Value,
+) -> Value {
+    let args = arguments.as_object().cloned().unwrap_or_default();
+    let graph_id = match required_string_arg(&args, "graph_id") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let fact_id = match optional_string_arg(&args, "fact_id") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let annotation_id = match optional_string_arg(&args, "annotation_id") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let summary_id = match optional_string_arg(&args, "summary_id") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let mut tokens = vec![
+        "construct-reasoning".to_string(),
+        "list-inspection-actions".to_string(),
+        graph_id,
+    ];
+    append_string_flag(&mut tokens, "--fact-id", fact_id);
+    append_string_flag(&mut tokens, "--annotation-id", annotation_id);
+    append_string_flag(&mut tokens, "--summary-id", summary_id);
+    match run_non_mutating_shell_tool(
+        default_state_path,
+        &args,
+        tokens,
+        "construct_reasoning_inspection_actions",
+    ) {
+        Ok(output) => tool_result_json(output, false),
+        Err(err) => tool_result_text(err, "text", true),
+    }
+}
+
+fn construct_reasoning_run_inspection_action_tool_result(
+    default_state_path: &str,
+    arguments: &Value,
+) -> Value {
+    let args = arguments.as_object().cloned().unwrap_or_default();
+    let graph_id = match required_string_arg(&args, "graph_id") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let action_id = match required_string_arg(&args, "action_id") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let word_size = match optional_usize_arg(&args, "word_size") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let step_bp = match optional_usize_arg(&args, "step_bp") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let max_mismatches = match optional_usize_arg(&args, "max_mismatches") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let tile_bp = match optional_usize_arg(&args, "tile_bp") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let dotplot_id = match optional_string_arg(&args, "dotplot_id") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let render_svg_path = match optional_string_arg(&args, "render_svg_path") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let mut tokens = vec![
+        "construct-reasoning".to_string(),
+        "run-inspection-action".to_string(),
+        graph_id,
+        action_id,
+    ];
+    append_usize_flag(&mut tokens, "--word-size", word_size);
+    append_usize_flag(&mut tokens, "--step", step_bp);
+    append_usize_flag(&mut tokens, "--max-mismatches", max_mismatches);
+    append_usize_flag(&mut tokens, "--tile-bp", tile_bp);
+    append_string_flag(&mut tokens, "--id", dotplot_id);
+    append_string_flag(&mut tokens, "--render-svg", render_svg_path);
+    match run_shell_tool_with_optional_persist(
+        default_state_path,
+        &args,
+        tokens,
+        "construct_reasoning_run_inspection_action",
     ) {
         Ok(output) => tool_result_json(output, false),
         Err(err) => tool_result_text(err, "text", true),
@@ -2919,6 +3117,18 @@ fn tool_call_result(default_state_path: &str, params: ToolCallParams) -> Value {
         }
         "construct_reasoning_graph" => {
             construct_reasoning_graph_tool_result(default_state_path, &params.arguments)
+        }
+        "construct_reasoning_inspection_actions" => {
+            construct_reasoning_inspection_actions_tool_result(
+                default_state_path,
+                &params.arguments,
+            )
+        }
+        "construct_reasoning_run_inspection_action" => {
+            construct_reasoning_run_inspection_action_tool_result(
+                default_state_path,
+                &params.arguments,
+            )
         }
         "construct_reasoning_set_annotation_status" => {
             construct_reasoning_set_annotation_status_tool_result(
@@ -4639,6 +4849,140 @@ mod tests {
             ),
             normalize_construct_reasoning_status_output(expected_writeback)
         );
+    }
+
+    #[test]
+    fn mcp_construct_reasoning_inspection_actions_match_shared_shell_contracts() {
+        std::thread::Builder::new()
+            .name("mcp-construct-reasoning-inspection-actions-test".to_string())
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                let td = tempdir().expect("tempdir");
+                let state_path = td.path().join("construct_reasoning_actions_state.json");
+                let state_path_str = state_path.to_string_lossy().to_string();
+                let sequence = format!(
+                    "{}{}{}{}{}",
+                    "ACGT".repeat(12),
+                    "AAAAAAAAAAAAAA",
+                    "ATATATATATATATATATAT",
+                    "GATTACAGATTACCCGGGGATTACAGATTA",
+                    "GCGTACGCTATTTTTAGCGTACGC"
+                );
+                let mut state = ProjectState::default();
+                state.sequences.insert(
+                    "seq_reasoning_similarity_mcp".to_string(),
+                    DNAsequence::from_sequence(&sequence).expect("sequence"),
+                );
+                let mut engine = GentleEngine::from_state(state);
+                let graph = engine
+                    .build_construct_reasoning_graph("seq_reasoning_similarity_mcp", None, None)
+                    .expect("build construct-reasoning graph");
+                let repeat_fact = graph
+                    .facts
+                    .iter()
+                    .find(|fact| fact.fact_type == "repeat_architecture_context")
+                    .expect("repeat architecture fact");
+                let protocol_action = graph
+                    .inspection_actions
+                    .iter()
+                    .find(|action| {
+                        action
+                            .source_fact_ids
+                            .iter()
+                            .any(|id| id == &repeat_fact.fact_id)
+                    })
+                    .cloned()
+                    .expect("protocol inspection action");
+                engine
+                    .state()
+                    .save_to_path(&state_path_str)
+                    .expect("save state");
+
+                let mcp_list = run_tool(
+                    DEFAULT_MCP_STATE_PATH,
+                    "construct_reasoning_inspection_actions",
+                    json!({
+                        "state_path": state_path_str,
+                        "graph_id": graph.graph_id.clone(),
+                        "fact_id": repeat_fact.fact_id.clone()
+                    }),
+                );
+                assert_eq!(
+                    mcp_list.pointer("/result/isError").and_then(Value::as_bool),
+                    Some(false)
+                );
+                let expected_list = {
+                    let state = ProjectState::load_from_path(&state_path_str).expect("load state");
+                    let mut engine = GentleEngine::from_state(state);
+                    let command = parse_shell_tokens(&[
+                        "construct-reasoning".to_string(),
+                        "list-inspection-actions".to_string(),
+                        graph.graph_id.clone(),
+                        "--fact-id".to_string(),
+                        repeat_fact.fact_id.clone(),
+                    ])
+                    .expect("parse shell list-inspection-actions");
+                    execute_shell_command(&mut engine, &command)
+                        .expect("execute shell list-inspection-actions")
+                        .output
+                };
+                assert_eq!(mcp_list["result"]["structuredContent"], expected_list);
+
+                let mcp_run = run_tool(
+                    DEFAULT_MCP_STATE_PATH,
+                    "construct_reasoning_run_inspection_action",
+                    json!({
+                        "state_path": state_path_str,
+                        "graph_id": graph.graph_id.clone(),
+                        "action_id": protocol_action.action_id.clone(),
+                        "word_size": 4,
+                        "step_bp": 1,
+                        "max_mismatches": 0,
+                        "tile_bp": 128,
+                        "dotplot_id": "mcp_reasoning_action_plot"
+                    }),
+                );
+                assert_eq!(
+                    mcp_run.pointer("/result/isError").and_then(Value::as_bool),
+                    Some(false)
+                );
+                let structured = &mcp_run["result"]["structuredContent"];
+                assert_eq!(
+                    structured["schema"].as_str(),
+                    Some("gentle.construct_reasoning_inspection_action_dotplot_run.v1")
+                );
+                assert_eq!(
+                    structured["action"]["action_id"].as_str(),
+                    Some(protocol_action.action_id.as_str())
+                );
+                assert_eq!(
+                    structured["dotplot"]["dotplot_id"].as_str(),
+                    Some("mcp_reasoning_action_plot")
+                );
+                assert_eq!(
+                    structured["dotplot"]["mode"].as_str(),
+                    Some(protocol_action.mode.as_str())
+                );
+                assert_eq!(
+                    structured["dotplot"]["span_start_0based"].as_u64(),
+                    Some(protocol_action.focus_start_0based as u64)
+                );
+                assert_eq!(
+                    structured["dotplot"]["span_end_0based"].as_u64(),
+                    Some(protocol_action.focus_end_0based_exclusive as u64)
+                );
+                let state = ProjectState::load_from_path(&state_path_str).expect("load run state");
+                let engine = GentleEngine::from_state(state);
+                assert!(
+                    engine
+                        .list_dotplot_views(Some("seq_reasoning_similarity_mcp"))
+                        .iter()
+                        .any(|view| view.dotplot_id == "mcp_reasoning_action_plot")
+                );
+            })
+            .expect("spawn MCP construct-reasoning inspection action test")
+            .join()
+            .expect("MCP construct-reasoning inspection action test");
     }
 
     #[test]

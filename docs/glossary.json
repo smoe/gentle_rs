@@ -3818,6 +3818,46 @@
       },
       {
          "aliases": [
+            "construct_reasoning list-inspection-actions",
+            "constructreasoning list-inspection-actions",
+            "construct-reasoning list-actions"
+         ],
+         "engine_operations": [
+            "ListConstructReasoningInspectionActions"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp"
+         ],
+         "path": "construct-reasoning list-inspection-actions",
+         "summary": "List portable recommended inspection actions from one persisted construct-reasoning graph, optionally scoped to one fact, annotation, or summary row.",
+         "usage": "construct-reasoning list-inspection-actions GRAPH_ID [--fact-id ID] [--annotation-id ID] [--summary-id ID]"
+      },
+      {
+         "aliases": [
+            "construct_reasoning run-inspection-action",
+            "constructreasoning run-inspection-action",
+            "construct-reasoning compute-inspection-action-dotplot",
+            "construct-reasoning dotplot-action"
+         ],
+         "engine_operations": [
+            "ComputeDotplot",
+            "RenderDotplotSvg"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp"
+         ],
+         "path": "construct-reasoning run-inspection-action",
+         "summary": "Resolve one recommended construct-reasoning inspection action by action_id, compute its dotplot through the shared operation path, and optionally render the result as SVG.",
+         "usage": "construct-reasoning run-inspection-action GRAPH_ID ACTION_ID [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID] [--render-svg OUTPUT.svg]"
+      },
+      {
+         "aliases": [
             "construct_reasoning set-annotation-status",
             "constructreasoning set-annotation-status"
          ],

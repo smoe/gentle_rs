@@ -2152,6 +2152,10 @@ Controls:
        - these buttons are backed by graph-level
          `inspection_actions[]` with deterministic action ids and
          `driving_evidence_ids[]`, not by GUI-local label matching
+       - CLI/agent layers can list and run the same action objects with
+         `construct-reasoning list-inspection-actions` and
+         `construct-reasoning run-inspection-action`, so the GUI does not own a
+         separate answer to "which dotplot should I inspect?"
   - Both the clicked-span detail view and the `Annotation candidates` section
     now expose shared-engine accept/reject/draft controls so reviewed
     automated-annotation candidates can be curated without inventing GUI-only

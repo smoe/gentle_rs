@@ -5231,6 +5231,18 @@ const MCP_TOOL_NAMES: &[(&str, &str, &str, CapabilityMutation)] = &[
         CapabilityMutation::ReadOnly,
     ),
     (
+        "construct_reasoning_inspection_actions",
+        "Construct Reasoning Inspection Actions",
+        "Return recommended inspection actions from one stored construct-reasoning graph through the shared `construct-reasoning list-inspection-actions` shell contract.",
+        CapabilityMutation::ReadOnly,
+    ),
+    (
+        "construct_reasoning_run_inspection_action",
+        "Run Construct Reasoning Inspection Action",
+        "Compute the dotplot recommended by one construct-reasoning inspection action through the shared `construct-reasoning run-inspection-action` shell contract.",
+        CapabilityMutation::Mutating,
+    ),
+    (
         "construct_reasoning_set_annotation_status",
         "Set Construct Reasoning Annotation Status",
         "Update one stored construct-reasoning annotation candidate to draft, accepted, rejected, or locked through the shared `construct-reasoning set-annotation-status` shell contract.",

@@ -936,6 +936,10 @@ Included follow-on analysis/planning/graphics requests:
   - replays the cross-family anchored dotplot with TP73 as the shared
     reference axis and TP63 plus TP53 aligned by the conserved motif
     `CATGTGTAACAG`
+  - construct-reasoning repeat/similarity dotplot recommendations are exposed
+    through shared shell commands as portable actions:
+    `construct-reasoning list-inspection-actions GRAPH_ID` and
+    `construct-reasoning run-inspection-action GRAPH_ID ACTION_ID`
 - `examples/request_protocol_cartoon_gibson_svg.json`
   - uses `expected_artifacts[]` so the generated SVG is copied into the
   wrapper output bundle under `generated/...`

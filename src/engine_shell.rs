@@ -38,8 +38,9 @@ use crate::{
         CandidateFeatureBoundaryMode, CandidateFeatureGeometryMode, CandidateFeatureStrandRelation,
         CandidateMacroTemplateParam, CandidateObjectiveDirection, CandidateObjectiveSpec,
         CandidateTieBreakPolicy, CandidateWeightedObjectiveTerm,
-        CdnaAssayTranscriptMapCoordinateMode, CdnaAssayTranscriptOrder, CutRunAlignConfig,
-        CutRunCoverageKind, CutRunInputFormat, CutRunReadLayout, CutRunSeedFilterConfig,
+        CdnaAssayTranscriptMapCoordinateMode, CdnaAssayTranscriptOrder,
+        ConstructReasoningInspectionActionKind, CutRunAlignConfig, CutRunCoverageKind,
+        CutRunInputFormat, CutRunReadLayout, CutRunSeedFilterConfig,
         DEFAULT_HOST_PROFILE_CATALOG_PATH, DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED,
         DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP,
         DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP, DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP,
@@ -2473,6 +2474,22 @@ pub enum ShellCommand {
     },
     ConstructReasoningShowGraph {
         graph_id: String,
+    },
+    ConstructReasoningListInspectionActions {
+        graph_id: String,
+        fact_id: Option<String>,
+        annotation_id: Option<String>,
+        summary_id: Option<String>,
+    },
+    ConstructReasoningRunInspectionAction {
+        graph_id: String,
+        action_id: String,
+        word_size: usize,
+        step_bp: usize,
+        max_mismatches: usize,
+        tile_bp: Option<usize>,
+        dotplot_id: Option<String>,
+        render_svg_path: Option<String>,
     },
     ConstructReasoningSetAnnotationStatus {
         graph_id: String,
@@ -10995,6 +11012,40 @@ impl ShellCommand {
             Self::ConstructReasoningShowGraph { graph_id } => {
                 format!("show construct-reasoning graph '{}'", graph_id)
             }
+            Self::ConstructReasoningListInspectionActions {
+                graph_id,
+                fact_id,
+                annotation_id,
+                summary_id,
+            } => format!(
+                "list construct-reasoning inspection actions for graph '{}' (fact='{}', annotation='{}', summary='{}')",
+                graph_id,
+                fact_id.as_deref().unwrap_or("-"),
+                annotation_id.as_deref().unwrap_or("-"),
+                summary_id.as_deref().unwrap_or("-")
+            ),
+            Self::ConstructReasoningRunInspectionAction {
+                graph_id,
+                action_id,
+                word_size,
+                step_bp,
+                max_mismatches,
+                tile_bp,
+                dotplot_id,
+                render_svg_path,
+            } => format!(
+                "run construct-reasoning inspection action '{}' from graph '{}' (word_size={}, step_bp={}, max_mismatches={}, tile_bp={}, id='{}', render_svg='{}')",
+                action_id,
+                graph_id,
+                word_size,
+                step_bp,
+                max_mismatches,
+                tile_bp
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "default".to_string()),
+                dotplot_id.as_deref().unwrap_or("auto"),
+                render_svg_path.as_deref().unwrap_or("-")
+            ),
             Self::ConstructReasoningSetAnnotationStatus {
                 graph_id,
                 annotation_id,
@@ -11769,6 +11820,7 @@ impl ShellCommand {
                 | Self::SeqConfirmRun { .. }
                 | Self::ReverseTranslateRun { .. }
                 | Self::ConstructReasoningBuildProteinDnaHandoff { .. }
+                | Self::ConstructReasoningRunInspectionAction { .. }
                 | Self::ConstructReasoningSetAnnotationStatus { .. }
                 | Self::ReadsAcquirePrepare { .. }
                 | Self::ReadsAcquireCancel { .. }
@@ -37728,6 +37780,177 @@ fn execute_protein_sequence_command(
                 }),
             })
         }
+        ShellCommand::ConstructReasoningListInspectionActions {
+            graph_id,
+            fact_id,
+            annotation_id,
+            summary_id,
+        } => {
+            let graph = engine
+                .construct_reasoning_graph(graph_id)
+                .map_err(|e| e.to_string())?;
+            let fact_id = fact_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty());
+            let annotation_id = annotation_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty());
+            let summary_id = summary_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty());
+            let actions = graph
+                .inspection_actions
+                .iter()
+                .filter(|action| {
+                    fact_id.map_or(true, |id| {
+                        action.source_fact_ids.iter().any(|row| row == id)
+                    }) && annotation_id.map_or(true, |id| {
+                        action.source_annotation_ids.iter().any(|row| row == id)
+                    }) && summary_id.map_or(true, |id| {
+                        action.source_summary_ids.iter().any(|row| row == id)
+                    })
+                })
+                .cloned()
+                .collect::<Vec<_>>();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.construct_reasoning_inspection_action_list.v1",
+                    "graph_id": graph.graph_id,
+                    "filters": {
+                        "fact_id": fact_id,
+                        "annotation_id": annotation_id,
+                        "summary_id": summary_id,
+                    },
+                    "action_count": actions.len(),
+                    "actions": actions,
+                }),
+            })
+        }
+        ShellCommand::ConstructReasoningRunInspectionAction {
+            graph_id,
+            action_id,
+            word_size,
+            step_bp,
+            max_mismatches,
+            tile_bp,
+            dotplot_id,
+            render_svg_path,
+        } => {
+            let graph = engine
+                .construct_reasoning_graph(graph_id)
+                .map_err(|e| e.to_string())?;
+            let action = graph
+                .inspection_actions
+                .iter()
+                .find(|action| action.action_id == *action_id)
+                .cloned()
+                .ok_or_else(|| {
+                    format!(
+                        "Inspection action '{}' was not found in construct-reasoning graph '{}'",
+                        action_id, graph_id
+                    )
+                })?;
+            if action.action_kind != ConstructReasoningInspectionActionKind::Dotplot {
+                return Err(format!(
+                    "Inspection action '{}' has unsupported kind '{}'",
+                    action.action_id,
+                    action.action_kind.as_str()
+                ));
+            }
+            if matches!(
+                action.mode,
+                DotplotMode::PairForward | DotplotMode::PairReverseComplement
+            ) {
+                return Err(format!(
+                    "Inspection action '{}' requests pairwise dotplot mode '{}' but does not encode a reference sequence",
+                    action.action_id,
+                    action.mode.as_str()
+                ));
+            }
+            if action.focus_end_0based_exclusive <= action.focus_start_0based {
+                return Err(format!(
+                    "Inspection action '{}' has invalid focus range {}..{}",
+                    action.action_id, action.focus_start_0based, action.focus_end_0based_exclusive
+                ));
+            }
+            let store_as = dotplot_id.clone().or_else(|| {
+                Some(format!("{}_dotplot", action.action_id.trim()).replace("__", "_"))
+            });
+            let before = engine
+                .state()
+                .metadata
+                .get(DOTPLOT_ANALYSIS_METADATA_KEY)
+                .cloned();
+            let op_result = engine
+                .apply(Operation::ComputeDotplot {
+                    seq_id: action.seq_id.clone(),
+                    reference_seq_id: None,
+                    span_start_0based: Some(action.focus_start_0based),
+                    span_end_0based: Some(action.focus_end_0based_exclusive),
+                    reference_span_start_0based: None,
+                    reference_span_end_0based: None,
+                    mode: action.mode,
+                    word_size: *word_size,
+                    step_bp: *step_bp,
+                    max_mismatches: *max_mismatches,
+                    tile_bp: *tile_bp,
+                    store_as,
+                })
+                .map_err(|e| e.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(DOTPLOT_ANALYSIS_METADATA_KEY)
+                .cloned();
+            let dotplot = engine
+                .list_dotplot_views(Some(action.seq_id.as_str()))
+                .into_iter()
+                .max_by_key(|row| row.generated_at_unix_ms)
+                .ok_or_else(|| {
+                    format!(
+                        "Inspection action '{}' did not produce a dotplot payload",
+                        action.action_id
+                    )
+                })?;
+            let render_result = if let Some(path) = render_svg_path
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                Some(
+                    engine
+                        .apply(Operation::RenderDotplotSvg {
+                            seq_id: action.seq_id.clone(),
+                            dotplot_id: dotplot.dotplot_id.clone(),
+                            path: path.to_string(),
+                            flex_track_id: None,
+                            display_density_threshold: None,
+                            display_intensity_gain: None,
+                            overlay_x_axis_mode: DotplotOverlayXAxisMode::PercentLength,
+                            overlay_anchor_exon: None,
+                        })
+                        .map_err(|e| e.to_string())?,
+                )
+            } else {
+                None
+            };
+            Ok(ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "schema": "gentle.construct_reasoning_inspection_action_dotplot_run.v1",
+                    "graph_id": graph.graph_id,
+                    "action": action,
+                    "result": op_result,
+                    "dotplot": dotplot,
+                    "render_result": render_result,
+                    "render_svg_path": render_svg_path,
+                }),
+            })
+        }
         ShellCommand::ConstructReasoningSetAnnotationStatus {
             graph_id,
             annotation_id,
@@ -39914,6 +40137,8 @@ fn execute_shell_command_with_options_dispatch(
             | ShellCommand::ConstructReasoningBuildProteinDnaHandoff { .. }
             | ShellCommand::ConstructReasoningListGraphs { .. }
             | ShellCommand::ConstructReasoningShowGraph { .. }
+            | ShellCommand::ConstructReasoningListInspectionActions { .. }
+            | ShellCommand::ConstructReasoningRunInspectionAction { .. }
             | ShellCommand::ConstructReasoningSetAnnotationStatus { .. }
             | ShellCommand::ConstructReasoningWriteAnnotation { .. }
             | ShellCommand::ConstructReasoningExportGraph { .. }
@@ -40195,6 +40420,8 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ConstructReasoningBuildProteinDnaHandoff { .. }
         | ShellCommand::ConstructReasoningListGraphs { .. }
         | ShellCommand::ConstructReasoningShowGraph { .. }
+        | ShellCommand::ConstructReasoningListInspectionActions { .. }
+        | ShellCommand::ConstructReasoningRunInspectionAction { .. }
         | ShellCommand::ConstructReasoningSetAnnotationStatus { .. }
         | ShellCommand::ConstructReasoningWriteAnnotation { .. }
         | ShellCommand::ConstructReasoningExportGraph { .. } => {
