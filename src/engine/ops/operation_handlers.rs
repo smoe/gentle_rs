@@ -15083,6 +15083,138 @@ impl GentleEngine {
     }
 
     #[inline(never)]
+    fn apply_rack_export_operation(
+        &mut self,
+        op: Operation,
+        result: &mut OpResult,
+    ) -> Result<(), EngineError> {
+        match op {
+            Operation::ExportRackLabelsSvg {
+                rack_id,
+                path,
+                arrangement_id,
+                preset,
+            } => {
+                let count = self.export_rack_labels_svg(
+                    &rack_id,
+                    arrangement_id.as_deref(),
+                    preset,
+                    &path,
+                )?;
+                result.messages.push(format!(
+                    "Wrote {} rack label(s) for '{}' to '{}' using preset '{}'",
+                    count,
+                    rack_id.trim(),
+                    path,
+                    preset.as_str()
+                ));
+            }
+            Operation::ExportRackFabricationSvg {
+                rack_id,
+                path,
+                template,
+            } => {
+                let spec = self.export_rack_fabrication_svg(&rack_id, template, &path)?;
+                result.messages.push(format!(
+                    "Wrote rack fabrication SVG for '{}' to '{}' using template '{}' ({:.1} x {:.1} mm)",
+                    rack_id.trim(),
+                    path,
+                    template.as_str(),
+                    spec.overall_width_mm,
+                    spec.overall_depth_mm
+                ));
+            }
+            Operation::ExportRackIsometricSvg {
+                rack_id,
+                path,
+                template,
+            } => {
+                let spec = self.export_rack_isometric_svg(&rack_id, template, &path)?;
+                result.messages.push(format!(
+                    "Wrote rack isometric SVG for '{}' to '{}' using template '{}' ({:.1} x {:.1} mm)",
+                    rack_id.trim(),
+                    path,
+                    template.as_str(),
+                    spec.overall_width_mm,
+                    spec.overall_depth_mm
+                ));
+            }
+            Operation::ExportRackHeroSvg {
+                rack_id,
+                path,
+                template,
+            } => {
+                let spec = self.export_rack_hero_svg(&rack_id, template, &path)?;
+                result.messages.push(format!(
+                    "Wrote rack hero SVG for '{}' to '{}' using template '{}' ({:.1} x {:.1} mm)",
+                    rack_id.trim(),
+                    path,
+                    template.as_str(),
+                    spec.overall_width_mm,
+                    spec.overall_depth_mm
+                ));
+            }
+            Operation::ExportRackOpenScad {
+                rack_id,
+                path,
+                template,
+            } => {
+                let spec = self.export_rack_openscad(&rack_id, template, &path)?;
+                result.messages.push(format!(
+                    "Wrote rack OpenSCAD for '{}' to '{}' using template '{}' ({:.1} x {:.1} mm)",
+                    rack_id.trim(),
+                    path,
+                    template.as_str(),
+                    spec.overall_width_mm,
+                    spec.overall_depth_mm
+                ));
+            }
+            Operation::ExportRackCarrierLabelsSvg {
+                rack_id,
+                path,
+                arrangement_id,
+                template,
+                preset,
+            } => {
+                let (label_count, spec) = self.export_rack_carrier_labels_svg(
+                    &rack_id,
+                    arrangement_id.as_deref(),
+                    template,
+                    preset,
+                    &path,
+                )?;
+                result.messages.push(format!(
+                    "Wrote {} rack carrier label artifact(s) for '{}' to '{}' using template '{}' and preset '{}' ({:.1} x {:.1} mm)",
+                    label_count,
+                    rack_id.trim(),
+                    path,
+                    template.as_str(),
+                    preset.as_str(),
+                    spec.overall_width_mm,
+                    spec.overall_depth_mm
+                ));
+            }
+            Operation::ExportRackSimulationJson {
+                rack_id,
+                path,
+                template,
+            } => {
+                let spec = self.export_rack_simulation_json(&rack_id, template, &path)?;
+                result.messages.push(format!(
+                    "Wrote rack simulation JSON for '{}' to '{}' using template '{}' ({:.1} x {:.1} mm)",
+                    rack_id.trim(),
+                    path,
+                    template.as_str(),
+                    spec.overall_width_mm,
+                    spec.overall_depth_mm
+                ));
+            }
+            _ => unreachable!("non-rack-export operation passed to helper"),
+        }
+        Ok(())
+    }
+
+    #[inline(never)]
     fn apply_arrangement_rack_and_ladder_operation(
         &mut self,
         op: Operation,
@@ -15236,125 +15368,14 @@ impl GentleEngine {
             | op @ Operation::SetRackBlockedCoordinates { .. } => {
                 self.apply_rack_mutation_operation(op, result)?;
             }
-            Operation::ExportRackLabelsSvg {
-                rack_id,
-                path,
-                arrangement_id,
-                preset,
-            } => {
-                let count = self.export_rack_labels_svg(
-                    &rack_id,
-                    arrangement_id.as_deref(),
-                    preset,
-                    &path,
-                )?;
-                result.messages.push(format!(
-                    "Wrote {} rack label(s) for '{}' to '{}' using preset '{}'",
-                    count,
-                    rack_id.trim(),
-                    path,
-                    preset.as_str()
-                ));
-            }
-            Operation::ExportRackFabricationSvg {
-                rack_id,
-                path,
-                template,
-            } => {
-                let spec = self.export_rack_fabrication_svg(&rack_id, template, &path)?;
-                result.messages.push(format!(
-                    "Wrote rack fabrication SVG for '{}' to '{}' using template '{}' ({:.1} x {:.1} mm)",
-                    rack_id.trim(),
-                    path,
-                    template.as_str(),
-                    spec.overall_width_mm,
-                    spec.overall_depth_mm
-                ));
-            }
-            Operation::ExportRackIsometricSvg {
-                rack_id,
-                path,
-                template,
-            } => {
-                let spec = self.export_rack_isometric_svg(&rack_id, template, &path)?;
-                result.messages.push(format!(
-                    "Wrote rack isometric SVG for '{}' to '{}' using template '{}' ({:.1} x {:.1} mm)",
-                    rack_id.trim(),
-                    path,
-                    template.as_str(),
-                    spec.overall_width_mm,
-                    spec.overall_depth_mm
-                ));
-            }
-            Operation::ExportRackHeroSvg {
-                rack_id,
-                path,
-                template,
-            } => {
-                let spec = self.export_rack_hero_svg(&rack_id, template, &path)?;
-                result.messages.push(format!(
-                    "Wrote rack hero SVG for '{}' to '{}' using template '{}' ({:.1} x {:.1} mm)",
-                    rack_id.trim(),
-                    path,
-                    template.as_str(),
-                    spec.overall_width_mm,
-                    spec.overall_depth_mm
-                ));
-            }
-            Operation::ExportRackOpenScad {
-                rack_id,
-                path,
-                template,
-            } => {
-                let spec = self.export_rack_openscad(&rack_id, template, &path)?;
-                result.messages.push(format!(
-                    "Wrote rack OpenSCAD for '{}' to '{}' using template '{}' ({:.1} x {:.1} mm)",
-                    rack_id.trim(),
-                    path,
-                    template.as_str(),
-                    spec.overall_width_mm,
-                    spec.overall_depth_mm
-                ));
-            }
-            Operation::ExportRackCarrierLabelsSvg {
-                rack_id,
-                path,
-                arrangement_id,
-                template,
-                preset,
-            } => {
-                let (label_count, spec) = self.export_rack_carrier_labels_svg(
-                    &rack_id,
-                    arrangement_id.as_deref(),
-                    template,
-                    preset,
-                    &path,
-                )?;
-                result.messages.push(format!(
-                    "Wrote {} rack carrier label artifact(s) for '{}' to '{}' using template '{}' and preset '{}' ({:.1} x {:.1} mm)",
-                    label_count,
-                    rack_id.trim(),
-                    path,
-                    template.as_str(),
-                    preset.as_str(),
-                    spec.overall_width_mm,
-                    spec.overall_depth_mm
-                ));
-            }
-            Operation::ExportRackSimulationJson {
-                rack_id,
-                path,
-                template,
-            } => {
-                let spec = self.export_rack_simulation_json(&rack_id, template, &path)?;
-                result.messages.push(format!(
-                    "Wrote rack simulation JSON for '{}' to '{}' using template '{}' ({:.1} x {:.1} mm)",
-                    rack_id.trim(),
-                    path,
-                    template.as_str(),
-                    spec.overall_width_mm,
-                    spec.overall_depth_mm
-                ));
+            op @ Operation::ExportRackLabelsSvg { .. }
+            | op @ Operation::ExportRackFabricationSvg { .. }
+            | op @ Operation::ExportRackIsometricSvg { .. }
+            | op @ Operation::ExportRackHeroSvg { .. }
+            | op @ Operation::ExportRackOpenScad { .. }
+            | op @ Operation::ExportRackCarrierLabelsSvg { .. }
+            | op @ Operation::ExportRackSimulationJson { .. } => {
+                self.apply_rack_export_operation(op, result)?;
             }
             Operation::RenderPoolGelSvg {
                 inputs,
@@ -16490,6 +16511,17 @@ impl GentleEngine {
             self.apply_rack_mutation_operation(op, &mut result)?;
         } else if matches!(
             &op,
+            Operation::ExportRackLabelsSvg { .. }
+                | Operation::ExportRackFabricationSvg { .. }
+                | Operation::ExportRackIsometricSvg { .. }
+                | Operation::ExportRackHeroSvg { .. }
+                | Operation::ExportRackOpenScad { .. }
+                | Operation::ExportRackCarrierLabelsSvg { .. }
+                | Operation::ExportRackSimulationJson { .. }
+        ) {
+            self.apply_rack_export_operation(op, &mut result)?;
+        } else if matches!(
+            &op,
             Operation::CreateArrangementSerial { .. }
                 | Operation::SetArrangementLadders { .. }
                 | Operation::SetContainerDeclaredContentsExclusive { .. }
@@ -16498,13 +16530,6 @@ impl GentleEngine {
                 | Operation::MoveRackPlacement { .. }
                 | Operation::MoveRackSamples { .. }
                 | Operation::MoveRackArrangementBlocks { .. }
-                | Operation::ExportRackLabelsSvg { .. }
-                | Operation::ExportRackFabricationSvg { .. }
-                | Operation::ExportRackIsometricSvg { .. }
-                | Operation::ExportRackHeroSvg { .. }
-                | Operation::ExportRackOpenScad { .. }
-                | Operation::ExportRackCarrierLabelsSvg { .. }
-                | Operation::ExportRackSimulationJson { .. }
                 | Operation::RenderPoolGelSvg { .. }
                 | Operation::ExportDnaLadders { .. }
                 | Operation::ExportRnaLadders { .. }
@@ -17660,6 +17685,15 @@ impl GentleEngine {
                         }
                     }
                 }
+                op @ Operation::ExportRackLabelsSvg { .. }
+                | op @ Operation::ExportRackFabricationSvg { .. }
+                | op @ Operation::ExportRackIsometricSvg { .. }
+                | op @ Operation::ExportRackHeroSvg { .. }
+                | op @ Operation::ExportRackOpenScad { .. }
+                | op @ Operation::ExportRackCarrierLabelsSvg { .. }
+                | op @ Operation::ExportRackSimulationJson { .. } => {
+                    self.apply_rack_export_operation(op, &mut result)?;
+                }
                 op @ Operation::CreateArrangementSerial { .. }
                 | op @ Operation::SetArrangementLadders { .. }
                 | op @ Operation::SetContainerDeclaredContentsExclusive { .. }
@@ -17668,13 +17702,6 @@ impl GentleEngine {
                 | op @ Operation::MoveRackPlacement { .. }
                 | op @ Operation::MoveRackSamples { .. }
                 | op @ Operation::MoveRackArrangementBlocks { .. }
-                | op @ Operation::ExportRackLabelsSvg { .. }
-                | op @ Operation::ExportRackFabricationSvg { .. }
-                | op @ Operation::ExportRackIsometricSvg { .. }
-                | op @ Operation::ExportRackHeroSvg { .. }
-                | op @ Operation::ExportRackOpenScad { .. }
-                | op @ Operation::ExportRackCarrierLabelsSvg { .. }
-                | op @ Operation::ExportRackSimulationJson { .. }
                 | op @ Operation::RenderPoolGelSvg { .. }
                 | op @ Operation::ExportDnaLadders { .. }
                 | op @ Operation::ExportRnaLadders { .. } => {

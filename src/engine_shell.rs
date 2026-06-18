@@ -27817,7 +27817,7 @@ fn execute_shell_command_default(
             | ShellCommand::RacksCarrierLabelsSvg { .. }
             | ShellCommand::RacksSimulationJson { .. }
     ) {
-        return execute_rack_export_command(engine, command);
+        return execute_rack_export_command_with_expanded_stack(engine, command);
     }
     if matches!(
         command,
@@ -29686,6 +29686,44 @@ fn execute_rack_mutation_command_with_expanded_stack(
             .or_else(|| panic_payload.downcast_ref::<String>().cloned())
             .unwrap_or_else(|| "unknown panic payload".to_string());
         format!("Shell rack worker thread panicked: {message}")
+    })?
+}
+
+#[inline(never)]
+fn execute_rack_export_command_with_expanded_stack(
+    engine: &mut GentleEngine,
+    command: &ShellCommand,
+) -> Result<ShellRunResult, String> {
+    if SHELL_EXPANDED_STACK_ACTIVE.with(|active| active.get()) {
+        return execute_rack_export_command(engine, command);
+    }
+
+    let engine_ptr = engine as *mut GentleEngine as usize;
+    let command = command.clone();
+    let worker = thread::Builder::new()
+        .name("gentle-shell-rack-export-command".to_string())
+        .stack_size(SHELL_EXPANDED_STACK_SIZE)
+        .spawn(move || {
+            SHELL_EXPANDED_STACK_ACTIVE.with(|active| {
+                let was_active = active.replace(true);
+                // SAFETY: the caller synchronously joins this worker before
+                // returning and does not access `engine` while the worker runs.
+                // Rack exports enter the same broad shell/engine dispatchers as
+                // rack mutations, so keep their stack budget aligned.
+                let engine = unsafe { &mut *(engine_ptr as *mut GentleEngine) };
+                let result = execute_rack_export_command(engine, &command);
+                active.set(was_active);
+                result
+            })
+        })
+        .map_err(|error| format!("Could not start shell rack export worker thread: {error}"))?;
+    worker.join().map_err(|panic_payload| {
+        let message = panic_payload
+            .downcast_ref::<&str>()
+            .map(|value| (*value).to_string())
+            .or_else(|| panic_payload.downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "unknown panic payload".to_string());
+        format!("Shell rack export worker thread panicked: {message}")
     })?
 }
 
