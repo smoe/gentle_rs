@@ -22,8 +22,10 @@ const AGENT_SYSTEMS_SCHEMA_PREFIX: &str = "gentle.agent_systems.v";
 const AGENT_REQUEST_SCHEMA_PREFIX: &str = "gentle.agent_request.v";
 const AGENT_RESPONSE_SCHEMA_PREFIX: &str = "gentle.agent_response.v";
 pub(crate) const AGENT_BRIDGE_SYSTEM_PROMPT: &str = r#"You are a GENtle agent bridge.
-Return STRICT JSON only with this schema:
+Return STRICT JSON only with this exact object shape:
 {"schema":"gentle.agent_response.v1","assistant_message":"string","questions":["string"],"suggested_commands":[{"title":"string","rationale":"string","command":"string","execution":"chat|ask|auto"}]}
+The top-level field named "schema" is a literal protocol id string, not a JSON Schema object. It must be exactly "gentle.agent_response.v1".
+Do not output JSON Schema definitions, "type"/"properties" schema documents, markdown fences, or explanatory prose outside the JSON object.
 Use only keys from the schema. Extensions may use x_ prefix. Do not include markdown fences.
 Suggested command contract:
 - Current scope declaration: GENtle does not currently implement OpenClaw-like filesystem, operating-system, or gateway commands. That may change in a future gateway layer; for now, concentrate on actions GENtle can also perform through its GUI or shared shell on the same project state.
@@ -1630,6 +1632,30 @@ fn parse_agent_response(stdout: &str) -> Result<AgentResponse, String> {
     parse_agent_response_value(value)
 }
 
+fn normalize_native_agent_response_text(stdout: &str) -> String {
+    let trimmed = stdout.trim();
+    let Ok(Value::Object(mut obj)) = serde_json::from_str::<Value>(trimmed) else {
+        return stdout.to_string();
+    };
+    let looks_like_agent_response = obj.contains_key("assistant_message")
+        || obj.contains_key("questions")
+        || obj.contains_key("suggested_commands");
+    let schema_is_string = obj.get("schema").and_then(Value::as_str).is_some();
+    if looks_like_agent_response && !schema_is_string {
+        obj.insert(
+            "schema".to_string(),
+            Value::String(AGENT_RESPONSE_SCHEMA.to_string()),
+        );
+        serde_json::to_string(&Value::Object(obj)).unwrap_or_else(|_| stdout.to_string())
+    } else {
+        stdout.to_string()
+    }
+}
+
+fn parse_native_agent_response(stdout: &str) -> Result<AgentResponse, String> {
+    parse_agent_response(&normalize_native_agent_response_text(stdout))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ExternalAttemptErrorKind {
     Unavailable,
@@ -2642,7 +2668,7 @@ pub fn invoke_agent_support_with_env_overrides(
                 ));
             }
             let stdout = stdout.expect("checked is_some above");
-            let response = parse_agent_response(&stdout)?;
+            let response = parse_native_agent_response(&stdout)?;
             let mut runtime_summary = runtime_summary(&runtime);
             runtime_summary.endpoint_candidates = vec![format!(
                 "{}/responses",
@@ -2724,7 +2750,7 @@ pub fn invoke_agent_support_with_env_overrides(
                 ));
             }
             let stdout = stdout.expect("checked is_some above");
-            let response = parse_agent_response(&stdout)?;
+            let response = parse_native_agent_response(&stdout)?;
             let mut runtime_summary = runtime_summary(&runtime);
             runtime_summary.endpoint_candidates = anthropic_endpoint_candidates(&resolve_base_url(
                 &system,
@@ -2806,7 +2832,7 @@ pub fn invoke_agent_support_with_env_overrides(
                 ));
             }
             let stdout = stdout.expect("checked is_some above");
-            let response = parse_agent_response(&stdout)?;
+            let response = parse_native_agent_response(&stdout)?;
             let mut runtime_summary = runtime_summary(&runtime);
             runtime_summary.endpoint_candidates =
                 mistral_endpoint_candidates(&resolve_base_url(&system, MISTRAL_DEFAULT_BASE_URL));
@@ -2886,7 +2912,7 @@ pub fn invoke_agent_support_with_env_overrides(
                 ));
             }
             let stdout = stdout.expect("checked is_some above");
-            let response = parse_agent_response(&stdout)?;
+            let response = parse_native_agent_response(&stdout)?;
             let mut runtime_summary = runtime_summary(&runtime);
             runtime_summary.endpoint_candidates =
                 openai_compat_endpoint_candidates_for_system(&system).unwrap_or_default();
@@ -2978,6 +3004,48 @@ mod tests {
     }
 
     #[test]
+    fn parse_agent_response_keeps_external_adapter_schema_strict() {
+        let err = parse_agent_response(
+            r#"{
+  "assistant_message": "ready",
+  "questions": [],
+  "suggested_commands": []
+}"#,
+        )
+        .expect_err("external adapter payload without schema should fail");
+        assert!(err.contains("agent response 'schema' must be a string"));
+    }
+
+    #[test]
+    fn parse_native_agent_response_repairs_missing_schema_for_model_payload() {
+        let response = parse_native_agent_response(
+            r#"{
+  "assistant_message": "ready",
+  "questions": [],
+  "suggested_commands": []
+}"#,
+        )
+        .expect("native model payload should be repaired");
+        assert_eq!(response.schema, AGENT_RESPONSE_SCHEMA);
+        assert_eq!(response.assistant_message, "ready");
+    }
+
+    #[test]
+    fn parse_native_agent_response_repairs_schema_object_for_model_payload() {
+        let response = parse_native_agent_response(
+            r#"{
+  "schema": {"type": "object"},
+  "assistant_message": "ready",
+  "questions": [],
+  "suggested_commands": []
+}"#,
+        )
+        .expect("native model schema-object payload should be repaired");
+        assert_eq!(response.schema, AGENT_RESPONSE_SCHEMA);
+        assert_eq!(response.assistant_message, "ready");
+    }
+
+    #[test]
     fn parse_agent_response_rejects_future_schema_major() {
         let err = parse_agent_response(
             r#"{
@@ -2989,6 +3057,13 @@ mod tests {
         )
         .expect_err("future schema major should fail");
         assert!(err.starts_with("AGENT_SCHEMA_UNSUPPORTED:"));
+    }
+
+    #[test]
+    fn bridge_system_prompt_disambiguates_schema_field_for_local_models() {
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("literal protocol id string"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("not a JSON Schema object"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("Do not output JSON Schema definitions"));
     }
 
     #[test]

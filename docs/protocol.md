@@ -4137,6 +4137,12 @@ Agent response payload schema (`gentle.agent_response.v1`):
 }
 ```
 
+Native HTTP transports parse stochastic LLM text after provider extraction. If
+that text is already a JSON object with `assistant_message`, `questions`, or
+`suggested_commands`, GENtle may repair a missing/non-string `schema` field to
+`gentle.agent_response.v1` before validation. `external_json_stdio` adapters
+remain strict and must emit the `schema` string themselves.
+
 Agent command-scope declaration:
 
 - The in-app Agent Assistant currently accepts only GENtle shared-shell

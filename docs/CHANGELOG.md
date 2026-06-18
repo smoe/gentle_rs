@@ -17,6 +17,9 @@ Maintenance rule:
 - Integrated materialized RepeatMasker/UCSC `rmsk`-style repeat annotations
   into construct reasoning so overlapping curated Alu/SINE repeat-family rows
   back soft internal repeat/mobile-element calls without duplicating fact rows.
+- Made native HTTP agent transports tolerant of local models that omit or
+  mis-shape the `schema` field when the returned JSON otherwise matches
+  `gentle.agent_response.v1`; external stdio adapters remain strict.
 - Added an explicit Msty MLX OpenAI-compatible agent template for
   `http://localhost:11973/v1`, with GUI/CLI docs that distinguish it from the
   `11964` Msty gateway when that gateway reports no model ids.
