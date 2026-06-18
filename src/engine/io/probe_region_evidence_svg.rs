@@ -5,6 +5,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::path::Path;
 
+// Display-only heuristic: current reports can mix genomic evidence intervals
+// with local exon/junction geometry. A large gap means the renderer aligns
+// local geometry to the evidence axis and labels the SVG with that caveat.
+const REPORT_LOCAL_GEOMETRY_ALIGNMENT_THRESHOLD_BP: usize = 1000;
+
 struct EvidenceSvgProjector {
     min_coord: usize,
     max_coord: usize,
@@ -525,7 +530,8 @@ impl GentleEngine {
             .max()
             .unwrap_or_else(|| local_bounds.map(|bounds| bounds.1).unwrap_or(evidence_min));
         let local_offset = local_bounds.and_then(|(local_min, local_max)| {
-            (evidence_min > local_max.saturating_add(1000))
+            (evidence_min
+                > local_max.saturating_add(REPORT_LOCAL_GEOMETRY_ALIGNMENT_THRESHOLD_BP))
                 .then_some(evidence_min as i128 - local_min as i128)
         });
         let mut coords = evidence_coords;

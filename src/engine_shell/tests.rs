@@ -7959,6 +7959,16 @@ fn execute_arrays_render_probe_region_evidence_svg_writes_constraint_plot() {
     assert_eq!(run.output["export"]["parent_feature_count"].as_u64(), Some(1));
     assert_eq!(run.output["export"]["junction_span_count"].as_u64(), Some(1));
     assert!(
+        run.output["export"]["warnings"].as_array().is_some_and(|warnings| {
+            warnings.iter().any(|warning| {
+                warning.as_str()
+                    == Some(
+                        "report_local_geometry_aligned_to_evidence_axis_without_full_gene_model",
+                    )
+            })
+        })
+    );
+    assert!(
         run.output["export"]["ambiguity_tags"]
             .as_array()
             .is_some_and(|tags| {

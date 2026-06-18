@@ -149,6 +149,13 @@ Findings to report:
   interpretation behavior stops moving, split `src/engine/io/probe_regions.rs`
   into import, inspect/render, projection, and interpretation modules without
   changing behavior.
+- Deferred probe-region coordinate-frame normalization: the evidence SVG
+  renderer currently has a labeled display-only fallback for reports that mix
+  genomic probe intervals with local exon/junction geometry. Normalize
+  `gentle.probe_region_evidence_interpretation.v1` so exon and junction ranges
+  are expressed in the same coordinate frame as probe intervals, or add an
+  explicit anchor/offset field, then retire the renderer's local-alignment
+  heuristic.
 
 Pass criteria:
 

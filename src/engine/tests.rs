@@ -1799,12 +1799,86 @@ fn render_probe_region_evidence_svg_from_tp73_validation_report() {
     assert!(svg.contains("multi_hit_not_assessed"));
     assert!(svg.contains("isoform_support_not_inferred"));
     assert!(svg.contains("Review-only"));
+    assert!(svg.contains("report_local_geometry_aligned_to_evidence_axis_without_full_gene_model"));
     assert!(svg.contains("data-transcript-id=\"TP73-201\""));
     assert!(svg.contains("data-transcript-id=\"TP73-202\""));
     let compact = svg.split_whitespace().collect::<String>();
     assert!(compact.contains("<gid=\"probe-region-evidence-transcripts\""));
     assert!(compact.contains("<gid=\"probe-region-evidence-probes\""));
     assert!(compact.contains("<gid=\"probe-region-evidence-legend\""));
+}
+
+#[test]
+fn render_probe_region_evidence_svg_is_stable_for_degenerate_single_coordinate_report() {
+    let report = ProbeRegionEvidenceInterpretationReport {
+        schema: PROBE_REGION_EVIDENCE_INTERPRETATION_SCHEMA.to_string(),
+        seq_id: "array_slice".to_string(),
+        gene_label: Some("TP73".to_string()),
+        level: "pm_probe".to_string(),
+        array_feature_count: 1,
+        transcript_count: 1,
+        evidence_rows: vec![ProbeRegionEvidenceMappingRow {
+            evidence_id: "probe_42:contrast".to_string(),
+            level: "pm_probe".to_string(),
+            feature_id: "probe_42".to_string(),
+            parent_feature_id: Some("PSR42".to_string()),
+            intensity_source: Some("probe_level_input".to_string()),
+            chromosome: Some("chr1".to_string()),
+            start_1based: Some(42),
+            end_1based: Some(42),
+            strand: Some("+".to_string()),
+            logfc: Some(0.0),
+            overlapping_transcript_ids: vec!["TP73-201".to_string()],
+            overlapping_exon_count: 1,
+            transcript_mappings: vec![ProbeRegionEvidenceTranscriptMapping {
+                transcript_id: "TP73-201".to_string(),
+                mapping_kind: "exon_overlap".to_string(),
+                geometry_score: 0.5,
+                geometry_score_class: "weak_geometry_constraint".to_string(),
+                score_basis: vec!["single_coordinate_degenerate_axis".to_string()],
+                exon_ordinals: vec![1],
+                exon_ranges_1based: vec!["42..42".to_string()],
+                junction_spans: Vec::new(),
+                overlap_bp: 1,
+            }],
+            mapping_status: "compatible".to_string(),
+            ambiguity_tags: vec![
+                "probe_sequence_alignment_not_assessed".to_string(),
+                "multi_hit_not_assessed".to_string(),
+                "isoform_support_not_inferred".to_string(),
+            ],
+            relationship: "geometry_constraint_review_only".to_string(),
+        }],
+        transcript_rows: vec![ProbeRegionEvidenceTranscriptRow {
+            transcript_id: "TP73-201".to_string(),
+            gene: Some("TP73".to_string()),
+            label: Some("TP73-201".to_string()),
+            strand: Some("+".to_string()),
+            exon_count: 1,
+            compatible_evidence_count: 1,
+            constraining_evidence_count: 1,
+            shared_evidence_count: 0,
+            unique_evidence_count: 1,
+            unmapped_evidence_count: 0,
+            compatible_geometry_score: 0.5,
+            shared_geometry_score: 0.0,
+            unique_geometry_score: 0.5,
+            constraining_geometry_score: 0.5,
+            review_status: "unique_geometry_review_only".to_string(),
+            relationship_summary: "geometry_constraint_review_only".to_string(),
+        }],
+        warnings: Vec::new(),
+        ..Default::default()
+    };
+
+    let first = GentleEngine::render_probe_region_evidence_svg_text(&report);
+    let second = GentleEngine::render_probe_region_evidence_svg_text(&report);
+    assert_eq!(first, second);
+    assert!(!first.contains("NaN"));
+    assert!(!first.contains("Infinity"));
+    assert!(first.contains("class=\"pm-probe\""));
+    assert!(first.contains("data-min=\"41\""));
+    assert!(first.contains("data-max=\"43\""));
 }
 
 #[test]
