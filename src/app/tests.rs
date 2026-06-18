@@ -481,6 +481,10 @@ fn preferred_agent_quickstart_helpers_pick_expected_templates() {
     let systems = vec![
         test_agent_system("builtin_echo", AgentSystemTransport::BuiltinEcho),
         test_agent_system(
+            "msty_mlx_local_compat_template",
+            AgentSystemTransport::NativeOpenaiCompat,
+        ),
+        test_agent_system(
             "msty_local_compat_template",
             AgentSystemTransport::NativeOpenaiCompat,
         ),
@@ -505,7 +509,7 @@ fn preferred_agent_quickstart_helpers_pick_expected_templates() {
     );
     assert_eq!(
         preferred_local_agent_system_id(&systems).as_deref(),
-        Some("msty_local_compat_template")
+        Some("msty_mlx_local_compat_template")
     );
 }
 

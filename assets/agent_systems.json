@@ -81,6 +81,14 @@
       "base_url": "http://127.0.0.1:1337/v1"
     },
     {
+      "id": "msty_mlx_local_compat_template",
+      "label": "Msty MLX Local (template)",
+      "description": "Template for Msty MLX/OpenAI-compatible local endpoint, including MLX Knife model servers. Keep model as 'unspecified' and pick from discovered models or provide an explicit override.",
+      "transport": "native_openai_compat",
+      "model": "unspecified",
+      "base_url": "http://localhost:11973/v1"
+    },
+    {
       "id": "msty_local_compat_template",
       "label": "Msty Local (template)",
       "description": "Template for Msty OpenAI-compatible local endpoint. Keep model as 'unspecified' and pick from discovered models or provide an explicit override.",

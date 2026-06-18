@@ -1846,6 +1846,8 @@ cargo run --bin gentle_cli -- agents list --catalog assets/agent_systems.json
 cargo run --bin gentle_cli -- agents ask builtin_echo --prompt "summarize current project state"
 cargo run --bin gentle_cli -- agents ask builtin_echo --prompt "ask: Which sequence should I use?" --execute-index 1
 cargo run --bin gentle_cli -- agents ask local_llama_compat --prompt "summarize project context" --base-url http://localhost:11964 --model deepseek-r1:8b
+cargo run --bin gentle_cli -- agents discover-models msty_mlx_local_compat_template
+cargo run --bin gentle_cli -- agents ask msty_mlx_local_compat_template --prompt "summarize project context" --model mlx-community/granite-3.3-2b-instruct-4bit
 cargo run --bin gentle_cli -- op '{"PrepareGenome":{"genome_id":"ToyGenome","catalog_path":"catalog.json"}}'
 cargo run --bin gentle_cli -- op '{"ExtractGenomeRegion":{"genome_id":"ToyGenome","chromosome":"chr1","start_1based":1001,"end_1based":1600,"output_id":"toy_chr1_1001_1600","annotation_scope":"core","catalog_path":"catalog.json"}}'
 cargo run --bin gentle_cli -- op '{"ExtractGenomeGene":{"genome_id":"ToyGenome","gene_query":"MYGENE","occurrence":1,"output_id":"toy_mygene","catalog_path":"catalog.json"}}'
@@ -4063,6 +4065,10 @@ Conceptual/tutorial companion:
       Jan/Msty/Ollama-style `/chat/completions` endpoints; key optional)
       - endpoint host/port come from catalog `base_url` (or `--base-url` if set);
         GENtle does not silently switch to a different host/port
+      - `msty_mlx_local_compat_template` targets Msty/MLX Knife servers at
+        `http://localhost:11973/v1`; use it when the Msty gateway on
+        `http://localhost:11964/v1/models` is reachable but returns no model
+        ids
 - `agents plan SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--max-candidates N] [--no-state-summary] [--no-mutating-candidates]`
   - Accepts prose like `agents ask`, but returns typed `gentle.agent_plan_result.v1`
     candidates instead of chat-oriented suggestion rows.
