@@ -1087,10 +1087,16 @@ UniProt mapping capability status:
     - graph-level `inspection_actions[]` entries for deterministic
       repeat/similarity dotplot handoffs, including `action_id`,
       `rationale`, `driving_evidence_ids[]`, source fact/annotation/summary
-      ids, mode, and focus range
+      ids, mode, focus range, and optional RepeatMasker/UCSC `rmsk`-backed
+      repeat-family provenance
     - current fact summaries now include adapter-capture review plus the new
       similarity-derived predictor rows for PCR/amplification,
       nanopore/direct-sequencing, repeat-driven mapping, and cloning stability
+    - repeat/mobile-element facts summarize overlapping materialized
+      RepeatMasker/UCSC `rmsk`-style annotations as
+      `curated_repeat_support[]` rows with repeat name/class/family and
+      supporting evidence ids, while non-overlapping rmsk rows do not upgrade
+      unrelated internal predictions
   - `construct-reasoning list-inspection-actions` returns the same graph-level
     `inspection_actions[]` objects, filtered by source fact/annotation/summary
     ids when requested, so CLI/agent layers do not rediscover GUI dotplot

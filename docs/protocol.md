@@ -5703,9 +5703,10 @@ Construct reasoning graph foundation (implemented first slice):
     - `driving_evidence_ids[]` names the specific evidence rows behind the
       action, while source fact/annotation/summary id lists let adapters attach
       the same action to the right inspector row
-    - optional repeat-family provenance is reserved for future curated
-      repeat-family catalog integration; current Alu-like heuristic rows remain
-      soft hypotheses without filling that provenance slot
+    - optional repeat-family provenance is populated when a recommended action
+      is backed by overlapping materialized RepeatMasker/UCSC `rmsk`-style
+      repeat-family evidence; standalone Alu-like heuristic rows remain soft
+      hypotheses without filling that provenance slot
 - Current GUI-backed scope:
   - sequence-window `Reasoning` display toggle
   - read-only linear DNA-map overlay that auto-refreshes from the engine-owned
@@ -5781,9 +5782,10 @@ Construct reasoning graph foundation (implemented first slice):
       - `nanopore_operational_risk_context`
       - `mapping_operational_risk_context`
       - `cloning_stability_context`
-    - current intent is inspectable structural context and operational review,
-      not final repeat-family taxonomy; curated repeat catalogs can refine the
-      same graph later without changing the adapter contract shape
+    - materialized RepeatMasker/UCSC `rmsk`-style repeat annotations that
+      overlap internal repeat/mobile-element signals are kept as separate
+      reliable evidence rows and summarized into `curated_repeat_support[]`,
+      including repeat name/class/family and supporting evidence ids
     - repeat/similarity dotplot handoff buttons consume graph-level
       `inspection_actions[]`; adapters no longer need to infer those actions
       from labels or GUI-only context matching
@@ -5794,6 +5796,10 @@ Construct reasoning graph foundation (implemented first slice):
     `hard_fact`
   - imported/derived sequence annotations => `reliable_annotation`
   - TFBS-style annotations => `soft_hypothesis`
+  - materialized RepeatMasker/UCSC `rmsk`-style repeat/mobile-element
+    annotations => `reliable_annotation`
+  - generic mobile-element annotations without curated repeat-family qualifiers
+    => `soft_hypothesis`
 - Current evidence-scope behavior:
   - graph builds now emit both:
     - `sequence_span` evidence for mapped restriction/annotation features

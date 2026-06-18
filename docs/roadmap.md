@@ -204,9 +204,9 @@ focus range, dotplot mode, context tags, and driving evidence ids directly from
 the portable action object while keeping the button itself simple.
 
 Later phases stay intentionally separate: richer action-specific evidence panes,
-curated RepeatMasker/UCSC repeat-family promotion for
-Alu/SINE/LINE/LTR/satellite calls, task-aware repeat severity, and broader
-mapping of single-sequence operations across sequence sets.
+deeper curated repeat-family interpretation for Alu/SINE/LINE/LTR/satellite
+calls beyond first-pass materialized-rmsk support, task-aware repeat severity,
+and broader mapping of single-sequence operations across sequence sets.
 
 ## Phase D: Visualization And Workflow UX
 

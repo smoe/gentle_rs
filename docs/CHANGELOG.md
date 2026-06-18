@@ -14,6 +14,9 @@ Maintenance rule:
 
 ## 2026-06-18
 
+- Integrated materialized RepeatMasker/UCSC `rmsk`-style repeat annotations
+  into construct reasoning so overlapping curated Alu/SINE repeat-family rows
+  back soft internal repeat/mobile-element calls without duplicating fact rows.
 - Added construct-reasoning inspection-action rationale to the portable action
   payload and surfaced action mode, focus, evidence ids, and rationale in the
   existing GUI inspector rows.

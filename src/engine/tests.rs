@@ -39793,16 +39793,44 @@ fn build_construct_reasoning_graph_derives_low_complexity_repeat_and_operational
     );
 }
 
-#[test]
-fn build_construct_reasoning_graph_detects_alu_like_mobile_element_candidates() {
+fn alu_like_demo_sequence_text() -> String {
     let monomer = "GGCCGGGCGCGGTGGCTCACGCCTGTAATCCCAGCACTTTGGGAGGCCGAGGCGGGCGGATCACCTGAGGTCAGGAGTTCGAGACCAGCCTGGCCAACATG";
-    let sequence = format!(
+    format!(
         "{}{}{}{}",
         "ACGT".repeat(12),
         monomer,
         format!("AATAAAATACA{monomer}"),
         "AAAAAAAAAAAAAAAA"
-    );
+    )
+}
+
+fn synthetic_ucsc_rmsk_alu_feature(
+    start_0based: usize,
+    end_0based_exclusive: usize,
+    annotation_id: &str,
+) -> gb_io::seq::Feature {
+    gb_io::seq::Feature {
+        kind: "repeat_region".into(),
+        location: gb_io::seq::Location::simple_range(
+            start_0based as i64,
+            end_0based_exclusive as i64,
+        ),
+        qualifiers: vec![
+            ("gentle_generated".into(), Some("ucsc_rmsk".to_string())),
+            ("rmsk_name".into(), Some("AluY".to_string())),
+            ("rmsk_class".into(), Some("SINE".to_string())),
+            ("rmsk_family".into(), Some("Alu".to_string())),
+            ("repName".into(), Some("AluY".to_string())),
+            ("repClass".into(), Some("SINE".to_string())),
+            ("repFamily".into(), Some("Alu".to_string())),
+            ("rmsk_annotation_id".into(), Some(annotation_id.to_string())),
+        ],
+    }
+}
+
+#[test]
+fn build_construct_reasoning_graph_detects_alu_like_mobile_element_candidates() {
+    let sequence = alu_like_demo_sequence_text();
     let dna = DNAsequence::from_sequence(&sequence).expect("sequence");
     let mut state = ProjectState::default();
     state.sequences.insert("alu_like_demo".to_string(), dna);
@@ -39836,6 +39864,13 @@ fn build_construct_reasoning_graph_detects_alu_like_mobile_element_candidates() 
             .and_then(serde_json::Value::as_u64)
             .unwrap_or(0)
             >= 1
+    );
+    assert_eq!(
+        mobile_fact
+            .value_json
+            .get("curated_repeat_support_count")
+            .and_then(serde_json::Value::as_u64),
+        Some(0)
     );
     let mapping_fact = graph
         .facts
@@ -39878,6 +39913,164 @@ fn build_construct_reasoning_graph_detects_alu_like_mobile_element_candidates() 
     assert!(
         mobile_action.repeat_family_provenance.is_none(),
         "soft Alu-like heuristics should not claim curated repeat-family provenance yet"
+    );
+}
+
+#[test]
+fn build_construct_reasoning_graph_upgrades_alu_like_with_overlapping_rmsk_family_support() {
+    let sequence = alu_like_demo_sequence_text();
+    let mut dna = DNAsequence::from_sequence(&sequence).expect("sequence");
+    dna.features_mut()
+        .push(synthetic_ucsc_rmsk_alu_feature(0, sequence.len(), "rmsk_alu_1"));
+    dna.features_mut()
+        .push(synthetic_ucsc_rmsk_alu_feature(0, sequence.len(), "rmsk_alu_2"));
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("alu_like_rmsk_demo".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    let graph = engine
+        .build_construct_reasoning_graph("alu_like_rmsk_demo", None, None)
+        .expect("build graph");
+
+    let alu_evidence = graph
+        .evidence
+        .iter()
+        .find(|row| row.label == "Alu-like SINE candidate")
+        .expect("Alu-like evidence");
+    let curated_rows = graph
+        .evidence
+        .iter()
+        .filter(|row| row.context_tags.iter().any(|tag| tag == "ucsc_rmsk"))
+        .collect::<Vec<_>>();
+    assert_eq!(curated_rows.len(), 2);
+    assert!(curated_rows.iter().all(|row| {
+        row.evidence_class == EvidenceClass::ReliableAnnotation
+            && row.notes.iter().any(|note| note == "repeat_family=Alu")
+            && row.context_tags.iter().any(|tag| tag == "repeat_class_sine")
+            && row.context_tags.iter().any(|tag| tag == "repeat_family_alu")
+    }));
+
+    let mobile_fact = graph
+        .facts
+        .iter()
+        .find(|fact| fact.fact_type == "mobile_element_context")
+        .expect("mobile element fact");
+    assert_eq!(
+        mobile_fact
+            .value_json
+            .get("status")
+            .and_then(serde_json::Value::as_str),
+        Some("curated_alu_sine_supported")
+    );
+    assert_eq!(
+        mobile_fact
+            .value_json
+            .get("curated_repeat_support_count")
+            .and_then(serde_json::Value::as_u64),
+        Some(1)
+    );
+    let support = mobile_fact
+        .value_json
+        .get("curated_repeat_support")
+        .and_then(serde_json::Value::as_array)
+        .expect("curated support array");
+    assert_eq!(support.len(), 1);
+    assert_eq!(
+        support[0].get("label").and_then(serde_json::Value::as_str),
+        Some("AluY (SINE/Alu)")
+    );
+    assert_eq!(
+        support[0]
+            .get("evidence_ids")
+            .and_then(serde_json::Value::as_array)
+            .map(Vec::len),
+        Some(2),
+        "duplicate overlapping rmsk annotations should be summarized into one support row"
+    );
+    assert!(mobile_fact
+        .rationale
+        .contains("overlapping curated repeat-family annotation"));
+
+    let mobile_action = graph
+        .inspection_actions
+        .iter()
+        .find(|action| {
+            action.mode == DotplotMode::SelfForward
+                && action
+                    .source_fact_ids
+                    .iter()
+                    .any(|id| id == &mobile_fact.fact_id)
+        })
+        .expect("mobile-element fact should recommend a forward dotplot action");
+    assert_eq!(mobile_action.focus_start_0based, alu_evidence.start_0based);
+    let provenance = mobile_action
+        .repeat_family_provenance
+        .as_ref()
+        .expect("curated support should populate action repeat-family provenance");
+    assert_eq!(provenance.source_kind, "ucsc_rmsk");
+    assert_eq!(provenance.family_name.as_deref(), Some("Alu"));
+    assert_eq!(provenance.evidence_ids.len(), 2);
+}
+
+#[test]
+fn build_construct_reasoning_graph_does_not_upgrade_alu_like_for_non_overlapping_rmsk() {
+    let sequence = format!("{}{}", alu_like_demo_sequence_text(), "CGTA".repeat(16));
+    let mut dna = DNAsequence::from_sequence(&sequence).expect("sequence");
+    let suffix_start = sequence.len().saturating_sub(40);
+    dna.features_mut().push(synthetic_ucsc_rmsk_alu_feature(
+        suffix_start,
+        sequence.len(),
+        "rmsk_alu_suffix",
+    ));
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("alu_like_rmsk_nonoverlap".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    let graph = engine
+        .build_construct_reasoning_graph("alu_like_rmsk_nonoverlap", None, None)
+        .expect("build graph");
+
+    assert!(graph
+        .evidence
+        .iter()
+        .any(|row| row.context_tags.iter().any(|tag| tag == "ucsc_rmsk")));
+    let mobile_fact = graph
+        .facts
+        .iter()
+        .find(|fact| fact.fact_type == "mobile_element_context")
+        .expect("mobile element fact");
+    assert_eq!(
+        mobile_fact
+            .value_json
+            .get("status")
+            .and_then(serde_json::Value::as_str),
+        Some("alu_like_candidates_detected")
+    );
+    assert_eq!(
+        mobile_fact
+            .value_json
+            .get("curated_repeat_support_count")
+            .and_then(serde_json::Value::as_u64),
+        Some(0)
+    );
+    let mobile_action = graph
+        .inspection_actions
+        .iter()
+        .find(|action| {
+            action.mode == DotplotMode::SelfForward
+                && action
+                    .source_fact_ids
+                    .iter()
+                    .any(|id| id == &mobile_fact.fact_id)
+        })
+        .expect("mobile-element fact should still recommend a forward dotplot action");
+    assert!(
+        mobile_action.repeat_family_provenance.is_none(),
+        "non-overlapping rmsk rows should not back the Alu-like dotplot action"
     );
 }
 
