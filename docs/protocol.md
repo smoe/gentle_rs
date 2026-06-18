@@ -2508,6 +2508,10 @@ Microarray track projection notes:
   and reports an explicit `apt-probeset-summarize -a rma-sketch ...` command
   for direct user execution. GENtle still does not run R, APT, package
   installation, downloads, or CEL summarization implicitly.
+  When `--output DIR` is supplied, the same report is persisted as
+  `DIR/plan.json` so agents and developers can inspect the exact backend
+  readiness, dependency versions, cache keys, suggested commands, and planned
+  outputs before any external tool is run.
 - For `Clariom_D_Human`, the probe-region preflight also reports the canonical
   local Thermo Fisher support ZIP paths in
   `annotation_source.vendor_support_files[]`. These ZIPs are optional local
@@ -2550,8 +2554,11 @@ Microarray track projection notes:
   probeset-summary values marked as `parent_probeset_summary`. The import
   report and provenance include `probe_intensity_path`,
   `probe_intensity_source`, `probe_intensity_sample_columns`, and
-  `missing_probe_intensity_count`. It does not run APT or infer coordinates
-  from vendor files by itself.
+  `missing_probe_intensity_count`. The provenance also records the declared
+  backend identity, external-execution policy, local Rscript/APT version
+  probes, input path/size/mtime/cheap-SHA1 fingerprints, and the replayable
+  GENtle import command. It does not run APT or infer coordinates from vendor
+  files by itself.
 - `arrays render-probe-region-output-svg OUTPUT_DIR OUTPUT.svg` consumes the
   same completed helper directory and writes
   `gentle.probe_region_output_svg_export.v1` provenance for a deterministic

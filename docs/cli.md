@@ -5363,6 +5363,9 @@ Notes:
   PGF/CLF and optional MPS files are detected, and local `Rscript` / APT /
   R-package dependency status; it does not run CEL summarization itself and
   never downloads or installs missing files/packages.
+  With `--output DIR`, the preflight also writes `DIR/plan.json`, a pretty
+  versioned copy of the same `gentle.probe_region_plan.v1` report returned on
+  stdout.
   With `--dataset E-MTAB-14704`, the preflight resolves the publication
   resource's declared local CEL paths and any locally present SDRF metadata, then
   reports missing raw files as ordinary file-status errors.

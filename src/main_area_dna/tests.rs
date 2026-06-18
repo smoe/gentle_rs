@@ -4523,12 +4523,12 @@ fn main_area_dna_projects_probe_region_output_through_shared_shell_capability() 
         report.projected_contrasts.as_slice(),
         ["AdTAp73alpha-AdGFP"]
     );
-    assert_eq!(report.parsed_rows, 8);
-    assert_eq!(report.imported_features, 6);
+    assert_eq!(report.parsed_rows, 14);
+    assert_eq!(report.imported_features, 14);
     assert!(area.cached_probe_region_interpretation.is_none());
     assert!(
         area.op_status
-            .contains("Probe-region projection imported 6 feature(s)")
+            .contains("Probe-region projection imported 14 feature(s)")
     );
     assert!(area.op_status.contains("contrasts=AdTAp73alpha-AdGFP"));
 }
@@ -4568,13 +4568,13 @@ fn main_area_dna_interprets_probe_region_evidence_through_shared_shell_capabilit
     assert_eq!(report.seq_id, "array_slice");
     assert_eq!(report.gene_label.as_deref(), Some("TP73"));
     assert_eq!(report.level, "pm_probe");
-    assert_eq!(report.array_feature_count, 6);
+    assert_eq!(report.array_feature_count, 14);
     assert_eq!(report.transcript_count, 2);
-    assert_eq!(report.evidence_rows.len(), 6);
+    assert_eq!(report.evidence_rows.len(), 14);
     assert!(report.evidence_rows.iter().any(|row| {
-        row.feature_id == "PM_TP73_0003"
+        row.feature_id == "342828"
             && row.parent_feature_id.as_deref() == Some("PSR0100145780.hg.1")
-            && row.start_1based == Some(3652572)
+            && row.start_1based == Some(3652576)
             && row.end_1based == Some(3652586)
     }));
     assert!(report.evidence_rows.iter().all(|row| {
@@ -4589,7 +4589,7 @@ fn main_area_dna_interprets_probe_region_evidence_through_shared_shell_capabilit
     assert!(area.op_status.contains("Probe-region evidence interpreted"));
     assert!(
         area.op_status
-            .contains("6 array feature(s), 2 transcript model(s), 6 evidence row(s)")
+            .contains("14 array feature(s), 2 transcript model(s), 14 evidence row(s)")
     );
 }
 

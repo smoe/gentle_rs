@@ -173,6 +173,12 @@ fn probe_region_tp73_validation_fixture_dir() -> String {
         .to_string()
 }
 
+fn probe_region_tp73_glen_adapter_input() -> PathBuf {
+    PathBuf::from(
+        "test_files/fixtures/probe_region_adapter_inputs/clariom_e_mtab_14704_tp73_glen_style.csv",
+    )
+}
+
 fn add_tp73_validation_transcripts(dna: &mut DNAsequence) {
     dna.features_mut().push(gb_io::seq::Feature {
         kind: "mRNA".into(),
@@ -1488,6 +1494,33 @@ fn import_project_interpret_pm_probe_region_output_end_to_end() {
 }
 
 #[test]
+fn glen_probe_region_adapter_regenerates_committed_e_mtab_fixture() {
+    let tmp = tempdir().expect("tempdir");
+    GentleEngine::import_glen_probe_region_fixture(
+        &probe_region_tp73_glen_adapter_input(),
+        tmp.path(),
+    )
+    .expect("regenerate Glen-derived TP73 fixture");
+
+    let committed = PathBuf::from(probe_region_tp73_validation_fixture_dir());
+    for file_name in [
+        "region_intensity_chrom_order.csv",
+        "probe_intensity_chrom_order.csv",
+        "normalized_feature_matrix_manifest.json",
+        "provenance.json",
+    ] {
+        let generated = fs::read_to_string(tmp.path().join(file_name))
+            .unwrap_or_else(|error| panic!("generated {file_name}: {error}"));
+        let expected = fs::read_to_string(committed.join(file_name))
+            .unwrap_or_else(|error| panic!("committed {file_name}: {error}"));
+        assert_eq!(
+            generated, expected,
+            "{file_name} drifted from adapter output"
+        );
+    }
+}
+
+#[test]
 fn e_mtab_14704_tp73_validation_fixture_projects_and_interprets_pm_probe_evidence() {
     let tmp = tempdir().expect("tempdir");
     let fixture_dir = probe_region_tp73_validation_fixture_dir();
@@ -1496,8 +1529,8 @@ fn e_mtab_14704_tp73_validation_fixture_projects_and_interprets_pm_probe_evidenc
     let inspection = engine
         .inspect_probe_region_output(&fixture_dir)
         .expect("inspect committed E-MTAB-14704 TP73 validation fixture");
-    assert_eq!(inspection.row_count, 4);
-    assert_eq!(inspection.probe_row_count, 8);
+    assert_eq!(inspection.row_count, 3);
+    assert_eq!(inspection.probe_row_count, 14);
 
     let result = engine
         .apply(Operation::ProjectProbeRegionOutput {
@@ -1513,28 +1546,28 @@ fn e_mtab_14704_tp73_validation_fixture_projects_and_interprets_pm_probe_evidenc
     let projection = result.microarray_projection.expect("projection report");
     assert_eq!(projection.schema, MICROARRAY_PROJECTION_REPORT_SCHEMA);
     assert_eq!(projection.level, "pm_probe");
-    assert_eq!(projection.parsed_rows, 8);
-    assert_eq!(projection.imported_features, 6);
-    assert_eq!(projection.skipped_filter, 2);
+    assert_eq!(projection.parsed_rows, 14);
+    assert_eq!(projection.imported_features, 14);
+    assert_eq!(projection.skipped_filter, 0);
 
     let dna = engine.state().sequences.get("array_slice").unwrap();
-    let pm_probe_3 = dna
+    let pm_probe = dna
         .features()
         .iter()
-        .find(|feature| first_qualifier(feature, "feature_id").as_deref() == Some("PM_TP73_0003"))
-        .expect("projected PM_TP73_0003 feature");
-    assert_eq!(pm_probe_3.location.find_bounds().unwrap(), (56, 71));
+        .find(|feature| first_qualifier(feature, "feature_id").as_deref() == Some("342828"))
+        .expect("projected 342828 feature");
+    assert_eq!(pm_probe.location.find_bounds().unwrap(), (60, 71));
     assert_eq!(
-        first_qualifier(pm_probe_3, "gentle_array_parent_feature_id").as_deref(),
+        first_qualifier(pm_probe, "gentle_array_parent_feature_id").as_deref(),
         Some("PSR0100145780.hg.1")
     );
     assert_eq!(
-        first_qualifier(pm_probe_3, "gentle_array_intensity_source").as_deref(),
+        first_qualifier(pm_probe, "gentle_array_intensity_source").as_deref(),
         Some("probe_level_input")
     );
     assert_eq!(
-        first_qualifier(pm_probe_3, "genomic_start_1based").as_deref(),
-        Some("3652572")
+        first_qualifier(pm_probe, "genomic_start_1based").as_deref(),
+        Some("3652576")
     );
 
     let report_path = tmp
@@ -1555,17 +1588,17 @@ fn e_mtab_14704_tp73_validation_fixture_projects_and_interprets_pm_probe_evidenc
         .expect("interpretation report");
     assert_eq!(report.schema, PROBE_REGION_EVIDENCE_INTERPRETATION_SCHEMA);
     assert_eq!(report.level, "pm_probe");
-    assert_eq!(report.array_feature_count, 6);
+    assert_eq!(report.array_feature_count, 14);
     assert_eq!(report.transcript_count, 2);
-    assert_eq!(report.evidence_rows.len(), 6);
+    assert_eq!(report.evidence_rows.len(), 14);
 
     let row = report
         .evidence_rows
         .iter()
-        .find(|row| row.feature_id == "PM_TP73_0003")
-        .expect("PM_TP73_0003 interpretation row");
+        .find(|row| row.feature_id == "342828")
+        .expect("342828 interpretation row");
     assert_eq!(row.parent_feature_id.as_deref(), Some("PSR0100145780.hg.1"));
-    assert_eq!(row.start_1based, Some(3652572));
+    assert_eq!(row.start_1based, Some(3652576));
     assert_eq!(row.end_1based, Some(3652586));
     assert_eq!(row.overlapping_transcript_ids, vec!["TP73-201".to_string()]);
     assert!(
@@ -1594,6 +1627,136 @@ fn e_mtab_14704_tp73_validation_fixture_projects_and_interprets_pm_probe_evidenc
             && row.shared_evidence_count > 0
             && row.relationship_summary != "no_compatible_evidence"
     }));
+}
+
+#[test]
+fn e_mtab_14704_tp73_validation_report_is_probe_location_figure_ready() {
+    let fixture_dir = probe_region_tp73_validation_fixture_dir();
+    let mut engine = tp73_validation_anchored_engine();
+    engine
+        .apply(Operation::ProjectProbeRegionOutput {
+            seq_id: "array_slice".to_string(),
+            output_dir: fixture_dir,
+            contrasts: vec!["AdTAp73alpha-AdGFP".to_string()],
+            level: Some("pm_probe".to_string()),
+            min_abs_logfc: Some(0.5),
+            max_features: Some(20),
+            clear_existing: Some(true),
+        })
+        .expect("project committed PM probe validation fixture");
+    let report = engine
+        .apply(Operation::InterpretProbeRegionEvidence {
+            seq_id: "array_slice".to_string(),
+            gene_label: Some("TP73".to_string()),
+            level: Some("pm_probe".to_string()),
+            min_abs_logfc: Some(0.5),
+            path: None,
+        })
+        .expect("interpret committed PM probe validation fixture")
+        .probe_region_evidence_interpretation
+        .expect("interpretation report");
+
+    assert_eq!(report.schema, PROBE_REGION_EVIDENCE_INTERPRETATION_SCHEMA);
+    assert_eq!(report.level, "pm_probe");
+    assert_eq!(report.array_feature_count, 14);
+    assert_eq!(report.transcript_count, 2);
+    assert!(report.transcript_rows.iter().all(|row| row.exon_count >= 3));
+
+    for row in &report.evidence_rows {
+        assert_eq!(row.level, "pm_probe");
+        assert!(
+            row.start_1based.is_some(),
+            "missing start for {}",
+            row.feature_id
+        );
+        assert!(
+            row.end_1based.is_some(),
+            "missing end for {}",
+            row.feature_id
+        );
+        assert_eq!(row.chromosome.as_deref(), Some("chr1"));
+        assert_eq!(row.strand.as_deref(), Some("+"));
+        assert!(
+            row.parent_feature_id.is_some(),
+            "missing parent probeset for {}",
+            row.feature_id
+        );
+        for tag in [
+            "probe_sequence_alignment_not_assessed",
+            "multi_hit_not_assessed",
+            "isoform_support_not_inferred",
+        ] {
+            assert!(
+                row.ambiguity_tags.iter().any(|value| value == tag),
+                "missing ambiguity tag {tag} for {}",
+                row.feature_id
+            );
+        }
+        for transcript_id in &row.overlapping_transcript_ids {
+            let mapping = row
+                .transcript_mappings
+                .iter()
+                .find(|mapping| {
+                    mapping.transcript_id == *transcript_id && !mapping.exon_ordinals.is_empty()
+                })
+                .unwrap_or_else(|| {
+                    panic!(
+                        "missing exon mapping for transcript {transcript_id} on {}",
+                        row.feature_id
+                    )
+                });
+            assert_eq!(
+                mapping.exon_ordinals.len(),
+                mapping.exon_ranges_1based.len()
+            );
+            assert!(
+                mapping
+                    .exon_ranges_1based
+                    .iter()
+                    .all(|range| range.contains("..")),
+                "renderer needs exon ranges for {}",
+                row.feature_id
+            );
+        }
+    }
+
+    assert!(
+        report.evidence_rows.iter().any(|row| {
+            row.transcript_mappings
+                .iter()
+                .any(|mapping| !mapping.junction_spans.is_empty())
+        }),
+        "fixture must include a junction-spanning PM probe"
+    );
+    assert!(
+        report.evidence_rows.iter().any(|row| {
+            row.transcript_mappings
+                .iter()
+                .any(|mapping| mapping.mapping_kind == "transcript_span_non_exonic")
+        }),
+        "fixture must include a non-exonic transcript-span constraint"
+    );
+    assert!(
+        report
+            .evidence_rows
+            .iter()
+            .any(|row| row.overlapping_transcript_ids.len() > 1),
+        "fixture must include shared transcript overlap"
+    );
+    assert!(
+        report
+            .evidence_rows
+            .iter()
+            .any(|row| row.overlapping_transcript_ids == vec!["TP73-201".to_string()]),
+        "fixture must include TP73-201-specific overlap"
+    );
+    assert!(
+        report
+            .evidence_rows
+            .iter()
+            .any(|row| row.overlapping_transcript_ids == vec!["TP73-202".to_string()]),
+        "fixture must include TP73-202-specific overlap"
+    );
 }
 
 #[test]
@@ -3291,10 +3454,7 @@ fn gene_set_cutrun_relationship_flags_anti_co_regulated_concordance() {
     );
     assert_eq!(flags.len(), 1);
     assert_eq!(flags[0].flag_kind, "unexpected_concordance");
-    assert_eq!(
-        flags[0].member_symbols,
-        vec!["ConcordantA", "ConcordantB"]
-    );
+    assert_eq!(flags[0].member_symbols, vec!["ConcordantA", "ConcordantB"]);
     assert!(flags[0].detail.contains("anti_co_regulated"));
 }
 
@@ -3304,16 +3464,17 @@ fn gene_set_cutrun_relationship_flags_manual_unspecified_are_empty() {
         gene_set_cutrun_member_support("A", Some("strong")),
         gene_set_cutrun_member_support("B", None),
     ];
-    assert!(GentleEngine::gene_set_cutrun_relationship_flags(
-        GeneSetCohortRelationship::Manual,
-        &rows,
-    )
-    .is_empty());
-    assert!(GentleEngine::gene_set_cutrun_relationship_flags(
-        GeneSetCohortRelationship::Unspecified,
-        &rows,
-    )
-    .is_empty());
+    assert!(
+        GentleEngine::gene_set_cutrun_relationship_flags(GeneSetCohortRelationship::Manual, &rows,)
+            .is_empty()
+    );
+    assert!(
+        GentleEngine::gene_set_cutrun_relationship_flags(
+            GeneSetCohortRelationship::Unspecified,
+            &rows,
+        )
+        .is_empty()
+    );
 }
 
 #[test]

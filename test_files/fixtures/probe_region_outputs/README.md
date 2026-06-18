@@ -26,17 +26,18 @@
 
 ## `clariom_e_mtab_14704_tp73_validation/`
 
-- Origin: derived validation fixture for the public E-MTAB-14704 Clariom D TP73
-  workflow. It uses TP73-compatible hg38/GRCh38.p14 coordinates and public
-  sample labels, with synthetic fixed intensities.
+- Origin: adapter-generated validation fixture for the public E-MTAB-14704
+  Clariom D TP73 workflow. It uses a compact Glen-style input derived from
+  Glen's exploratory probe-region analysis shape, with TP73-compatible
+  hg38/GRCh38.p14 coordinates and public sample labels.
 - Deterministic recreation:
   - start from the publication-resource context in
     `data/publication_resources/rostock_p73_clariomd_e_mtab_14704/`
   - do not commit or require raw CEL files
-  - choose representative TP73 probe/probeset intervals inside the
-    `test_files/tp73.ncbi.gb` anchor
-  - write four probeset-region rows and eight PM-probe rows with fixed
-    condition means and `log2FC_*` values
+  - regenerate from
+    `test_files/fixtures/probe_region_adapter_inputs/clariom_e_mtab_14704_tp73_glen_style.csv`
+  - write three parent probeset/region rows and fourteen PM-probe rows with
+    nine public sample columns plus condition means and `log2FC_*` values
   - mark every PM-probe row as `probe_level_input`
 - Primary usage:
   - release-grade validation of `arrays project-probe-region-output --level

@@ -1,12 +1,49 @@
 {
-  "schema": "gentle.probe_region_backend_provenance.v1",
-  "backend": "derived_validation_fixture",
-  "platform": "Clariom_D_Human",
+  "adapter_function": "GentleEngine::import_glen_probe_region_fixture",
+  "artifacts": [
+    "region_intensity_chrom_order.csv",
+    "probe_intensity_chrom_order.csv",
+    "normalized_feature_matrix_manifest.json"
+  ],
+  "backend": "glen_exploratory_analysis_adapter",
+  "backend_execution_policy": "fixture_regeneration_only_no_external_execution",
   "coordinate_system": "hg38",
+  "declared_backend": "glen_exploratory_analysis_adapter",
   "genome_build": "GRCh38.p14",
-  "normalization": "synthetic-rma-on-real-tp73-coordinates",
+  "input_fingerprints": [
+    {
+      "path": "test_files/fixtures/probe_region_adapter_inputs/clariom_e_mtab_14704_tp73_glen_style.csv",
+      "role": "glen_style_adapter_input",
+      "sha1": "2c5d369e04fb6062f24fc93f719fb23b03e8902d"
+    }
+  ],
+  "input_schema": "gentle.glen_probe_region_adapter_input.v1",
+  "normalization": "glen-derived-rma",
   "probe_intensity_source": "probe_level_input",
-  "probe_intensity_probe_id_column": "probe_id",
+  "rendered_backend_command": "none; deterministic schema adapter only",
+  "row_count": 14,
+  "schema": "gentle.probe_region_backend_provenance.v1",
+  "selected_backend": "glen_to_gentle_probe_region_schema",
   "source_accession": "E-MTAB-14704",
-  "source_note": "Derived validation fixture for the E-MTAB-14704 TP73 Clariom D workflow. Coordinates and sample labels mirror the public publication-resource context, while intensity values are synthetic; no CEL files, vendor binaries, R, or APT were used to create this committed fixture."
+  "source_note": "Derived from Glen's exploratory E-MTAB-14704 TP73 probe-region analysis on real TP73 GRCh38.p14 coordinates. This committed fixture uses a compact documented Glen-style adapter input; no CEL files, vendor binaries, R, or APT are run during regeneration, and the full exploratory analysis snapshot is intentionally not committed.",
+  "tool_version_checks": [],
+  "value_columns": [
+    "P_SKMel29_AdGFP_1.CEL",
+    "P_SKMel29_AdGFP_2.CEL",
+    "P_SKMel29_AdGFP_3.CEL",
+    "P_SKMel29_AdTAp73alpha_1.CEL",
+    "P_SKMel29_AdTAp73alpha_2.CEL",
+    "P_SKMel29_AdTAp73alpha_3.CEL",
+    "P_SKMel29_AdDNp73beta_1.CEL",
+    "P_SKMel29_AdDNp73beta_2.CEL",
+    "P_SKMel29_AdDNp73beta_3.CEL",
+    "mean_log2_AdGFP",
+    "sd_log2_AdGFP",
+    "mean_log2_AdTAp73alpha",
+    "sd_log2_AdTAp73alpha",
+    "mean_log2_AdDNp73beta",
+    "sd_log2_AdDNp73beta",
+    "log2FC_AdTAp73alpha-AdGFP",
+    "log2FC_AdDNp73beta-AdGFP"
+  ]
 }

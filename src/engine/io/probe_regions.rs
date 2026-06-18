@@ -14,11 +14,13 @@ const PROBE_REGION_OLIGO_HELPER: &str = "scripts/probe_regions_oligo.R";
 const PROBE_REGION_TABLE_FILE: &str = "region_intensity_chrom_order.csv";
 const PROBE_REGION_PROBE_TABLE_FILE: &str = "probe_intensity_chrom_order.csv";
 const PROBE_REGION_SAMPLE_TABLE_FILE: &str = "sample_table.tsv";
+const PROBE_REGION_PLAN_FILE: &str = "plan.json";
 const PROBE_REGION_MATRIX_MANIFEST_FILE: &str = "normalized_feature_matrix_manifest.json";
 const PROBE_REGION_PROVENANCE_FILE: &str = "provenance.json";
 const PROBE_REGION_MATRIX_MANIFEST_SCHEMA: &str =
     "gentle.probe_region_normalized_matrix_manifest.v1";
 const PROBE_REGION_BACKEND_PROVENANCE_SCHEMA: &str = "gentle.probe_region_backend_provenance.v1";
+const PROBE_REGION_FINGERPRINT_SHA1_MAX_BYTES: u64 = 10 * 1024 * 1024;
 const CLARIOM_D_HUMAN_VENDOR_SUPPORT_DIR: &str =
     "data/resources/affymetrix/clariom_d_human_na36_hg38";
 const CLARIOM_D_HUMAN_PROBESET_ZIP: &str = "Clariom_D_Human-na36-hg38-probeset-csv.zip";
@@ -409,12 +411,15 @@ impl GentleEngine {
         );
         let contrasts = Self::probe_region_contrast_plan(metadata_plan.as_ref());
 
-        let planned_outputs = vec![
+        let mut planned_outputs = vec![
             "region_intensity_chrom_order.csv".to_string(),
             "probe_intensity_chrom_order.csv when PM probe coordinates are available".to_string(),
             "plot.png and plot.svg when --plot is set".to_string(),
             "provenance.json".to_string(),
         ];
+        if request.output_dir.is_some() {
+            planned_outputs.insert(0, PROBE_REGION_PLAN_FILE.to_string());
+        }
         let mut cache_compatibility_keys = vec![
             "CEL file path".to_string(),
             "CEL file size_bytes".to_string(),
@@ -465,6 +470,45 @@ impl GentleEngine {
             errors,
             preflight_ok,
         }
+    }
+
+    /// Persist a stage-one probe-region plan beside later backend outputs.
+    pub fn write_probe_region_plan(
+        &self,
+        plan: &ProbeRegionPlan,
+        output_dir: &str,
+    ) -> Result<String, EngineError> {
+        let output_dir = output_dir.trim();
+        if output_dir.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Probe-region plan output directory must not be empty".to_string(),
+                cause_chain: vec![],
+            });
+        }
+        let output_dir_path = Path::new(output_dir);
+        std::fs::create_dir_all(output_dir_path).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not create probe-region plan output directory '{}': {e}",
+                output_dir_path.to_string_lossy()
+            ),
+            cause_chain: vec![],
+        })?;
+        let plan_path = output_dir_path.join(PROBE_REGION_PLAN_FILE);
+        std::fs::write(
+            &plan_path,
+            serde_json::to_string_pretty(plan).unwrap_or_else(|_| "{}".to_string()),
+        )
+        .map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not write probe-region plan '{}': {e}",
+                plan_path.to_string_lossy()
+            ),
+            cause_chain: vec![],
+        })?;
+        Ok(plan_path.to_string_lossy().to_string())
     }
 
     pub fn import_apt_probe_region_output(
@@ -914,9 +958,53 @@ impl GentleEngine {
             "targets": targets,
             "artifacts": artifacts.clone()
         });
+        let tool_version_checks = Self::probe_region_backend_tool_version_checks();
+        let mut input_fingerprints = vec![
+            Self::probe_region_input_fingerprint(apt_summary_path, "apt_summary"),
+            Self::probe_region_input_fingerprint(annotation_path, "annotation"),
+        ];
+        if let Some(metadata) = metadata_summary.as_ref() {
+            input_fingerprints.push(Self::probe_region_input_fingerprint(
+                &metadata.path,
+                "metadata",
+            ));
+        }
+        if let Some(table) = probe_intensity.as_ref() {
+            input_fingerprints.push(Self::probe_region_input_fingerprint(
+                &table.path,
+                "probe_intensity",
+            ));
+        }
+        let rendered_backend_command = Self::probe_region_apt_import_replay_command(
+            apt_summary_path,
+            annotation_path,
+            output_dir,
+            metadata_summary
+                .as_ref()
+                .map(|metadata| metadata.path.as_str()),
+            metadata_summary
+                .as_ref()
+                .map(|metadata| metadata.condition_column.as_str()),
+            metadata_summary
+                .as_ref()
+                .map(|metadata| metadata.sample_column.as_str()),
+            probe_intensity.as_ref().map(|table| table.path.as_str()),
+            probe_id_column,
+            Some(&platform),
+            Some(&normalization),
+            Some(&coordinate_system),
+            Some(&genome_build),
+        );
         let provenance = json!({
             "schema": PROBE_REGION_BACKEND_PROVENANCE_SCHEMA,
             "backend": "affymetrix_power_tools",
+            "declared_backend": "affymetrix_power_tools",
+            "selected_backend": "affymetrix_power_tools_imported_tables",
+            "backend_execution_policy": "external_explicit_only_not_run_by_gentle",
+            "backend_command_source": "GENtle import replay command; upstream APT/R summarization command is planned separately and not reconstructed from imported tables",
+            "rendered_backend_command": rendered_backend_command,
+            "tool_version_checks": tool_version_checks,
+            "input_fingerprints": input_fingerprints,
             "apt_summary_path": apt_summary_path,
             "annotation_path": annotation_path,
             "metadata_path": metadata_summary.as_ref().map(|metadata| metadata.path.as_str()),
@@ -3367,6 +3455,106 @@ impl GentleEngine {
                 detail: Some(e.to_string()),
             },
         }
+    }
+
+    fn probe_region_input_fingerprint(path: &str, role: &str) -> serde_json::Value {
+        let status = Self::probe_region_file_status(path, role);
+        let sha1 = if status.is_file
+            && status
+                .size_bytes
+                .is_some_and(|size| size <= PROBE_REGION_FINGERPRINT_SHA1_MAX_BYTES)
+        {
+            std::fs::read(&status.path)
+                .ok()
+                .map(|bytes| format!("{:x}", Sha1::digest(&bytes)))
+        } else {
+            None
+        };
+        json!({
+            "path": status.path,
+            "role": status.role,
+            "exists": status.exists,
+            "is_file": status.is_file,
+            "size_bytes": status.size_bytes,
+            "modified_unix_seconds": status.modified_unix_seconds,
+            "sha1": sha1
+        })
+    }
+
+    fn probe_region_backend_tool_version_checks() -> Vec<ProbeRegionDependencyCheck> {
+        vec![
+            Self::probe_region_command_dependency("Rscript", "command", false, &["--version"]),
+            Self::probe_region_command_dependency(
+                "apt-probeset-summarize",
+                "command",
+                false,
+                &["--version"],
+            ),
+        ]
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn probe_region_apt_import_replay_command(
+        apt_summary_path: &str,
+        annotation_path: &str,
+        output_dir: &str,
+        metadata_path: Option<&str>,
+        condition_column: Option<&str>,
+        sample_column: Option<&str>,
+        probe_intensity_path: Option<&str>,
+        probe_id_column: Option<&str>,
+        platform: Option<&str>,
+        normalization: Option<&str>,
+        coordinate_system: Option<&str>,
+        genome_build: Option<&str>,
+    ) -> String {
+        let mut args = vec![
+            "arrays".to_string(),
+            "import-apt-probe-region-output".to_string(),
+            apt_summary_path.to_string(),
+            annotation_path.to_string(),
+            output_dir.to_string(),
+        ];
+        if let Some(value) = metadata_path {
+            args.push("--metadata".to_string());
+            args.push(value.to_string());
+        }
+        if let Some(value) = condition_column {
+            args.push("--condition-column".to_string());
+            args.push(value.to_string());
+        }
+        if let Some(value) = sample_column {
+            args.push("--sample-column".to_string());
+            args.push(value.to_string());
+        }
+        if let Some(value) = probe_intensity_path {
+            args.push("--probe-intensity".to_string());
+            args.push(value.to_string());
+        }
+        if let Some(value) = probe_id_column {
+            args.push("--probe-id-column".to_string());
+            args.push(value.to_string());
+        }
+        if let Some(value) = platform {
+            args.push("--platform".to_string());
+            args.push(value.to_string());
+        }
+        if let Some(value) = normalization {
+            args.push("--normalization".to_string());
+            args.push(value.to_string());
+        }
+        if let Some(value) = coordinate_system {
+            args.push("--coordinate-system".to_string());
+            args.push(value.to_string());
+        }
+        if let Some(value) = genome_build {
+            args.push("--genome-build".to_string());
+            args.push(value.to_string());
+        }
+        args.iter()
+            .map(|arg| Self::probe_region_shell_quote(arg))
+            .collect::<Vec<_>>()
+            .join(" ")
     }
 
     fn probe_region_optional_file_status(path: &Path, role: &str) -> Option<ProbeRegionFileStatus> {

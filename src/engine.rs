@@ -667,6 +667,9 @@ mod microarray_tracks;
 mod motif_statistics;
 #[path = "engine/ops/operation_handlers.rs"]
 mod operation_handlers;
+#[cfg(test)]
+#[path = "engine/io/probe_region_glen_adapter.rs"]
+mod probe_region_glen_adapter;
 #[path = "engine/io/probe_regions.rs"]
 mod probe_regions;
 #[path = "engine/analysis/promoter_design.rs"]

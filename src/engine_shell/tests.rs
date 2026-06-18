@@ -7477,6 +7477,34 @@ fn execute_arrays_probe_regions_rma_suggests_oligo_helper_command() {
     assert!(command.contains("--normalization rma"));
     assert!(command.contains("--platform-package pd.clariom.d.human"));
     assert!(command.contains("--gene PATZ1"));
+
+    let plan_path = run.output["plan_path"]
+        .as_str()
+        .expect("persisted plan path");
+    assert_eq!(Path::new(plan_path), output_dir.join("plan.json"));
+    let persisted: crate::engine::ProbeRegionPlan =
+        serde_json::from_str(&fs::read_to_string(plan_path).expect("read persisted plan"))
+            .expect("deserialize persisted probe-region plan");
+    assert_eq!(
+        persisted.schema,
+        run.output["plan"]["schema"].as_str().unwrap_or_default()
+    );
+    assert_eq!(
+        persisted.preflight_ok,
+        run.output["plan"]["preflight_ok"]
+            .as_bool()
+            .unwrap_or(false)
+    );
+    assert_eq!(
+        persisted.backend_candidates[0].suggested_command.as_deref(),
+        Some(command)
+    );
+    assert!(
+        persisted
+            .planned_outputs
+            .iter()
+            .any(|output| output == "plan.json")
+    );
 }
 
 #[test]

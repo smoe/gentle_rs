@@ -32245,9 +32245,14 @@ fn execute_reference_and_track_command(
                 cache_dir: cache_dir.clone(),
                 dry_run: *dry_run,
             });
+            let plan_path = output_dir
+                .as_deref()
+                .map(|path| engine.write_probe_region_plan(&plan, path))
+                .transpose()
+                .map_err(|e| e.to_string())?;
             Ok(ShellRunResult {
                 state_changed: false,
-                output: json!({ "plan": plan }),
+                output: json!({ "plan": plan, "plan_path": plan_path }),
             })
         }
         ShellCommand::TracksTrackedList => {
