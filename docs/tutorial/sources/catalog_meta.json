@@ -125,6 +125,11 @@
       "id": "expert_view_parity",
       "name": "Expert View Parity",
       "description": "The same expert-view payloads should be inspectable and renderable from GUI, CLI, and other adapters without frontend-only projection logic."
+    },
+    {
+      "id": "promoter_motif_controls",
+      "name": "Promoter Motif Controls",
+      "description": "Foreground promoter motif signals should be compared with matched controls before being treated as candidate enrichment, depletion, or co-occurrence evidence."
     }
   ]
 }

@@ -470,7 +470,11 @@ Behavior notes:
   reuses the same multi-gene TFBS scoring and TFBS similarity ranking helpers,
   reports pairwise motif-track similarity, shared/common score peaks,
   cohort-specific or outlier peaks, optional expression-row association, and
-  warnings for unresolved genes/transcripts. `source_seq_ids`,
+  warnings for unresolved genes/transcripts. For declared `co_regulated` and
+  `anti_co_regulated` cohorts, additive `relationship_flags[]` compare the
+  available TFBS-track similarity evidence with that expectation and surface
+  unexpected divergence or concordance as review cues, never as regulatory
+  verdicts. `source_seq_ids`,
   CUT&RUN dataset ids, and saved read-report ids are retained for traceability
   in this slice; GENtle does not infer cross-species orthology or live
   occupancy verdicts from them here.

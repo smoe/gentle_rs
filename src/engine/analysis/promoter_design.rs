@@ -10,6 +10,8 @@ use crate::feature_location::{feature_is_reverse, feature_ranges_sorted_i64};
 impl GentleEngine {
     const TFBS_BACKGROUND_TAIL_SHOW_QUANTILE: f64 = 0.95;
     const TFBS_TRACK_CORRELATION_SMOOTHING_WINDOW_BP: usize = 25;
+    const PROMOTER_COHORT_DIVERGENCE_SIMILARITY_THRESHOLD: f64 = 0.25;
+    const PROMOTER_COHORT_CONCORDANCE_SIMILARITY_THRESHOLD: f64 = 0.75;
 
     fn emit_tfbs_score_track_progress(
         on_progress: &mut dyn FnMut(OperationProgress) -> bool,
@@ -2241,6 +2243,53 @@ impl GentleEngine {
         (shared, cohort_specific)
     }
 
+    pub(crate) fn summarize_promoter_cohort_relationship_flags(
+        cohort_kind: PromoterCohortKind,
+        pairwise_similarity: &[PromoterCohortPairwiseSimilarity],
+    ) -> Vec<PromoterCohortRelationshipFlag> {
+        match cohort_kind {
+            PromoterCohortKind::Manual => vec![],
+            PromoterCohortKind::CoRegulated => pairwise_similarity
+                .iter()
+                .filter(|row| {
+                    row.mean_smoothed_spearman
+                        < Self::PROMOTER_COHORT_DIVERGENCE_SIMILARITY_THRESHOLD
+                })
+                .map(|row| PromoterCohortRelationshipFlag {
+                    flag_kind: "unexpected_divergence".to_string(),
+                    evidence_kind: "tfbs_score_track_similarity".to_string(),
+                    gene_labels: vec![row.left_gene_label.clone(), row.right_gene_label.clone()],
+                    detail: format!(
+                        "Declared co-regulated promoter cohort, but '{}' and '{}' have low mean smoothed TFBS-track Spearman similarity ({:+.3}; threshold < {:+.2}). This is an evidence-triage flag, not a regulatory verdict.",
+                        row.left_gene_label,
+                        row.right_gene_label,
+                        row.mean_smoothed_spearman,
+                        Self::PROMOTER_COHORT_DIVERGENCE_SIMILARITY_THRESHOLD,
+                    ),
+                })
+                .collect(),
+            PromoterCohortKind::AntiCoRegulated => pairwise_similarity
+                .iter()
+                .filter(|row| {
+                    row.mean_smoothed_spearman
+                        >= Self::PROMOTER_COHORT_CONCORDANCE_SIMILARITY_THRESHOLD
+                })
+                .map(|row| PromoterCohortRelationshipFlag {
+                    flag_kind: "unexpected_concordance".to_string(),
+                    evidence_kind: "tfbs_score_track_similarity".to_string(),
+                    gene_labels: vec![row.left_gene_label.clone(), row.right_gene_label.clone()],
+                    detail: format!(
+                        "Declared anti-co-regulated promoter cohort, but '{}' and '{}' have high mean smoothed TFBS-track Spearman similarity ({:+.3}; threshold >= {:+.2}). This is an evidence-triage flag, not a regulatory verdict.",
+                        row.left_gene_label,
+                        row.right_gene_label,
+                        row.mean_smoothed_spearman,
+                        Self::PROMOTER_COHORT_CONCORDANCE_SIMILARITY_THRESHOLD,
+                    ),
+                })
+                .collect(),
+        }
+    }
+
     pub(crate) fn summarize_promoter_cohort_comparison(
         &self,
         genome_id: &str,
@@ -2359,6 +2408,9 @@ impl GentleEngine {
                 .then(left.left_gene_label.cmp(&right.left_gene_label))
                 .then(left.right_gene_label.cmp(&right.right_gene_label))
         });
+        let relationship_flags =
+            Self::summarize_promoter_cohort_relationship_flags(cohort_kind, &pairwise_similarity);
+        warnings.extend(relationship_flags.iter().map(|flag| flag.detail.clone()));
 
         let (shared_tfbs_peaks, cohort_specific_tfbs_peaks) =
             Self::summarize_promoter_cohort_peak_sets(&summary_rows, gene_reports.len());
@@ -2428,6 +2480,7 @@ impl GentleEngine {
             resolved_promoter_windows,
             tfbs_score_track_summaries: summary_rows,
             pairwise_similarity,
+            relationship_flags,
             shared_tfbs_peaks,
             cohort_specific_tfbs_peaks,
             expression_associations,
