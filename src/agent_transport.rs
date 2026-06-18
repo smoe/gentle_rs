@@ -937,6 +937,24 @@ mod tests {
     }
 
     #[test]
+    fn compat_endpoint_candidates_use_v1_base_directly() {
+        let candidates = openai_compat_endpoint_candidates("http://localhost:11973/v1");
+        assert_eq!(
+            candidates,
+            vec!["http://localhost:11973/v1/chat/completions".to_string()]
+        );
+    }
+
+    #[test]
+    fn model_endpoint_candidates_use_v1_base_directly() {
+        let candidates = model_endpoint_candidates("http://localhost:11973/v1");
+        assert_eq!(
+            candidates,
+            vec!["http://localhost:11973/v1/models".to_string()]
+        );
+    }
+
+    #[test]
     fn live_probe_classifies_missing_openai_key_without_endpoint_attempt() {
         let system = AgentSystemSpec {
             id: "openai".to_string(),

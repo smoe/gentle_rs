@@ -3175,6 +3175,16 @@ mod tests {
     }
 
     #[test]
+    fn openai_model_list_endpoint_candidates_use_v1_base_directly() {
+        let endpoints =
+            openai_model_list_endpoint_candidates("http://localhost:11973/v1").unwrap();
+        assert_eq!(
+            endpoints,
+            vec!["http://localhost:11973/v1/models".to_string()]
+        );
+    }
+
+    #[test]
     fn openai_compat_endpoint_candidates_for_system_use_resolved_base_only() {
         let system = AgentSystemSpec {
             id: "local-compat".to_string(),
@@ -3208,6 +3218,47 @@ mod tests {
             models,
             vec!["deepseek-r1:8b".to_string(), "qwen3:0.6b".to_string()]
         );
+    }
+
+    #[test]
+    fn extract_models_from_openai_models_payload_reads_msty_mlx_shape() {
+        let value = serde_json::json!({
+            "object": "list",
+            "data": [
+                {
+                    "id": "mlx-community/gemma-4-e2b-it-4bit",
+                    "object": "model",
+                    "owned_by": "mlx-knife-2.0",
+                    "permission": [],
+                    "context_length": 4096
+                },
+                {
+                    "id": "mlx-community/granite-3.3-2b-instruct-4bit",
+                    "object": "model",
+                    "owned_by": "mlx-knife-2.0",
+                    "permission": [],
+                    "context_length": 131072
+                }
+            ]
+        });
+        let models = extract_models_from_openai_models_payload(&value);
+        assert_eq!(
+            models,
+            vec![
+                "mlx-community/gemma-4-e2b-it-4bit".to_string(),
+                "mlx-community/granite-3.3-2b-instruct-4bit".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn extract_models_from_openai_models_payload_treats_null_data_as_empty() {
+        let value = serde_json::json!({
+            "object": "list",
+            "data": null
+        });
+        let models = extract_models_from_openai_models_payload(&value);
+        assert!(models.is_empty());
     }
 
     #[test]

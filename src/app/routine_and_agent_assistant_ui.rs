@@ -2142,7 +2142,7 @@ impl GENtleApp {
                         && ui
                             .button(self.tr("agent.quick_start.local"))
                             .on_hover_text(
-                                "Select a local OpenAI-compatible endpoint such as Ollama, Jan, or Msty",
+                                "Select a local OpenAI-compatible endpoint such as Msty MLX, Msty gateway, Ollama, or Jan",
                             )
                             .clicked()
                         {
@@ -2307,7 +2307,7 @@ impl GENtleApp {
             ui.label(self.tr("agent.base_url_override"));
             let response = ui.add(
                 egui::TextEdit::singleline(&mut self.agent_base_url_override)
-                    .hint_text("http://localhost:11964/v1"),
+                    .hint_text("http://localhost:11973/v1"),
             );
             preflight_inputs_changed |= response.changed();
             if ui
@@ -2592,7 +2592,7 @@ impl GENtleApp {
             "Session only: if set, this key overrides the selected provider API key env var for agent requests started from this GUI window.",
         );
         ui.small(
-            "Session only: Base URL override applies to native_openai/native_anthropic/native_mistral/native_openai_compat. For local roots (e.g. http://localhost:11964), GENtle tries /chat/completions and /v1/chat/completions on that same base URL.",
+            "Session only: Base URL override applies to native_openai/native_anthropic/native_mistral/native_openai_compat. For local roots (e.g. http://localhost:11964), GENtle tries /chat/completions and /v1/chat/completions on that same base URL; Msty MLX model servers commonly use http://localhost:11973/v1.",
         );
         ui.small(
             "Session only: Model override applies to native_openai/native_anthropic/native_mistral/native_openai_compat and maps to GENTLE_AGENT_MODEL. Value 'unspecified' means no override.",

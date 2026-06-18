@@ -2796,8 +2796,11 @@ Local LLM setup (Jan/Msty/OpenAI-compatible endpoint):
 2. Select one of:
    - `Local Llama (OpenAI-compatible)`
    - `Jan Local (template)`
+   - `Msty MLX Local (template)`
    - `Msty Local (template)`
-3. Set `Base URL override` to your local endpoint, e.g. `http://localhost:11964`.
+3. Set `Base URL override` to your local endpoint, e.g.
+   `http://localhost:11973/v1` for Msty MLX or `http://localhost:11964`
+   for the Msty gateway profile.
 4. Optionally set `timeout_sec` for slow local models (for example `600`).
 5. Click `Discover Models` and select one discovered model from the dropdown
    (or set `Model override` directly, for example `deepseek-r1:8b`).
@@ -2808,6 +2811,9 @@ Local LLM setup (Jan/Msty/OpenAI-compatible endpoint):
 10. For local root URLs (such as `http://localhost:11964`), GENtle will try both:
    - `/chat/completions`
    - `/v1/chat/completions`
+11. If `http://localhost:11964/v1/models` returns `data: null` while an MLX
+    server exposes models on `http://localhost:11973/v1/models`, choose
+    `Msty MLX Local (template)` or set that URL as the base override.
 
 Common failure interpretation:
 

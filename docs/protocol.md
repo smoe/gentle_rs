@@ -4083,6 +4083,9 @@ Transport notes:
 - `native_openai_compat`: built-in OpenAI-compatible local HTTP adapter
   (`/chat/completions`), intended for local services such as Jan/Msty/Ollama
   when they expose an OpenAI-compatible endpoint. API key is optional.
+  `msty_mlx_local_compat_template` points at `http://localhost:11973/v1` for
+  Msty/MLX Knife model servers; the older Msty gateway template remains on
+  `http://localhost:11964`.
 - `GENTLE_AGENT_BASE_URL` (or CLI `--base-url`) overrides catalog `base_url`
   per request for `native_openai`, `native_anthropic`, `native_mistral`, and
   `native_openai_compat`.

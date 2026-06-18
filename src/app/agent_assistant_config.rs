@@ -60,8 +60,9 @@ pub(super) fn preferred_mistral_agent_system_id(systems: &[AgentSystemSpec]) -> 
 
 pub(super) fn preferred_local_agent_system_id(systems: &[AgentSystemSpec]) -> Option<String> {
     for preferred_id in [
-        "local_llama_compat",
+        "msty_mlx_local_compat_template",
         "msty_local_compat_template",
+        "local_llama_compat",
         "jan_local_compat_template",
     ] {
         if systems.iter().any(|system| system.id == preferred_id) {
@@ -329,6 +330,10 @@ mod tests {
     fn preferred_agent_system_helpers_select_specific_templates_first() {
         let systems = vec![
             test_agent_system(
+                "msty_mlx_local_compat_template",
+                AgentSystemTransport::NativeOpenaiCompat,
+            ),
+            test_agent_system(
                 "local_llama_compat",
                 AgentSystemTransport::NativeOpenaiCompat,
             ),
@@ -341,7 +346,7 @@ mod tests {
         );
         assert_eq!(
             preferred_local_agent_system_id(&systems).as_deref(),
-            Some("local_llama_compat")
+            Some("msty_mlx_local_compat_template")
         );
     }
 }
