@@ -39,6 +39,7 @@ use crate::{
         TfbsTrackSimilarityRankingMetric, TfbsTrackSimilarityReport, VariantPromoterContextReport,
         parse_required_usize_or_formula_text_on_sequence,
     },
+    engine_shell::ShellCommand,
     enzymes::active_restriction_enzymes,
     feature_expert::{
         FeatureExpertView, IsoformArchitectureExpertView, RestrictionSiteExpertView,
@@ -4590,6 +4591,67 @@ fn main_area_dna_interprets_probe_region_evidence_through_shared_shell_capabilit
     assert!(
         area.op_status
             .contains("14 array feature(s), 2 transcript model(s), 14 evidence row(s)")
+    );
+}
+
+#[test]
+fn main_area_dna_exports_probe_region_evidence_svg_through_shared_shell_capability() {
+    let temp = tempdir().expect("tempdir");
+    let report_path = temp.path().join("tp73_probe_region_interpretation.json");
+    let svg_path = temp.path().join("tp73_probe_region_evidence.svg");
+    let mut area = make_tp73_probe_region_validation_area();
+    area.probe_region_projection_contrasts = "AdTAp73alpha-AdGFP".to_string();
+    area.probe_region_projection_level = "pm_probe".to_string();
+    area.probe_region_projection_min_abs_logfc = "0.5".to_string();
+    area.probe_region_projection_max_features = "20".to_string();
+    area.probe_region_projection_clear_existing = true;
+    area.project_probe_region_output_for_current_path();
+
+    area.probe_region_interpretation_gene_label = "TP73".to_string();
+    area.probe_region_interpretation_level = "pm_probe".to_string();
+    area.probe_region_interpretation_min_abs_logfc = "0.5".to_string();
+    area.probe_region_interpretation_output_path = report_path.to_string_lossy().to_string();
+    area.interpret_probe_region_evidence_for_current_sequence();
+    assert!(report_path.exists());
+    assert!(area.cached_probe_region_interpretation.is_some());
+    let expected_junction_span_count = area
+        .cached_probe_region_interpretation
+        .as_ref()
+        .expect("cached interpretation")
+        .evidence_rows
+        .iter()
+        .flat_map(|row| &row.transcript_mappings)
+        .map(|mapping| mapping.junction_spans.len())
+        .sum::<usize>();
+
+    area.probe_region_evidence_svg_output_path = svg_path.to_string_lossy().to_string();
+    let command = area
+        .build_probe_region_evidence_svg_command_for_current_path()
+        .expect("build evidence SVG shell command");
+    match command {
+        ShellCommand::ArraysRenderProbeRegionEvidenceSvg { report, output } => {
+            assert_eq!(report, report_path.to_string_lossy().to_string());
+            assert_eq!(output, svg_path.to_string_lossy().to_string());
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    area.export_probe_region_evidence_svg_for_current_path();
+
+    assert!(svg_path.exists());
+    let svg = fs::read_to_string(&svg_path).expect("read evidence svg");
+    assert!(svg.contains("gentle.probe_region_evidence_svg_export.v1"));
+    assert!(svg.contains("class=\"junction-span\""));
+    assert!(svg.contains("class=\"transcript\""));
+    assert!(area.op_status.contains("Probe-region evidence SVG exported"));
+    assert!(area.op_status.contains("14 evidence row(s)"));
+    assert!(
+        area.op_status
+            .contains(&format!("{expected_junction_span_count} junction span(s)"))
+    );
+    assert!(
+        area.op_status
+            .contains("report_local_geometry_aligned_to_evidence_axis_without_full_gene_model")
     );
 }
 

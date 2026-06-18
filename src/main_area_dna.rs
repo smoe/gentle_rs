@@ -108,9 +108,9 @@ use crate::{
         OpResult, Operation, OperationProgress, PairwiseAlignmentMode, PcrPrimerSpec,
         PrimerDesignBackend, PrimerDesignBaseLock, PrimerDesignPairConstraint,
         PrimerDesignProgress, PrimerDesignReport, PrimerDesignSideConstraint,
-        PrimerSpecificityPolicy, ProbeRegionAptImportReport,
-        ProbeRegionEvidenceInterpretationReport, ProbeRegionEvidenceTranscriptMapping,
-        ProbeRegionOutputInspection, PromoterEvidenceMatrixReport, PromoterEvidenceMatrixRow,
+        PrimerSpecificityPolicy, ProbeRegionAptImportReport, ProbeRegionEvidenceInterpretationReport,
+        ProbeRegionEvidenceSvgExport, ProbeRegionEvidenceTranscriptMapping, ProbeRegionOutputInspection,
+        PromoterEvidenceMatrixReport, PromoterEvidenceMatrixRow,
         PromoterExpressionEvidenceInput, PromoterExpressionEvidenceReport,
         PromoterReporterCandidateSet, PromoterWindowCollapseMode, ProtocolCartoonPreviewTelemetry,
         QpcrDesignReport, QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting,
@@ -615,6 +615,8 @@ struct EngineOpsUiState {
     probe_region_output_dir: String,
     #[serde(default)]
     probe_region_svg_output_path: String,
+    #[serde(default = "default_probe_region_evidence_svg_output_path")]
+    probe_region_evidence_svg_output_path: String,
     #[serde(default)]
     probe_region_projection_seq_id: String,
     #[serde(default)]
@@ -759,6 +761,10 @@ fn default_probe_region_projection_max_features_text() -> String {
 
 fn default_probe_region_interpretation_output_path() -> String {
     "analysis/probe_regions/probe_region_interpretation.json".to_string()
+}
+
+fn default_probe_region_evidence_svg_output_path() -> String {
+    "analysis/probe_regions/probe_region_evidence.svg".to_string()
 }
 
 fn default_poly_t_prefix_min_bp_text() -> String {
@@ -1398,6 +1404,7 @@ pub struct MainAreaDna {
     probe_region_apt_genome_build: String,
     probe_region_output_dir: String,
     probe_region_svg_output_path: String,
+    probe_region_evidence_svg_output_path: String,
     probe_region_projection_seq_id: String,
     probe_region_projection_contrasts: String,
     probe_region_projection_level: String,
@@ -2094,6 +2101,7 @@ impl MainAreaDna {
             probe_region_output_dir: "analysis/probe_regions".to_string(),
             probe_region_svg_output_path: "analysis/probe_regions/probe_region_plot.svg"
                 .to_string(),
+            probe_region_evidence_svg_output_path: default_probe_region_evidence_svg_output_path(),
             probe_region_projection_seq_id: seq_id_for_defaults.clone().unwrap_or_default(),
             probe_region_projection_contrasts: String::new(),
             probe_region_projection_level: "probe_region".to_string(),
@@ -8177,6 +8185,92 @@ impl MainAreaDna {
         }
     }
 
+    fn build_probe_region_evidence_svg_command_for_current_path(
+        &self,
+    ) -> Result<ShellCommand, String> {
+        if self.cached_probe_region_interpretation.is_none() {
+            return Err("No probe-region interpretation report is cached; run Interpret evidence first".to_string());
+        }
+        let report = self.probe_region_interpretation_output_path.trim().to_string();
+        let output = self.probe_region_evidence_svg_output_path.trim().to_string();
+        if report.is_empty() {
+            return Err(
+                "Probe-region interpretation JSON output path is empty; run interpretation with a JSON output path first"
+                    .to_string(),
+            );
+        }
+        if !Path::new(&report).is_file() {
+            return Err(format!(
+                "Probe-region interpretation report '{}' is missing; run interpretation with a JSON output path first",
+                report
+            ));
+        }
+        if output.is_empty() {
+            return Err("Probe-region evidence SVG output path is empty".to_string());
+        }
+        Ok(ShellCommand::ArraysRenderProbeRegionEvidenceSvg { report, output })
+    }
+
+    fn export_probe_region_evidence_svg_for_current_path(&mut self) {
+        let Some(engine) = self.engine.clone() else {
+            self.op_status = "No engine attached".to_string();
+            return;
+        };
+        let command = match self.build_probe_region_evidence_svg_command_for_current_path() {
+            Ok(command) => command,
+            Err(message) => {
+                self.op_status = message;
+                return;
+            }
+        };
+        let output_path = match &command {
+            ShellCommand::ArraysRenderProbeRegionEvidenceSvg { output, .. } => output.clone(),
+            _ => String::new(),
+        };
+        let outcome = {
+            let mut guard = engine.write().expect("Engine lock poisoned");
+            let options = ShellExecutionOptions::from_env();
+            execute_shell_command_with_options(&mut guard, &command, &options)
+        };
+        match outcome {
+            Ok(run) => {
+                let Some(value) = run.output.get("export").cloned() else {
+                    self.op_status =
+                        "Probe-region evidence SVG export completed without an export payload"
+                            .to_string();
+                    return;
+                };
+                match serde_json::from_value::<ProbeRegionEvidenceSvgExport>(value) {
+                    Ok(export) => {
+                        let warnings = if export.warnings.is_empty() {
+                            String::new()
+                        } else {
+                            format!(
+                                "; warnings: {}",
+                                Self::probe_region_preview_list(&export.warnings)
+                            )
+                        };
+                        self.op_status = format!(
+                            "Probe-region evidence SVG exported to '{}' ({} evidence row(s), {} junction span(s){})",
+                            output_path,
+                            export.evidence_row_count,
+                            export.junction_span_count,
+                            warnings
+                        );
+                        self.save_engine_ops_state();
+                    }
+                    Err(err) => {
+                        self.op_status =
+                            format!("Could not decode probe-region evidence SVG export: {err}");
+                    }
+                }
+            }
+            Err(err) => {
+                self.op_status = format!("Probe-region evidence SVG export failed: {err}");
+            }
+        }
+    }
+
     fn project_probe_region_output_for_current_path(&mut self) {
         let Some(engine) = self.engine.clone() else {
             self.op_status = "No engine attached".to_string();
@@ -9077,6 +9171,42 @@ impl MainAreaDna {
                 );
             }
         });
+        let mut evidence_svg_output_changed = false;
+        ui.horizontal_wrapped(|ui| {
+            ui.label("evidence_svg");
+            if ui
+                .add_sized(
+                    [ui.available_width().min(360.0), 0.0],
+                    egui::TextEdit::singleline(
+                        &mut self.probe_region_evidence_svg_output_path,
+                    ),
+                )
+                .on_hover_text(
+                    "SVG path for the interpreted-evidence geometry constraint figure",
+                )
+                .changed()
+            {
+                evidence_svg_output_changed = true;
+            }
+            let export_evidence_enabled = self.cached_probe_region_interpretation.is_some()
+                && !self.probe_region_interpretation_output_path.trim().is_empty()
+                && !self.probe_region_evidence_svg_output_path.trim().is_empty();
+            if ui
+                .add_enabled(
+                    export_evidence_enabled,
+                    egui::Button::new("Export evidence SVG"),
+                )
+                .on_hover_text(
+                    "Render arrays render-probe-region-evidence-svg through the shared shell executor",
+                )
+                .clicked()
+            {
+                self.export_probe_region_evidence_svg_for_current_path();
+            }
+        });
+        if evidence_svg_output_changed {
+            self.save_engine_ops_state();
+        }
         if let Some(report) = self.cached_probe_region_interpretation.as_ref() {
             self.render_probe_region_interpretation_summary_panel(ui, report);
         }
@@ -22299,6 +22429,9 @@ impl MainAreaDna {
             probe_region_apt_genome_build: self.probe_region_apt_genome_build.clone(),
             probe_region_output_dir: self.probe_region_output_dir.clone(),
             probe_region_svg_output_path: self.probe_region_svg_output_path.clone(),
+            probe_region_evidence_svg_output_path: self
+                .probe_region_evidence_svg_output_path
+                .clone(),
             probe_region_projection_seq_id: self.probe_region_projection_seq_id.clone(),
             probe_region_projection_contrasts: self.probe_region_projection_contrasts.clone(),
             probe_region_projection_level: self.probe_region_projection_level.clone(),
@@ -22627,6 +22760,12 @@ impl MainAreaDna {
         } else {
             s.probe_region_svg_output_path
         };
+        self.probe_region_evidence_svg_output_path =
+            if s.probe_region_evidence_svg_output_path.trim().is_empty() {
+                default_probe_region_evidence_svg_output_path()
+            } else {
+                s.probe_region_evidence_svg_output_path
+            };
         self.probe_region_projection_seq_id = if s.probe_region_projection_seq_id.trim().is_empty()
         {
             self.seq_id.clone().unwrap_or_default()

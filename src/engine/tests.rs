@@ -1882,6 +1882,124 @@ fn render_probe_region_evidence_svg_is_stable_for_degenerate_single_coordinate_r
 }
 
 #[test]
+fn render_probe_region_evidence_svg_warns_only_when_aligning_local_geometry() {
+    let make_report =
+        |exon_range: &str, junction_start: usize, junction_end: usize| {
+            ProbeRegionEvidenceInterpretationReport {
+                schema: PROBE_REGION_EVIDENCE_INTERPRETATION_SCHEMA.to_string(),
+                seq_id: "array_slice".to_string(),
+                gene_label: Some("TP73".to_string()),
+                level: "pm_probe".to_string(),
+                array_feature_count: 1,
+                transcript_count: 1,
+                evidence_rows: vec![ProbeRegionEvidenceMappingRow {
+                    evidence_id: "probe_719406:contrast".to_string(),
+                    level: "pm_probe".to_string(),
+                    feature_id: "719406".to_string(),
+                    parent_feature_id: Some("PSR0100145779.hg.1".to_string()),
+                    intensity_source: Some("probe_level_input".to_string()),
+                    chromosome: Some("chr1".to_string()),
+                    start_1based: Some(3_652_527),
+                    end_1based: Some(3_652_538),
+                    strand: Some("+".to_string()),
+                    logfc: Some(0.72),
+                    overlapping_transcript_ids: vec!["TP73-201".to_string()],
+                    overlapping_exon_count: 2,
+                    transcript_mappings: vec![ProbeRegionEvidenceTranscriptMapping {
+                        transcript_id: "TP73-201".to_string(),
+                        mapping_kind: "junction_spanning_exon_overlap".to_string(),
+                        geometry_score: 1.0,
+                        geometry_score_class: "strong_geometry_constraint".to_string(),
+                        score_basis: vec!["junction_spans=1".to_string()],
+                        exon_ordinals: vec![1, 2],
+                        exon_ranges_1based: vec![exon_range.to_string()],
+                        junction_spans: vec![ProbeRegionEvidenceJunctionSpan {
+                            from_exon_ordinal: 1,
+                            to_exon_ordinal: 2,
+                            genomic_start_1based: junction_start,
+                            genomic_end_1based: junction_end,
+                        }],
+                        overlap_bp: 12,
+                    }],
+                    mapping_status: "compatible".to_string(),
+                    ambiguity_tags: vec![
+                        "probe_sequence_alignment_not_assessed".to_string(),
+                        "multi_hit_not_assessed".to_string(),
+                        "isoform_support_not_inferred".to_string(),
+                    ],
+                    relationship: "geometry_constraint_review_only".to_string(),
+                }],
+                transcript_rows: vec![ProbeRegionEvidenceTranscriptRow {
+                    transcript_id: "TP73-201".to_string(),
+                    gene: Some("TP73".to_string()),
+                    label: Some("TP73-201".to_string()),
+                    strand: Some("+".to_string()),
+                    exon_count: 3,
+                    compatible_evidence_count: 1,
+                    constraining_evidence_count: 1,
+                    shared_evidence_count: 0,
+                    unique_evidence_count: 1,
+                    unmapped_evidence_count: 0,
+                    compatible_geometry_score: 1.0,
+                    shared_geometry_score: 0.0,
+                    unique_geometry_score: 1.0,
+                    constraining_geometry_score: 1.0,
+                    review_status: "unique_geometry_review_only".to_string(),
+                    relationship_summary: "geometry_constraint_review_only".to_string(),
+                }],
+                warnings: Vec::new(),
+                ..Default::default()
+            }
+        };
+
+    let temp = tempdir().expect("tempdir");
+    let cross_frame_report = temp.path().join("cross_frame_report.json");
+    let cross_frame_svg = temp.path().join("cross_frame.svg");
+    fs::write(
+        &cross_frame_report,
+        serde_json::to_string_pretty(&make_report("11..28", 29, 60))
+            .expect("serialize cross-frame report"),
+    )
+    .expect("write cross-frame report");
+    let export = GentleEngine::default()
+        .export_probe_region_evidence_svg(
+            &cross_frame_report.to_string_lossy(),
+            &cross_frame_svg.to_string_lossy(),
+        )
+        .expect("export cross-frame evidence SVG");
+    assert!(export.warnings.iter().any(|warning| {
+        warning == "report_local_geometry_aligned_to_evidence_axis_without_full_gene_model"
+    }));
+    let svg = fs::read_to_string(&cross_frame_svg).expect("read cross-frame svg");
+    assert!(svg.contains("report-local"));
+    assert!(svg.contains("aligned to the evidence coordinate axis for display"));
+
+    let same_frame_report = temp.path().join("same_frame_report.json");
+    let same_frame_svg = temp.path().join("same_frame.svg");
+    fs::write(
+        &same_frame_report,
+        serde_json::to_string_pretty(&make_report(
+            "3652527..3652538",
+            3_652_539,
+            3_652_560,
+        ))
+        .expect("serialize same-frame report"),
+    )
+    .expect("write same-frame report");
+    let export = GentleEngine::default()
+        .export_probe_region_evidence_svg(
+            &same_frame_report.to_string_lossy(),
+            &same_frame_svg.to_string_lossy(),
+        )
+        .expect("export same-frame evidence SVG");
+    assert!(!export.warnings.iter().any(|warning| {
+        warning == "report_local_geometry_aligned_to_evidence_axis_without_full_gene_model"
+    }));
+    let svg = fs::read_to_string(&same_frame_svg).expect("read same-frame svg");
+    assert!(!svg.contains("report-local"));
+}
+
+#[test]
 fn project_microarray_track_uses_vendor_subset_on_tp73_genbank_anchor() {
     let mut engine = GentleEngine::default();
     engine
