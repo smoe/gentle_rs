@@ -1,0 +1,21 @@
+{
+  "schema": "gentle.tutorial_source.v4",
+  "id": "promoter_motif_control_comparison",
+  "title": "Promoter Motif Control-Set Comparison Tutorial",
+  "catalog": {
+    "order": 45,
+    "path": "docs/tutorial/08-06_promoter_motif_control_comparison.md",
+    "type": "gui_cli_walkthrough",
+    "status": "manual/hybrid",
+    "source": "hand_written_markdown",
+    "audiences": [
+      "gui_first",
+      "cli_first",
+      "regulatory_analysis",
+      "contributors"
+    ],
+    "notes": "Promoter-region interpretation tutorial for common motif search, foreground-vs-control motif review, and conservative over-/under-representation screening of motif signals and motif co-occurrence.",
+    "group": "08",
+    "group_position": 6
+  }
+}
