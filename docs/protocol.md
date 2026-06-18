@@ -2565,6 +2565,15 @@ Microarray track projection notes:
   SVG plot. The upper panel renders `mean_log2_*` condition intensity tracks;
   the lower panel renders `log2FC_*` tracks. It is still read-only with respect
   to project state and does not run R/APT.
+- `arrays render-probe-region-evidence-svg REPORT.json OUTPUT.svg` consumes an
+  exported `gentle.probe_region_evidence_interpretation.v1` report and writes a
+  deterministic `gentle.probe_region_evidence_svg_export.v1` SVG summary. It
+  renders one lane per transcript row, only the overlapped exon ranges and
+  junction spans carried by the report, plus parent probeset spans and PM probe
+  intervals grouped by parent feature id. This is a review-only
+  transcript/exon-geometry constraint visualization: it does not synthesize
+  non-overlapped exons, reconstruct full gene models, infer isoform support,
+  assess probe sequence specificity, or decide multi-hit status.
 - `arrays project-probe-region-output SEQ_ID OUTPUT_DIR` projects selected or
   all `log2FC_*` helper-output rows into the existing genome-anchored array
   feature model (`gentle_array_*` qualifiers and

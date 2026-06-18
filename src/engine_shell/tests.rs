@@ -6995,6 +6995,16 @@ fn parse_arrays_microarray_track_commands() {
             if output_dir == "analysis/probe_regions" && output == "out.svg"
     ));
 
+    let render_probe_evidence = parse_shell_line(
+        "arrays render-probe-region-evidence-svg analysis/tp73_interpretation.json out.svg",
+    )
+    .expect("parse render probe evidence svg");
+    assert!(matches!(
+        render_probe_evidence,
+        ShellCommand::ArraysRenderProbeRegionEvidenceSvg { report, output }
+            if report == "analysis/tp73_interpretation.json" && output == "out.svg"
+    ));
+
     let project_probe_output = parse_shell_line(
         "arrays project-probe-region-output array_slice analysis/probe_regions --contrasts TAp73-AdGFP --level pm_probe --min-abs-logfc 0.5 --max-features 25 --clear-existing",
     )
@@ -7844,6 +7854,128 @@ fn execute_arrays_render_probe_region_output_svg_writes_native_plot() {
     assert!(svg.contains("Log2 fold-change tracks"));
     assert!(svg.contains("PSR1"));
     assert!(svg.contains("TAp73-AdGFP"));
+}
+
+#[test]
+fn execute_arrays_render_probe_region_evidence_svg_writes_constraint_plot() {
+    let temp = tempdir().expect("tempdir");
+    let report_path = temp.path().join("tp73_interpretation.json");
+    let svg_path = temp.path().join("tp73_probe_evidence.svg");
+    let report = serde_json::json!({
+        "schema": "gentle.probe_region_evidence_interpretation.v1",
+        "seq_id": "array_slice",
+        "gene_label": "TP73",
+        "level": "pm_probe",
+        "array_feature_count": 1,
+        "transcript_count": 1,
+        "evidence_rows": [
+            {
+                "evidence_id": "719406:AdTAp73alpha-AdGFP",
+                "level": "pm_probe",
+                "feature_id": "719406",
+                "parent_feature_id": "PSR0100145779.hg.1",
+                "intensity_source": "probe_level_input",
+                "chromosome": "chr1",
+                "start_1based": 3652527,
+                "end_1based": 3652538,
+                "strand": "+",
+                "logfc": 0.72,
+                "overlapping_transcript_ids": ["TP73-201"],
+                "overlapping_exon_count": 2,
+                "transcript_mappings": [
+                    {
+                        "transcript_id": "TP73-201",
+                        "mapping_kind": "junction_spanning_exon_overlap",
+                        "geometry_score": 1.0,
+                        "geometry_score_class": "strong_geometry_constraint",
+                        "score_basis": ["junction_spans=1"],
+                        "exon_ordinals": [1, 2],
+                        "exon_ranges_1based": ["11..28", "61..90"],
+                        "junction_spans": [
+                            {
+                                "from_exon_ordinal": 1,
+                                "to_exon_ordinal": 2,
+                                "genomic_start_1based": 29,
+                                "genomic_end_1based": 60
+                            }
+                        ],
+                        "overlap_bp": 22
+                    }
+                ],
+                "mapping_status": "compatible",
+                "ambiguity_tags": [
+                    "probe_sequence_alignment_not_assessed",
+                    "multi_hit_not_assessed",
+                    "isoform_support_not_inferred"
+                ],
+                "relationship": "shared_or_ambiguous"
+            }
+        ],
+        "transcript_rows": [
+            {
+                "transcript_id": "TP73-201",
+                "gene": "TP73",
+                "label": "TP73-201",
+                "strand": "+",
+                "exon_count": 3,
+                "compatible_evidence_count": 1,
+                "constraining_evidence_count": 1,
+                "shared_evidence_count": 0,
+                "unique_evidence_count": 1,
+                "unmapped_evidence_count": 0,
+                "compatible_geometry_score": 1.0,
+                "shared_geometry_score": 0.0,
+                "unique_geometry_score": 1.0,
+                "constraining_geometry_score": 1.0,
+                "review_status": "unique_geometry_review_only",
+                "relationship_summary": "geometry_constraint_review_only"
+            }
+        ],
+        "warnings": []
+    });
+    fs::write(
+        &report_path,
+        serde_json::to_string_pretty(&report).expect("serialize report"),
+    )
+    .expect("write report");
+
+    let mut engine = GentleEngine::default();
+    let run = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ArraysRenderProbeRegionEvidenceSvg {
+            report: report_path.to_string_lossy().to_string(),
+            output: svg_path.to_string_lossy().to_string(),
+        },
+    )
+    .expect("render probe-region evidence svg");
+
+    assert!(!run.state_changed);
+    assert_eq!(
+        run.output["export"]["schema"].as_str(),
+        Some("gentle.probe_region_evidence_svg_export.v1")
+    );
+    assert_eq!(run.output["export"]["evidence_row_count"].as_u64(), Some(1));
+    assert_eq!(run.output["export"]["transcript_count"].as_u64(), Some(1));
+    assert_eq!(run.output["export"]["parent_feature_count"].as_u64(), Some(1));
+    assert_eq!(run.output["export"]["junction_span_count"].as_u64(), Some(1));
+    assert!(
+        run.output["export"]["ambiguity_tags"]
+            .as_array()
+            .is_some_and(|tags| {
+                tags.iter()
+                    .any(|tag| tag.as_str() == Some("isoform_support_not_inferred"))
+            })
+    );
+
+    let svg = fs::read_to_string(&svg_path).expect("read evidence svg");
+    assert!(svg.contains("gentle.probe_region_evidence_svg_export.v1"));
+    assert!(svg.contains("Probe-region evidence geometry constraints"));
+    assert!(svg.contains("class=\"transcript\""));
+    assert!(svg.contains("class=\"exon-segment\""));
+    assert!(svg.contains("class=\"parent-probeset\""));
+    assert!(svg.contains("class=\"pm-probe\""));
+    assert!(svg.contains("class=\"junction-span\""));
+    assert!(svg.contains("isoform_support_not_inferred"));
 }
 
 #[test]

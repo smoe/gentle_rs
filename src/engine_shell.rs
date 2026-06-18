@@ -1671,6 +1671,10 @@ pub enum ShellCommand {
         output_dir: String,
         output: String,
     },
+    ArraysRenderProbeRegionEvidenceSvg {
+        report: String,
+        output: String,
+    },
     ArraysProjectProbeRegionOutput {
         seq_id: String,
         output_dir: String,
@@ -8827,6 +8831,12 @@ impl ShellCommand {
                 format!(
                     "render probe-region helper output '{}' to SVG '{}'",
                     output_dir, output
+                )
+            }
+            Self::ArraysRenderProbeRegionEvidenceSvg { report, output } => {
+                format!(
+                    "render probe-region evidence report '{}' to SVG '{}'",
+                    report, output
                 )
             }
             Self::ArraysProjectProbeRegionOutput {
@@ -26128,7 +26138,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "arrays" => {
             if tokens.len() < 2 {
                 return Err(
-                    "arrays requires a subcommand: inspect-microarray-track, project-microarray-track, inspect-probe-region-output, import-apt-probe-region-output, render-probe-region-output-svg, project-probe-region-output, interpret-probe-region-evidence, or probe-regions"
+                    "arrays requires a subcommand: inspect-microarray-track, project-microarray-track, inspect-probe-region-output, import-apt-probe-region-output, render-probe-region-output-svg, render-probe-region-evidence-svg, project-probe-region-output, interpret-probe-region-evidence, or probe-regions"
                         .to_string(),
                 );
             }
@@ -26401,6 +26411,18 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         output: tokens[3].clone(),
                     })
                 }
+                "render-probe-region-evidence-svg" | "plot-probe-region-evidence-svg" => {
+                    if tokens.len() != 4 {
+                        return Err(
+                            "arrays render-probe-region-evidence-svg requires REPORT.json OUTPUT.svg"
+                                .to_string(),
+                        );
+                    }
+                    Ok(ShellCommand::ArraysRenderProbeRegionEvidenceSvg {
+                        report: tokens[2].clone(),
+                        output: tokens[3].clone(),
+                    })
+                }
                 "project-probe-region-output" => {
                     if tokens.len() < 4 {
                         return Err(
@@ -26574,7 +26596,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 }
                 "probe-regions" | "probe-region-plan" => parse_arrays_probe_regions_command(tokens),
                 other => Err(format!(
-                    "Unknown arrays subcommand '{other}' (expected inspect-microarray-track, project-microarray-track, inspect-probe-region-output, import-apt-probe-region-output, render-probe-region-output-svg, project-probe-region-output, interpret-probe-region-evidence, or probe-regions)"
+                    "Unknown arrays subcommand '{other}' (expected inspect-microarray-track, project-microarray-track, inspect-probe-region-output, import-apt-probe-region-output, render-probe-region-output-svg, render-probe-region-evidence-svg, project-probe-region-output, interpret-probe-region-evidence, or probe-regions)"
                 )),
             }
         }
@@ -27284,6 +27306,7 @@ fn is_reference_or_track_command(command: &ShellCommand) -> bool {
             | ShellCommand::ArraysInspectProbeRegionOutput { .. }
             | ShellCommand::ArraysImportAptProbeRegionOutput { .. }
             | ShellCommand::ArraysRenderProbeRegionOutputSvg { .. }
+            | ShellCommand::ArraysRenderProbeRegionEvidenceSvg { .. }
             | ShellCommand::ArraysProjectProbeRegionOutput { .. }
             | ShellCommand::ArraysInterpretProbeRegionEvidence { .. }
             | ShellCommand::ArraysProbeRegions { .. }
@@ -32151,6 +32174,15 @@ fn execute_reference_and_track_command(
         ShellCommand::ArraysRenderProbeRegionOutputSvg { output_dir, output } => {
             let export = engine
                 .export_probe_region_output_svg(output_dir, output)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({ "export": export }),
+            })
+        }
+        ShellCommand::ArraysRenderProbeRegionEvidenceSvg { report, output } => {
+            let export = engine
+                .export_probe_region_evidence_svg(report, output)
                 .map_err(|e| e.to_string())?;
             Ok(ShellRunResult {
                 state_changed: false,
@@ -40147,6 +40179,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ArraysInspectProbeRegionOutput { .. }
         | ShellCommand::ArraysImportAptProbeRegionOutput { .. }
         | ShellCommand::ArraysRenderProbeRegionOutputSvg { .. }
+        | ShellCommand::ArraysRenderProbeRegionEvidenceSvg { .. }
         | ShellCommand::ArraysProjectProbeRegionOutput { .. }
         | ShellCommand::ArraysInterpretProbeRegionEvidence { .. }
         | ShellCommand::ArraysProbeRegions { .. }

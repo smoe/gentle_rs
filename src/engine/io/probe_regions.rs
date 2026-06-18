@@ -4686,7 +4686,7 @@ impl GentleEngine {
         top + height - (height * frac)
     }
 
-    fn probe_region_svg_escape(raw: &str) -> String {
+    pub(crate) fn probe_region_svg_escape(raw: &str) -> String {
         raw.replace('&', "&amp;")
             .replace('<', "&lt;")
             .replace('>', "&gt;")

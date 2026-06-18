@@ -385,6 +385,8 @@ pub const PROBE_REGION_EVIDENCE_INTERPRETATION_SCHEMA: &str =
 pub const PROBE_REGION_PLAN_SCHEMA: &str = "gentle.probe_region_plan.v1";
 pub const PROBE_REGION_OUTPUT_INSPECTION_SCHEMA: &str = "gentle.probe_region_output_inspection.v1";
 pub const PROBE_REGION_OUTPUT_SVG_EXPORT_SCHEMA: &str = "gentle.probe_region_output_svg_export.v1";
+pub const PROBE_REGION_EVIDENCE_SVG_EXPORT_SCHEMA: &str =
+    "gentle.probe_region_evidence_svg_export.v1";
 pub const PROBE_REGION_APT_IMPORT_REPORT_SCHEMA: &str = "gentle.probe_region_apt_import_report.v1";
 pub const GENOME_COORDINATE_PROJECTION_REPORT_SCHEMA: &str =
     "gentle.genome_coordinate_projection_report.v1";
@@ -670,6 +672,8 @@ mod operation_handlers;
 #[cfg(test)]
 #[path = "engine/io/probe_region_glen_adapter.rs"]
 mod probe_region_glen_adapter;
+#[path = "engine/io/probe_region_evidence_svg.rs"]
+mod probe_region_evidence_svg;
 #[path = "engine/io/probe_regions.rs"]
 mod probe_regions;
 #[path = "engine/analysis/promoter_design.rs"]

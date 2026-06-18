@@ -2092,6 +2092,7 @@ Shared shell command:
     - `arrays inspect-probe-region-output OUTPUT_DIR`
     - `arrays import-apt-probe-region-output SUMMARY.tsv ANNOTATION.csv OUTPUT_DIR [--metadata PATH] [--condition-column NAME] [--sample-column NAME] [--probe-intensity PATH] [--probe-id-column NAME] [--platform NAME] [--normalization NAME] [--coordinate-system ID] [--genome-build ID]`
     - `arrays render-probe-region-output-svg OUTPUT_DIR OUTPUT.svg`
+    - `arrays render-probe-region-evidence-svg REPORT.json OUTPUT.svg`
     - `arrays project-probe-region-output SEQ_ID OUTPUT_DIR [--contrasts CSV] [--level probe_region|pm_probe] [--min-abs-logfc N] [--max-features N] [--clear-existing]`
     - `arrays interpret-probe-region-evidence SEQ_ID [--gene LABEL] [--level all|probe_region|pm_probe] [--min-abs-logfc N] [--path FILE]`
     - `arrays probe-regions (--cel PATH ... | --dataset ID) (--gene SYMBOL|--genes CSV|--locus LOCUS|--loci CSV|--transcript-cluster-id ID|--probeset-id ID ...) [--metadata PATH] [--platform NAME] [--annotation-library PATH] [--condition-column NAME] [--sample-column NAME] [--block-column NAME] [--paired-by-replicate-suffix] [--normalization rma|quantile-feature|none] [--plot] [--output DIR] [--cache-dir DIR] [--dry-run]`
@@ -3716,6 +3717,14 @@ Tutorial companion:
     plots `mean_log2_*` condition tracks in the upper panel and `log2FC_*`
     tracks in the lower panel, using the existing chromosome-ordered helper
     table and reporting projection blockers without running R/APT.
+- `arrays render-probe-region-evidence-svg analysis/probe_regions/tp73_interpretation.json analysis/probe_regions/tp73_probe_geometry.svg`
+  - Read-only deterministic SVG export for
+    `gentle.probe_region_evidence_interpretation.v1`. The SVG draws
+    transcript lanes, only the exon ranges and junction spans present in the
+    report, parent probeset spans, and PM probe intervals. It is a review-only
+    transcript/exon-geometry constraint visualization; it does not infer
+    isoform support, probe sequence specificity, multi-hit status, or full gene
+    models.
 - `arrays project-probe-region-output grch38_tp73 analysis/probe_regions --contrasts TAp73-AdGFP --level pm_probe --min-abs-logfc 0.5`
   - Projects direct-coordinate-compatible or explicitly mapped `log2FC_*`
     helper-output rows into genome-anchored array features on the target
@@ -5380,6 +5389,12 @@ Notes:
 - `arrays render-probe-region-output-svg OUTPUT_DIR OUTPUT.svg` draws the
   inspected helper output natively as a deterministic SVG plot, without running
   R/APT or changing project state.
+- `arrays render-probe-region-evidence-svg REPORT.json OUTPUT.svg` draws an
+  already-exported probe-region evidence interpretation report as a
+  deterministic SVG. It visualizes transcript lanes, report-provided exon
+  overlaps, report-provided junction spans, parent probeset spans, and PM probe
+  intervals. It draws only geometry present in the report and remains a
+  review-only constraint view, not an isoform-support call.
 - `arrays project-probe-region-output SEQ_ID OUTPUT_DIR` projects selected or
   all `log2FC_*` helper-output rows into genome-anchored array features when
   the helper output's declared `coordinate_system` or `genome_build` directly

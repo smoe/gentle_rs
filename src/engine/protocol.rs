@@ -4231,6 +4231,21 @@ pub struct ProbeRegionOutputSvgExport {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(default)]
+/// Deterministic SVG export summary for a probe-region evidence interpretation report.
+pub struct ProbeRegionEvidenceSvgExport {
+    pub schema: String,
+    pub report_path: String,
+    pub svg_path: String,
+    pub evidence_row_count: usize,
+    pub transcript_count: usize,
+    pub parent_feature_count: usize,
+    pub junction_span_count: usize,
+    pub ambiguity_tags: Vec<String>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
 /// Deterministic import report for explicit APT output plus annotation tables.
 pub struct ProbeRegionAptImportReport {
     pub schema: String,

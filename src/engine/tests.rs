@@ -1760,6 +1760,54 @@ fn e_mtab_14704_tp73_validation_report_is_probe_location_figure_ready() {
 }
 
 #[test]
+fn render_probe_region_evidence_svg_from_tp73_validation_report() {
+    let fixture_dir = probe_region_tp73_validation_fixture_dir();
+    let mut engine = tp73_validation_anchored_engine();
+    engine
+        .apply(Operation::ProjectProbeRegionOutput {
+            seq_id: "array_slice".to_string(),
+            output_dir: fixture_dir,
+            contrasts: vec!["AdTAp73alpha-AdGFP".to_string()],
+            level: Some("pm_probe".to_string()),
+            min_abs_logfc: Some(0.5),
+            max_features: Some(20),
+            clear_existing: Some(true),
+        })
+        .expect("project committed PM probe validation fixture");
+    let report = engine
+        .apply(Operation::InterpretProbeRegionEvidence {
+            seq_id: "array_slice".to_string(),
+            gene_label: Some("TP73".to_string()),
+            level: Some("pm_probe".to_string()),
+            min_abs_logfc: Some(0.5),
+            path: None,
+        })
+        .expect("interpret committed PM probe validation fixture")
+        .probe_region_evidence_interpretation
+        .expect("interpretation report");
+
+    let svg = GentleEngine::render_probe_region_evidence_svg_text(&report);
+    assert!(svg.contains("gentle.probe_region_evidence_svg_export.v1"));
+    assert!(svg.contains("Probe-region evidence geometry constraints"));
+    assert!(svg.contains("class=\"transcript\""));
+    assert!(svg.matches("class=\"transcript\"").count() >= 2);
+    assert!(svg.contains("class=\"exon-segment\""));
+    assert!(svg.contains("class=\"parent-probeset\""));
+    assert!(svg.contains("class=\"pm-probe\""));
+    assert!(svg.contains("class=\"junction-span\""));
+    assert!(svg.contains("probe_sequence_alignment_not_assessed"));
+    assert!(svg.contains("multi_hit_not_assessed"));
+    assert!(svg.contains("isoform_support_not_inferred"));
+    assert!(svg.contains("Review-only"));
+    assert!(svg.contains("data-transcript-id=\"TP73-201\""));
+    assert!(svg.contains("data-transcript-id=\"TP73-202\""));
+    let compact = svg.split_whitespace().collect::<String>();
+    assert!(compact.contains("<gid=\"probe-region-evidence-transcripts\""));
+    assert!(compact.contains("<gid=\"probe-region-evidence-probes\""));
+    assert!(compact.contains("<gid=\"probe-region-evidence-legend\""));
+}
+
+#[test]
 fn project_microarray_track_uses_vendor_subset_on_tp73_genbank_anchor() {
     let mut engine = GentleEngine::default();
     engine
