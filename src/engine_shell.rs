@@ -36945,6 +36945,36 @@ fn format_construct_reasoning_fact_summary(fact: &crate::engine::DesignFact) -> 
         .map(|value| value.to_string());
     let mut detail_lines = vec![];
     let mut warning_lines = vec![];
+    let task_severities = fact
+        .task_severities
+        .iter()
+        .map(|severity| {
+            let evidence_count = severity.supporting_evidence_ids.len();
+            let rationale = severity.rationale.trim();
+            if rationale.is_empty() {
+                detail_lines.push(format!(
+                    "task_severity: {}={} (evidence={})",
+                    severity.task.as_str(),
+                    severity.severity.as_str(),
+                    evidence_count
+                ));
+            } else {
+                detail_lines.push(format!(
+                    "task_severity: {}={} (evidence={}): {}",
+                    severity.task.as_str(),
+                    severity.severity.as_str(),
+                    evidence_count,
+                    rationale
+                ));
+            }
+            json!({
+                "task": severity.task.as_str(),
+                "severity": severity.severity.as_str(),
+                "rationale": &severity.rationale,
+                "supporting_evidence_ids": &severity.supporting_evidence_ids,
+            })
+        })
+        .collect::<Vec<_>>();
     match fact.fact_type.as_str() {
         "adapter_restriction_capture_context" => {
             let capture_rows = fact
@@ -37112,7 +37142,12 @@ fn format_construct_reasoning_fact_summary(fact: &crate::engine::DesignFact) -> 
             detail_lines.push(format!(
                 "candidates: mobile_elements={mobile}, alu_like={alu_like}"
             ));
-            if alu_like > 0 {
+            let curated_support = fact
+                .value_json
+                .get("curated_repeat_support_count")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0);
+            if alu_like > 0 && curated_support == 0 {
                 warning_lines.push(
                     "Alu-like calls are still heuristic until a curated repeat-family catalog is integrated"
                         .to_string(),
@@ -37248,6 +37283,7 @@ fn format_construct_reasoning_fact_summary(fact: &crate::engine::DesignFact) -> 
         "fact_type": fact.fact_type,
         "label": fact.label,
         "status": status,
+        "task_severities": task_severities,
         "detail_lines": detail_lines,
         "warning_lines": warning_lines,
     }))

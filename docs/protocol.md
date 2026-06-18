@@ -5707,6 +5707,15 @@ Construct reasoning graph foundation (implemented first slice):
       is backed by overlapping materialized RepeatMasker/UCSC `rmsk`-style
       repeat-family evidence; standalone Alu-like heuristic rows remain soft
       hypotheses without filling that provenance slot
+  - fact-level `task_severities[]`:
+    - compact rule-based task interpretation for repeat/similarity facts
+    - each row carries `task`, `severity`, `rationale`, and
+      `supporting_evidence_ids[]`
+    - initial task vocabulary is `pcr`, `nanopore_sequencing`,
+      `read_mapping`, `cloning_stability`, and `construct_maintenance`
+    - initial severity vocabulary is `none`, `low`, `medium`, `high`
+    - task severity layers on top of the generic fact and evidence rows; it
+      does not create additional annotation candidates or map overlays
 - Current GUI-backed scope:
   - sequence-window `Reasoning` display toggle
   - read-only linear DNA-map overlay that auto-refreshes from the engine-owned

@@ -12,6 +12,13 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-06-19
+
+- Added rule-based `task_severities[]` to construct-reasoning facts so
+  repeat/similarity warnings can report PCR, nanopore, read-mapping, cloning
+  stability, and construct-maintenance severity without creating extra map
+  overlays.
+
 ## 2026-06-18
 
 - Integrated materialized RepeatMasker/UCSC `rmsk`-style repeat annotations

@@ -96,16 +96,17 @@ pub use gentle_protocol::{
     AnnotationCandidate, AnnotationCandidateSummary, AnnotationCandidateWriteback, Arrangement,
     ArrangementMode, ConstructCandidate, ConstructObjective, ConstructReasoningGraph,
     ConstructReasoningInspectionAction, ConstructReasoningInspectionActionKind,
-    ConstructReasoningRepeatFamilyProvenance, ConstructReasoningStore, ConstructRole, Container,
-    ContainerId, ContainerKind, ContainerState, DecisionMethod, DesignDecisionNode, DesignEvidence,
-    DesignFact, DotplotMode, EditableStatus, EvidenceClass, EvidenceScope, ExonSkipReturnKind,
-    ExonSkipReturnPayload,
-    ExonSkipSelectionCriterion, GelBufferModel, GelRunConditions, GelTopologyForm, LineageEdge,
-    LineageGraph, LineageMacroInstance, LineageMacroPortBinding, LineageNode, MacroInstanceStatus,
-    NodeId, OpId, OrthologAmbiguityPolicy, OrthologPromoterCohortReport,
-    OrthologPromoterComparisonReport, ProteinExternalOpinionSource, ProteinFeatureFilter, Rack,
-    RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
-    RackOccupant, RackPhysicalTemplateFamily, RackPhysicalTemplateKind, RackPhysicalTemplateSpec,
+    ConstructReasoningRepeatFamilyProvenance, ConstructReasoningRiskTask,
+    ConstructReasoningSeverity, ConstructReasoningStore, ConstructReasoningTaskSeverity,
+    ConstructRole, Container, ContainerId, ContainerKind, ContainerState, DecisionMethod,
+    DesignDecisionNode, DesignEvidence, DesignFact, DotplotMode, EditableStatus, EvidenceClass,
+    EvidenceScope, ExonSkipReturnKind, ExonSkipReturnPayload, ExonSkipSelectionCriterion,
+    GelBufferModel, GelRunConditions, GelTopologyForm, LineageEdge, LineageGraph,
+    LineageMacroInstance, LineageMacroPortBinding, LineageNode, MacroInstanceStatus, NodeId, OpId,
+    OrthologAmbiguityPolicy, OrthologPromoterCohortReport, OrthologPromoterComparisonReport,
+    ProteinExternalOpinionSource, ProteinFeatureFilter, Rack, RackAuthoringTemplate,
+    RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset, RackOccupant,
+    RackPhysicalTemplateFamily, RackPhysicalTemplateKind, RackPhysicalTemplateSpec,
     RackPlacementEntry, RackProfileKind, RackProfileSnapshot, ReadAcquisitionAnalysisFormat,
     ReadAcquisitionReadLayout, RunId, SeqId, SequenceOrigin,
 };
@@ -16534,6 +16535,29 @@ impl GentleEngine {
             .collect();
         fact.based_on_evidence_ids.sort();
         fact.based_on_evidence_ids.dedup();
+        for severity in &mut fact.task_severities {
+            severity.rationale = severity.rationale.trim().to_string();
+            severity.supporting_evidence_ids = severity
+                .supporting_evidence_ids
+                .iter()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+                .collect();
+            severity.supporting_evidence_ids.sort();
+            severity.supporting_evidence_ids.dedup();
+        }
+        fact.task_severities.retain(|severity| {
+            severity.severity != ConstructReasoningSeverity::None
+                && (!severity.rationale.is_empty() || !severity.supporting_evidence_ids.is_empty())
+        });
+        fact.task_severities.sort_by(|a, b| {
+            a.task
+                .cmp(&b.task)
+                .then(a.severity.cmp(&b.severity))
+                .then(a.rationale.cmp(&b.rationale))
+        });
+        fact.task_severities
+            .dedup_by(|a, b| a.task == b.task && a.rationale == b.rationale);
         fact.confidence = Self::normalize_confidence_score(fact.confidence);
         fact
     }
@@ -21666,6 +21690,27 @@ impl GentleEngine {
         ids
     }
 
+    fn construct_reasoning_task_severity(
+        task: ConstructReasoningRiskTask,
+        severity: ConstructReasoningSeverity,
+        rationale: impl Into<String>,
+        supporting_evidence_ids: Vec<String>,
+    ) -> ConstructReasoningTaskSeverity {
+        let mut supporting_evidence_ids = supporting_evidence_ids
+            .into_iter()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect::<Vec<_>>();
+        supporting_evidence_ids.sort();
+        supporting_evidence_ids.dedup();
+        ConstructReasoningTaskSeverity {
+            task,
+            severity,
+            rationale: rationale.into().trim().to_string(),
+            supporting_evidence_ids,
+        }
+    }
+
     fn construct_reasoning_build_fact(
         fact_id: &str,
         fact_type: &str,
@@ -22673,7 +22718,20 @@ impl GentleEngine {
             complexity_evidence_ids.extend(similarity_ids(&tandem_rows));
             complexity_evidence_ids.sort();
             complexity_evidence_ids.dedup();
-            facts.push(Self::construct_reasoning_build_fact(
+            let pcr_complexity_severity =
+                if !homopolymer_rows.is_empty() || !tandem_rows.is_empty() {
+                    ConstructReasoningSeverity::Medium
+                } else {
+                    ConstructReasoningSeverity::Low
+                };
+            let nanopore_complexity_severity = if !homopolymer_rows.is_empty() {
+                ConstructReasoningSeverity::High
+            } else if !low_complexity_rows.is_empty() || !tandem_rows.is_empty() {
+                ConstructReasoningSeverity::Medium
+            } else {
+                ConstructReasoningSeverity::Low
+            };
+            let mut complexity_fact = Self::construct_reasoning_build_fact(
                 "fact_sequence_complexity_context",
                 "sequence_complexity_context",
                 complexity_label,
@@ -22691,7 +22749,22 @@ impl GentleEngine {
                     "max_low_complexity_risk_score": similarity_max_score(&low_complexity_rows),
                     "max_polymerase_slippage_risk_score": similarity_max_score(&slippage_risk_rows),
                 }),
-            ));
+            );
+            complexity_fact.task_severities = vec![
+                Self::construct_reasoning_task_severity(
+                    ConstructReasoningRiskTask::Pcr,
+                    pcr_complexity_severity,
+                    "Low-complexity, homopolymer, or tandem-repeat evidence can constrain primer placement and short-amplicon amplification.",
+                    complexity_evidence_ids.clone(),
+                ),
+                Self::construct_reasoning_task_severity(
+                    ConstructReasoningRiskTask::NanoporeSequencing,
+                    nanopore_complexity_severity,
+                    "Homopolymer and low-complexity evidence can affect raw-signal interpretation, basecalling, and local alignment confidence.",
+                    complexity_evidence_ids.clone(),
+                ),
+            ];
+            facts.push(complexity_fact);
             decisions.push(Self::construct_reasoning_build_decision(
                 "decision_evaluate_sequence_complexity_context",
                 "evaluate_sequence_complexity_context",
@@ -22750,7 +22823,24 @@ impl GentleEngine {
             );
             repeat_architecture_ids.sort();
             repeat_architecture_ids.dedup();
-            facts.push(Self::construct_reasoning_build_fact(
+            let repeat_read_mapping_severity = if !curated_repeat_support.is_empty() {
+                ConstructReasoningSeverity::Medium
+            } else {
+                ConstructReasoningSeverity::Low
+            };
+            let repeat_cloning_severity = if !inverted_repeat_rows.is_empty() {
+                ConstructReasoningSeverity::High
+            } else {
+                ConstructReasoningSeverity::Medium
+            };
+            let repeat_maintenance_severity = if !curated_repeat_support.is_empty()
+                || !inverted_repeat_rows.is_empty()
+            {
+                ConstructReasoningSeverity::Medium
+            } else {
+                ConstructReasoningSeverity::Low
+            };
+            let mut repeat_architecture_fact = Self::construct_reasoning_build_fact(
                 "fact_repeat_architecture_context",
                 "repeat_architecture_context",
                 repeat_architecture_label,
@@ -22775,7 +22865,36 @@ impl GentleEngine {
                         .map(ConstructReasoningCuratedRepeatSupport::to_json)
                         .collect::<Vec<_>>(),
                 }),
-            ));
+            );
+            repeat_architecture_fact.task_severities = vec![
+                Self::construct_reasoning_task_severity(
+                    ConstructReasoningRiskTask::ReadMapping,
+                    repeat_read_mapping_severity,
+                    if !curated_repeat_support.is_empty() {
+                        "Curated repeat-family support makes the repeated interval less likely to be uniquely mappable without read-length or reference-context review."
+                    } else {
+                        "Exact repeat architecture can reduce local uniqueness, but without repeat-family support this remains lower priority than cloning stability review."
+                    },
+                    repeat_architecture_ids.clone(),
+                ),
+                Self::construct_reasoning_task_severity(
+                    ConstructReasoningRiskTask::CloningStability,
+                    repeat_cloning_severity,
+                    if !inverted_repeat_rows.is_empty() {
+                        "Inverted or palindromic repeat evidence raises recombination and rearrangement concern for cloning stability."
+                    } else {
+                        "Direct repeat evidence can promote recombination or deletion during construct recovery and propagation."
+                    },
+                    repeat_architecture_ids.clone(),
+                ),
+                Self::construct_reasoning_task_severity(
+                    ConstructReasoningRiskTask::ConstructMaintenance,
+                    repeat_maintenance_severity,
+                    "Repeat architecture is tracked for longer-term construct maintenance because repeated segments can rearrange under host and vector conditions.",
+                    repeat_architecture_ids.clone(),
+                ),
+            ];
+            facts.push(repeat_architecture_fact);
             decisions.push(Self::construct_reasoning_build_decision(
                 "decision_evaluate_repeat_architecture_context",
                 "evaluate_repeat_architecture_context",
@@ -22863,7 +22982,23 @@ impl GentleEngine {
             ));
             mobile_element_ids.sort();
             mobile_element_ids.dedup();
-            facts.push(Self::construct_reasoning_build_fact(
+            let mobile_read_mapping_severity =
+                if !curated_mobile_support.is_empty() || !curated_mobile_annotation_rows.is_empty()
+                {
+                    ConstructReasoningSeverity::High
+                } else if !alu_like_rows.is_empty() {
+                    ConstructReasoningSeverity::Medium
+                } else {
+                    ConstructReasoningSeverity::Low
+                };
+            let mobile_maintenance_severity =
+                if !curated_mobile_support.is_empty() || !curated_mobile_annotation_rows.is_empty()
+                {
+                    ConstructReasoningSeverity::Medium
+                } else {
+                    ConstructReasoningSeverity::Low
+                };
+            let mut mobile_element_fact = Self::construct_reasoning_build_fact(
                 "fact_mobile_element_context",
                 "mobile_element_context",
                 mobile_element_label,
@@ -22891,7 +23026,28 @@ impl GentleEngine {
                         .map(ConstructReasoningCuratedRepeatSupport::to_json)
                         .collect::<Vec<_>>(),
                 }),
-            ));
+            );
+            mobile_element_fact.task_severities = vec![
+                Self::construct_reasoning_task_severity(
+                    ConstructReasoningRiskTask::ReadMapping,
+                    mobile_read_mapping_severity,
+                    if !curated_mobile_support.is_empty()
+                        || !curated_mobile_annotation_rows.is_empty()
+                    {
+                        "Curated repeat-family or mobile-element annotation increases read-mapping ambiguity concern for this interval."
+                    } else {
+                        "Internal mobile-element-like sequence remains a mapping review cue until curated family support confirms repeat class."
+                    },
+                    mobile_element_ids.clone(),
+                ),
+                Self::construct_reasoning_task_severity(
+                    ConstructReasoningRiskTask::ConstructMaintenance,
+                    mobile_maintenance_severity,
+                    "Mobile-element-like context is tracked for construct maintenance because repeat-family sequence can contribute to rearrangement or unwanted genomic similarity.",
+                    mobile_element_ids.clone(),
+                ),
+            ];
+            facts.push(mobile_element_fact);
             decisions.push(Self::construct_reasoning_build_decision(
                 "decision_evaluate_mobile_element_context",
                 "evaluate_mobile_element_context",
@@ -22928,7 +23084,19 @@ impl GentleEngine {
             pcr_risk_ids.extend(similarity_ids(&slippage_risk_rows));
             pcr_risk_ids.sort();
             pcr_risk_ids.dedup();
-            facts.push(Self::construct_reasoning_build_fact(
+            let pcr_task_severity = if !slippage_risk_rows.is_empty()
+                && (!homopolymer_rows.is_empty() || !tandem_rows.is_empty())
+            {
+                ConstructReasoningSeverity::High
+            } else if !homopolymer_rows.is_empty()
+                || !tandem_rows.is_empty()
+                || !slippage_risk_rows.is_empty()
+            {
+                ConstructReasoningSeverity::Medium
+            } else {
+                ConstructReasoningSeverity::Low
+            };
+            let mut pcr_risk_fact = Self::construct_reasoning_build_fact(
                 "fact_pcr_operational_risk_context",
                 "pcr_operational_risk_context",
                 "PCR/amplification review suggested".to_string(),
@@ -22948,7 +23116,14 @@ impl GentleEngine {
                     "max_pcr_risk_score": similarity_max_score(&low_complexity_rows)
                         .max(similarity_max_score(&slippage_risk_rows)),
                 }),
-            ));
+            );
+            pcr_risk_fact.task_severities = vec![Self::construct_reasoning_task_severity(
+                ConstructReasoningRiskTask::Pcr,
+                pcr_task_severity,
+                "Repeat, homopolymer, tandem-repeat, or explicit slippage-risk evidence can affect primer placement, short amplicons, and polymerase behavior.",
+                pcr_risk_ids.clone(),
+            )];
+            facts.push(pcr_risk_fact);
             decisions.push(Self::construct_reasoning_build_decision(
                 "decision_evaluate_pcr_operational_risk",
                 "evaluate_pcr_operational_risk",
@@ -22977,7 +23152,12 @@ impl GentleEngine {
             nanopore_risk_ids.extend(similarity_ids(&nanopore_homopolymer_rows));
             nanopore_risk_ids.sort();
             nanopore_risk_ids.dedup();
-            facts.push(Self::construct_reasoning_build_fact(
+            let nanopore_task_severity = if !nanopore_homopolymer_rows.is_empty() {
+                ConstructReasoningSeverity::High
+            } else {
+                ConstructReasoningSeverity::Medium
+            };
+            let mut nanopore_risk_fact = Self::construct_reasoning_build_fact(
                 "fact_nanopore_operational_risk_context",
                 "nanopore_operational_risk_context",
                 "Nanopore/direct-sequencing review suggested".to_string(),
@@ -22992,7 +23172,15 @@ impl GentleEngine {
                     "homopolymer_labels": similarity_labels(&nanopore_homopolymer_rows),
                     "max_nanopore_risk_score": similarity_max_score(&nanopore_signal_rows),
                 }),
-            ));
+            );
+            nanopore_risk_fact.task_severities =
+                vec![Self::construct_reasoning_task_severity(
+                    ConstructReasoningRiskTask::NanoporeSequencing,
+                    nanopore_task_severity,
+                    "Homopolymer or low-complexity signal-risk evidence can affect nanopore basecalling and local alignment confidence.",
+                    nanopore_risk_ids.clone(),
+                )];
+            facts.push(nanopore_risk_fact);
             decisions.push(Self::construct_reasoning_build_decision(
                 "decision_evaluate_nanopore_operational_risk",
                 "evaluate_nanopore_operational_risk",
@@ -23021,7 +23209,12 @@ impl GentleEngine {
             mapping_risk_ids.extend(similarity_ids(&mobile_mapping_rows));
             mapping_risk_ids.sort();
             mapping_risk_ids.dedup();
-            facts.push(Self::construct_reasoning_build_fact(
+            let mapping_task_severity = if !mobile_mapping_rows.is_empty() {
+                ConstructReasoningSeverity::High
+            } else {
+                ConstructReasoningSeverity::Low
+            };
+            let mut mapping_risk_fact = Self::construct_reasoning_build_fact(
                 "fact_mapping_operational_risk_context",
                 "mapping_operational_risk_context",
                 "Repeat-driven mapping review suggested".to_string(),
@@ -23037,7 +23230,19 @@ impl GentleEngine {
                     "max_mapping_risk_score": similarity_max_score(&mapping_ambiguity_rows)
                         .max(similarity_max_score(&mobile_mapping_rows)),
                 }),
-            ));
+            );
+            mapping_risk_fact.task_severities =
+                vec![Self::construct_reasoning_task_severity(
+                    ConstructReasoningRiskTask::ReadMapping,
+                    mapping_task_severity,
+                    if !mobile_mapping_rows.is_empty() {
+                        "Mobile-element or repeat-family evidence can substantially reduce mapping uniqueness without read-length and reference-context review."
+                    } else {
+                        "Repeat-driven ambiguity can reduce local mapping uniqueness, but without family-backed evidence this remains a lower-priority mapping cue."
+                    },
+                    mapping_risk_ids.clone(),
+                )];
+            facts.push(mapping_risk_fact);
             decisions.push(Self::construct_reasoning_build_decision(
                 "decision_evaluate_mapping_operational_risk",
                 "evaluate_mapping_operational_risk",
@@ -23066,7 +23271,17 @@ impl GentleEngine {
             cloning_risk_ids.extend(similarity_ids(&cloning_risk_rows));
             cloning_risk_ids.sort();
             cloning_risk_ids.dedup();
-            facts.push(Self::construct_reasoning_build_fact(
+            let cloning_task_severity = if !inversion_risk_rows.is_empty() {
+                ConstructReasoningSeverity::High
+            } else {
+                ConstructReasoningSeverity::Medium
+            };
+            let maintenance_task_severity = if !inversion_risk_rows.is_empty() {
+                ConstructReasoningSeverity::High
+            } else {
+                ConstructReasoningSeverity::Medium
+            };
+            let mut cloning_risk_fact = Self::construct_reasoning_build_fact(
                 "fact_cloning_stability_context",
                 "cloning_stability_context",
                 "Cloning stability review suggested".to_string(),
@@ -23082,7 +23297,26 @@ impl GentleEngine {
                     "max_cloning_risk_score": similarity_max_score(&inversion_risk_rows)
                         .max(similarity_max_score(&cloning_risk_rows)),
                 }),
-            ));
+            );
+            cloning_risk_fact.task_severities = vec![
+                Self::construct_reasoning_task_severity(
+                    ConstructReasoningRiskTask::CloningStability,
+                    cloning_task_severity,
+                    if !inversion_risk_rows.is_empty() {
+                        "Inverted-repeat or palindromic evidence raises recombination and rearrangement concern during cloning."
+                    } else {
+                        "Direct repeat evidence can destabilize recovery or maintenance of the cloned construct."
+                    },
+                    cloning_risk_ids.clone(),
+                ),
+                Self::construct_reasoning_task_severity(
+                    ConstructReasoningRiskTask::ConstructMaintenance,
+                    maintenance_task_severity,
+                    "Repeat-derived cloning-stability evidence is also relevant for longer-term propagation and construct maintenance.",
+                    cloning_risk_ids.clone(),
+                ),
+            ];
+            facts.push(cloning_risk_fact);
             decisions.push(Self::construct_reasoning_build_decision(
                 "decision_evaluate_cloning_stability_context",
                 "evaluate_cloning_stability_context",
@@ -23121,7 +23355,38 @@ impl GentleEngine {
             similarity_risk_ids.extend(similarity_ids(&cloning_risk_rows));
             similarity_risk_ids.sort();
             similarity_risk_ids.dedup();
-            facts.push(Self::construct_reasoning_build_fact(
+            let mut similarity_task_severities = vec![];
+            if !slippage_risk_rows.is_empty() {
+                similarity_task_severities.push(Self::construct_reasoning_task_severity(
+                    ConstructReasoningRiskTask::Pcr,
+                    ConstructReasoningSeverity::Medium,
+                    "Slippage-risk repeat evidence makes PCR/amplification review task-relevant.",
+                    similarity_ids(&slippage_risk_rows),
+                ));
+            }
+            if !mapping_ambiguity_rows.is_empty() {
+                similarity_task_severities.push(Self::construct_reasoning_task_severity(
+                    ConstructReasoningRiskTask::ReadMapping,
+                    ConstructReasoningSeverity::Low,
+                    "Repeat-driven ambiguity can reduce local read-mapping uniqueness.",
+                    similarity_ids(&mapping_ambiguity_rows),
+                ));
+            }
+            if !inversion_risk_rows.is_empty() || !cloning_risk_rows.is_empty() {
+                let mut cloning_similarity_ids = similarity_ids(&inversion_risk_rows);
+                cloning_similarity_ids.extend(similarity_ids(&cloning_risk_rows));
+                similarity_task_severities.push(Self::construct_reasoning_task_severity(
+                    ConstructReasoningRiskTask::CloningStability,
+                    if !inversion_risk_rows.is_empty() {
+                        ConstructReasoningSeverity::High
+                    } else {
+                        ConstructReasoningSeverity::Medium
+                    },
+                    "Repeat and inversion-risk evidence is most directly actionable for cloning-stability review.",
+                    cloning_similarity_ids,
+                ));
+            }
+            let mut similarity_risk_fact = Self::construct_reasoning_build_fact(
                 "fact_similarity_operational_risk_context",
                 "similarity_operational_risk_context",
                 "Similarity/low-complexity operational risks detected".to_string(),
@@ -23139,7 +23404,9 @@ impl GentleEngine {
                         .max(similarity_max_score(&inversion_risk_rows))
                         .max(similarity_max_score(&cloning_risk_rows)),
                 }),
-            ));
+            );
+            similarity_risk_fact.task_severities = similarity_task_severities;
+            facts.push(similarity_risk_fact);
             decisions.push(Self::construct_reasoning_build_decision(
                 "decision_evaluate_similarity_operational_risk",
                 "evaluate_similarity_operational_risk",

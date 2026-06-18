@@ -10923,6 +10923,37 @@ fn execute_construct_reasoning_show_graph_includes_similarity_predictor_summary(
         show.output["summary"]["fact_summaries"]
             .as_array()
             .map(|rows| rows.iter().any(|row| {
+                row["fact_type"].as_str() == Some("mapping_operational_risk_context")
+                    && row["task_severities"]
+                        .as_array()
+                        .map(|task_rows| {
+                            task_rows.iter().any(|entry| {
+                                entry["task"].as_str() == Some("read_mapping")
+                                    && entry["severity"].as_str() == Some("low")
+                                    && entry["supporting_evidence_ids"]
+                                        .as_array()
+                                        .map(|ids| !ids.is_empty())
+                                        .unwrap_or(false)
+                            })
+                        })
+                        .unwrap_or(false)
+                    && row["detail_lines"]
+                        .as_array()
+                        .map(|detail_rows| {
+                            detail_rows.iter().any(|entry| {
+                                entry.as_str().is_some_and(|text| {
+                                    text.contains("task_severity: read_mapping=low")
+                                })
+                            })
+                        })
+                        .unwrap_or(false)
+            }))
+            .unwrap_or(false)
+    );
+    assert!(
+        show.output["summary"]["fact_summaries"]
+            .as_array()
+            .map(|rows| rows.iter().any(|row| {
                 row["fact_type"].as_str() == Some("cloning_stability_context")
                     && row["warning_lines"]
                         .as_array()

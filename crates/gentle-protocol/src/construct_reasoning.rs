@@ -236,6 +236,73 @@ impl EvidenceClass {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Default)]
 #[serde(rename_all = "snake_case")]
+/// Task context used to interpret repeat/similarity operational severity.
+pub enum ConstructReasoningRiskTask {
+    #[default]
+    Pcr,
+    NanoporeSequencing,
+    ReadMapping,
+    CloningStability,
+    ConstructMaintenance,
+}
+
+impl ConstructReasoningRiskTask {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Pcr => "pcr",
+            Self::NanoporeSequencing => "nanopore_sequencing",
+            Self::ReadMapping => "read_mapping",
+            Self::CloningStability => "cloning_stability",
+            Self::ConstructMaintenance => "construct_maintenance",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[serde(rename_all = "snake_case")]
+/// Rule-based severity level for one task-specific reasoning concern.
+pub enum ConstructReasoningSeverity {
+    #[default]
+    None,
+    Low,
+    Medium,
+    High,
+}
+
+impl ConstructReasoningSeverity {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+/// Transparent task-specific severity attached to a construct-reasoning fact.
+pub struct ConstructReasoningTaskSeverity {
+    pub task: ConstructReasoningRiskTask,
+    pub severity: ConstructReasoningSeverity,
+    pub rationale: String,
+    pub supporting_evidence_ids: Vec<String>,
+}
+
+impl Default for ConstructReasoningTaskSeverity {
+    fn default() -> Self {
+        Self {
+            task: ConstructReasoningRiskTask::Pcr,
+            severity: ConstructReasoningSeverity::None,
+            rationale: String::new(),
+            supporting_evidence_ids: vec![],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[serde(rename_all = "snake_case")]
 /// Reasoning style used by one decision node.
 pub enum DecisionMethod {
     #[default]
@@ -597,6 +664,7 @@ pub struct DesignFact {
     pub label: String,
     pub rationale: String,
     pub based_on_evidence_ids: Vec<String>,
+    pub task_severities: Vec<ConstructReasoningTaskSeverity>,
     pub value_json: serde_json::Value,
     pub confidence: Option<f64>,
     pub editable_status: EditableStatus,
@@ -611,6 +679,7 @@ impl Default for DesignFact {
             label: String::new(),
             rationale: String::new(),
             based_on_evidence_ids: vec![],
+            task_severities: vec![],
             value_json: serde_json::Value::Null,
             confidence: None,
             editable_status: EditableStatus::Draft,
@@ -1032,6 +1101,19 @@ mod tests {
             rationale: "Restriction site".to_string(),
             ..DesignEvidence::default()
         });
+        graph.facts.push(DesignFact {
+            fact_id: "fact_demo".to_string(),
+            fact_type: "repeat_architecture_context".to_string(),
+            label: "Repeat context".to_string(),
+            task_severities: vec![ConstructReasoningTaskSeverity {
+                task: ConstructReasoningRiskTask::CloningStability,
+                severity: ConstructReasoningSeverity::Medium,
+                rationale: "Direct-repeat architecture may matter more for cloning stability."
+                    .to_string(),
+                supporting_evidence_ids: vec!["ev1".to_string()],
+            }],
+            ..DesignFact::default()
+        });
         graph
             .inspection_actions
             .push(ConstructReasoningInspectionAction {
@@ -1065,6 +1147,11 @@ mod tests {
         assert_eq!(
             round_trip.objective.propagation_host_profile_id.as_deref(),
             Some("ecoli_k12")
+        );
+        assert_eq!(round_trip.facts[0].task_severities.len(), 1);
+        assert_eq!(
+            round_trip.facts[0].task_severities[0].task,
+            ConstructReasoningRiskTask::CloningStability
         );
         assert_eq!(round_trip.objective.host_route.len(), 1);
         assert_eq!(round_trip.evidence[0].scope, EvidenceScope::HostTransition);

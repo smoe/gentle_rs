@@ -39591,6 +39591,44 @@ fn build_construct_reasoning_graph_collects_restriction_sites_and_feature_spans(
     );
 }
 
+fn construct_reasoning_task_severity<'a>(
+    fact: &'a DesignFact,
+    task: ConstructReasoningRiskTask,
+) -> &'a ConstructReasoningTaskSeverity {
+    fact.task_severities
+        .iter()
+        .find(|severity| severity.task == task)
+        .unwrap_or_else(|| panic!("missing {task:?} severity on {}", fact.fact_type))
+}
+
+fn construct_reasoning_severity_rank(severity: ConstructReasoningSeverity) -> u8 {
+    match severity {
+        ConstructReasoningSeverity::None => 0,
+        ConstructReasoningSeverity::Low => 1,
+        ConstructReasoningSeverity::Medium => 2,
+        ConstructReasoningSeverity::High => 3,
+    }
+}
+
+fn assert_task_severity_ids_are_fact_evidence(fact: &DesignFact) {
+    for severity in &fact.task_severities {
+        assert!(
+            !severity.supporting_evidence_ids.is_empty(),
+            "task severity should name evidence: {:?}",
+            severity
+        );
+        for evidence_id in &severity.supporting_evidence_ids {
+            assert!(
+                fact.based_on_evidence_ids
+                    .iter()
+                    .any(|id| id == evidence_id),
+                "severity evidence {evidence_id} should be part of fact evidence {:?}",
+                fact.based_on_evidence_ids
+            );
+        }
+    }
+}
+
 #[test]
 fn build_construct_reasoning_graph_derives_low_complexity_repeat_and_operational_risk_context() {
     let sequence = format!(
@@ -39668,6 +39706,18 @@ fn build_construct_reasoning_graph_derives_low_complexity_repeat_and_operational
             .unwrap_or(0)
             >= 1
     );
+    let repeat_read_mapping =
+        construct_reasoning_task_severity(repeat_fact, ConstructReasoningRiskTask::ReadMapping);
+    let repeat_cloning = construct_reasoning_task_severity(
+        repeat_fact,
+        ConstructReasoningRiskTask::CloningStability,
+    );
+    assert!(
+        construct_reasoning_severity_rank(repeat_cloning.severity)
+            > construct_reasoning_severity_rank(repeat_read_mapping.severity),
+        "repeat architecture should be more severe for cloning stability than read mapping without curated family support"
+    );
+    assert_task_severity_ids_are_fact_evidence(repeat_fact);
 
     let risk_fact = graph
         .facts
@@ -39690,6 +39740,7 @@ fn build_construct_reasoning_graph_derives_low_complexity_repeat_and_operational
             .unwrap_or(0)
             >= 1
     );
+    assert_task_severity_ids_are_fact_evidence(risk_fact);
     let pcr_fact = graph
         .facts
         .iter()
@@ -39703,6 +39754,13 @@ fn build_construct_reasoning_graph_derives_low_complexity_repeat_and_operational
             .unwrap_or(0)
             >= 1
     );
+    let pcr_severity = construct_reasoning_task_severity(pcr_fact, ConstructReasoningRiskTask::Pcr);
+    assert!(
+        construct_reasoning_severity_rank(pcr_severity.severity)
+            >= construct_reasoning_severity_rank(ConstructReasoningSeverity::Medium),
+        "homopolymer/tandem repeat context should be PCR-relevant"
+    );
+    assert_task_severity_ids_are_fact_evidence(pcr_fact);
     let nanopore_fact = graph
         .facts
         .iter()
@@ -39716,6 +39774,16 @@ fn build_construct_reasoning_graph_derives_low_complexity_repeat_and_operational
             .unwrap_or(0)
             >= 1
     );
+    let nanopore_severity = construct_reasoning_task_severity(
+        nanopore_fact,
+        ConstructReasoningRiskTask::NanoporeSequencing,
+    );
+    assert!(
+        construct_reasoning_severity_rank(nanopore_severity.severity)
+            >= construct_reasoning_severity_rank(ConstructReasoningSeverity::Medium),
+        "homopolymer/low-complexity context should be nanopore-relevant"
+    );
+    assert_task_severity_ids_are_fact_evidence(nanopore_fact);
     let mapping_fact = graph
         .facts
         .iter()
@@ -39729,6 +39797,10 @@ fn build_construct_reasoning_graph_derives_low_complexity_repeat_and_operational
             .unwrap_or(0)
             >= 1
     );
+    let mapping_severity =
+        construct_reasoning_task_severity(mapping_fact, ConstructReasoningRiskTask::ReadMapping);
+    assert_eq!(mapping_severity.severity, ConstructReasoningSeverity::Low);
+    assert_task_severity_ids_are_fact_evidence(mapping_fact);
     let cloning_fact = graph
         .facts
         .iter()
@@ -39742,6 +39814,12 @@ fn build_construct_reasoning_graph_derives_low_complexity_repeat_and_operational
             .unwrap_or(0)
             >= 1
     );
+    let cloning_severity = construct_reasoning_task_severity(
+        cloning_fact,
+        ConstructReasoningRiskTask::CloningStability,
+    );
+    assert_eq!(cloning_severity.severity, ConstructReasoningSeverity::High);
+    assert_task_severity_ids_are_fact_evidence(cloning_fact);
     assert!(graph.annotation_candidates.iter().any(|row| {
         row.role == ConstructRole::RepeatRegion && row.source_kind == "generated_annotation"
     }));
@@ -39872,6 +39950,13 @@ fn build_construct_reasoning_graph_detects_alu_like_mobile_element_candidates() 
             .and_then(serde_json::Value::as_u64),
         Some(0)
     );
+    let soft_mapping_severity =
+        construct_reasoning_task_severity(mobile_fact, ConstructReasoningRiskTask::ReadMapping);
+    assert_eq!(
+        soft_mapping_severity.severity,
+        ConstructReasoningSeverity::Medium
+    );
+    assert_task_severity_ids_are_fact_evidence(mobile_fact);
     let mapping_fact = graph
         .facts
         .iter()
@@ -39920,10 +40005,16 @@ fn build_construct_reasoning_graph_detects_alu_like_mobile_element_candidates() 
 fn build_construct_reasoning_graph_upgrades_alu_like_with_overlapping_rmsk_family_support() {
     let sequence = alu_like_demo_sequence_text();
     let mut dna = DNAsequence::from_sequence(&sequence).expect("sequence");
-    dna.features_mut()
-        .push(synthetic_ucsc_rmsk_alu_feature(0, sequence.len(), "rmsk_alu_1"));
-    dna.features_mut()
-        .push(synthetic_ucsc_rmsk_alu_feature(0, sequence.len(), "rmsk_alu_2"));
+    dna.features_mut().push(synthetic_ucsc_rmsk_alu_feature(
+        0,
+        sequence.len(),
+        "rmsk_alu_1",
+    ));
+    dna.features_mut().push(synthetic_ucsc_rmsk_alu_feature(
+        0,
+        sequence.len(),
+        "rmsk_alu_2",
+    ));
     let mut state = ProjectState::default();
     state
         .sequences
@@ -39948,8 +40039,14 @@ fn build_construct_reasoning_graph_upgrades_alu_like_with_overlapping_rmsk_famil
     assert!(curated_rows.iter().all(|row| {
         row.evidence_class == EvidenceClass::ReliableAnnotation
             && row.notes.iter().any(|note| note == "repeat_family=Alu")
-            && row.context_tags.iter().any(|tag| tag == "repeat_class_sine")
-            && row.context_tags.iter().any(|tag| tag == "repeat_family_alu")
+            && row
+                .context_tags
+                .iter()
+                .any(|tag| tag == "repeat_class_sine")
+            && row
+                .context_tags
+                .iter()
+                .any(|tag| tag == "repeat_family_alu")
     }));
 
     let mobile_fact = graph
@@ -39989,9 +40086,30 @@ fn build_construct_reasoning_graph_upgrades_alu_like_with_overlapping_rmsk_famil
         Some(2),
         "duplicate overlapping rmsk annotations should be summarized into one support row"
     );
-    assert!(mobile_fact
-        .rationale
-        .contains("overlapping curated repeat-family annotation"));
+    assert!(
+        mobile_fact
+            .rationale
+            .contains("overlapping curated repeat-family annotation")
+    );
+    let curated_mapping_severity =
+        construct_reasoning_task_severity(mobile_fact, ConstructReasoningRiskTask::ReadMapping);
+    assert_eq!(
+        curated_mapping_severity.severity,
+        ConstructReasoningSeverity::High
+    );
+    assert!(
+        curated_mapping_severity
+            .supporting_evidence_ids
+            .iter()
+            .any(|id| id == &alu_evidence.evidence_id)
+    );
+    assert!(curated_rows.iter().all(|row| {
+        curated_mapping_severity
+            .supporting_evidence_ids
+            .iter()
+            .any(|id| id == &row.evidence_id)
+    }));
+    assert_task_severity_ids_are_fact_evidence(mobile_fact);
 
     let mobile_action = graph
         .inspection_actions
@@ -40034,10 +40152,12 @@ fn build_construct_reasoning_graph_does_not_upgrade_alu_like_for_non_overlapping
         .build_construct_reasoning_graph("alu_like_rmsk_nonoverlap", None, None)
         .expect("build graph");
 
-    assert!(graph
-        .evidence
-        .iter()
-        .any(|row| row.context_tags.iter().any(|tag| tag == "ucsc_rmsk")));
+    assert!(
+        graph
+            .evidence
+            .iter()
+            .any(|row| row.context_tags.iter().any(|tag| tag == "ucsc_rmsk"))
+    );
     let mobile_fact = graph
         .facts
         .iter()
@@ -40056,6 +40176,13 @@ fn build_construct_reasoning_graph_does_not_upgrade_alu_like_for_non_overlapping
             .get("curated_repeat_support_count")
             .and_then(serde_json::Value::as_u64),
         Some(0)
+    );
+    let nonoverlap_mapping_severity =
+        construct_reasoning_task_severity(mobile_fact, ConstructReasoningRiskTask::ReadMapping);
+    assert!(
+        construct_reasoning_severity_rank(nonoverlap_mapping_severity.severity)
+            < construct_reasoning_severity_rank(ConstructReasoningSeverity::High),
+        "non-overlapping rmsk rows should not upgrade soft internal mobile-element severity"
     );
     let mobile_action = graph
         .inspection_actions

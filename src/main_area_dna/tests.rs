@@ -12544,6 +12544,14 @@ fn construct_reasoning_similarity_fact_entries_offer_dotplot_actions() {
         .expect("pcr reasoning entry");
     assert!(
         pcr_entry
+            .detail_lines
+            .iter()
+            .any(|line| line.contains("task_severity: pcr=")),
+        "pcr entry details: {:?}",
+        pcr_entry.detail_lines
+    );
+    assert!(
+        pcr_entry
             .dotplot_actions
             .iter()
             .any(|action| action.mode == DotplotMode::SelfForward),
@@ -12564,6 +12572,14 @@ fn construct_reasoning_similarity_fact_entries_offer_dotplot_actions() {
         .iter()
         .find(|entry| entry.title == "Cloning stability review suggested")
         .expect("cloning reasoning entry");
+    assert!(
+        cloning_entry
+            .detail_lines
+            .iter()
+            .any(|line| line.contains("task_severity: cloning_stability=")),
+        "cloning entry details: {:?}",
+        cloning_entry.detail_lines
+    );
     assert!(
         cloning_entry
             .dotplot_actions
@@ -12606,6 +12622,20 @@ fn construct_reasoning_similarity_fact_entries_offer_dotplot_actions() {
             .any(|line| line.starts_with("inspection_action_evidence: ")),
         "cloning entry details: {:?}",
         cloning_entry.detail_lines
+    );
+    assert_eq!(
+        cache.annotation_entries.len(),
+        graph.annotation_candidates.len(),
+        "task severity summaries should not multiply map annotation rows"
+    );
+    assert!(
+        cache.annotation_entries.iter().all(|entry| {
+            entry
+                .detail_lines
+                .iter()
+                .all(|line| !line.contains("task_severity:"))
+        }),
+        "task severities should stay grouped under fact rows"
     );
 }
 

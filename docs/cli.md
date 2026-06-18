@@ -1092,6 +1092,10 @@ UniProt mapping capability status:
     - current fact summaries now include adapter-capture review plus the new
       similarity-derived predictor rows for PCR/amplification,
       nanopore/direct-sequencing, repeat-driven mapping, and cloning stability
+    - repeat/similarity fact summaries expose `task_severities[]` rows with
+      task (`pcr`, `nanopore_sequencing`, `read_mapping`,
+      `cloning_stability`, `construct_maintenance`), severity, rationale, and
+      supporting evidence ids, plus compact `task_severity: ...` detail lines
     - repeat/mobile-element facts summarize overlapping materialized
       RepeatMasker/UCSC `rmsk`-style annotations as
       `curated_repeat_support[]` rows with repeat name/class/family and

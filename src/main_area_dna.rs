@@ -13690,6 +13690,32 @@ impl MainAreaDna {
         lines
     }
 
+    fn construct_reasoning_task_severity_detail_lines(fact: &DesignFact) -> Vec<String> {
+        fact.task_severities
+            .iter()
+            .map(|severity| {
+                let evidence_count = severity.supporting_evidence_ids.len();
+                let rationale = severity.rationale.trim();
+                if rationale.is_empty() {
+                    format!(
+                        "task_severity: {}={} (evidence={})",
+                        severity.task.as_str(),
+                        severity.severity.as_str(),
+                        evidence_count
+                    )
+                } else {
+                    format!(
+                        "task_severity: {}={} (evidence={}): {}",
+                        severity.task.as_str(),
+                        severity.severity.as_str(),
+                        evidence_count,
+                        rationale
+                    )
+                }
+            })
+            .collect()
+    }
+
     fn construct_reasoning_decision_method_label(method: DecisionMethod) -> &'static str {
         match method {
             DecisionMethod::HardRule => "hard_rule",
@@ -13756,6 +13782,7 @@ impl MainAreaDna {
                 fact.based_on_evidence_ids.len()
             ));
         }
+        detail_lines.extend(Self::construct_reasoning_task_severity_detail_lines(fact));
         match fact.fact_type.as_str() {
             "host_transition_context" => {
                 let ordered_hosts = Self::construct_reasoning_json_string_list(
@@ -14084,7 +14111,12 @@ impl MainAreaDna {
                 if !labels.is_empty() {
                     detail_lines.push(format!("labels: {}", labels.join(", ")));
                 }
-                if alu_like > 0 {
+                let curated_support = fact
+                    .value_json
+                    .get("curated_repeat_support_count")
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or(0);
+                if alu_like > 0 && curated_support == 0 {
                     warning_lines.push(
                         "Alu-like calls are still heuristic until a curated repeat-family catalog is integrated"
                             .to_string(),
