@@ -222,6 +222,33 @@ fn tp73_validation_anchored_engine() -> GentleEngine {
     engine
 }
 
+fn tp73_validation_pm_probe_evidence_report() -> ProbeRegionEvidenceInterpretationReport {
+    let fixture_dir = probe_region_tp73_validation_fixture_dir();
+    let mut engine = tp73_validation_anchored_engine();
+    engine
+        .apply(Operation::ProjectProbeRegionOutput {
+            seq_id: "array_slice".to_string(),
+            output_dir: fixture_dir,
+            contrasts: vec!["AdTAp73alpha-AdGFP".to_string()],
+            level: Some("pm_probe".to_string()),
+            min_abs_logfc: Some(0.5),
+            max_features: Some(20),
+            clear_existing: Some(true),
+        })
+        .expect("project committed PM probe validation fixture");
+    engine
+        .apply(Operation::InterpretProbeRegionEvidence {
+            seq_id: "array_slice".to_string(),
+            gene_label: Some("TP73".to_string()),
+            level: Some("pm_probe".to_string()),
+            min_abs_logfc: Some(0.5),
+            path: None,
+        })
+        .expect("interpret committed PM probe validation fixture")
+        .probe_region_evidence_interpretation
+        .expect("interpretation report")
+}
+
 fn write_probe_region_projection_fixture(out: &Path) {
     fs::create_dir(out).expect("probe-region fixture dir");
     fs::write(
@@ -1808,30 +1835,7 @@ fn e_mtab_14704_tp73_validation_report_is_probe_location_figure_ready() {
 
 #[test]
 fn render_probe_region_evidence_svg_from_tp73_validation_report() {
-    let fixture_dir = probe_region_tp73_validation_fixture_dir();
-    let mut engine = tp73_validation_anchored_engine();
-    engine
-        .apply(Operation::ProjectProbeRegionOutput {
-            seq_id: "array_slice".to_string(),
-            output_dir: fixture_dir,
-            contrasts: vec!["AdTAp73alpha-AdGFP".to_string()],
-            level: Some("pm_probe".to_string()),
-            min_abs_logfc: Some(0.5),
-            max_features: Some(20),
-            clear_existing: Some(true),
-        })
-        .expect("project committed PM probe validation fixture");
-    let report = engine
-        .apply(Operation::InterpretProbeRegionEvidence {
-            seq_id: "array_slice".to_string(),
-            gene_label: Some("TP73".to_string()),
-            level: Some("pm_probe".to_string()),
-            min_abs_logfc: Some(0.5),
-            path: None,
-        })
-        .expect("interpret committed PM probe validation fixture")
-        .probe_region_evidence_interpretation
-        .expect("interpretation report");
+    let report = tp73_validation_pm_probe_evidence_report();
 
     let svg = GentleEngine::render_probe_region_evidence_svg_text(&report);
     let second_svg = GentleEngine::render_probe_region_evidence_svg_text(&report);
@@ -1860,6 +1864,65 @@ fn render_probe_region_evidence_svg_from_tp73_validation_report() {
     assert!(compact.contains("<gid=\"probe-region-evidence-transcripts\""));
     assert!(compact.contains("<gid=\"probe-region-evidence-probes\""));
     assert!(compact.contains("<gid=\"probe-region-evidence-legend\""));
+}
+
+#[test]
+fn render_probe_region_evidence_svg_is_byte_stable_for_identical_report() {
+    let report = tp73_validation_pm_probe_evidence_report();
+
+    let first = GentleEngine::render_probe_region_evidence_svg_text(&report);
+    let second = GentleEngine::render_probe_region_evidence_svg_text(&report);
+
+    assert_eq!(first.as_bytes(), second.as_bytes());
+    assert!(first.contains("gentle.probe_region_evidence_svg_export.v1"));
+}
+
+#[test]
+fn render_probe_region_evidence_svg_is_independent_of_report_row_order() {
+    let report = tp73_validation_pm_probe_evidence_report();
+    let mut reordered = report.clone();
+    reordered.evidence_rows.reverse();
+    for row in &mut reordered.evidence_rows {
+        row.overlapping_transcript_ids.reverse();
+        row.transcript_mappings.reverse();
+        for mapping in &mut row.transcript_mappings {
+            mapping.exon_ordinals.reverse();
+            mapping.exon_ranges_1based.reverse();
+            mapping.local_exon_ranges_1based.reverse();
+            mapping.junction_spans.reverse();
+            mapping.score_basis.reverse();
+        }
+        row.ambiguity_tags.reverse();
+    }
+    reordered.transcript_rows.reverse();
+
+    let canonical = GentleEngine::render_probe_region_evidence_svg_text(&report);
+    let shuffled = GentleEngine::render_probe_region_evidence_svg_text(&reordered);
+
+    assert_eq!(canonical.as_bytes(), shuffled.as_bytes());
+}
+
+#[test]
+fn render_probe_region_output_svg_is_byte_stable_for_identical_helper_output() {
+    let fixture_dir = probe_region_tp73_validation_fixture_dir();
+    let temp = tempdir().expect("tempdir");
+    let first_path = temp.path().join("first.svg");
+    let second_path = temp.path().join("second.svg");
+    let engine = GentleEngine::default();
+
+    engine
+        .export_probe_region_output_svg(&fixture_dir, &first_path.to_string_lossy())
+        .expect("export first helper-output probe-region SVG");
+    engine
+        .export_probe_region_output_svg(&fixture_dir, &second_path.to_string_lossy())
+        .expect("export second helper-output probe-region SVG");
+    let first = fs::read(&first_path).expect("read first SVG");
+    let second = fs::read(&second_path).expect("read second SVG");
+
+    assert_eq!(first, second);
+    let first_text = String::from_utf8(first).expect("SVG should be UTF-8");
+    assert!(first_text.contains("gentle.probe_region_output_svg_export.v1"));
+    assert!(first_text.contains("Probe-region intensity evidence"));
 }
 
 #[test]
