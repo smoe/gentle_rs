@@ -888,6 +888,14 @@ Feature tree grouping:
     other GENtle tools.
   - the dedicated `RNA-read Mapping` workspace now stays open if you close the
     parent DNA sequence window that originally spawned it
+- The Splicing Expert now includes a distinct `Array probe geometry` section:
+  - consumes the cached
+    `gentle.probe_region_evidence_interpretation.v2` report for the same
+    splicing locus
+  - lists exon-overlap PM probes, exon-exon junction-spanning probes, parent
+    probeset grouping, and ambiguity/unresolved mapping tags
+  - this is a review-only array design/alignment constraint layer, separate
+    from RNA-read evidence; it does not infer isoform support by itself
 - The Splicing Expert now also includes an `ATtRACT / RBP evidence` section:
   - engine-owned, splice-aware motif interpretation over the selected splicing
     group; the GUI is only a viewer/filter for the shared payload

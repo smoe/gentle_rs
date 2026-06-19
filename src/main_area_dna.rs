@@ -109,22 +109,23 @@ use crate::{
         PrimerDesignBackend, PrimerDesignBaseLock, PrimerDesignPairConstraint,
         PrimerDesignProgress, PrimerDesignReport, PrimerDesignSideConstraint,
         PrimerSpecificityPolicy, ProbeRegionAptImportReport, ProbeRegionBackendRunReport,
-        ProbeRegionEvidenceInterpretationReport, ProbeRegionEvidenceSvgExport,
-        ProbeRegionEvidenceTranscriptMapping, ProbeRegionOutputInspection,
-        PromoterEvidenceMatrixReport, PromoterEvidenceMatrixRow, PromoterExpressionEvidenceInput,
-        PromoterExpressionEvidenceReport, PromoterReporterCandidateSet, PromoterWindowCollapseMode,
-        ProtocolCartoonPreviewTelemetry, QpcrDesignReport, QpcrTranscriptSpecificityEvidence,
-        QpcrTranscriptTargeting, QpcrTranscriptTargetingMode, RenderSvgMode,
-        RestrictionCloningPcrHandoffMode, RestrictionCloningPcrHandoffReport,
-        RestrictionCloningPcrHandoffSeedRequest, RestrictionCloningVectorEnzymeSuggestions,
-        RestrictionEnzymeDisplayMode, RestrictionSiteScanReport, RnaReadAlignConfig,
-        RnaReadAlignmentDisplay, RnaReadAlignmentEffect, RnaReadAlignmentInspection,
-        RnaReadAlignmentInspectionEffectFilter, RnaReadAlignmentInspectionRow,
-        RnaReadAlignmentInspectionSortKey, RnaReadAlignmentInspectionSubsetSpec,
-        RnaReadConcatemerInspection, RnaReadConcatemerInspectionSettings,
-        RnaReadExonSupportFrequency, RnaReadGeneSupportCompleteRule, RnaReadGeneSupportSummary,
-        RnaReadHitSelection, RnaReadInputFormat, RnaReadInterpretProgress,
-        RnaReadInterpretationHit, RnaReadInterpretationProfile, RnaReadInterpretationReport,
+        ProbeRegionEvidenceInterpretationReport, ProbeRegionEvidenceMappingRow,
+        ProbeRegionEvidenceSvgExport, ProbeRegionEvidenceTranscriptMapping,
+        ProbeRegionOutputInspection, PromoterEvidenceMatrixReport, PromoterEvidenceMatrixRow,
+        PromoterExpressionEvidenceInput, PromoterExpressionEvidenceReport,
+        PromoterReporterCandidateSet, PromoterWindowCollapseMode, ProtocolCartoonPreviewTelemetry,
+        QpcrDesignReport, QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting,
+        QpcrTranscriptTargetingMode, RenderSvgMode, RestrictionCloningPcrHandoffMode,
+        RestrictionCloningPcrHandoffReport, RestrictionCloningPcrHandoffSeedRequest,
+        RestrictionCloningVectorEnzymeSuggestions, RestrictionEnzymeDisplayMode,
+        RestrictionSiteScanReport, RnaReadAlignConfig, RnaReadAlignmentDisplay,
+        RnaReadAlignmentEffect, RnaReadAlignmentInspection, RnaReadAlignmentInspectionEffectFilter,
+        RnaReadAlignmentInspectionRow, RnaReadAlignmentInspectionSortKey,
+        RnaReadAlignmentInspectionSubsetSpec, RnaReadConcatemerInspection,
+        RnaReadConcatemerInspectionSettings, RnaReadExonSupportFrequency,
+        RnaReadGeneSupportCompleteRule, RnaReadGeneSupportSummary, RnaReadHitSelection,
+        RnaReadInputFormat, RnaReadInterpretProgress, RnaReadInterpretationHit,
+        RnaReadInterpretationProfile, RnaReadInterpretationReport,
         RnaReadInterpretationReportSummary, RnaReadIsoformSupportRow, RnaReadIsoformTriageBin,
         RnaReadJunctionSupportFrequency, RnaReadLengthDistributionSummary, RnaReadOriginMode,
         RnaReadPairwiseAlignmentDetail, RnaReadReportMode, RnaReadScoreDensityScale,
@@ -1039,6 +1040,26 @@ struct SplicingIntronSignalKey {
     transcript_feature_id: usize,
     donor_position_1based: usize,
     acceptor_position_1based: usize,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct ArrayProbeGeometryUiRow {
+    evidence_id: String,
+    feature_id: String,
+    parent_feature_id: String,
+    transcript_id: String,
+    level: String,
+    intensity_source: String,
+    coordinate_label: String,
+    mapping_kind: String,
+    mapping_status: String,
+    relationship: String,
+    exon_labels: Vec<String>,
+    junction_labels: Vec<String>,
+    ambiguity_tags: Vec<String>,
+    unresolved_tags: Vec<String>,
+    parent_mixes_transcript_features: bool,
+    tooltip: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -15894,6 +15915,340 @@ impl MainAreaDna {
                 .then_with(|| left.transcript_id.cmp(&right.transcript_id))
         });
         rows
+    }
+
+    fn array_probe_geometry_empty_state_text() -> &'static str {
+        "No array probe geometry evidence is available for this Splicing Expert context. Run or open a probe-region interpretation report to inspect array design/alignment constraints here."
+    }
+
+    fn array_probe_geometry_report_matches_splicing_view(
+        report: &ProbeRegionEvidenceInterpretationReport,
+        view: &SplicingExpertView,
+    ) -> bool {
+        if report.seq_id != view.seq_id {
+            return false;
+        }
+        if let Some(gene_label) = report.gene_label.as_deref().map(str::trim)
+            && !gene_label.is_empty()
+        {
+            return gene_label.eq_ignore_ascii_case(view.group_label.trim());
+        }
+        let transcript_ids = Self::splicing_view_transcript_ids(view);
+        if transcript_ids.is_empty() {
+            return true;
+        }
+        report
+            .transcript_rows
+            .iter()
+            .any(|row| transcript_ids.contains(row.transcript_id.as_str()))
+            || report.evidence_rows.iter().any(|row| {
+                row.overlapping_transcript_ids
+                    .iter()
+                    .any(|id| transcript_ids.contains(id.as_str()))
+                    || row
+                        .transcript_mappings
+                        .iter()
+                        .any(|mapping| transcript_ids.contains(mapping.transcript_id.as_str()))
+            })
+    }
+
+    fn cached_array_probe_geometry_report_for_splicing_view(
+        &self,
+        view: &SplicingExpertView,
+    ) -> Option<&ProbeRegionEvidenceInterpretationReport> {
+        self.cached_probe_region_interpretation
+            .as_ref()
+            .filter(|report| Self::array_probe_geometry_report_matches_splicing_view(report, view))
+    }
+
+    fn array_probe_geometry_rows_for_splicing_view(
+        report: &ProbeRegionEvidenceInterpretationReport,
+        view: &SplicingExpertView,
+    ) -> Vec<ArrayProbeGeometryUiRow> {
+        let transcript_ids = Self::splicing_view_transcript_ids(view);
+        let parent_mixed = Self::array_probe_geometry_parent_feature_mix(report);
+        let mut rows = Vec::new();
+        for evidence in &report.evidence_rows {
+            let relevant_mappings = evidence
+                .transcript_mappings
+                .iter()
+                .filter(|mapping| {
+                    transcript_ids.is_empty()
+                        || transcript_ids.contains(mapping.transcript_id.as_str())
+                })
+                .collect::<Vec<_>>();
+            if relevant_mappings.is_empty() {
+                if transcript_ids.is_empty()
+                    || evidence.overlapping_transcript_ids.is_empty()
+                    || evidence
+                        .overlapping_transcript_ids
+                        .iter()
+                        .any(|id| transcript_ids.contains(id.as_str()))
+                {
+                    rows.push(Self::array_probe_geometry_row_from_evidence(
+                        evidence,
+                        None,
+                        parent_mixed.contains(
+                            evidence
+                                .parent_feature_id
+                                .as_deref()
+                                .unwrap_or(evidence.feature_id.as_str()),
+                        ),
+                    ));
+                }
+            } else {
+                for mapping in relevant_mappings {
+                    rows.push(Self::array_probe_geometry_row_from_evidence(
+                        evidence,
+                        Some(mapping),
+                        parent_mixed.contains(
+                            evidence
+                                .parent_feature_id
+                                .as_deref()
+                                .unwrap_or(evidence.feature_id.as_str()),
+                        ),
+                    ));
+                }
+            }
+        }
+        rows.sort_by(|left, right| {
+            left.parent_feature_id
+                .cmp(&right.parent_feature_id)
+                .then_with(|| left.transcript_id.cmp(&right.transcript_id))
+                .then_with(|| left.coordinate_label.cmp(&right.coordinate_label))
+                .then_with(|| left.feature_id.cmp(&right.feature_id))
+        });
+        rows
+    }
+
+    fn splicing_view_transcript_ids(view: &SplicingExpertView) -> BTreeSet<&str> {
+        view.transcripts
+            .iter()
+            .map(|lane| lane.transcript_id.trim())
+            .filter(|id| !id.is_empty())
+            .collect()
+    }
+
+    fn array_probe_geometry_parent_feature_mix(
+        report: &ProbeRegionEvidenceInterpretationReport,
+    ) -> BTreeSet<String> {
+        let mut by_parent = BTreeMap::<String, BTreeSet<String>>::new();
+        for evidence in &report.evidence_rows {
+            let parent = evidence
+                .parent_feature_id
+                .clone()
+                .unwrap_or_else(|| evidence.feature_id.clone());
+            let signatures = if evidence.transcript_mappings.is_empty() {
+                vec![format!(
+                    "{}:{}",
+                    evidence.mapping_status, evidence.relationship
+                )]
+            } else {
+                evidence
+                    .transcript_mappings
+                    .iter()
+                    .map(|mapping| {
+                        let exons = if mapping.exon_ordinals.is_empty() {
+                            "-".to_string()
+                        } else {
+                            mapping
+                                .exon_ordinals
+                                .iter()
+                                .map(|ordinal| ordinal.to_string())
+                                .collect::<Vec<_>>()
+                                .join("+")
+                        };
+                        let junctions = mapping
+                            .junction_spans
+                            .iter()
+                            .map(|span| {
+                                format!("{}>{}", span.from_exon_ordinal, span.to_exon_ordinal)
+                            })
+                            .collect::<Vec<_>>()
+                            .join(",");
+                        format!("{}:{exons}:{junctions}", mapping.transcript_id)
+                    })
+                    .collect::<Vec<_>>()
+            };
+            by_parent.entry(parent).or_default().extend(signatures);
+        }
+        by_parent
+            .into_iter()
+            .filter_map(|(parent, signatures)| (signatures.len() > 1).then_some(parent))
+            .collect()
+    }
+
+    fn array_probe_geometry_row_from_evidence(
+        evidence: &ProbeRegionEvidenceMappingRow,
+        mapping: Option<&ProbeRegionEvidenceTranscriptMapping>,
+        parent_mixes_transcript_features: bool,
+    ) -> ArrayProbeGeometryUiRow {
+        let coordinate_label = match (evidence.start_1based, evidence.end_1based) {
+            (Some(start), Some(end)) => format!("{start}..{end}"),
+            (Some(start), None) => format!("{start}.."),
+            (None, Some(end)) => format!("..{end}"),
+            (None, None) => "-".to_string(),
+        };
+        let exon_labels = mapping
+            .map(Self::array_probe_geometry_exon_labels)
+            .unwrap_or_default();
+        let junction_labels = mapping
+            .map(|mapping| {
+                mapping
+                    .junction_spans
+                    .iter()
+                    .map(|span| {
+                        format!(
+                            "exon {}-exon {} junction",
+                            span.from_exon_ordinal, span.to_exon_ordinal
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let unresolved_tags =
+            Self::array_probe_geometry_unresolved_tags(evidence, mapping, &exon_labels);
+        let transcript_id = mapping
+            .map(|mapping| mapping.transcript_id.clone())
+            .unwrap_or_else(|| {
+                if evidence.overlapping_transcript_ids.is_empty() {
+                    "-".to_string()
+                } else {
+                    Self::probe_region_preview_list(&evidence.overlapping_transcript_ids)
+                }
+            });
+        let mapping_kind = mapping
+            .map(|mapping| mapping.mapping_kind.clone())
+            .unwrap_or_else(|| "unresolved".to_string());
+        let parent_feature_id = evidence
+            .parent_feature_id
+            .clone()
+            .unwrap_or_else(|| evidence.feature_id.clone());
+        let tooltip = Self::array_probe_geometry_tooltip(
+            evidence,
+            mapping,
+            &exon_labels,
+            &junction_labels,
+            &unresolved_tags,
+            parent_mixes_transcript_features,
+        );
+        ArrayProbeGeometryUiRow {
+            evidence_id: evidence.evidence_id.clone(),
+            feature_id: evidence.feature_id.clone(),
+            parent_feature_id,
+            transcript_id,
+            level: evidence.level.clone(),
+            intensity_source: evidence
+                .intensity_source
+                .clone()
+                .unwrap_or_else(|| "summary".to_string()),
+            coordinate_label,
+            mapping_kind,
+            mapping_status: evidence.mapping_status.clone(),
+            relationship: evidence.relationship.clone(),
+            exon_labels,
+            junction_labels,
+            ambiguity_tags: evidence.ambiguity_tags.clone(),
+            unresolved_tags,
+            parent_mixes_transcript_features,
+            tooltip,
+        }
+    }
+
+    fn array_probe_geometry_exon_labels(
+        mapping: &ProbeRegionEvidenceTranscriptMapping,
+    ) -> Vec<String> {
+        mapping
+            .exon_ordinals
+            .iter()
+            .enumerate()
+            .map(|(idx, ordinal)| {
+                let range = mapping
+                    .exon_ranges_1based
+                    .get(idx)
+                    .or_else(|| mapping.local_exon_ranges_1based.get(idx))
+                    .map(String::as_str)
+                    .unwrap_or("-");
+                format!("exon {ordinal} ({range})")
+            })
+            .collect()
+    }
+
+    fn array_probe_geometry_unresolved_tags(
+        evidence: &ProbeRegionEvidenceMappingRow,
+        mapping: Option<&ProbeRegionEvidenceTranscriptMapping>,
+        exon_labels: &[String],
+    ) -> Vec<String> {
+        let mut tags = BTreeSet::new();
+        let status = evidence.mapping_status.to_ascii_lowercase();
+        if mapping.is_none() || status.contains("unresolved") || status.contains("unmapped") {
+            tags.insert("unresolved feature mapping".to_string());
+        }
+        if !evidence.overlapping_transcript_ids.is_empty()
+            && (evidence.overlapping_transcript_ids.len() > 1
+                || evidence
+                    .ambiguity_tags
+                    .iter()
+                    .any(|tag| tag.contains("shared") || tag.contains("ambiguous")))
+        {
+            tags.insert("ambiguous transcript mapping".to_string());
+        }
+        if mapping.is_some() && exon_labels.is_empty() {
+            tags.insert("no exon overlap recorded".to_string());
+        }
+        tags.into_iter().collect()
+    }
+
+    fn array_probe_geometry_tooltip(
+        evidence: &ProbeRegionEvidenceMappingRow,
+        mapping: Option<&ProbeRegionEvidenceTranscriptMapping>,
+        exon_labels: &[String],
+        junction_labels: &[String],
+        unresolved_tags: &[String],
+        parent_mixes_transcript_features: bool,
+    ) -> String {
+        let mut lines = Vec::new();
+        lines.push(
+            "Array probe geometry constraint from array design/alignment; not direct splice-read support and not an isoform-support call."
+                .to_string(),
+        );
+        if let Some(mapping) = mapping {
+            lines.push(format!(
+                "transcript {}: {} ({:.2}, {})",
+                mapping.transcript_id,
+                mapping.mapping_kind,
+                mapping.geometry_score,
+                mapping.geometry_score_class
+            ));
+        }
+        for label in exon_labels {
+            let exon_name = label
+                .split_once(" (")
+                .map(|(name, _)| name)
+                .unwrap_or(label.as_str());
+            lines.push(format!("probe overlaps {exon_name}"));
+        }
+        for label in junction_labels {
+            lines.push(format!("probe spans {label}"));
+        }
+        if parent_mixes_transcript_features {
+            lines.push(
+                "parent probeset contains probes across multiple transcript features".to_string(),
+            );
+        }
+        for tag in unresolved_tags {
+            lines.push(tag.clone());
+        }
+        if !evidence.ambiguity_tags.is_empty() {
+            lines.push(format!(
+                "ambiguity tags: {}",
+                Self::probe_region_preview_list(&evidence.ambiguity_tags)
+            ));
+        }
+        if !evidence.relationship.trim().is_empty() {
+            lines.push(format!("relationship: {}", evidence.relationship));
+        }
+        lines.join("\n")
     }
 
     fn splicing_intron_signal_key_for_row(

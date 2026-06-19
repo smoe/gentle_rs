@@ -5167,8 +5167,9 @@ impl MainAreaDna {
                 egui::RichText::new("only shown when CDS ranges are available")
                     .size(8.5)
                     .color(egui::Color32::from_rgb(100, 116, 139)),
-            );
+                );
         });
+        self.render_splicing_array_probe_geometry_section(ui, view, id_namespace);
         if !view.boundaries.is_empty() {
             let motif_rows = Self::splicing_boundary_motif_rows(view);
             let mut motif_class_counts = std::collections::BTreeMap::<String, usize>::new();
@@ -5942,6 +5943,190 @@ impl MainAreaDna {
         }
             },
         );
+    }
+
+    fn render_splicing_array_probe_geometry_section(
+        &self,
+        ui: &mut egui::Ui,
+        view: &SplicingExpertView,
+        id_namespace: &str,
+    ) {
+        ui.separator();
+        ui.label(
+            egui::RichText::new("Array probe geometry")
+                .monospace()
+                .size(self.feature_details_font_size()),
+        );
+        ui.label(
+            egui::RichText::new(
+                "Review-only array design/alignment constraints over transcript lanes. This is visually and semantically separate from RNA-read evidence and does not infer isoform support.",
+            )
+            .size(9.0)
+            .color(egui::Color32::from_rgb(71, 85, 105)),
+        );
+
+        let Some(report) = self.cached_array_probe_geometry_report_for_splicing_view(view) else {
+            ui.small(
+                egui::RichText::new(Self::array_probe_geometry_empty_state_text())
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+            return;
+        };
+        let rows = Self::array_probe_geometry_rows_for_splicing_view(report, view);
+        if rows.is_empty() {
+            ui.small(
+                egui::RichText::new(Self::array_probe_geometry_empty_state_text())
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+            return;
+        }
+
+        ui.horizontal_wrapped(|ui| {
+            ui.small(format!(
+                "{} row(s) from {} array feature(s), level {}",
+                rows.len(),
+                report.array_feature_count,
+                report.level
+            ));
+            if let Some(gene) = report.gene_label.as_deref() {
+                ui.small(format!("gene {gene}"));
+            }
+        });
+        egui::ScrollArea::horizontal()
+            .id_salt((
+                "splicing_array_probe_geometry_scroll",
+                id_namespace,
+                view.seq_id.as_str(),
+                view.target_feature_id,
+            ))
+            .show(ui, |ui| {
+                egui::Grid::new((
+                    "splicing_array_probe_geometry_grid",
+                    id_namespace,
+                    view.seq_id.as_str(),
+                    view.target_feature_id,
+                ))
+                .striped(true)
+                .show(ui, |ui| {
+                    ui.label(egui::RichText::new("transcript").monospace().strong());
+                    ui.label(egui::RichText::new("probe").monospace().strong());
+                    ui.label(egui::RichText::new("parent").monospace().strong());
+                    ui.label(egui::RichText::new("interval").monospace().strong());
+                    ui.label(egui::RichText::new("geometry").strong());
+                    ui.label(egui::RichText::new("junctions").strong());
+                    ui.label(egui::RichText::new("status").strong());
+                    ui.label(egui::RichText::new("tags").strong());
+                    ui.end_row();
+                    for row in rows.iter().take(48) {
+                        let status_color =
+                            if row.unresolved_tags.is_empty() && row.mapping_status != "unmapped" {
+                                egui::Color32::from_rgb(22, 101, 52)
+                            } else {
+                                egui::Color32::from_rgb(180, 83, 9)
+                            };
+                        ui.label(
+                            egui::RichText::new(row.transcript_id.as_str())
+                                .monospace()
+                                .size(9.0),
+                        )
+                        .on_hover_text(row.tooltip.as_str());
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "{} {}",
+                                row.feature_id,
+                                if row.intensity_source == "probe_level_input" {
+                                    "PM"
+                                } else {
+                                    "summary"
+                                }
+                            ))
+                            .monospace()
+                            .size(9.0)
+                            .color(
+                                if row.intensity_source == "probe_level_input" {
+                                    egui::Color32::from_rgb(17, 24, 39)
+                                } else {
+                                    egui::Color32::from_rgb(71, 85, 105)
+                                },
+                            ),
+                        )
+                        .on_hover_text(row.tooltip.as_str());
+                        ui.label(
+                            egui::RichText::new(row.parent_feature_id.as_str())
+                                .monospace()
+                                .size(9.0)
+                                .color(if row.parent_mixes_transcript_features {
+                                    egui::Color32::from_rgb(146, 64, 14)
+                                } else {
+                                    egui::Color32::from_rgb(71, 85, 105)
+                                }),
+                        )
+                        .on_hover_text(if row.parent_mixes_transcript_features {
+                            "parent probeset contains probes across multiple transcript features"
+                        } else {
+                            row.tooltip.as_str()
+                        });
+                        ui.label(
+                            egui::RichText::new(row.coordinate_label.as_str())
+                                .monospace()
+                                .size(9.0),
+                        )
+                        .on_hover_text(row.tooltip.as_str());
+                        ui.label(
+                            egui::RichText::new(if row.exon_labels.is_empty() {
+                                row.mapping_kind.clone()
+                            } else {
+                                row.exon_labels.join(", ")
+                            })
+                            .size(9.0),
+                        )
+                        .on_hover_text(row.tooltip.as_str());
+                        ui.label(
+                            egui::RichText::new(if row.junction_labels.is_empty() {
+                                "-".to_string()
+                            } else {
+                                row.junction_labels.join(", ")
+                            })
+                            .size(9.0)
+                            .color(
+                                if row.junction_labels.is_empty() {
+                                    egui::Color32::from_rgb(100, 116, 139)
+                                } else {
+                                    egui::Color32::from_rgb(124, 58, 237)
+                                },
+                            ),
+                        )
+                        .on_hover_text(row.tooltip.as_str());
+                        ui.label(
+                            egui::RichText::new(row.mapping_status.as_str())
+                                .size(9.0)
+                                .color(status_color),
+                        )
+                        .on_hover_text(row.tooltip.as_str());
+                        let mut tags = row.unresolved_tags.clone();
+                        tags.extend(row.ambiguity_tags.iter().cloned());
+                        tags.sort();
+                        tags.dedup();
+                        ui.label(
+                            egui::RichText::new(if tags.is_empty() {
+                                "-".to_string()
+                            } else {
+                                Self::probe_region_preview_list(&tags)
+                            })
+                            .size(9.0)
+                            .color(egui::Color32::from_rgb(100, 116, 139)),
+                        )
+                        .on_hover_text(row.tooltip.as_str());
+                        ui.end_row();
+                    }
+                });
+            });
+        if rows.len() > 48 {
+            ui.small(format!(
+                "{} additional array probe geometry row(s) hidden in this preview",
+                rows.len() - 48
+            ));
+        }
     }
 
     pub(super) fn render_isoform_architecture_expert_view_ui(

@@ -19,8 +19,9 @@ use crate::{
         EditableStatus, Engine, EvidenceClass, FlexibilityModel, FlexibilityTrack, GentleEngine,
         LinearSequenceLetterLayoutMode, OpResult, Operation, PairwiseAlignmentMode,
         PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignProgress,
-        PrimerDesignSideConstraint, ProbeRegionEvidenceInterpretationReport, ProjectState,
-        PromoterExpressionEvidenceInput, PromoterReporterCandidateSet,
+        PrimerDesignSideConstraint, ProbeRegionEvidenceInterpretationReport,
+        ProbeRegionEvidenceMappingRow, ProjectState, PromoterExpressionEvidenceInput,
+        PromoterReporterCandidateSet,
         ProtocolCartoonPreviewTelemetry, QpcrTranscriptSpecificityEvidence,
         QpcrTranscriptTargeting, QpcrTranscriptTargetingMode, RestrictionCloningPcrHandoffMode,
         RestrictionEnzymeDisplayMode, RnaReadAlignmentEffect, RnaReadAlignmentInspection,
@@ -216,6 +217,41 @@ fn make_tp73_probe_region_validation_area() -> MainAreaDna {
     area.probe_region_output_dir = probe_region_validation_fixture_dir();
     area.probe_region_projection_seq_id = "array_slice".to_string();
     area
+}
+
+fn make_tp73_probe_region_validation_area_with_splicing_view_and_report(
+) -> (
+    MainAreaDna,
+    SplicingExpertView,
+    ProbeRegionEvidenceInterpretationReport,
+) {
+    let mut area = make_tp73_probe_region_validation_area();
+    area.probe_region_projection_contrasts = "AdTAp73alpha-AdGFP".to_string();
+    area.probe_region_projection_level = "pm_probe".to_string();
+    area.probe_region_projection_min_abs_logfc = "0.5".to_string();
+    area.probe_region_projection_max_features = "20".to_string();
+    area.probe_region_projection_clear_existing = true;
+    area.project_probe_region_output_for_current_path();
+
+    area.probe_region_interpretation_gene_label = "TP73".to_string();
+    area.probe_region_interpretation_level = "pm_probe".to_string();
+    area.probe_region_interpretation_min_abs_logfc = "0.5".to_string();
+    area.probe_region_interpretation_output_path.clear();
+    area.interpret_probe_region_evidence_for_current_sequence();
+    let report = area
+        .cached_probe_region_interpretation
+        .as_ref()
+        .expect("cached probe-region interpretation")
+        .clone();
+
+    area.focus_feature(0);
+    area.refresh_description_cache();
+    let view = match area.description_cache_expert_view.as_ref() {
+        Some(FeatureExpertView::Splicing(view)) => view.clone(),
+        other => panic!("expected splicing view, got {other:?}"),
+    };
+
+    (area, view, report)
 }
 
 #[test]
@@ -4724,6 +4760,110 @@ fn main_area_dna_exports_probe_region_evidence_svg_after_cache_only_interpretati
         default_report_path.to_string_lossy().to_string()
     );
     assert!(default_report_path.exists());
+}
+
+#[test]
+fn splicing_expert_array_probe_geometry_rows_include_exon_overlap_probes() {
+    let (_area, view, report) =
+        make_tp73_probe_region_validation_area_with_splicing_view_and_report();
+
+    let rows = MainAreaDna::array_probe_geometry_rows_for_splicing_view(&report, &view);
+
+    assert!(!rows.is_empty());
+    let exon_row = rows
+        .iter()
+        .find(|row| {
+            row.intensity_source == "probe_level_input"
+                && row.exon_labels.iter().any(|label| label.contains("exon 1"))
+                && row.junction_labels.is_empty()
+        })
+        .expect("exon-overlap PM probe row");
+    assert!(exon_row.tooltip.contains("probe overlaps exon 1"));
+    assert_eq!(exon_row.level, "pm_probe");
+    assert_ne!(exon_row.parent_feature_id, exon_row.feature_id);
+}
+
+#[test]
+fn splicing_expert_array_probe_geometry_rows_include_junction_probe_labels() {
+    let (_area, view, report) =
+        make_tp73_probe_region_validation_area_with_splicing_view_and_report();
+
+    let rows = MainAreaDna::array_probe_geometry_rows_for_splicing_view(&report, &view);
+
+    let junction_row = rows
+        .iter()
+        .find(|row| {
+            row.junction_labels
+                .iter()
+                .any(|label| label.contains("exon 1-exon 2 junction"))
+        })
+        .expect("junction-spanning PM probe row");
+    assert!(junction_row
+        .tooltip
+        .contains("probe spans exon 1-exon 2 junction"));
+    assert!(junction_row.parent_mixes_transcript_features);
+    assert!(junction_row
+        .tooltip
+        .contains("parent probeset contains probes across multiple transcript features"));
+}
+
+#[test]
+fn splicing_expert_array_probe_geometry_rows_surface_ambiguity_and_unresolved_mapping() {
+    let (_area, view, mut report) =
+        make_tp73_probe_region_validation_area_with_splicing_view_and_report();
+    report.evidence_rows.push(ProbeRegionEvidenceMappingRow {
+        evidence_id: "unresolved-row".to_string(),
+        level: "pm_probe".to_string(),
+        feature_id: "unresolved-probe".to_string(),
+        parent_feature_id: Some("unresolved-parent".to_string()),
+        intensity_source: Some("probe_level_input".to_string()),
+        chromosome: Some("chr1".to_string()),
+        start_1based: Some(3653000),
+        end_1based: Some(3653024),
+        strand: Some("+".to_string()),
+        overlapping_transcript_ids: vec!["TP73-201".to_string(), "TP73-202".to_string()],
+        mapping_status: "unresolved_feature_mapping".to_string(),
+        ambiguity_tags: vec!["shared_transcript_mapping".to_string()],
+        relationship: "review_only_constraint".to_string(),
+        ..Default::default()
+    });
+
+    let rows = MainAreaDna::array_probe_geometry_rows_for_splicing_view(&report, &view);
+
+    assert!(rows.iter().any(|row| row.ambiguity_tags.iter().any(|tag| {
+        tag == "multi_hit_not_assessed" || tag == "shared_transcript_mapping"
+    })));
+    let unresolved = rows
+        .iter()
+        .find(|row| row.feature_id == "unresolved-probe")
+        .expect("unresolved probe row");
+    assert!(unresolved
+        .unresolved_tags
+        .iter()
+        .any(|tag| tag == "ambiguous transcript mapping"));
+    assert!(unresolved
+        .unresolved_tags
+        .iter()
+        .any(|tag| tag == "unresolved feature mapping"));
+    assert!(unresolved.tooltip.contains("ambiguous transcript mapping"));
+    assert!(unresolved.tooltip.contains("unresolved feature mapping"));
+}
+
+#[test]
+fn splicing_expert_array_probe_geometry_has_quiet_no_evidence_state() {
+    let mut area = make_tp73_probe_region_validation_area();
+    area.focus_feature(0);
+    area.refresh_description_cache();
+    let view = match area.description_cache_expert_view.as_ref() {
+        Some(FeatureExpertView::Splicing(view)) => view.clone(),
+        other => panic!("expected splicing view, got {other:?}"),
+    };
+
+    assert!(area
+        .cached_array_probe_geometry_report_for_splicing_view(&view)
+        .is_none());
+    assert!(MainAreaDna::array_probe_geometry_empty_state_text()
+        .contains("No array probe geometry evidence"));
 }
 
 #[test]
