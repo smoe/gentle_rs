@@ -50,6 +50,7 @@ This tutorial uses a synthetic 249 bp TP73-labeled locus with two transcripts sh
 - You want a compact promoter evidence matrix with transcript, TFBS, variant, repeat, and CUT&RUN-style interval evidence.
 - You want to compare common and differential promoter-region evidence between isoform starts of the same gene.
 - You want to attach downstream transcript/gene expression evidence to promoter candidates without forcing GENtle to write the final story.
+- You want to understand why single-promoter TFBS signals need matched foreground/control comparison before being treated as enrichment evidence.
 
 ## What You Learn
 
@@ -58,12 +59,14 @@ This tutorial uses a synthetic 249 bp TP73-labeled locus with two transcripts sh
 - Recognize the difference between transcript-level promoter interpretation and collapsed DNA-level promoter candidates.
 - Compare common and unique promoter-region evidence between isoforms of the same gene.
 - Attach expression-level evidence to promoter groups through a structured report instead of free-text reasoning.
+- Explain why TFBS score tracks and similarity rankings are screening artifacts that need control-set follow-up before motif-enrichment claims.
 - Use one synthetic input to exercise JSON and SVG exports deterministically.
 
 ## Applied Concepts
 
 - **Shared Engine Contract** (`shared_engine_contract`): GUI, CLI, shell, and scripting interfaces execute the same operation semantics.
 - **Deterministic Workflows** (`deterministic_workflows`): Operation chains should produce stable IDs and comparable outputs across repeated runs.
+- **Promoter Motif Controls** (`promoter_motif_controls`): Foreground promoter motif signals should be compared with matched controls before being treated as candidate enrichment, depletion, or co-occurrence evidence.
 - **Artifact Exports** (`artifact_exports`): Representative outputs (CSV/protocol/SVG/text) are retained for auditability and sharing.
 - **Tutorial Drift Checks** (`tutorial_drift_checks`): Tutorial content is generated from executable examples and verified in automated checks.
 

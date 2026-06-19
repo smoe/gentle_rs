@@ -106,6 +106,8 @@ Online execution was disabled (`GENTLE_TEST_ONLINE=0` during generation).
   - Appears in: [Chapter 17: TP53 UniProt domain mapping and feature-coding DNA query (online)](./chapters/06-04_tp53_uniprot_projection_online.md), [Chapter 19: Audit a TP73 UniProt Projection Against Ensembl and Derived Coding Sequence (CLI Tutorial)](./chapters/06-05_tp73_uniprot_projection_audit_cli.md).
 - **Expert View Parity** (`expert_view_parity`): The same expert-view payloads should be inspectable and renderable from GUI, CLI, and other adapters without frontend-only projection logic.
   - Appears in: [Chapter 17: TP53 UniProt domain mapping and feature-coding DNA query (online)](./chapters/06-04_tp53_uniprot_projection_online.md), [Chapter 19: Audit a TP73 UniProt Projection Against Ensembl and Derived Coding Sequence (CLI Tutorial)](./chapters/06-05_tp73_uniprot_projection_audit_cli.md).
+- **Promoter Motif Controls** (`promoter_motif_controls`): Foreground promoter motif signals should be compared with matched controls before being treated as candidate enrichment, depletion, or co-occurrence evidence.
+  - Appears in: [Chapter 24: Promoter Design Artifact Slice (Offline Synthetic TP73 Locus)](./chapters/08-03_promoter_design_artifact_slice_offline.md).
 
 ## Source Summary
 

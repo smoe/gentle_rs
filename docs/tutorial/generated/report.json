@@ -39,7 +39,7 @@
     "report.json"
   ],
   "file_checksums": {
-    "README.md": "5d41eb19f3a2be3af1e406e6c7bbe7dbeafb79df",
+    "README.md": "2ed6bd28f603669b526160c5501ed639e58e155e",
     "artifacts/gibson_arrangements_baseline/artifacts/gibson_lab_assistant_handoff.md": "ea49d90a537300148ada050060e1b12a48b8b57c",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.csv": "2fd8b22187bb90dcdc0388ed65df4f6c33240893",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt": "ddfcc1b983151b4a7fa444b171065c4d90a6ecfb",
@@ -69,7 +69,7 @@
     "chapters/06-04_tp53_uniprot_projection_online.md": "90a59ea04f54b4d1938e3bfca7cd48ceeed352e9",
     "chapters/06-05_tp73_uniprot_projection_audit_cli.md": "0487f1a7940dc711f32930e87de868ab99d6a363",
     "chapters/07-02_tp53_multi_gene_sparse_mapping_online.md": "6014e363084dca60f5732f0e2ff8b7629976a7d2",
-    "chapters/08-03_promoter_design_artifact_slice_offline.md": "ad1936c1af098dac5453a899bb9f10ef87ac9eac"
+    "chapters/08-03_promoter_design_artifact_slice_offline.md": "8749657d6ad49f455f478aac6898cd81a0eb31a1"
   },
   "warnings": [
     "Tutorial 'load_branch_reverse_complement_pgex_fasta' review is stale because source JSON 'docs/tutorial/sources/02-01_load_branch_reverse_complement_pgex_fasta.json' changed after human review date 2026-05-18",
@@ -546,6 +546,7 @@
       "concepts": [
         "shared_engine_contract",
         "deterministic_workflows",
+        "promoter_motif_controls",
         "artifact_exports",
         "tutorial_drift_checks"
       ],

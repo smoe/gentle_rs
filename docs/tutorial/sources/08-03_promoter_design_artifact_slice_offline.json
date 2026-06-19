@@ -37,7 +37,8 @@
       "You want to verify that transcript-derived promoter windows collapse by DNA span instead of stacking duplicate promoter symbols.",
       "You want a compact promoter evidence matrix with transcript, TFBS, variant, repeat, and CUT&RUN-style interval evidence.",
       "You want to compare common and differential promoter-region evidence between isoform starts of the same gene.",
-      "You want to attach downstream transcript/gene expression evidence to promoter candidates without forcing GENtle to write the final story."
+      "You want to attach downstream transcript/gene expression evidence to promoter candidates without forcing GENtle to write the final story.",
+      "You want to understand why single-promoter TFBS signals need matched foreground/control comparison before being treated as enrichment evidence."
     ],
     "gui_steps": [
       "Open `docs/examples/assets/tp73_promoter_artifact_demo.gb` via `File -> Open Sequence...`.",
@@ -86,11 +87,13 @@
       "Recognize the difference between transcript-level promoter interpretation and collapsed DNA-level promoter candidates.",
       "Compare common and unique promoter-region evidence between isoforms of the same gene.",
       "Attach expression-level evidence to promoter groups through a structured report instead of free-text reasoning.",
+      "Explain why TFBS score tracks and similarity rankings are screening artifacts that need control-set follow-up before motif-enrichment claims.",
       "Use one synthetic input to exercise JSON and SVG exports deterministically."
     ],
     "concepts": [
       "shared_engine_contract",
       "deterministic_workflows",
+      "promoter_motif_controls",
       "artifact_exports",
       "tutorial_drift_checks"
     ],
