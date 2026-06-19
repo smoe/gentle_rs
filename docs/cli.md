@@ -5446,7 +5446,9 @@ Notes:
   Fisher na36 hg38 support ZIPs under
   `annotation_source.vendor_support_files[]`; place them manually in
   `data/resources/affymetrix/clariom_d_human_na36_hg38/` when probe/probeset
-  coordinate development needs vendor CSV annotations.
+  coordinate development needs vendor CSV annotations. The preflight accepts
+  both the concise canonical ZIP names documented in that directory and the
+  browser-preserved `TFS-Assets_LSG_Support-Files_...` download names.
 - `arrays run-probe-region-backend PLAN.json --allow-external-execution`
   (or `arrays run-probe-region-backend --plan PLAN.json --allow-external-execution`)
   reads a persisted `gentle.probe_region_plan.v1`, checks the recorded

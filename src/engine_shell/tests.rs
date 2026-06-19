@@ -7955,17 +7955,25 @@ fn execute_arrays_probe_regions_reports_clariom_vendor_support_paths() {
         .as_array()
         .expect("Clariom D vendor support file candidates");
     assert_eq!(support_files.len(), 2);
-    assert_eq!(
-        support_files[0]["path"].as_str(),
-        Some(
-            "data/resources/affymetrix/clariom_d_human_na36_hg38/Clariom_D_Human-na36-hg38-probeset-csv.zip"
-        )
+    let probeset_path = support_files[0]["path"]
+        .as_str()
+        .expect("probeset support path");
+    assert!(
+        probeset_path
+            == "data/resources/affymetrix/clariom_d_human_na36_hg38/Clariom_D_Human-na36-hg38-probeset-csv.zip"
+            || probeset_path
+                == "data/resources/affymetrix/clariom_d_human_na36_hg38/TFS-Assets_LSG_Support-Files_Clariom_D_Human-na36-hg38-probeset-csv.zip",
+        "unexpected probeset support path: {probeset_path}"
     );
-    assert_eq!(
-        support_files[1]["path"].as_str(),
-        Some(
-            "data/resources/affymetrix/clariom_d_human_na36_hg38/Clariom_D_Human.r1.na36.hg38.a1.transcript.csv.zip"
-        )
+    let transcript_path = support_files[1]["path"]
+        .as_str()
+        .expect("transcript support path");
+    assert!(
+        transcript_path
+            == "data/resources/affymetrix/clariom_d_human_na36_hg38/Clariom_D_Human.r1.na36.hg38.a1.transcript.csv.zip"
+            || transcript_path
+                == "data/resources/affymetrix/clariom_d_human_na36_hg38/TFS-Assets_LSG_Support-Files_Clariom_D_Human.r1.na36.hg38.a1.transcript.csv.zip",
+        "unexpected transcript support path: {transcript_path}"
     );
     assert_eq!(
         support_files[0]["role"].as_str(),

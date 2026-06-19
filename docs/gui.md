@@ -3068,12 +3068,14 @@ The `Help` menu now includes:
   capability after the user enables the external R/APT confirmation checkbox.
   Missing preflight dependencies stop before R/APT is launched, and GENtle
   still does not download or install packages.
-- For `Clariom_D_Human`, the same preflight lists the canonical local Thermo
-  Fisher na36 hg38 support ZIP paths under
+- For `Clariom_D_Human`, the same preflight lists the local Thermo Fisher
+  na36 hg38 support ZIP paths under
   `annotation_source.vendor_support_files[]`; these login-walled files are
   manually staged under
   `data/resources/affymetrix/clariom_d_human_na36_hg38/`, never
-  auto-downloaded by GENtle.
+  auto-downloaded by GENtle. Both concise canonical ZIP names and
+  browser-preserved `TFS-Assets_LSG_Support-Files_...` download names are
+  accepted.
 - The sequence-window extended panel includes a native
   `Clariom D / probe-region evidence` inspector for completed
   `probe_regions_oligo.R` output directories and explicit APT summary +

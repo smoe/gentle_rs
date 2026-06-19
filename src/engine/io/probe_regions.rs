@@ -26,6 +26,10 @@ const CLARIOM_D_HUMAN_VENDOR_SUPPORT_DIR: &str =
     "data/resources/affymetrix/clariom_d_human_na36_hg38";
 const CLARIOM_D_HUMAN_PROBESET_ZIP: &str = "Clariom_D_Human-na36-hg38-probeset-csv.zip";
 const CLARIOM_D_HUMAN_TRANSCRIPT_ZIP: &str = "Clariom_D_Human.r1.na36.hg38.a1.transcript.csv.zip";
+const CLARIOM_D_HUMAN_PROBESET_ZIP_ALIASES: &[&str] =
+    &["TFS-Assets_LSG_Support-Files_Clariom_D_Human-na36-hg38-probeset-csv.zip"];
+const CLARIOM_D_HUMAN_TRANSCRIPT_ZIP_ALIASES: &[&str] =
+    &["TFS-Assets_LSG_Support-Files_Clariom_D_Human.r1.na36.hg38.a1.transcript.csv.zip"];
 
 #[derive(Default)]
 struct ProbeRegionTableSummary {
@@ -5652,25 +5656,60 @@ impl GentleEngine {
         [
             (
                 CLARIOM_D_HUMAN_PROBESET_ZIP,
+                CLARIOM_D_HUMAN_PROBESET_ZIP_ALIASES,
                 "thermofisher_clariom_d_human_hg38_probeset_zip",
             ),
             (
                 CLARIOM_D_HUMAN_TRANSCRIPT_ZIP,
+                CLARIOM_D_HUMAN_TRANSCRIPT_ZIP_ALIASES,
                 "thermofisher_clariom_d_human_hg38_transcript_zip",
             ),
         ]
         .iter()
-        .map(|(file_name, role)| {
-            let path = Path::new(CLARIOM_D_HUMAN_VENDOR_SUPPORT_DIR).join(file_name);
-            let mut status = Self::probe_region_file_status(&path.to_string_lossy(), role);
-            if !status.exists {
-                status.detail = Some(
-                    "Manual Thermo Fisher login download required; GENtle never auto-downloads this support file".to_string(),
-                );
-            }
-            status
+        .map(|(file_name, aliases, role)| {
+            Self::probe_region_vendor_support_file_status(
+                Path::new(CLARIOM_D_HUMAN_VENDOR_SUPPORT_DIR),
+                file_name,
+                aliases,
+                role,
+            )
         })
         .collect()
+    }
+
+    fn probe_region_vendor_support_file_status(
+        base_dir: &Path,
+        canonical_file_name: &str,
+        aliases: &[&str],
+        role: &str,
+    ) -> ProbeRegionFileStatus {
+        let canonical_path = base_dir.join(canonical_file_name);
+        let mut canonical_status =
+            Self::probe_region_file_status(&canonical_path.to_string_lossy(), role);
+        if canonical_status.exists {
+            return canonical_status;
+        }
+
+        for alias in aliases {
+            let alias_path = base_dir.join(alias);
+            let mut alias_status =
+                Self::probe_region_file_status(&alias_path.to_string_lossy(), role);
+            if alias_status.exists {
+                alias_status.detail = Some(format!(
+                    "Using Thermo Fisher download filename '{alias}'; canonical local filename is '{canonical_file_name}'"
+                ));
+                return alias_status;
+            }
+        }
+
+        let accepted_names = std::iter::once(canonical_file_name)
+            .chain(aliases.iter().copied())
+            .collect::<Vec<_>>()
+            .join(", ");
+        canonical_status.detail = Some(format!(
+            "Manual Thermo Fisher login download required; GENtle never auto-downloads this support file. Accepted local filenames: {accepted_names}"
+        ));
+        canonical_status
     }
 
     fn probe_region_vendor_support_detail(
@@ -5690,7 +5729,7 @@ impl GentleEngine {
             ))
         } else {
             Some(format!(
-                "Thermo Fisher Clariom D hg38 support ZIPs are expected under {CLARIOM_D_HUMAN_VENDOR_SUPPORT_DIR} ({present}/{expected} present); these login-walled files must be placed manually"
+                "Thermo Fisher Clariom D hg38 support ZIPs are expected under {CLARIOM_D_HUMAN_VENDOR_SUPPORT_DIR} ({present}/{expected} present); these login-walled files must be placed manually, using either the canonical names or the browser-preserved Thermo download names"
             ))
         }
     }
@@ -6392,5 +6431,52 @@ impl GentleEngine {
                 detail: Some(e.to_string()),
             },
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn probe_region_vendor_support_file_status_accepts_browser_download_filename() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("browser_name.zip"), b"zip").expect("write alias");
+
+        let status = crate::engine::GentleEngine::probe_region_vendor_support_file_status(
+            dir.path(),
+            "canonical_name.zip",
+            &["browser_name.zip"],
+            "vendor_zip",
+        );
+
+        assert!(status.exists);
+        assert!(status.is_file);
+        assert!(status.path.ends_with("browser_name.zip"));
+        assert_eq!(status.role, "vendor_zip");
+        assert!(
+            status
+                .detail
+                .as_deref()
+                .is_some_and(|detail| detail.contains("canonical_name.zip"))
+        );
+    }
+
+    #[test]
+    fn probe_region_vendor_support_file_status_reports_canonical_when_absent() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let status = crate::engine::GentleEngine::probe_region_vendor_support_file_status(
+            dir.path(),
+            "canonical_name.zip",
+            &["browser_name.zip"],
+            "vendor_zip",
+        );
+
+        assert!(!status.exists);
+        assert!(status.path.ends_with("canonical_name.zip"));
+        assert!(
+            status
+                .detail
+                .as_deref()
+                .is_some_and(|detail| detail.contains("browser_name.zip"))
+        );
     }
 }

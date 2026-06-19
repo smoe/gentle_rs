@@ -13,20 +13,25 @@ Expected local files:
 | `Clariom_D_Human-na36-hg38-probeset-csv.zip` | Thermo Fisher probeset coordinate/annotation CSV ZIP for Clariom D Human na36 hg38; contains `Clariom_D_Human.na36.hg38.probeset.csv` plus `XTAArray_NetAffx-CSV-Files.README.txt`. |
 | `Clariom_D_Human.r1.na36.hg38.a1.transcript.csv.zip` | Thermo Fisher transcript-cluster annotation CSV ZIP for Clariom D Human r1 na36 hg38; contains `Clariom_D_Human.r1.na36.hg38.a1.transcript.csv` plus `XTAArray_NetAffx-CSV-Files.README.txt`. |
 
+GENtle also accepts the browser-preserved Thermo Fisher download filenames:
+
+- `TFS-Assets_LSG_Support-Files_Clariom_D_Human-na36-hg38-probeset-csv.zip`
+- `TFS-Assets_LSG_Support-Files_Clariom_D_Human.r1.na36.hg38.a1.transcript.csv.zip`
+
 Manual download pages/files:
 
 - `https://sec-assets.thermofisher.com/TFS-Assets/LSG/Support-Files/Clariom_D_Human-na36-hg38-probeset-csv.zip`
 - `https://sec-assets.thermofisher.com/TFS-Assets/LSG/Support-Files/Clariom_D_Human.r1.na36.hg38.a1.transcript.csv.zip`
 
-If a browser stores the files with the `TFS-Assets_LSG_Support-Files_`
-prefix, normalize them into this directory with:
+Stage the files into this directory, either with the concise canonical names
+above or with the browser-preserved `TFS-Assets_LSG_Support-Files_` names:
 
 ```bash
 mkdir -p data/resources/affymetrix/clariom_d_human_na36_hg38
 cp ~/Downloads/TFS-Assets_LSG_Support-Files_Clariom_D_Human-na36-hg38-probeset-csv.zip \
-  data/resources/affymetrix/clariom_d_human_na36_hg38/Clariom_D_Human-na36-hg38-probeset-csv.zip
+  data/resources/affymetrix/clariom_d_human_na36_hg38/
 cp ~/Downloads/TFS-Assets_LSG_Support-Files_Clariom_D_Human.r1.na36.hg38.a1.transcript.csv.zip \
-  data/resources/affymetrix/clariom_d_human_na36_hg38/Clariom_D_Human.r1.na36.hg38.a1.transcript.csv.zip
+  data/resources/affymetrix/clariom_d_human_na36_hg38/
 ```
 
 To check GENtle's view of the local support files without running R, APT, or

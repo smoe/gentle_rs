@@ -1320,9 +1320,10 @@ Behavior notes:
   login-walled vendor files. GENtle never downloads them automatically; users
   place them manually under
   `data/resources/affymetrix/clariom_d_human_na36_hg38/` as documented in that
-  directory's README, and `arrays probe-regions --platform Clariom_D_Human`
-  reports their local status under
-  `annotation_source.vendor_support_files[]`.
+  directory's README. Both concise canonical ZIP names and browser-preserved
+  `TFS-Assets_LSG_Support-Files_...` download names are accepted, and
+  `arrays probe-regions --platform Clariom_D_Human` reports their local status
+  under `annotation_source.vendor_support_files[]`.
 
 ## RNA structure executable resources
 
@@ -2556,13 +2557,15 @@ Microarray track projection notes:
   `DIR/plan.json` so agents and developers can inspect the exact backend
   readiness, dependency versions, cache keys, suggested commands, and planned
   outputs before any external tool is run.
-- For `Clariom_D_Human`, the probe-region preflight also reports the canonical
-  local Thermo Fisher support ZIP paths in
-  `annotation_source.vendor_support_files[]`. These ZIPs are optional local
-  inputs for probe/probeset coordinate and annotation development; they are not
-  themselves a `gentle.microarray_track_manifest.v1` manifest. DNA-viewer array
-  projection continues to consume a prepared manifest plus per-contrast TSVs
-  whose coordinate build has been verified.
+- For `Clariom_D_Human`, the probe-region preflight also reports the local
+  Thermo Fisher support ZIP paths in
+  `annotation_source.vendor_support_files[]`. Both concise canonical ZIP names
+  and browser-preserved `TFS-Assets_LSG_Support-Files_...` download names are
+  accepted. These ZIPs are optional local inputs for probe/probeset coordinate
+  and annotation development; they are not themselves a
+  `gentle.microarray_track_manifest.v1` manifest. DNA-viewer array projection
+  continues to consume a prepared manifest plus per-contrast TSVs whose
+  coordinate build has been verified.
 - `arrays run-probe-region-backend PLAN.json --allow-external-execution`
   (or `arrays run-probe-region-backend --plan PLAN.json --allow-external-execution`)
   consumes the persisted `gentle.probe_region_plan.v1` artifact and returns
