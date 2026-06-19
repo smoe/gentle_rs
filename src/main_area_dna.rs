@@ -17696,7 +17696,7 @@ impl MainAreaDna {
             .on_hover_text(Self::splicing_expert_window_help_text());
             ui.label(
                 egui::RichText::new(
-                    "Annotation structure and transcript quick actions stay here; RNA-read runs now live in a dedicated mapping workspace.",
+                    "Annotation structure, array probe geometry, and transcript quick actions stay here; RNA-read runs now live in a dedicated mapping workspace.",
                 )
                 .size(9.0)
                 .color(egui::Color32::from_rgb(100, 116, 139)),
@@ -24038,7 +24038,7 @@ impl MainAreaDna {
     }
 
     fn splicing_expert_window_help_text() -> &'static str {
-        "This window explains one splicing group from four angles:\n- annotation-derived transcript and exon structure\n- splice-site donor/acceptor motif classes for the annotated introns\n- conservative acceptor-proximal intron heuristics (branchpoint-like adenines and polypyrimidine-rich tracts)\n- quick actions that derive transcript references or seed primer/qPCR ROI\n- RNA-read evidence panels driven by saved mapping reports for this locus\n\nUse the transcript selector for transcript-level actions. RNA-read runs and workflow controls live in the dedicated RNA-read Mapping workspace; the Splicing Expert stays annotation-first and report-viewer-first."
+        "This window explains one splicing group through five complementary views:\n- annotation-derived transcript and exon structure\n- splice-site donor/acceptor motif classes for the annotated introns\n- conservative acceptor-proximal intron heuristics (branchpoint-like adenines and polypyrimidine-rich tracts)\n- array probe geometry constraints from loaded probe-region reports\n- quick actions that derive transcript references or seed primer/qPCR ROI\n- RNA-read evidence panels driven by saved mapping reports for this locus\n\nUse the transcript selector for transcript-level actions. Array probe geometry is review-only design/alignment evidence; RNA-read runs and workflow controls live in the dedicated RNA-read Mapping workspace. The Splicing Expert stays annotation-first and report-viewer-first."
     }
 
     fn rna_read_mapping_parameter_section_title() -> &'static str {
