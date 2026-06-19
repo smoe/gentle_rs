@@ -801,10 +801,13 @@ impl GENtleApp {
     }
 
     pub(super) fn evidence_probe_regions_dry_run_command(&self) -> String {
-        crate::engine_shell::arrays_shell_command_to_line(
-            &self.evidence_probe_regions_shell_command(),
-        )
-        .expect("probe-region preflight command is renderable")
+        let command = self.evidence_probe_regions_shell_command();
+        let rendered = crate::engine_shell::arrays_shell_command_to_line(&command);
+        debug_assert!(
+            rendered.is_some(),
+            "probe-region preflight command is renderable"
+        );
+        rendered.unwrap_or_default()
     }
 
     pub(super) fn evidence_probe_regions_r_command(&self) -> String {
@@ -812,10 +815,13 @@ impl GENtleApp {
     }
 
     pub(super) fn evidence_probe_regions_inspect_command(&self) -> String {
-        crate::engine_shell::arrays_shell_command_to_line(
-            &self.evidence_probe_regions_inspect_shell_command(),
-        )
-        .expect("probe-region inspect command is renderable")
+        let command = self.evidence_probe_regions_inspect_shell_command();
+        let rendered = crate::engine_shell::arrays_shell_command_to_line(&command);
+        debug_assert!(
+            rendered.is_some(),
+            "probe-region inspect command is renderable"
+        );
+        rendered.unwrap_or_default()
     }
 
     fn evidence_repeat_command(&self) -> String {
