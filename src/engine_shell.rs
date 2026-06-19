@@ -95,6 +95,7 @@ use crate::{
         TranslationSpeedProfile, UniprotFeatureCodingDnaQueryMode, VariantAlleleChoice,
         WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow, WorkflowMacroTemplate,
         WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
+        construct_reasoning_action_dotplot_request,
         parse_feature_coordinate_term_on_sequence,
         resolve_selection_formula_range_0based_on_sequence, split_feature_formula_range_expression,
     },
@@ -38104,15 +38105,30 @@ fn execute_protein_sequence_command(
                     action.mode.as_str()
                 ));
             }
-            if action.focus_end_0based_exclusive <= action.focus_start_0based {
-                return Err(format!(
-                    "Inspection action '{}' has invalid focus range {}..{}",
-                    action.action_id, action.focus_start_0based, action.focus_end_0based_exclusive
-                ));
-            }
-            let store_as = dotplot_id.clone().or_else(|| {
-                Some(format!("{}_dotplot", action.action_id.trim()).replace("__", "_"))
-            });
+            let requested_seq_id = if action.seq_id.trim().is_empty() {
+                graph.seq_id.trim()
+            } else {
+                action.seq_id.trim()
+            };
+            let sequence_len = {
+                let state = engine.state();
+                state
+                    .sequences
+                    .get(requested_seq_id)
+                    .map(DNAsequence::len)
+                    .ok_or_else(|| {
+                        format!(
+                            "Sequence '{}' for inspection action '{}' is not loaded",
+                            requested_seq_id, action.action_id
+                        )
+                    })?
+            };
+            let dotplot_request =
+                construct_reasoning_action_dotplot_request(&action, &graph.seq_id, sequence_len)
+                    .map_err(|err| err.to_string())?;
+            let store_as = dotplot_id
+                .clone()
+                .or_else(|| Some(dotplot_request.store_as.clone()));
             let before = engine
                 .state()
                 .metadata
@@ -38120,13 +38136,13 @@ fn execute_protein_sequence_command(
                 .cloned();
             let op_result = engine
                 .apply(Operation::ComputeDotplot {
-                    seq_id: action.seq_id.clone(),
+                    seq_id: dotplot_request.seq_id.clone(),
                     reference_seq_id: None,
-                    span_start_0based: Some(action.focus_start_0based),
-                    span_end_0based: Some(action.focus_end_0based_exclusive),
+                    span_start_0based: Some(dotplot_request.span_start_0based),
+                    span_end_0based: Some(dotplot_request.span_end_0based),
                     reference_span_start_0based: None,
                     reference_span_end_0based: None,
-                    mode: action.mode,
+                    mode: dotplot_request.mode,
                     word_size: *word_size,
                     step_bp: *step_bp,
                     max_mismatches: *max_mismatches,
@@ -38140,7 +38156,7 @@ fn execute_protein_sequence_command(
                 .get(DOTPLOT_ANALYSIS_METADATA_KEY)
                 .cloned();
             let dotplot = engine
-                .list_dotplot_views(Some(action.seq_id.as_str()))
+                .list_dotplot_views(Some(dotplot_request.seq_id.as_str()))
                 .into_iter()
                 .max_by_key(|row| row.generated_at_unix_ms)
                 .ok_or_else(|| {
@@ -38157,7 +38173,7 @@ fn execute_protein_sequence_command(
                 Some(
                     engine
                         .apply(Operation::RenderDotplotSvg {
-                            seq_id: action.seq_id.clone(),
+                            seq_id: dotplot_request.seq_id.clone(),
                             dotplot_id: dotplot.dotplot_id.clone(),
                             path: path.to_string(),
                             flex_track_id: None,
@@ -38172,10 +38188,10 @@ fn execute_protein_sequence_command(
                 None
             };
             let compute_parameters = json!({
-                "seq_id": action.seq_id.as_str(),
-                "span_start_0based": action.focus_start_0based,
-                "span_end_0based": action.focus_end_0based_exclusive,
-                "mode": action.mode.as_str(),
+                "seq_id": dotplot_request.seq_id.as_str(),
+                "span_start_0based": dotplot_request.span_start_0based,
+                "span_end_0based": dotplot_request.span_end_0based,
+                "mode": dotplot_request.mode.as_str(),
                 "word_size": word_size,
                 "step_bp": step_bp,
                 "max_mismatches": max_mismatches,

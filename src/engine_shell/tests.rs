@@ -2489,6 +2489,23 @@ fn execute_construct_reasoning_inspection_action_commands_list_and_run_dotplot()
                 .cloned()
                 .expect("direct repeat inspection action");
             assert_ne!(direct_action.action_id, protocol_action.action_id);
+            let expected_dotplot_request = construct_reasoning_action_dotplot_request(
+                &protocol_action,
+                &graph.seq_id,
+                sequence.len(),
+            )
+            .expect("expected windowed inspection dotplot request");
+            assert_ne!(
+                (
+                    expected_dotplot_request.span_start_0based,
+                    expected_dotplot_request.span_end_0based
+                ),
+                (
+                    protocol_action.focus_start_0based,
+                    protocol_action.focus_end_0based_exclusive
+                ),
+                "test fixture should prove run-inspection-action windows the raw focus range"
+            );
 
             let listed = execute_shell_command(
                 &mut engine,
@@ -2626,7 +2643,7 @@ fn execute_construct_reasoning_inspection_action_commands_list_and_run_dotplot()
             );
             assert_eq!(
                 run.output["compute_parameters"]["mode"].as_str(),
-                Some(protocol_action.mode.as_str())
+                Some(expected_dotplot_request.mode.as_str())
             );
             assert_eq!(
                 run.output["compute_parameters"]["word_size"].as_u64(),
@@ -2645,12 +2662,20 @@ fn execute_construct_reasoning_inspection_action_commands_list_and_run_dotplot()
                 Some(128)
             );
             assert_eq!(
+                run.output["compute_parameters"]["span_start_0based"].as_u64(),
+                Some(expected_dotplot_request.span_start_0based as u64)
+            );
+            assert_eq!(
+                run.output["compute_parameters"]["span_end_0based"].as_u64(),
+                Some(expected_dotplot_request.span_end_0based as u64)
+            );
+            assert_eq!(
                 run.output["dotplot"]["span_start_0based"].as_u64(),
-                Some(protocol_action.focus_start_0based as u64)
+                Some(expected_dotplot_request.span_start_0based as u64)
             );
             assert_eq!(
                 run.output["dotplot"]["span_end_0based"].as_u64(),
-                Some(protocol_action.focus_end_0based_exclusive as u64)
+                Some(expected_dotplot_request.span_end_0based as u64)
             );
             assert!(run.output["render_result"].is_object());
             assert!(svg_path.exists());

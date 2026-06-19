@@ -138,6 +138,157 @@ impl ConstructReasoningCuratedRepeatSupport {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConstructReasoningActionDotplotRequest {
+    pub seq_id: String,
+    pub mode: DotplotMode,
+    pub span_start_0based: usize,
+    pub span_end_0based: usize,
+    pub store_as: String,
+}
+
+pub fn bounded_center_window(
+    sequence_len: usize,
+    center_0based: usize,
+    half_window_bp: usize,
+) -> Option<(usize, usize)> {
+    if sequence_len == 0 {
+        return None;
+    }
+    let half_window_bp = half_window_bp.max(1);
+    let center_0based = center_0based.min(sequence_len.saturating_sub(1));
+    let target_span = half_window_bp
+        .saturating_mul(2)
+        .saturating_add(1)
+        .min(sequence_len);
+    let mut start = center_0based.saturating_sub(half_window_bp);
+    let mut end = center_0based
+        .saturating_add(half_window_bp)
+        .saturating_add(1)
+        .min(sequence_len);
+    let current_span = end.saturating_sub(start);
+    if current_span < target_span {
+        let deficit = target_span - current_span;
+        let shift_left = deficit.min(start);
+        start = start.saturating_sub(shift_left);
+        let remaining = deficit.saturating_sub(shift_left);
+        end = end.saturating_add(remaining).min(sequence_len);
+        let second_span = end.saturating_sub(start);
+        if second_span < target_span {
+            let second_deficit = target_span - second_span;
+            start = start.saturating_sub(second_deficit.min(start));
+        }
+    }
+    if end <= start {
+        end = (start + 1).min(sequence_len);
+    }
+    Some((start, end))
+}
+
+fn construct_reasoning_dotplot_mode_tag(mode: DotplotMode) -> &'static str {
+    match mode {
+        DotplotMode::SelfForward => "self",
+        DotplotMode::SelfReverseComplement => "revcomp",
+        DotplotMode::PairForward => "pair_forward",
+        DotplotMode::PairReverseComplement => "pair_revcomp",
+    }
+}
+
+fn normalize_construct_reasoning_dotplot_token(raw: &str) -> String {
+    let mut token = String::new();
+    for c in raw.chars() {
+        if c.is_ascii_alphanumeric() {
+            token.push(c.to_ascii_lowercase());
+        } else if matches!(c, '_' | '-' | '.') && !token.ends_with('_') {
+            token.push('_');
+        }
+    }
+    token.trim_matches('_').to_string()
+}
+
+pub fn construct_reasoning_action_dotplot_request(
+    action: &ConstructReasoningInspectionAction,
+    fallback_seq_id: &str,
+    sequence_len: usize,
+) -> Result<ConstructReasoningActionDotplotRequest, EngineError> {
+    if action.action_kind != ConstructReasoningInspectionActionKind::Dotplot {
+        return Err(EngineError {
+            code: ErrorCode::InvalidInput,
+            message: format!(
+                "Inspection action '{}' has unsupported kind '{}'",
+                action.action_id,
+                action.action_kind.as_str()
+            ),
+            cause_chain: vec![],
+        });
+    }
+    if sequence_len == 0 {
+        return Err(EngineError {
+            code: ErrorCode::InvalidInput,
+            message: "Active sequence is empty; dotplot span unavailable".to_string(),
+            cause_chain: vec![],
+        });
+    }
+    let seq_id = action.seq_id.trim();
+    let fallback_seq_id = fallback_seq_id.trim();
+    let seq_id = if seq_id.is_empty() {
+        fallback_seq_id
+    } else {
+        seq_id
+    };
+    if seq_id.is_empty() {
+        return Err(EngineError {
+            code: ErrorCode::InvalidInput,
+            message: "Inspection action has no sequence id for dotplot computation".to_string(),
+            cause_chain: vec![],
+        });
+    }
+
+    let focus_start_0based = action
+        .focus_start_0based
+        .min(sequence_len.saturating_sub(1));
+    let focus_end_0based_exclusive = action
+        .focus_end_0based_exclusive
+        .max(focus_start_0based.saturating_add(1))
+        .min(sequence_len);
+    let focus_span_bp = focus_end_0based_exclusive
+        .saturating_sub(focus_start_0based)
+        .max(1);
+    let target_span_bp = if sequence_len <= 200 {
+        sequence_len
+    } else {
+        focus_span_bp.saturating_mul(3).clamp(200, sequence_len)
+    };
+    let half_window_bp = target_span_bp.saturating_sub(1) / 2;
+    let focus_center_0based = focus_start_0based
+        .saturating_add(focus_span_bp / 2)
+        .min(sequence_len.saturating_sub(1));
+    let (span_start_0based, span_end_0based) =
+        bounded_center_window(sequence_len, focus_center_0based, half_window_bp).ok_or_else(
+            || EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Could not resolve a viewport for the repeat region".to_string(),
+                cause_chain: vec![],
+            },
+        )?;
+    let mode_tag = construct_reasoning_dotplot_mode_tag(action.mode);
+    let store_as = format!(
+        "{}_reasoning_{}_{}_{}",
+        normalize_construct_reasoning_dotplot_token(seq_id),
+        focus_start_0based.saturating_add(1),
+        focus_end_0based_exclusive,
+        mode_tag
+    );
+
+    Ok(ConstructReasoningActionDotplotRequest {
+        seq_id: seq_id.to_string(),
+        mode: action.mode,
+        span_start_0based,
+        span_end_0based,
+        store_as,
+    })
+}
+
 pub const DEFAULT_HOST_PROFILE_CATALOG_PATH: &str = "assets/host_profiles.json";
 pub const DEFAULT_CUTRUN_CATALOG_PATH: &str = "assets/cutrun.json";
 pub const DEFAULT_CUTRUN_CACHE_DIR: &str = "data/cutrun";

@@ -39734,6 +39734,80 @@ fn assert_task_severity_ids_are_fact_evidence(fact: &DesignFact) {
     }
 }
 
+fn test_construct_reasoning_dotplot_action(
+    seq_id: &str,
+    mode: DotplotMode,
+    start_0based: usize,
+    end_0based_exclusive: usize,
+) -> ConstructReasoningInspectionAction {
+    ConstructReasoningInspectionAction {
+        action_id: format!(
+            "inspection_demo_{}_{}_{}",
+            mode.as_str(),
+            start_0based,
+            end_0based_exclusive
+        ),
+        action_kind: ConstructReasoningInspectionActionKind::Dotplot,
+        seq_id: seq_id.to_string(),
+        mode,
+        focus_start_0based: start_0based,
+        focus_end_0based_exclusive: end_0based_exclusive,
+        ..ConstructReasoningInspectionAction::default()
+    }
+}
+
+#[test]
+fn construct_reasoning_action_dotplot_request_matches_gui_window_math() {
+    let action =
+        test_construct_reasoning_dotplot_action("seq-A.1", DotplotMode::SelfForward, 10, 20);
+    let request = construct_reasoning_action_dotplot_request(&action, "fallback", 137)
+        .expect("short-sequence dotplot request");
+    assert_eq!(request.seq_id, "seq-A.1");
+    assert_eq!(request.mode, DotplotMode::SelfForward);
+    assert_eq!(request.span_start_0based, 0);
+    assert_eq!(request.span_end_0based, 137);
+    assert_eq!(request.store_as, "seq_a_1_reasoning_11_20_self");
+
+    let near_start =
+        test_construct_reasoning_dotplot_action("seq-A.1", DotplotMode::SelfForward, 5, 15);
+    let near_start_request = construct_reasoning_action_dotplot_request(&near_start, "", 1000)
+        .expect("near-start dotplot request");
+    assert_eq!(near_start_request.span_start_0based, 0);
+    assert_eq!(near_start_request.span_end_0based, 199);
+
+    let near_end =
+        test_construct_reasoning_dotplot_action("seq-A.1", DotplotMode::SelfForward, 990, 1000);
+    let near_end_request = construct_reasoning_action_dotplot_request(&near_end, "", 1000)
+        .expect("near-end dotplot request");
+    assert_eq!(near_end_request.span_start_0based, 801);
+    assert_eq!(near_end_request.span_end_0based, 1000);
+}
+
+#[test]
+fn construct_reasoning_action_dotplot_request_handles_revcomp_fallback_and_empty_sequence() {
+    let action =
+        test_construct_reasoning_dotplot_action("", DotplotMode::SelfReverseComplement, 400, 430);
+    let request = construct_reasoning_action_dotplot_request(&action, "fallback.seq-1", 1000)
+        .expect("revcomp fallback dotplot request");
+    assert_eq!(request.seq_id, "fallback.seq-1");
+    assert_eq!(request.mode, DotplotMode::SelfReverseComplement);
+    assert_eq!(request.span_start_0based, 316);
+    assert_eq!(request.span_end_0based, 515);
+    assert_eq!(
+        request.store_as,
+        "fallback_seq_1_reasoning_401_430_revcomp"
+    );
+
+    let err = construct_reasoning_action_dotplot_request(&action, "fallback.seq-1", 0)
+        .expect_err("empty sequence should not yield a dotplot request");
+    assert_eq!(err.code, ErrorCode::InvalidInput);
+    assert!(
+        err.message.contains("empty"),
+        "unexpected empty-sequence error: {}",
+        err.message
+    );
+}
+
 #[test]
 fn build_construct_reasoning_graph_derives_low_complexity_repeat_and_operational_risk_context() {
     let sequence = format!(

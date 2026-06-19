@@ -1377,37 +1377,7 @@ impl MainAreaDna {
         center_0based: usize,
         half_window_bp: usize,
     ) -> Option<(usize, usize)> {
-        if sequence_len == 0 {
-            return None;
-        }
-        let half_window_bp = half_window_bp.max(1);
-        let center_0based = center_0based.min(sequence_len.saturating_sub(1));
-        let target_span = half_window_bp
-            .saturating_mul(2)
-            .saturating_add(1)
-            .min(sequence_len);
-        let mut start = center_0based.saturating_sub(half_window_bp);
-        let mut end = center_0based
-            .saturating_add(half_window_bp)
-            .saturating_add(1)
-            .min(sequence_len);
-        let current_span = end.saturating_sub(start);
-        if current_span < target_span {
-            let deficit = target_span - current_span;
-            let shift_left = deficit.min(start);
-            start = start.saturating_sub(shift_left);
-            let remaining = deficit.saturating_sub(shift_left);
-            end = end.saturating_add(remaining).min(sequence_len);
-            let second_span = end.saturating_sub(start);
-            if second_span < target_span {
-                let second_deficit = target_span - second_span;
-                start = start.saturating_sub(second_deficit.min(start));
-            }
-        }
-        if end <= start {
-            end = (start + 1).min(sequence_len);
-        }
-        Some((start, end))
+        crate::engine::bounded_center_window(sequence_len, center_0based, half_window_bp)
     }
 
     pub(super) fn default_dotplot_span_for_view(

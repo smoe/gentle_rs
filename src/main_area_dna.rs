@@ -145,6 +145,7 @@ use crate::{
         TfbsScoreTrackReport, TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric,
         TfbsTrackSimilarityReport, TfbsTrackSimilarityRow, VariantAlleleChoice,
         VariantPromoterContextReport, Workflow,
+        construct_reasoning_action_dotplot_request,
         resolve_formula_roi_range_inputs_0based_on_sequence,
         resolve_selection_formula_range_0based_on_sequence,
     },
@@ -13018,37 +13019,21 @@ impl MainAreaDna {
             "No active sequence selected for reasoning-guided dotplot".to_string()
         })?;
         let sequence_len = self.dna.read().map(|dna| dna.len()).unwrap_or(0);
-        if sequence_len == 0 {
-            return Err("Active sequence is empty; dotplot span unavailable".to_string());
-        }
-        let focus_start_0based = action
-            .focus_start_0based
-            .min(sequence_len.saturating_sub(1));
-        let focus_end_0based_exclusive = action
-            .focus_end_0based_exclusive
-            .max(focus_start_0based.saturating_add(1))
-            .min(sequence_len);
-        let focus_span_bp = focus_end_0based_exclusive
-            .saturating_sub(focus_start_0based)
-            .max(1);
-        let target_span_bp = if sequence_len <= 200 {
-            sequence_len
-        } else {
-            focus_span_bp.saturating_mul(3).clamp(200, sequence_len)
-        };
-        let half_window_bp = target_span_bp.saturating_sub(1) / 2;
-        let focus_center_0based = focus_start_0based
-            .saturating_add(focus_span_bp / 2)
-            .min(sequence_len.saturating_sub(1));
-        let (viewport_start_0based, viewport_end_0based_exclusive) =
-            Self::bounded_center_window(sequence_len, focus_center_0based, half_window_bp)
-                .ok_or_else(|| "Could not resolve a viewport for the repeat region".to_string())?;
+        let dotplot_request =
+            construct_reasoning_action_dotplot_request(action, &seq_id, sequence_len)
+                .map_err(|err| err.message)?;
+        let viewport_start_0based = dotplot_request.span_start_0based;
+        let viewport_end_0based_exclusive = dotplot_request.span_end_0based;
+        let half_window_bp = viewport_end_0based_exclusive
+            .saturating_sub(viewport_start_0based)
+            .saturating_sub(1)
+            / 2;
         self.set_linear_viewport(
             viewport_start_0based,
             viewport_end_0based_exclusive.saturating_sub(viewport_start_0based),
         );
         self.sync_linear_view_input_fields_to_viewport();
-        self.dotplot_ui.mode = action.mode;
+        self.dotplot_ui.mode = dotplot_request.mode;
         self.dotplot_ui.half_window_bp = half_window_bp.max(1).to_string();
         self.dotplot_ui.overlay_enabled = false;
         self.dotplot_ui.reference_seq_id.clear();
@@ -13056,19 +13041,7 @@ impl MainAreaDna {
         self.dotplot_ui.reference_span_end_0based.clear();
         self.dotplot_ui.flex_track_id.clear();
         self.clear_dotplot_query_override();
-        let mode_tag = match action.mode {
-            DotplotMode::SelfForward => "self",
-            DotplotMode::SelfReverseComplement => "revcomp",
-            DotplotMode::PairForward => "pair_forward",
-            DotplotMode::PairReverseComplement => "pair_revcomp",
-        };
-        self.dotplot_ui.dotplot_id = format!(
-            "{}_reasoning_{}_{}_{}",
-            Self::normalize_operation_id_token(&seq_id),
-            focus_start_0based.saturating_add(1),
-            focus_end_0based_exclusive,
-            mode_tag
-        );
+        self.dotplot_ui.dotplot_id = dotplot_request.store_as;
         self.primary_map_mode = PrimaryMapMode::Dotplot;
         self.compute_primary_dotplot();
         self.open_dotplot_window();
