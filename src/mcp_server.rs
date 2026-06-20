@@ -3299,7 +3299,7 @@ mod tests {
         dna_sequence::DNAsequence,
         engine::{
             AdapterCaptureProtectionMode, AdapterCaptureStyle, AdapterRestrictionCapturePlan,
-            ConstructObjective,
+            ConstructObjective, construct_reasoning_action_dotplot_request,
         },
         engine_shell::{execute_shell_command, parse_shell_tokens},
         genomes::GenomeCatalog,
@@ -4893,6 +4893,12 @@ mod tests {
                     })
                     .cloned()
                     .expect("protocol inspection action");
+                let expected_dotplot_request = construct_reasoning_action_dotplot_request(
+                    &protocol_action,
+                    &graph.seq_id,
+                    sequence.len(),
+                )
+                .expect("expected windowed inspection dotplot request");
                 engine
                     .state()
                     .save_to_path(&state_path_str)
@@ -4964,12 +4970,20 @@ mod tests {
                     Some(protocol_action.mode.as_str())
                 );
                 assert_eq!(
+                    structured["compute_parameters"]["span_start_0based"].as_u64(),
+                    Some(expected_dotplot_request.span_start_0based as u64)
+                );
+                assert_eq!(
+                    structured["compute_parameters"]["span_end_0based"].as_u64(),
+                    Some(expected_dotplot_request.span_end_0based as u64)
+                );
+                assert_eq!(
                     structured["dotplot"]["span_start_0based"].as_u64(),
-                    Some(protocol_action.focus_start_0based as u64)
+                    Some(expected_dotplot_request.span_start_0based as u64)
                 );
                 assert_eq!(
                     structured["dotplot"]["span_end_0based"].as_u64(),
-                    Some(protocol_action.focus_end_0based_exclusive as u64)
+                    Some(expected_dotplot_request.span_end_0based as u64)
                 );
                 let state = ProjectState::load_from_path(&state_path_str).expect("load run state");
                 let engine = GentleEngine::from_state(state);
