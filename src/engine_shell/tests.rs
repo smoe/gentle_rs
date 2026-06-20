@@ -1221,6 +1221,19 @@ fn parse_local_slash_aliases_cover_gui_file_import_fetch_and_paste() {
         other => panic!("unexpected /fetch ensembl command: {other:?}"),
     }
 
+    match parse_shell_line("/fetch ensembl FUS --species HUMAN") {
+        Ok(ShellCommand::EnsemblGeneFetch {
+            query,
+            species,
+            entry_id,
+        }) => {
+            assert_eq!(query, "FUS");
+            assert_eq!(species.as_deref(), Some("HUMAN"));
+            assert_eq!(entry_id, None);
+        }
+        other => panic!("unexpected /fetch ensembl uppercase-species command: {other:?}"),
+    }
+
     match parse_shell_line("/fetch uniprot P04637 --id p53_uniprot") {
         Ok(ShellCommand::UniprotFetch { query, entry_id }) => {
             assert_eq!(query, "P04637");

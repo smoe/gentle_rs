@@ -1635,7 +1635,13 @@ fn parse_agent_response(stdout: &str) -> Result<AgentResponse, String> {
 
 fn normalize_native_agent_response_text(stdout: &str) -> String {
     let trimmed = stdout.trim();
-    let Ok(Value::Object(mut obj)) = serde_json::from_str::<Value>(trimmed) else {
+    let Ok(value) = serde_json::from_str::<Value>(trimmed) else {
+        return stdout.to_string();
+    };
+    if let Some(chat_text) = extract_openai_chat_completions_text(&value) {
+        return normalize_native_agent_response_text(&chat_text);
+    }
+    let Value::Object(mut obj) = value else {
         return stdout.to_string();
     };
     let looks_like_agent_response = obj.contains_key("assistant_message")
@@ -3044,6 +3050,32 @@ mod tests {
         .expect("native model schema-object payload should be repaired");
         assert_eq!(response.schema, AGENT_RESPONSE_SCHEMA);
         assert_eq!(response.assistant_message, "ready");
+    }
+
+    #[test]
+    fn parse_native_agent_response_unwraps_chat_completion_envelope() {
+        let response = parse_native_agent_response(
+            r#"{
+  "id": "chatcmpl-local",
+  "object": "chat.completion",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"schema\":\"gentle.agent_response.v1\",\"assistant_message\":\"To fetch the gene FUS from Ensembl, I'll need to confirm if you'd like me to connect to the network.\",\"questions\":[\"Would you like me to fetch this gene from Ensembl?\"],\"suggested_commands\":[{\"title\":\"Fetch FUS from Ensembl\",\"rationale\":\"To retrieve the gene sequence for further analysis.\",\"command\":\"/fetch ensembl FUS --species HUMAN\",\"execution\":\"ask\"}]}"
+      },
+      "finish_reason": "stop"
+    }
+  ]
+}"#,
+        )
+        .expect("native model chat-completion envelope should be unwrapped");
+        assert_eq!(response.schema, AGENT_RESPONSE_SCHEMA);
+        assert_eq!(
+            response.suggested_commands.first().map(|cmd| cmd.command.as_str()),
+            Some("/fetch ensembl FUS --species HUMAN")
+        );
     }
 
     #[test]
