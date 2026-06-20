@@ -497,6 +497,175 @@ impl GENtleApp {
         )
     }
 
+    pub(super) fn render_copyable_command_line(ui: &mut Ui, label: &str, command: &str) -> bool {
+        let mut copied = false;
+        ui.horizontal_wrapped(|ui| {
+            if !label.trim().is_empty() {
+                ui.small(label);
+            }
+            ui.monospace(command);
+            if ui
+                .small_button("⧉")
+                .on_hover_text("Copy command to clipboard")
+                .clicked()
+            {
+                ui.ctx().copy_text(command.to_string());
+                copied = true;
+            }
+        });
+        copied
+    }
+
+    pub(super) fn agent_response_sanity_warnings(
+        invocation: &AgentInvocationOutcome,
+    ) -> Vec<String> {
+        let prompt = invocation
+            .request
+            .get("prompt")
+            .and_then(|value| value.as_str())
+            .unwrap_or_default();
+        Self::agent_response_sanity_warnings_for_prompt(prompt, &invocation.response)
+    }
+
+    pub(super) fn agent_response_sanity_warnings_for_prompt(
+        prompt: &str,
+        response: &AgentResponse,
+    ) -> Vec<String> {
+        let mut warnings = Vec::new();
+        let chat_only_count = response
+            .suggested_commands
+            .iter()
+            .filter(|suggestion| suggestion.execution == AgentExecutionIntent::Chat)
+            .count();
+        if chat_only_count == response.suggested_commands.len()
+            && !response.suggested_commands.is_empty()
+        {
+            warnings.push(
+                "All suggestions are marked execution=chat, so GENtle will not run them. Runnable suggestions should use execution=ask."
+                    .to_string(),
+            );
+        } else if chat_only_count > 0 {
+            warnings.push(format!(
+                "{chat_only_count} suggestion(s) are marked execution=chat, so GENtle will not run those rows."
+            ));
+        }
+
+        for (idx, suggestion) in response.suggested_commands.iter().enumerate() {
+            let index_1based = idx + 1;
+            let command = suggestion.command.trim();
+            if command.is_empty() {
+                warnings.push(format!("Suggestion #{index_1based} has an empty command."));
+                continue;
+            }
+            if Self::agent_command_has_placeholder(command) {
+                warnings.push(format!(
+                    "Suggestion #{index_1based} contains placeholder/help syntax rather than an executable command."
+                ));
+            }
+            if suggestion.execution != AgentExecutionIntent::Chat
+                && let Err(err) = parse_shell_line(command)
+            {
+                warnings.push(format!(
+                    "Suggestion #{index_1based} is not parseable by GENtle: {err}"
+                ));
+            }
+        }
+
+        let lower_prompt = prompt.to_ascii_lowercase();
+        let lower_reply = format!(
+            "{}\n{}",
+            response.assistant_message,
+            response.questions.join("\n")
+        )
+        .to_ascii_lowercase();
+        if !prompt.trim().is_empty()
+            && (lower_reply.contains("what would you like to do")
+                || lower_reply.contains("what would you like me to do"))
+        {
+            warnings.push(
+                "The reply asks what to do even though the prompt already specified a task; the model likely ignored task context."
+                    .to_string(),
+            );
+        }
+        if Self::prompt_looks_like_retrieval_task(&lower_prompt)
+            && !response
+                .suggested_commands
+                .iter()
+                .any(|suggestion| Self::command_looks_like_retrieval(&suggestion.command))
+        {
+            warnings.push(
+                "The prompt looks like a public-database or gene-retrieval task, but no suggestion uses a retrieval command such as /fetch, ensembl-gene, or genomes genes/extract-gene."
+                    .to_string(),
+            );
+        }
+        warnings
+    }
+
+    fn agent_command_has_placeholder(command: &str) -> bool {
+        if command.contains('[')
+            || command.contains(']')
+            || command.contains('<')
+            || command.contains('>')
+            || command.contains("...")
+        {
+            return true;
+        }
+        command.split_whitespace().any(|token| {
+            let bare = token.trim_matches(|ch: char| {
+                matches!(ch, '\'' | '"' | ',' | ':' | ';' | '(' | ')' | '`')
+            });
+            matches!(
+                bare,
+                "ACCESSION"
+                    | "CHR"
+                    | "DNA"
+                    | "END"
+                    | "ENTRY_ID"
+                    | "GENOME_ID"
+                    | "ID"
+                    | "MODEL"
+                    | "PATH"
+                    | "QUERY"
+                    | "SEQ_ID"
+                    | "SPECIES"
+                    | "START"
+                    | "SYSTEM_ID"
+                    | "TEXT"
+            )
+        })
+    }
+
+    fn prompt_looks_like_retrieval_task(lower_prompt: &str) -> bool {
+        (lower_prompt.contains("retrieve")
+            || lower_prompt.contains("fetch")
+            || lower_prompt.contains("database")
+            || lower_prompt.contains("public database")
+            || lower_prompt.contains("ensembl")
+            || lower_prompt.contains("genbank")
+            || lower_prompt.contains("ncbi")
+            || lower_prompt.contains("uniprot"))
+            && (lower_prompt.contains("gene")
+                || lower_prompt.contains("isoform")
+                || lower_prompt.contains("sequence")
+                || lower_prompt.contains("protein")
+                || lower_prompt.contains("fus"))
+    }
+
+    fn command_looks_like_retrieval(command: &str) -> bool {
+        let lower = command.trim().to_ascii_lowercase();
+        lower.starts_with("/fetch ")
+            || lower.starts_with("ensembl-gene ")
+            || lower.starts_with("ensembl-region ")
+            || lower.starts_with("genbank ")
+            || lower.starts_with("ncbi ")
+            || lower.starts_with("uniprot ")
+            || lower.starts_with("genomes genes ")
+            || lower.starts_with("genomes extract-gene ")
+            || lower.starts_with("helpers genes ")
+            || lower.starts_with("helpers extract-gene ")
+            || lower.contains("dbsnp")
+    }
+
     pub(super) fn agent_preflight_next_actions(preflight: &AgentSystemPreflight) -> Vec<String> {
         let key_hint = match preflight.transport.as_str() {
             transport if transport == AgentSystemTransport::NativeAnthropic.as_str() => {
@@ -2213,7 +2382,10 @@ impl GENtleApp {
                         format!(" ({})", self.tr("agent.external_mcp.default_state_path"))
                     }
                 ));
-                ui.monospace(self.external_agent_mcp_command_snippet());
+                let command = self.external_agent_mcp_command_snippet();
+                if Self::render_copyable_command_line(ui, "", &command) {
+                    self.agent_status = "Copied external MCP command".to_string();
+                }
             });
         }
         let mut selected_available = false;
@@ -2228,7 +2400,10 @@ impl GENtleApp {
             }
             ui.small(format!("transport: {}", system.transport.as_str()));
             if !system.command.is_empty() {
-                ui.small(format!("command: {}", system.command.join(" ")));
+                let command = system.command.join(" ");
+                if Self::render_copyable_command_line(ui, "command:", &command) {
+                    self.agent_status = "Copied selected agent command".to_string();
+                }
             }
             if matches!(
                 system.transport,
@@ -2827,6 +3002,18 @@ impl GENtleApp {
             }
             if let Some(selected_endpoint) = invocation.runtime.selected_endpoint.as_deref() {
                 ui.small(format!("selected endpoint: {}", selected_endpoint));
+            }
+            let sanity_warnings = Self::agent_response_sanity_warnings(&invocation);
+            if !sanity_warnings.is_empty() {
+                ui.group(|ui| {
+                    ui.strong("Response sanity checks");
+                    for warning in &sanity_warnings {
+                        ui.colored_label(egui::Color32::from_rgb(180, 110, 25), warning);
+                    }
+                    ui.small(
+                        "These checks are deterministic GENtle validation hints, not a second AI judgment.",
+                    );
+                });
             }
             if !invocation.response.assistant_message.trim().is_empty() {
                 ui.group(|ui| {

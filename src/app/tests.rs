@@ -35,7 +35,10 @@ use super::{
     preferred_mistral_agent_system_id, preferred_openai_agent_system_id,
 };
 use crate::{
-    agent_bridge::{AgentSystemSpec, AgentSystemTransport},
+    agent_bridge::{
+        AgentExecutionIntent, AgentResponse, AgentSuggestedCommand, AgentSystemSpec,
+        AgentSystemTransport,
+    },
     dna_sequence::DNAsequence,
     engine::{
         Arrangement, ArrangementMode, BlastHitFeatureInput, BlastInvocationProvenance, Container,
@@ -867,6 +870,102 @@ fn external_agent_mcp_snippet_includes_binary_and_state_path() {
     let saved_snippet = app.external_agent_mcp_command_snippet();
     assert!(saved_snippet.contains("gentle_mcp"));
     assert!(saved_snippet.contains("'/tmp/GENtle Project/demo.gentle.json'"));
+}
+
+#[test]
+fn agent_response_sanity_flags_generic_placeholder_retrieval_reply() {
+    let response = AgentResponse {
+        schema: "gentle.agent_response.v1".to_string(),
+        assistant_message: "Hello! I'm here to help you with GENtle commands.".to_string(),
+        questions: vec!["What would you like to do?".to_string()],
+        suggested_commands: vec![
+            AgentSuggestedCommand {
+                title: Some("Get Help".to_string()),
+                rationale: Some("Learn about available commands.".to_string()),
+                command: "/help".to_string(),
+                execution: AgentExecutionIntent::Chat,
+            },
+            AgentSuggestedCommand {
+                title: Some("List Sequences".to_string()),
+                rationale: Some("View currently open sequences.".to_string()),
+                command: "/list".to_string(),
+                execution: AgentExecutionIntent::Chat,
+            },
+            AgentSuggestedCommand {
+                title: Some("Open Sequence File".to_string()),
+                rationale: Some("Load a sequence file into GENtle.".to_string()),
+                command: "/open file PATH [--id ID]".to_string(),
+                execution: AgentExecutionIntent::Ask,
+            },
+        ],
+    };
+
+    let warnings = GENtleApp::agent_response_sanity_warnings_for_prompt(
+        "Retrieve human FUS with all isoforms from a molecular database.",
+        &response,
+    );
+
+    assert!(
+        warnings
+            .iter()
+            .any(|warning| warning.contains("execution=chat")),
+        "warnings: {warnings:?}"
+    );
+    assert!(
+        warnings
+            .iter()
+            .any(|warning| warning.contains("placeholder/help syntax")),
+        "warnings: {warnings:?}"
+    );
+    assert!(
+        warnings
+            .iter()
+            .any(|warning| warning.contains("not parseable")),
+        "warnings: {warnings:?}"
+    );
+    assert!(
+        warnings
+            .iter()
+            .any(|warning| warning.contains("already specified a task")),
+        "warnings: {warnings:?}"
+    );
+    assert!(
+        warnings
+            .iter()
+            .any(|warning| warning.contains("no suggestion uses a retrieval command")),
+        "warnings: {warnings:?}"
+    );
+}
+
+#[test]
+fn agent_response_sanity_accepts_fus_retrieval_commands() {
+    let response = AgentResponse {
+        schema: "gentle.agent_response.v1".to_string(),
+        assistant_message:
+            "I will list exact FUS hits and then extract the selected locus.".to_string(),
+        questions: vec![],
+        suggested_commands: vec![
+            AgentSuggestedCommand {
+                title: Some("List exact FUS hits".to_string()),
+                rationale: Some("Confirm candidate gene annotations before import.".to_string()),
+                command: "genomes genes \"Human GRCh38 Ensembl 116\" --catalog assets/genomes.json --cache-dir data/genomes --filter \"^FUS$\" --limit 20".to_string(),
+                execution: AgentExecutionIntent::Ask,
+            },
+            AgentSuggestedCommand {
+                title: Some("Extract FUS".to_string()),
+                rationale: Some("Import FUS with full annotation.".to_string()),
+                command: "genomes extract-gene \"Human GRCh38 Ensembl 116\" FUS --occurrence 1 --output-id grch38_fus --catalog assets/genomes.json --cache-dir data/genomes --annotation-scope full".to_string(),
+                execution: AgentExecutionIntent::Ask,
+            },
+        ],
+    };
+
+    let warnings = GENtleApp::agent_response_sanity_warnings_for_prompt(
+        "Retrieve human FUS with all isoforms from a molecular database.",
+        &response,
+    );
+
+    assert_eq!(warnings, Vec::<String>::new());
 }
 
 struct EnvVarGuard {
