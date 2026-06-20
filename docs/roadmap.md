@@ -213,11 +213,11 @@ focus range, dotplot mode, context tags, and driving evidence ids directly from
 the portable action object while keeping the button itself simple.
 
 Later phases stay intentionally separate: richer action-specific evidence panes,
-deeper curated repeat-family interpretation for Alu/SINE/LINE/LTR/satellite
-calls beyond first-pass materialized-rmsk support, richer quantitative or
-objective-specific task-aware repeat severity beyond the first rule-based
-protocol layer, and broader mapping of single-sequence operations across
-sequence sets.
+richer quantitative or objective-specific task-aware repeat severity beyond the
+first rule-based protocol layer, and broader mapping of single-sequence
+operations across sequence sets. The curated repeat-family depth item moved to
+`docs/CHANGELOG.md` after the shared Alu/SINE/LINE/LTR/satellite taxonomy and
+corroboration rules landed.
 
 ## Phase D: Visualization And Workflow UX
 

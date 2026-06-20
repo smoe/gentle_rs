@@ -40224,6 +40224,105 @@ fn alu_like_demo_sequence_text() -> String {
     )
 }
 
+fn synthetic_internal_repeat_evidence(
+    evidence_id: &str,
+    tags: &[&str],
+    start_0based: usize,
+    end_0based_exclusive: usize,
+) -> DesignEvidence {
+    DesignEvidence {
+        evidence_id: evidence_id.to_string(),
+        seq_id: "repeat_taxonomy_demo".to_string(),
+        start_0based,
+        end_0based_exclusive,
+        role: ConstructRole::RepeatRegion,
+        evidence_class: EvidenceClass::SoftHypothesis,
+        label: evidence_id.to_string(),
+        rationale: "synthetic internal repeat-family signal".to_string(),
+        confidence: Some(0.55),
+        context_tags: tags.iter().map(|tag| (*tag).to_string()).collect(),
+        provenance_kind: "synthetic_internal_repeat_predictor".to_string(),
+        provenance_refs: vec![evidence_id.to_string()],
+        ..DesignEvidence::default()
+    }
+}
+
+fn synthetic_curated_repeat_evidence(
+    evidence_id: &str,
+    repeat_name: Option<&str>,
+    repeat_class: Option<&str>,
+    repeat_family: Option<&str>,
+    start_0based: usize,
+    end_0based_exclusive: usize,
+) -> DesignEvidence {
+    let source_kind = "ucsc_rmsk";
+    DesignEvidence {
+        evidence_id: evidence_id.to_string(),
+        seq_id: "repeat_taxonomy_demo".to_string(),
+        start_0based,
+        end_0based_exclusive,
+        role: ConstructRole::RepeatRegion,
+        evidence_class: EvidenceClass::ReliableAnnotation,
+        label: GentleEngine::construct_reasoning_repeat_family_display_label(
+            repeat_name,
+            repeat_class,
+            repeat_family,
+        ),
+        rationale: "synthetic curated repeat-family annotation".to_string(),
+        confidence: Some(0.9),
+        context_tags: GentleEngine::construct_reasoning_repeat_descriptor_tags(
+            source_kind,
+            repeat_name,
+            repeat_class,
+            repeat_family,
+        ),
+        provenance_kind: "sequence_feature_annotation".to_string(),
+        provenance_refs: vec![format!("repeat_family:{evidence_id}")],
+        notes: {
+            let mut notes = vec![format!("repeat_source={source_kind}")];
+            if let Some(value) = repeat_name {
+                notes.push(format!("repeat_name={value}"));
+            }
+            if let Some(value) = repeat_class {
+                notes.push(format!("repeat_class={value}"));
+            }
+            if let Some(value) = repeat_family {
+                notes.push(format!("repeat_family={value}"));
+            }
+            notes
+        },
+        ..DesignEvidence::default()
+    }
+}
+
+fn synthetic_provenance_only_repeat_evidence(
+    evidence_id: &str,
+    repeat_name: Option<&str>,
+    repeat_class: Option<&str>,
+    repeat_family: Option<&str>,
+    start_0based: usize,
+    end_0based_exclusive: usize,
+) -> DesignEvidence {
+    let mut row = synthetic_curated_repeat_evidence(
+        evidence_id,
+        repeat_name,
+        repeat_class,
+        repeat_family,
+        start_0based,
+        end_0based_exclusive,
+    );
+    row.context_tags = GentleEngine::construct_reasoning_repeat_descriptor_tags(
+        "repeat_family_annotation",
+        repeat_name,
+        repeat_class,
+        repeat_family,
+    );
+    row.notes.retain(|note| !note.starts_with("repeat_source="));
+    row.notes
+        .push("repeat_source=repeat_family_annotation".to_string());
+    row
+}
+
 fn synthetic_ucsc_rmsk_alu_feature(
     start_0based: usize,
     end_0based_exclusive: usize,
@@ -40246,6 +40345,223 @@ fn synthetic_ucsc_rmsk_alu_feature(
             ("rmsk_annotation_id".into(), Some(annotation_id.to_string())),
         ],
     }
+}
+
+#[test]
+fn construct_reasoning_curated_repeat_support_requires_family_or_class_agreement() {
+    let internal_satellite =
+        synthetic_internal_repeat_evidence("internal_satellite", &["satellite"], 10, 90);
+    let curated_satellite = synthetic_curated_repeat_evidence(
+        "rmsk_satellite",
+        Some("Satellite"),
+        Some("Satellite"),
+        Some("Satellite"),
+        20,
+        100,
+    );
+    let curated_alu = synthetic_curated_repeat_evidence(
+        "rmsk_alu",
+        Some("AluY"),
+        Some("SINE"),
+        Some("Alu"),
+        20,
+        100,
+    );
+    let unclassified_internal =
+        synthetic_internal_repeat_evidence("internal_direct", &["direct_repeat"], 10, 90);
+
+    assert!(GentleEngine::construct_reasoning_curated_repeat_supports_internal_signal(
+        &internal_satellite,
+        &curated_satellite
+    ));
+    assert!(!GentleEngine::construct_reasoning_curated_repeat_supports_internal_signal(
+        &internal_satellite,
+        &curated_alu
+    ));
+    assert!(!GentleEngine::construct_reasoning_curated_repeat_supports_internal_signal(
+        &unclassified_internal,
+        &curated_satellite
+    ));
+
+    let support = GentleEngine::construct_reasoning_curated_repeat_support_for_rows(
+        &[&internal_satellite],
+        &[&curated_satellite],
+    );
+    assert_eq!(support.len(), 1);
+    let provenance = GentleEngine::construct_reasoning_repeat_family_provenance_for_evidence_rows(
+        &[&internal_satellite, &curated_satellite],
+    )
+    .expect("satellite support should populate provenance");
+    assert_eq!(provenance.family_name.as_deref(), Some("Satellite"));
+    assert_eq!(provenance.confidence, Some(0.9));
+
+    let cross_support = GentleEngine::construct_reasoning_curated_repeat_support_for_rows(
+        &[&internal_satellite],
+        &[&curated_alu],
+    );
+    assert!(
+        cross_support.is_empty(),
+        "satellite internal evidence must not be corroborated by overlapping Alu/SINE rmsk"
+    );
+}
+
+#[test]
+fn construct_reasoning_repeat_family_taxonomy_accepts_same_class_and_rejects_cross_family() {
+    let cases = [
+        (
+            synthetic_internal_repeat_evidence("internal_alu", &["alu_like"], 0, 100),
+            synthetic_curated_repeat_evidence(
+                "curated_alu",
+                Some("AluY"),
+                Some("SINE"),
+                Some("Alu"),
+                0,
+                100,
+            ),
+            true,
+            "Alu-like internal signal should match Alu/SINE curated evidence",
+        ),
+        (
+            synthetic_internal_repeat_evidence("internal_sine", &["sine"], 0, 100),
+            synthetic_curated_repeat_evidence(
+                "curated_alu_for_sine",
+                Some("AluY"),
+                Some("SINE"),
+                Some("Alu"),
+                0,
+                100,
+            ),
+            true,
+            "SINE internal signal should match Alu as a SINE-family member",
+        ),
+        (
+            synthetic_internal_repeat_evidence("internal_line", &["line"], 0, 100),
+            synthetic_curated_repeat_evidence(
+                "curated_line",
+                Some("L1PA2"),
+                Some("LINE"),
+                Some("L1"),
+                0,
+                100,
+            ),
+            true,
+            "LINE internal signal should match LINE/L1 curated evidence",
+        ),
+        (
+            synthetic_internal_repeat_evidence("internal_ltr", &["ltr"], 0, 100),
+            synthetic_curated_repeat_evidence(
+                "curated_ltr",
+                Some("ERVK"),
+                Some("LTR"),
+                Some("ERV"),
+                0,
+                100,
+            ),
+            true,
+            "LTR internal signal should match LTR/ERV curated evidence",
+        ),
+        (
+            synthetic_internal_repeat_evidence("internal_alu_vs_line", &["alu_like"], 0, 100),
+            synthetic_curated_repeat_evidence(
+                "curated_line_for_alu",
+                Some("L1PA2"),
+                Some("LINE"),
+                Some("L1"),
+                0,
+                100,
+            ),
+            false,
+            "Alu-like internal signal must not match LINE curated evidence",
+        ),
+        (
+            synthetic_internal_repeat_evidence("internal_line_vs_ltr", &["line"], 0, 100),
+            synthetic_curated_repeat_evidence(
+                "curated_ltr_for_line",
+                Some("ERVK"),
+                Some("LTR"),
+                Some("ERV"),
+                0,
+                100,
+            ),
+            false,
+            "LINE internal signal must not match LTR curated evidence",
+        ),
+        (
+            synthetic_internal_repeat_evidence("internal_ltr_vs_sine", &["ltr"], 0, 100),
+            synthetic_curated_repeat_evidence(
+                "curated_alu_for_ltr",
+                Some("AluY"),
+                Some("SINE"),
+                Some("Alu"),
+                0,
+                100,
+            ),
+            false,
+            "LTR internal signal must not match Alu/SINE curated evidence",
+        ),
+    ];
+
+    for (internal, curated, expected, message) in cases {
+        assert_eq!(
+            GentleEngine::construct_reasoning_curated_repeat_supports_internal_signal(
+                &internal,
+                &curated
+            ),
+            expected,
+            "{message}"
+        );
+    }
+}
+
+#[test]
+fn construct_reasoning_repeat_family_provenance_confidence_tracks_corroboration() {
+    let internal_alu =
+        synthetic_internal_repeat_evidence("internal_alu_confidence", &["alu_like"], 0, 120);
+    let curated_alu = synthetic_curated_repeat_evidence(
+        "curated_alu_confidence",
+        Some("AluY"),
+        Some("SINE"),
+        Some("Alu"),
+        0,
+        120,
+    );
+    let provenance_only = synthetic_provenance_only_repeat_evidence(
+        "provenance_only_alu",
+        Some("AluY"),
+        Some("SINE"),
+        Some("Alu"),
+        0,
+        120,
+    );
+
+    let corroborated =
+        GentleEngine::construct_reasoning_repeat_family_provenance_for_evidence_rows(&[
+            &internal_alu,
+            &curated_alu,
+        ])
+        .expect("corroborated provenance");
+    let curated_only =
+        GentleEngine::construct_reasoning_repeat_family_provenance_for_evidence_rows(&[
+            &curated_alu,
+        ])
+        .expect("curated-only provenance");
+    let provenance_only =
+        GentleEngine::construct_reasoning_repeat_family_provenance_for_evidence_rows(&[
+            &provenance_only,
+        ])
+        .expect("provenance-only repeat-family attachment");
+
+    assert_eq!(corroborated.confidence, Some(0.95));
+    assert_eq!(curated_only.confidence, Some(0.8));
+    assert_eq!(provenance_only.confidence, Some(0.65));
+    assert!(
+        corroborated.confidence.unwrap() > curated_only.confidence.unwrap(),
+        "family-agreeing internal+rmsk pair should score higher than curated-only evidence"
+    );
+    assert!(
+        curated_only.confidence.unwrap() > provenance_only.confidence.unwrap(),
+        "curated rmsk evidence should score higher than provenance-only attachments"
+    );
 }
 
 #[test]
@@ -40472,6 +40788,7 @@ fn build_construct_reasoning_graph_upgrades_alu_like_with_overlapping_rmsk_famil
     assert_eq!(provenance.source_kind, "ucsc_rmsk");
     assert_eq!(provenance.family_name.as_deref(), Some("Alu"));
     assert_eq!(provenance.evidence_ids.len(), 2);
+    assert_eq!(provenance.confidence, Some(0.95));
 }
 
 #[test]

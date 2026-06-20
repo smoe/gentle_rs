@@ -14,6 +14,9 @@ Maintenance rule:
 
 ## 2026-06-19
 
+- Deepened construct-reasoning repeat-family interpretation with a shared
+  Alu/SINE/LINE/LTR/satellite taxonomy, stricter internal-vs-curated
+  corroboration, and confidence tiers for repeat-family provenance.
 - Added rule-based `task_severities[]` to construct-reasoning facts so
   repeat/similarity warnings can report PCR, nanopore, read-mapping, cloning
   stability, and construct-maintenance severity without creating extra map

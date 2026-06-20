@@ -4898,7 +4898,7 @@ mod tests {
                     &graph.seq_id,
                     sequence.len(),
                 )
-                .expect("expected windowed inspection dotplot request");
+                .expect("expected MCP dotplot request");
                 engine
                     .state()
                     .save_to_path(&state_path_str)
