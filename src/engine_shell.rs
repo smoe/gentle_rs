@@ -95,8 +95,7 @@ use crate::{
         TranslationSpeedProfile, UniprotFeatureCodingDnaQueryMode, VariantAlleleChoice,
         WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow, WorkflowMacroTemplate,
         WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
-        construct_reasoning_action_dotplot_request,
-        parse_feature_coordinate_term_on_sequence,
+        construct_reasoning_action_dotplot_request, parse_feature_coordinate_term_on_sequence,
         resolve_selection_formula_range_0based_on_sequence, split_feature_formula_range_expression,
     },
     enzymes::active_restriction_enzymes,
@@ -12114,6 +12113,64 @@ pub(crate) fn arrays_shell_command_to_line(cmd: &ShellCommand) -> Option<String>
             "inspect-probe-region-output".to_string(),
             output_dir.clone(),
         ])),
+        ShellCommand::ArraysImportAptProbeRegionOutput {
+            summary,
+            annotation,
+            output_dir,
+            metadata,
+            condition_column,
+            sample_column,
+            probe_intensity,
+            probe_id_column,
+            platform,
+            normalization,
+            coordinate_system,
+            genome_build,
+        } => {
+            let mut tokens = vec![
+                "arrays".to_string(),
+                "import-apt-probe-region-output".to_string(),
+                summary.clone(),
+                annotation.clone(),
+                output_dir.clone(),
+            ];
+            if let Some(metadata) = metadata {
+                push_option(&mut tokens, "--metadata", metadata);
+            }
+            if let Some(condition_column) = condition_column {
+                push_option(&mut tokens, "--condition-column", condition_column);
+            }
+            if let Some(sample_column) = sample_column {
+                push_option(&mut tokens, "--sample-column", sample_column);
+            }
+            if let Some(probe_intensity) = probe_intensity {
+                push_option(&mut tokens, "--probe-intensity", probe_intensity);
+            }
+            if let Some(probe_id_column) = probe_id_column {
+                push_option(&mut tokens, "--probe-id-column", probe_id_column);
+            }
+            if let Some(platform) = platform {
+                push_option(&mut tokens, "--platform", platform);
+            }
+            if let Some(normalization) = normalization {
+                push_option(&mut tokens, "--normalization", normalization);
+            }
+            if let Some(coordinate_system) = coordinate_system {
+                push_option(&mut tokens, "--coordinate-system", coordinate_system);
+            }
+            if let Some(genome_build) = genome_build {
+                push_option(&mut tokens, "--genome-build", genome_build);
+            }
+            Some(render(tokens))
+        }
+        ShellCommand::ArraysRenderProbeRegionOutputSvg { output_dir, output } => {
+            Some(render(vec![
+                "arrays".to_string(),
+                "render-probe-region-output-svg".to_string(),
+                output_dir.clone(),
+                output.clone(),
+            ]))
+        }
         ShellCommand::ArraysRunProbeRegionBackend {
             plan,
             backend,
@@ -12129,6 +12186,38 @@ pub(crate) fn arrays_shell_command_to_line(cmd: &ShellCommand) -> Option<String>
             }
             if *allow_external_execution {
                 tokens.push("--allow-external-execution".to_string());
+            }
+            Some(render(tokens))
+        }
+        ShellCommand::ArraysProjectProbeRegionOutput {
+            seq_id,
+            output_dir,
+            contrasts,
+            level,
+            min_abs_logfc,
+            max_features,
+            clear_existing,
+        } => {
+            let mut tokens = vec![
+                "arrays".to_string(),
+                "project-probe-region-output".to_string(),
+                seq_id.clone(),
+                output_dir.clone(),
+            ];
+            if !contrasts.is_empty() {
+                push_option(&mut tokens, "--contrasts", &contrasts.join(","));
+            }
+            if let Some(level) = level {
+                push_option(&mut tokens, "--level", level);
+            }
+            if let Some(min_abs_logfc) = min_abs_logfc {
+                push_option(&mut tokens, "--min-abs-logfc", &min_abs_logfc.to_string());
+            }
+            if let Some(max_features) = max_features {
+                push_option(&mut tokens, "--max-features", &max_features.to_string());
+            }
+            if *clear_existing {
+                tokens.push("--clear-existing".to_string());
             }
             Some(render(tokens))
         }
@@ -38027,8 +38116,7 @@ fn execute_protein_sequence_command(
                     let evidence_matches = evidence_id.map_or(true, |id| {
                         action.driving_evidence_ids.iter().any(|row| row == id)
                     });
-                    let seq_matches =
-                        seq_id.map_or(true, |id| action.seq_id.as_str() == id);
+                    let seq_matches = seq_id.map_or(true, |id| action.seq_id.as_str() == id);
                     let kind_matches = action_kind_normalized
                         .as_deref()
                         .map_or(true, |kind| action.action_kind.as_str() == kind);

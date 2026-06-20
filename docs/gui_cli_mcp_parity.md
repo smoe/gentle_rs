@@ -17,11 +17,11 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 
 | Adapter | prominent | shell-only | gap |
 |---|---:|---:|---:|
-| GUI | 21 | 556 | 0 |
-| gentle_cli | 336 | 266 | 0 |
-| MCP | 71 | 409 | 27 |
-| JS | 78 | 392 | 27 |
-| Lua | 77 | 393 | 27 |
+| GUI | 21 | 559 | 0 |
+| gentle_cli | 339 | 266 | 0 |
+| MCP | 71 | 410 | 29 |
+| JS | 78 | 393 | 29 |
+| Lua | 77 | 394 | 29 |
 | ClawBio | 0 | 0 | 0 |
 
 ## Glossary Commands
@@ -233,6 +233,9 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | tracks import-vcf | glossary-command | prominent | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | arrays inspect-microarray-track | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Local shell workflow without a portable engine operation; intentionally not projected on this adapter.<br>JS: Local shell workflow without a portable engine operation; intentionally not projected on this adapter.<br>Lua: Local shell workflow without a portable engine operation; intentionally not projected on this adapter.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | arrays inspect-probe-region-output | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| arrays import-apt-probe-region-output | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| arrays render-probe-region-output-svg | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| arrays project-probe-region-output | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | arrays project-microarray-track | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | arrays probe-regions | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | mirna explain-seed | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: microRNA scan service is currently shared-shell only.<br>JS: microRNA scan service is currently shared-shell only.<br>Lua: microRNA scan service is currently shared-shell only.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
@@ -728,8 +731,10 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 
 | Adapter | Capability | Source | Triage | Note |
 |---|---|---|---|---|
+| JS | arrays import-apt-probe-region-output | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | arrays inspect-probe-region-output | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | arrays probe-regions | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| JS | arrays render-probe-region-output-svg | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | ensembl-gene list | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | ensembl-gene show | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | ensembl-protein list | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
@@ -755,8 +760,10 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | JS | uniprot projection-list | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | uniprot projection-show | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | uniprot show | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| Lua | arrays import-apt-probe-region-output | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | arrays inspect-probe-region-output | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | arrays probe-regions | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| Lua | arrays render-probe-region-output-svg | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | ensembl-gene list | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | ensembl-gene show | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | ensembl-protein list | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
@@ -782,8 +789,10 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | Lua | uniprot projection-list | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | uniprot projection-show | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | uniprot show | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| MCP | arrays import-apt-probe-region-output | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | arrays inspect-probe-region-output | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | arrays probe-regions | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| MCP | arrays render-probe-region-output-svg | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | ensembl-gene list | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | ensembl-gene show | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | ensembl-protein list | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
