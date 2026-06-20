@@ -5006,6 +5006,116 @@ fn command_palette_includes_gui_prominent_glossary_entries() {
     }
 }
 
+fn command_palette_test_app_with_sequence() -> GENtleApp {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "seq1".to_string(),
+        DNAsequence::from_sequence("ACGTACGT").expect("sequence"),
+    );
+    let mut app = GENtleApp::default();
+    app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+    app
+}
+
+fn assert_command_palette_ui_intent_side_effect(app: &GENtleApp, target: UiIntentTarget) {
+    assert!(
+        app.app_status
+            .contains(&format!("ui intent open '{}'", target.as_str())),
+        "expected app status to record dispatched UI intent `{}`; status was `{}`",
+        target.as_str(),
+        app.app_status
+    );
+    match target {
+        UiIntentTarget::PrepareReferenceGenome => {
+            assert!(app.show_reference_genome_prepare_dialog);
+            assert_eq!(app.genome_dialog_scope, GenomeDialogScope::Reference);
+        }
+        UiIntentTarget::RetrieveGenomeSequence => {
+            assert!(app.show_reference_genome_retrieve_dialog);
+            assert_eq!(app.genome_dialog_scope, GenomeDialogScope::Reference);
+        }
+        UiIntentTarget::BlastGenomeSequence => {
+            assert!(app.show_reference_genome_blast_dialog);
+            assert_eq!(app.genome_dialog_scope, GenomeDialogScope::Reference);
+        }
+        UiIntentTarget::PrepareHelperGenome => {
+            assert!(app.show_reference_genome_prepare_dialog);
+            assert_eq!(app.genome_dialog_scope, GenomeDialogScope::Helper);
+        }
+        UiIntentTarget::RetrieveHelperSequence => {
+            assert!(app.show_reference_genome_retrieve_dialog);
+            assert_eq!(app.genome_dialog_scope, GenomeDialogScope::Helper);
+        }
+        UiIntentTarget::BlastHelperSequence => {
+            assert!(app.show_reference_genome_blast_dialog);
+            assert_eq!(app.genome_dialog_scope, GenomeDialogScope::Helper);
+        }
+        UiIntentTarget::ImportGenomeTrack => {
+            assert!(app.show_genome_bed_track_dialog);
+        }
+        UiIntentTarget::PcrDesign => {
+            assert!(app.show_pcr_design_dialog);
+            assert_eq!(app.pcr_design_seq_id, "seq1");
+        }
+        UiIntentTarget::SequencingConfirmation => {
+            assert!(app.show_sequencing_confirmation_dialog);
+            assert_eq!(app.sequencing_confirmation_seq_id, "seq1");
+        }
+        UiIntentTarget::OpenSequence
+        | UiIntentTarget::PreparedReferences
+        | UiIntentTarget::AgentAssistant => {
+            panic!(
+                "GUI-prominent glossary target `{}` needs an explicit behavioral assertion or omission reason",
+                target.as_str()
+            );
+        }
+    }
+}
+
+#[test]
+fn command_palette_gui_prominent_ui_intents_dispatch_to_expected_windows() {
+    let palette_entries = GENtleApp::default().collect_command_palette_entries();
+    let mut verified_targets = HashSet::new();
+
+    for gui_entry in gui_prominent_glossary_entries() {
+        let Some(target) = gui_entry.ui_intent_target else {
+            continue;
+        };
+        let action = palette_entries
+            .iter()
+            .find(|entry| {
+                entry.title == gui_entry.palette_title
+                    && matches!(entry.action, CommandPaletteAction::UiIntent(entry_target) if entry_target == target)
+            })
+            .map(|entry| entry.action)
+            .unwrap_or_else(|| {
+                panic!(
+                    "missing command palette UI-intent action for GUI-prominent glossary command `{}`",
+                    gui_entry.glossary_path
+                )
+            });
+        let mut app = command_palette_test_app_with_sequence();
+        app.execute_command_palette_action(&egui::Context::default(), action);
+        assert_command_palette_ui_intent_side_effect(&app, target);
+        verified_targets.insert(target.as_str());
+    }
+
+    assert_eq!(
+        verified_targets,
+        HashSet::from([
+            UiIntentTarget::PrepareReferenceGenome.as_str(),
+            UiIntentTarget::RetrieveGenomeSequence.as_str(),
+            UiIntentTarget::BlastGenomeSequence.as_str(),
+            UiIntentTarget::PrepareHelperGenome.as_str(),
+            UiIntentTarget::RetrieveHelperSequence.as_str(),
+            UiIntentTarget::BlastHelperSequence.as_str(),
+            UiIntentTarget::ImportGenomeTrack.as_str(),
+            UiIntentTarget::PcrDesign.as_str(),
+            UiIntentTarget::SequencingConfirmation.as_str(),
+        ])
+    );
+}
+
 #[test]
 fn command_palette_includes_evidence_preparation_direct_action() {
     let app = GENtleApp::default();
