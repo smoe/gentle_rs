@@ -48,6 +48,41 @@ struct ClawBioRoute {
     intent_id: String,
 }
 
+struct UndocumentedArraysSubcommand {
+    path: &'static str,
+    reason: &'static str,
+}
+
+const UNDOCUMENTED_ARRAYS_SUBCOMMANDS: &[UndocumentedArraysSubcommand] = &[
+    UndocumentedArraysSubcommand {
+        path: "arrays import-apt-probe-region-output",
+        reason: "Unit 5 will decide the import-to-project GUI affordance and glossary contract.",
+    },
+    UndocumentedArraysSubcommand {
+        path: "arrays project-probe-region-output",
+        reason: "Unit 5 will decide projection fields, mutation wording, and glossary contract.",
+    },
+    UndocumentedArraysSubcommand {
+        path: "arrays render-probe-region-output-svg",
+        reason: "Unit 5 will decide SVG render affordance and glossary contract.",
+    },
+    UndocumentedArraysSubcommand {
+        path: "arrays interpret-probe-region-evidence",
+        reason: "Unit 5 will decide read-only evidence interpretation surfacing and glossary contract.",
+    },
+];
+
+const PREEXISTING_UNDOCUMENTED_ARRAYS_SUBCOMMANDS: &[UndocumentedArraysSubcommand] = &[
+    UndocumentedArraysSubcommand {
+        path: "arrays render-probe-region-evidence-svg",
+        reason: "Preexisting evidence-panel SVG route needs a separate glossary/classification review.",
+    },
+    UndocumentedArraysSubcommand {
+        path: "arrays run-probe-region-backend",
+        reason: "Preexisting explicit-confirmation backend route needs a separate glossary/classification review.",
+    },
+];
+
 fn glossary_commands() -> Vec<GlossaryCommand> {
     let glossary: Glossary =
         serde_json::from_str(include_str!("../docs/glossary.json")).expect("parse glossary");
@@ -63,6 +98,27 @@ fn interfaces_by_path(commands: &[GlossaryCommand]) -> BTreeMap<String, BTreeSet
         interfaces.extend(command.interfaces.iter().cloned());
     }
     interfaces_by_path
+}
+
+fn canonical_arrays_subcommand_paths_from_parser() -> BTreeSet<String> {
+    let source = include_str!("../src/engine_shell.rs");
+    let arrays_start = source
+        .find("        \"arrays\" => {")
+        .expect("find arrays parser arm");
+    let cache_start = source[arrays_start..]
+        .find("\n        \"cache\" => parse_cache_command(tokens),")
+        .map(|offset| arrays_start + offset)
+        .expect("find command arm after arrays parser arm");
+    source[arrays_start..cache_start]
+        .lines()
+        .filter_map(|line| {
+            let canonical_arm_prefix = "                \"";
+            line.strip_prefix(canonical_arm_prefix)
+                .and_then(|rest| rest.split('"').next())
+                .filter(|token| !token.is_empty())
+                .map(|token| format!("arrays {token}"))
+        })
+        .collect()
 }
 
 fn parity_matrix_overrides() -> Vec<ParityMatrixOverride> {
@@ -306,6 +362,55 @@ fn registry_surfacing_covers_all_parity_adapters() {
             }
         }
     }
+}
+
+#[test]
+fn arrays_parser_subcommands_are_glossary_paths_or_explicitly_allowlisted() {
+    let glossary_paths = glossary_commands()
+        .into_iter()
+        .map(|command| command.path)
+        .collect::<BTreeSet<_>>();
+    let parser_paths = canonical_arrays_subcommand_paths_from_parser();
+    let allowlisted = UNDOCUMENTED_ARRAYS_SUBCOMMANDS
+        .iter()
+        .chain(PREEXISTING_UNDOCUMENTED_ARRAYS_SUBCOMMANDS.iter())
+        .map(|entry| {
+            assert!(
+                entry.path.starts_with("arrays "),
+                "undocumented arrays subcommand `{}` must include the full arrays path",
+                entry.path
+            );
+            assert!(
+                !entry.reason.trim().is_empty(),
+                "undocumented arrays subcommand `{}` must carry a tracking reason",
+                entry.path
+            );
+            entry.path.to_string()
+        })
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        UNDOCUMENTED_ARRAYS_SUBCOMMANDS.len(),
+        4,
+        "Unit 4 undocumented arrays allowlist should contain only the four expected probe-region commands"
+    );
+    assert_eq!(
+        allowlisted.len(),
+        UNDOCUMENTED_ARRAYS_SUBCOMMANDS.len() + PREEXISTING_UNDOCUMENTED_ARRAYS_SUBCOMMANDS.len(),
+        "undocumented arrays subcommand allowlist must not contain duplicate paths"
+    );
+
+    assert!(
+        parser_paths.contains("arrays probe-regions"),
+        "source scanner should find canonical arrays parser arms"
+    );
+    let undocumented = parser_paths
+        .difference(&glossary_paths)
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        undocumented, allowlisted,
+        "arrays parser subcommands must either be docs/glossary.json paths or have an explicit tracking reason"
+    );
 }
 
 #[test]
