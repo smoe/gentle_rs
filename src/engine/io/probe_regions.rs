@@ -11,6 +11,7 @@ const PROBE_REGION_STAGE: &str = "plan_only";
 const PROBE_REGION_IMPLEMENTATION_STATUS: &str =
     "stage_1_preflight_only_no_cel_summarization_backend";
 const PROBE_REGION_OLIGO_HELPER: &str = "scripts/probe_regions_oligo.R";
+const PROBE_REGION_AFFY_HELPER: &str = "scripts/probe_regions_affy.R";
 const PROBE_REGION_TABLE_FILE: &str = "region_intensity_chrom_order.csv";
 const PROBE_REGION_PROBE_TABLE_FILE: &str = "probe_intensity_chrom_order.csv";
 const PROBE_REGION_SAMPLE_TABLE_FILE: &str = "sample_table.tsv";
@@ -22,14 +23,9 @@ const PROBE_REGION_MATRIX_MANIFEST_SCHEMA: &str =
 const PROBE_REGION_BACKEND_PROVENANCE_SCHEMA: &str = "gentle.probe_region_backend_provenance.v1";
 const PROBE_REGION_BACKEND_RUN_SCHEMA: &str = "gentle.probe_region_backend_run.v1";
 const PROBE_REGION_FINGERPRINT_SHA1_MAX_BYTES: u64 = 10 * 1024 * 1024;
-const CLARIOM_D_HUMAN_VENDOR_SUPPORT_DIR: &str =
-    "data/resources/affymetrix/clariom_d_human_na36_hg38";
-const CLARIOM_D_HUMAN_PROBESET_ZIP: &str = "Clariom_D_Human-na36-hg38-probeset-csv.zip";
-const CLARIOM_D_HUMAN_TRANSCRIPT_ZIP: &str = "Clariom_D_Human.r1.na36.hg38.a1.transcript.csv.zip";
-const CLARIOM_D_HUMAN_PROBESET_ZIP_ALIASES: &[&str] =
-    &["TFS-Assets_LSG_Support-Files_Clariom_D_Human-na36-hg38-probeset-csv.zip"];
-const CLARIOM_D_HUMAN_TRANSCRIPT_ZIP_ALIASES: &[&str] =
-    &["TFS-Assets_LSG_Support-Files_Clariom_D_Human.r1.na36.hg38.a1.transcript.csv.zip"];
+const AFFYMETRIX_PLATFORM_REGISTRY_SCHEMA: &str = "gentle.affymetrix_platform_registry.v1";
+const AFFYMETRIX_PLATFORM_REGISTRY_JSON: &str =
+    include_str!("../../../data/resources/affymetrix/platform_registry.json");
 
 #[derive(Default)]
 struct ProbeRegionTableSummary {
@@ -76,6 +72,42 @@ struct ProbeRegionPlotData {
     logfc_tracks: Vec<ProbeRegionPlotTrack>,
     chromosome_count: usize,
     warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(default)]
+struct AffymetrixPlatformRegistry {
+    schema: String,
+    entries: Vec<AffymetrixPlatformEntry>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(default)]
+struct AffymetrixPlatformEntry {
+    id: String,
+    canonical_name: String,
+    display_name: String,
+    aliases: Vec<String>,
+    family: String,
+    species: String,
+    genome_builds: Vec<String>,
+    confidence: String,
+    backend_kinds: Vec<String>,
+    backend_packages: Vec<String>,
+    platform_design_package: Option<String>,
+    cdf_package: Option<String>,
+    annotation_package: Option<String>,
+    staging_directory: Option<String>,
+    support_files: Vec<AffymetrixSupportFileSpec>,
+    notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(default)]
+struct AffymetrixSupportFileSpec {
+    role: String,
+    canonical_file_name: String,
+    aliases: Vec<String>,
 }
 
 #[derive(Clone)]

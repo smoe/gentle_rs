@@ -4065,9 +4065,25 @@ pub struct ProbeRegionPlatformPlan {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub requested: Option<String>,
     pub normalized: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub registry_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub family: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub species: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub genome_builds: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub backend_kinds: Vec<String>,
     pub backend_hint: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bioconductor_package: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cdf_package: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub annotation_package: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub staging_directory: Option<String>,
     pub confidence: String,
 }
 

@@ -1316,12 +1316,23 @@ Behavior notes:
   currently supports `--normalization rma`; the Rust preflight emits an advisory
   command only for compatible explicit CEL requests, and users still run it
   explicitly.
+- Affymetrix/Thermo Fisher platform knowledge for `arrays probe-regions` is
+  now a resource specification:
+  `data/resources/affymetrix/platform_registry.json`
+  (`gentle.affymetrix_platform_registry.v1`). The registry records aliases,
+  family (`clariom`, `gene_st`, `exon_st`, `legacy_3prime_ivt_cdf`), species,
+  genome-build hints, backend candidates, Bioconductor/CDF package names, and
+  manually staged support-file expectations. Verified entries, currently led by
+  Clariom D Human na36 hg38, may report concrete vendor ZIP paths; provisional
+  historical entries recognize the chip family and CDF/backend needs while
+  explicitly requiring local verification before external execution.
 - Thermo Fisher Clariom D Human na36 hg38 probeset/transcript support ZIPs are
   login-walled vendor files. GENtle never downloads them automatically; users
   place them manually under
   `data/resources/affymetrix/clariom_d_human_na36_hg38/` as documented in that
   directory's README. Both concise canonical ZIP names and browser-preserved
-  `TFS-Assets_LSG_Support-Files_...` download names are accepted, and
+  `TFS-Assets_LSG_Support-Files_...` download names are accepted through the
+  Affymetrix platform registry, and
   `arrays probe-regions --platform Clariom_D_Human` reports their local status
   under `annotation_source.vendor_support_files[]`.
 

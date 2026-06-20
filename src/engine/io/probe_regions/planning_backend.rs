@@ -102,6 +102,11 @@ impl GentleEngine {
                 "Platform '{}' is not in GENtle's current Affymetrix backend map",
                 platform.requested.clone().unwrap_or_default()
             ));
+        } else if platform.confidence == "provisional" {
+            warnings.push(format!(
+                "Platform '{}' is recognized from the Affymetrix resource registry as provisional; verify the local annotation/CDF/library files and package names before external execution",
+                platform.normalized
+            ));
         }
 
         let mut dependencies = vec![
@@ -131,10 +136,35 @@ impl GentleEngine {
             normalization != "none",
             rscript_available,
         ));
+        if platform
+            .backend_kinds
+            .iter()
+            .any(|backend| backend == "r_affy_cdf")
+        {
+            dependencies.push(Self::probe_region_r_package_dependency(
+                "affy",
+                normalization != "none",
+                rscript_available,
+            ));
+        }
         if let Some(package) = platform.bioconductor_package.as_deref() {
             dependencies.push(Self::probe_region_r_package_dependency(
                 package,
                 request.annotation_library_path.is_none(),
+                rscript_available,
+            ));
+        }
+        if let Some(package) = platform.cdf_package.as_deref() {
+            dependencies.push(Self::probe_region_r_package_dependency(
+                package,
+                request.annotation_library_path.is_none(),
+                rscript_available,
+            ));
+        }
+        if let Some(package) = platform.annotation_package.as_deref() {
+            dependencies.push(Self::probe_region_r_package_dependency(
+                package,
+                false,
                 rscript_available,
             ));
         }
@@ -746,6 +776,19 @@ impl GentleEngine {
             .count();
 
         let using_declared_cel_paths = request.cel_paths.is_empty();
+        if request.platform.is_none()
+            && let Some(platform) = Self::probe_region_platform_from_publication_assay_kind(
+                &status.assay_kind,
+                &status.title,
+                "",
+            )
+        {
+            request.platform = Some(platform.clone());
+            warnings.push(format!(
+                "Publication-resource dataset '{}' inferred probe-region platform '{platform}' from assay metadata",
+                status.accession
+            ));
+        }
         if using_declared_cel_paths && !declared_cel_paths.is_empty() {
             let declared_count = declared_cel_paths.len();
             request.cel_paths = declared_cel_paths;
@@ -787,6 +830,24 @@ impl GentleEngine {
                 }
             }
         }
+    }
+
+    pub(super) fn probe_region_platform_from_publication_assay_kind(
+        assay_kind: &str,
+        title: &str,
+        description: &str,
+    ) -> Option<String> {
+        let text = format!("{assay_kind} {title} {description}");
+        Self::probe_region_affymetrix_platform_entry(&text)
+            .map(|entry| entry.canonical_name)
+            .or_else(|| {
+                let key = Self::probe_region_platform_lookup_key(&text);
+                if key.contains("clariomd") {
+                    Some("Clariom_D_Human".to_string())
+                } else {
+                    None
+                }
+            })
     }
 
     pub(super) fn probe_region_dedupe_nonempty(values: &[String]) -> Vec<String> {
@@ -1191,39 +1252,112 @@ impl GentleEngine {
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(str::to_string);
-        let normalized_key = requested
-            .as_deref()
-            .map(|value| {
-                value
-                    .chars()
-                    .filter(|c| c.is_ascii_alphanumeric())
-                    .flat_map(char::to_lowercase)
-                    .collect::<String>()
-            })
-            .unwrap_or_default();
-        match normalized_key.as_str() {
-            "clariomdhuman" => ProbeRegionPlatformPlan {
-                requested,
-                normalized: "Clariom_D_Human".to_string(),
-                backend_hint: "R/oligo".to_string(),
-                bioconductor_package: Some("pd.clariom.d.human".to_string()),
-                confidence: "known".to_string(),
-            },
-            "" => ProbeRegionPlatformPlan {
+        let Some(requested_value) = requested.as_deref() else {
+            return ProbeRegionPlatformPlan {
                 requested,
                 normalized: "unknown".to_string(),
                 backend_hint: "infer_from_cel_or_dataset".to_string(),
                 bioconductor_package: None,
                 confidence: "unknown".to_string(),
-            },
-            _ => ProbeRegionPlatformPlan {
-                normalized: requested.clone().unwrap_or_else(|| "unknown".to_string()),
+                ..Default::default()
+            };
+        };
+
+        if let Some(entry) = Self::probe_region_affymetrix_platform_entry(requested_value) {
+            let backend_hint = if entry
+                .backend_kinds
+                .iter()
+                .any(|backend| backend == "r_oligo")
+            {
+                "R/oligo"
+            } else if entry
+                .backend_kinds
+                .iter()
+                .any(|backend| backend == "r_affy_cdf")
+            {
+                "R/affy+CDF"
+            } else if entry
+                .backend_kinds
+                .iter()
+                .any(|backend| backend == "affymetrix_power_tools")
+            {
+                "Affymetrix Power Tools"
+            } else {
+                "resource_registry"
+            };
+            return ProbeRegionPlatformPlan {
                 requested,
-                backend_hint: "unknown".to_string(),
-                bioconductor_package: None,
-                confidence: "unknown".to_string(),
-            },
+                normalized: entry.canonical_name.clone(),
+                registry_id: Some(entry.id.clone()),
+                family: Some(entry.family.clone()),
+                species: Some(entry.species.clone()),
+                genome_builds: entry.genome_builds.clone(),
+                backend_kinds: entry.backend_kinds.clone(),
+                backend_hint: backend_hint.to_string(),
+                bioconductor_package: entry.platform_design_package.clone(),
+                cdf_package: entry.cdf_package.clone(),
+                annotation_package: entry.annotation_package.clone(),
+                staging_directory: entry.staging_directory.clone(),
+                confidence: entry.confidence.clone(),
+            };
         }
+
+        ProbeRegionPlatformPlan {
+            normalized: requested.clone().unwrap_or_else(|| "unknown".to_string()),
+            requested,
+            backend_hint: "unknown".to_string(),
+            bioconductor_package: None,
+            confidence: "unknown".to_string(),
+            ..Default::default()
+        }
+    }
+
+    pub(super) fn probe_region_affymetrix_platform_registry() -> AffymetrixPlatformRegistry {
+        serde_json::from_str::<AffymetrixPlatformRegistry>(AFFYMETRIX_PLATFORM_REGISTRY_JSON)
+            .unwrap_or_default()
+    }
+
+    pub(super) fn probe_region_affymetrix_platform_entries() -> Vec<AffymetrixPlatformEntry> {
+        let registry = Self::probe_region_affymetrix_platform_registry();
+        if registry.schema == AFFYMETRIX_PLATFORM_REGISTRY_SCHEMA {
+            registry.entries
+        } else {
+            Vec::new()
+        }
+    }
+
+    pub(super) fn probe_region_affymetrix_platform_entry(
+        platform: &str,
+    ) -> Option<AffymetrixPlatformEntry> {
+        let needle = Self::probe_region_platform_lookup_key(platform);
+        Self::probe_region_affymetrix_platform_entries()
+            .into_iter()
+            .find(|entry| {
+                Self::probe_region_platform_lookup_key(&entry.id) == needle
+                    || Self::probe_region_platform_lookup_key(&entry.canonical_name) == needle
+                    || Self::probe_region_platform_lookup_key(&entry.display_name) == needle
+                    || entry
+                        .aliases
+                        .iter()
+                        .any(|alias| Self::probe_region_platform_lookup_key(alias) == needle)
+                    || entry
+                        .platform_design_package
+                        .as_deref()
+                        .is_some_and(|package| {
+                            Self::probe_region_platform_lookup_key(package) == needle
+                        })
+                    || entry.cdf_package.as_deref().is_some_and(|package| {
+                        Self::probe_region_platform_lookup_key(package) == needle
+                    })
+            })
+    }
+
+    pub(super) fn probe_region_platform_lookup_key(value: &str) -> String {
+        value
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric())
+            .flat_map(char::to_lowercase)
+            .collect::<String>()
     }
 
     pub(super) fn probe_region_annotation_source(
@@ -1236,7 +1370,10 @@ impl GentleEngine {
             .annotation_library_path
             .as_deref()
             .map(|path| Self::probe_region_file_status(path, "annotation_library"));
-        let required_r_package = platform.bioconductor_package.clone();
+        let required_r_package = platform
+            .bioconductor_package
+            .clone()
+            .or_else(|| platform.cdf_package.clone());
         if let Some(path_status) = path {
             let source_kind = if path_status.is_dir {
                 "annotation_directory"
@@ -1270,7 +1407,10 @@ impl GentleEngine {
         });
         ProbeRegionAnnotationSourcePlan {
             path: None,
-            source_kind: if required_r_package.is_some() {
+            source_kind: if platform.cdf_package.is_some() && platform.bioconductor_package.is_none()
+            {
+                "bioconductor_cdf_package".to_string()
+            } else if required_r_package.is_some() {
                 "bioconductor_package".to_string()
             } else {
                 "unspecified".to_string()
@@ -1281,8 +1421,13 @@ impl GentleEngine {
                 let package_detail = if package_usable {
                     format!("Using detected Bioconductor platform package '{package}'")
                 } else {
+                    let resource_hint = if platform.cdf_package.as_deref() == Some(package) {
+                        "CDF package"
+                    } else {
+                        "platform package"
+                    };
                     format!(
-                        "Bioconductor platform package '{package}' was not confirmed; provide --annotation-library or install the package before execution"
+                        "Bioconductor {resource_hint} '{package}' was not confirmed; provide --annotation-library or install the package before execution"
                     )
                 };
                 if let Some(vendor_hint) = vendor_hint {
@@ -1299,37 +1444,35 @@ impl GentleEngine {
     pub(super) fn probe_region_vendor_support_files(
         platform: &ProbeRegionPlatformPlan,
     ) -> Vec<ProbeRegionFileStatus> {
-        if platform.normalized != "Clariom_D_Human" {
+        let Some(entry) = platform
+            .registry_id
+            .as_deref()
+            .and_then(|id| Self::probe_region_affymetrix_platform_entry(id))
+            .or_else(|| Self::probe_region_affymetrix_platform_entry(&platform.normalized))
+        else {
             return Vec::new();
-        }
-        [
-            (
-                CLARIOM_D_HUMAN_PROBESET_ZIP,
-                CLARIOM_D_HUMAN_PROBESET_ZIP_ALIASES,
-                "thermofisher_clariom_d_human_hg38_probeset_zip",
-            ),
-            (
-                CLARIOM_D_HUMAN_TRANSCRIPT_ZIP,
-                CLARIOM_D_HUMAN_TRANSCRIPT_ZIP_ALIASES,
-                "thermofisher_clariom_d_human_hg38_transcript_zip",
-            ),
-        ]
-        .iter()
-        .map(|(file_name, aliases, role)| {
-            Self::probe_region_vendor_support_file_status(
-                Path::new(CLARIOM_D_HUMAN_VENDOR_SUPPORT_DIR),
-                file_name,
-                aliases,
-                role,
-            )
-        })
-        .collect()
+        };
+        let Some(base_dir) = entry.staging_directory.as_deref() else {
+            return Vec::new();
+        };
+        entry
+            .support_files
+            .iter()
+            .map(|spec| {
+                Self::probe_region_vendor_support_file_status(
+                    Path::new(base_dir),
+                    &spec.canonical_file_name,
+                    &spec.aliases,
+                    &spec.role,
+                )
+            })
+            .collect()
     }
 
-    pub(super) fn probe_region_vendor_support_file_status(
+    pub(super) fn probe_region_vendor_support_file_status<S: AsRef<str>>(
         base_dir: &Path,
         canonical_file_name: &str,
-        aliases: &[&str],
+        aliases: &[S],
         role: &str,
     ) -> ProbeRegionFileStatus {
         let canonical_path = base_dir.join(canonical_file_name);
@@ -1340,6 +1483,7 @@ impl GentleEngine {
         }
 
         for alias in aliases {
+            let alias = alias.as_ref();
             let alias_path = base_dir.join(alias);
             let mut alias_status =
                 Self::probe_region_file_status(&alias_path.to_string_lossy(), role);
@@ -1352,7 +1496,7 @@ impl GentleEngine {
         }
 
         let accepted_names = std::iter::once(canonical_file_name)
-            .chain(aliases.iter().copied())
+            .chain(aliases.iter().map(AsRef::as_ref))
             .collect::<Vec<_>>()
             .join(", ");
         canonical_status.detail = Some(format!(
@@ -1372,13 +1516,18 @@ impl GentleEngine {
             .filter(|file| file.exists)
             .count();
         let expected = vendor_support_files.len();
+        let base_dir = vendor_support_files
+            .first()
+            .and_then(|file| Path::new(&file.path).parent())
+            .map(|path| path.to_string_lossy().to_string())
+            .unwrap_or_else(|| "the platform resource staging directory".to_string());
         if present == expected {
             Some(format!(
-                "Thermo Fisher Clariom D hg38 support ZIPs are present under {CLARIOM_D_HUMAN_VENDOR_SUPPORT_DIR}"
+                "Affymetrix/Thermo Fisher support files are present under {base_dir}"
             ))
         } else {
             Some(format!(
-                "Thermo Fisher Clariom D hg38 support ZIPs are expected under {CLARIOM_D_HUMAN_VENDOR_SUPPORT_DIR} ({present}/{expected} present); these login-walled files must be placed manually, using either the canonical names or the browser-preserved Thermo download names"
+                "Affymetrix/Thermo Fisher support files are expected under {base_dir} ({present}/{expected} present); login-walled files must be placed manually, using either canonical names or browser-preserved vendor download names"
             ))
         }
     }
@@ -1391,6 +1540,7 @@ impl GentleEngine {
             .to_ascii_lowercase();
         match lower.as_str() {
             "pgf" | "clf" | "mps" => "apt_library_file",
+            "cdf" => "affymetrix_cdf_file",
             "zip" => "netaffx_zip",
             "csv" | "tsv" => "annotation_table",
             "sqlite" | "db" => "sqlite_annotation",
@@ -1665,6 +1815,7 @@ impl GentleEngine {
     ) -> Vec<ProbeRegionBackendCandidate> {
         let rscript_present = Self::probe_region_dependency_present(dependencies, "Rscript");
         let oligo_present = Self::probe_region_dependency_present(dependencies, "oligo");
+        let affy_present = Self::probe_region_dependency_present(dependencies, "affy");
         let limma_present = Self::probe_region_dependency_present(dependencies, "limma");
         let apt_present =
             Self::probe_region_dependency_present(dependencies, "apt-probeset-summarize");
@@ -1677,8 +1828,17 @@ impl GentleEngine {
             .as_ref()
             .is_some_and(|path| path.exists);
         let r_oligo_normalization_supported = normalization == "rma";
+        let r_affy_normalization_supported = normalization == "rma";
         let apt_normalization_supported = normalization == "rma";
         let apt_library = Self::probe_region_apt_library_plan(annotation_source);
+        let legacy_cdf_platform = platform
+            .backend_kinds
+            .iter()
+            .any(|backend| backend == "r_affy_cdf")
+            && !platform
+                .backend_kinds
+                .iter()
+                .any(|backend| backend == "r_oligo");
 
         let mut r_missing = Vec::new();
         if !r_oligo_normalization_supported {
@@ -1722,6 +1882,80 @@ impl GentleEngine {
         }
         if request.cel_paths.is_empty() {
             apt_missing.push("explicit CEL file paths".to_string());
+        }
+
+        let mut affy_missing = Vec::new();
+        if !r_affy_normalization_supported {
+            affy_missing.push(format!("normalization=rma (requested {normalization})"));
+        }
+        if !rscript_present {
+            affy_missing.push("Rscript command".to_string());
+        }
+        if !Path::new(PROBE_REGION_AFFY_HELPER).is_file() {
+            affy_missing.push(PROBE_REGION_AFFY_HELPER.to_string());
+        }
+        if !affy_present && normalization != "none" {
+            affy_missing.push("R package affy".to_string());
+        }
+        if !limma_present && normalization != "none" {
+            affy_missing.push("R package limma".to_string());
+        }
+        if platform.cdf_package.is_none() && !annotation_path_usable {
+            affy_missing
+                .push("CDF package or user-supplied CDF annotation-library path".to_string());
+        } else if let Some(cdf_package) = platform.cdf_package.as_deref()
+            && !Self::probe_region_dependency_present(dependencies, cdf_package)
+            && !annotation_path_usable
+        {
+            affy_missing.push(cdf_package.to_string());
+        }
+        if request.cel_paths.is_empty() {
+            affy_missing.push("explicit CEL file paths".to_string());
+        }
+
+        if legacy_cdf_platform {
+            return vec![
+                ProbeRegionBackendCandidate {
+                    backend: "r_affy_cdf".to_string(),
+                    status: if affy_missing.is_empty() {
+                        "ready".to_string()
+                    } else {
+                        "missing_inputs".to_string()
+                    },
+                    required_inputs: vec![
+                        "Rscript command".to_string(),
+                        "R package affy".to_string(),
+                        "R package limma".to_string(),
+                        PROBE_REGION_AFFY_HELPER.to_string(),
+                        "CDF package or user-supplied CDF file".to_string(),
+                        "normalization=rma".to_string(),
+                        "explicit CEL file paths".to_string(),
+                    ],
+                    missing: affy_missing,
+                    helper_script: Some(PROBE_REGION_AFFY_HELPER.to_string()),
+                    suggested_command: Self::probe_region_affy_suggested_command(
+                        request,
+                        platform,
+                        annotation_source,
+                        normalization,
+                    ),
+                    detail: Some(
+                        "Legacy 3' IVT/CDF Affymetrix preflight; GENtle reports the command but does not run R/affy implicitly"
+                            .to_string(),
+                    ),
+                },
+                ProbeRegionBackendCandidate {
+                    backend: "plan_only".to_string(),
+                    status: "ready".to_string(),
+                    required_inputs: vec![],
+                    missing: vec![],
+                    helper_script: None,
+                    suggested_command: None,
+                    detail: Some(
+                        "Current implemented mode: preflight without CEL summarization".to_string(),
+                    ),
+                },
+            ];
         }
 
         vec![
@@ -1955,6 +2189,81 @@ impl GentleEngine {
         for transcript_cluster_id in &request.transcript_cluster_ids {
             args.push("--transcript-cluster-id".to_string());
             args.push(transcript_cluster_id.clone());
+        }
+        for probeset_id in &request.probeset_ids {
+            args.push("--probeset-id".to_string());
+            args.push(probeset_id.clone());
+        }
+        Some(
+            args.iter()
+                .map(|arg| Self::probe_region_shell_quote(arg))
+                .collect::<Vec<_>>()
+                .join(" "),
+        )
+    }
+
+    pub(super) fn probe_region_affy_suggested_command(
+        request: &ProbeRegionRequest,
+        platform: &ProbeRegionPlatformPlan,
+        annotation_source: &ProbeRegionAnnotationSourcePlan,
+        normalization: &str,
+    ) -> Option<String> {
+        if request.cel_paths.is_empty() || normalization != "rma" {
+            return None;
+        }
+        let mut args = vec!["Rscript".to_string(), PROBE_REGION_AFFY_HELPER.to_string()];
+        for cel in &request.cel_paths {
+            args.push("--cel".to_string());
+            args.push(cel.clone());
+        }
+        if let Some(metadata) = &request.metadata_path {
+            args.push("--metadata".to_string());
+            args.push(metadata.clone());
+        }
+        if let Some(sample_column) = &request.sample_column {
+            args.push("--sample-column".to_string());
+            args.push(sample_column.clone());
+        }
+        if let Some(condition_column) = &request.condition_column {
+            args.push("--condition-column".to_string());
+            args.push(condition_column.clone());
+        }
+        if let Some(block_column) = &request.block_column {
+            args.push("--block-column".to_string());
+            args.push(block_column.clone());
+        }
+        if let Some(cdf_package) = &platform.cdf_package {
+            args.push("--cdf-package".to_string());
+            args.push(cdf_package.clone());
+        }
+        if let Some(annotation_package) = &platform.annotation_package {
+            args.push("--annotation-package".to_string());
+            args.push(annotation_package.clone());
+        }
+        if let Some(path) = annotation_source.path.as_ref().filter(|path| path.exists) {
+            args.push("--annotation-library".to_string());
+            args.push(path.path.clone());
+        }
+        args.push("--normalization".to_string());
+        args.push(normalization.to_string());
+        args.push("--output".to_string());
+        args.push(
+            request
+                .output_dir
+                .clone()
+                .unwrap_or_else(|| "analysis/probe_regions/affy".to_string()),
+        );
+        if let Some(cache_dir) = &request.cache_dir {
+            args.push("--cache-dir".to_string());
+            args.push(cache_dir.clone());
+        }
+        for gene in &request.genes {
+            args.push("--gene".to_string());
+            args.push(gene.clone());
+        }
+        for locus in &request.loci {
+            args.push("--locus".to_string());
+            args.push(locus.clone());
         }
         for probeset_id in &request.probeset_ids {
             args.push("--probeset-id".to_string());

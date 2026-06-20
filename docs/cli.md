@@ -5429,26 +5429,37 @@ Notes:
   CEL file size/mtime cache keys, parsed TSV/CSV/SDRF-style metadata previews,
   default condition contrasts, explicit output/cache path status, annotation
   source checks, platform hints such as
+  resource-registry platform hints such as
   `Clariom_D_Human -> pd.clariom.d.human`, backend-candidate readiness for
-  `r_oligo` and Affymetrix Power Tools, an advisory
+  `r_oligo`, Affymetrix Power Tools, and legacy 3' IVT/CDF `r_affy_cdf`
+  candidates, an advisory
   `scripts/probe_regions_oligo.R` command for explicit RMA/CEL requests, an
   advisory `apt-probeset-summarize -a rma-sketch` command when user-supplied
   PGF/CLF and optional MPS files are detected, and local `Rscript` / APT /
   R-package dependency status; it does not run CEL summarization itself and
-  never downloads or installs missing files/packages.
+  never downloads or installs missing files/packages. Platform recognition now
+  comes from `data/resources/affymetrix/platform_registry.json`
+  (`gentle.affymetrix_platform_registry.v1`): verified entries may report
+  concrete local support-file expectations, while provisional historical chips
+  identify their family/backend/CDF needs without claiming local validation.
   With `--output DIR`, the preflight also writes `DIR/plan.json`, a pretty
   versioned copy of the same `gentle.probe_region_plan.v1` report returned on
   stdout.
   With `--dataset E-MTAB-14704`, the preflight resolves the publication
   resource's declared local CEL paths and any locally present SDRF metadata, then
   reports missing raw files as ordinary file-status errors.
-  For `Clariom_D_Human`, the same preflight reports the expected local Thermo
-  Fisher na36 hg38 support ZIPs under
+  For registry entries such as `Clariom_D_Human`, the same preflight reports
+  the expected local Thermo Fisher na36 hg38 support ZIPs under
   `annotation_source.vendor_support_files[]`; place them manually in
   `data/resources/affymetrix/clariom_d_human_na36_hg38/` when probe/probeset
   coordinate development needs vendor CSV annotations. The preflight accepts
   both the concise canonical ZIP names documented in that directory and the
   browser-preserved `TFS-Assets_LSG_Support-Files_...` download names.
+  Legacy 3' IVT arrays such as HG-U133 / Mouse 430 / Rat 230 families are
+  recognized as provisional CDF-backed platforms; until
+  `scripts/probe_regions_affy.R` lands, their `r_affy_cdf` candidate remains a
+  non-ready planning entry that tells users which CDF/package/library inputs are
+  needed.
 - `arrays run-probe-region-backend PLAN.json --allow-external-execution`
   (or `arrays run-probe-region-backend --plan PLAN.json --allow-external-execution`)
   reads a persisted `gentle.probe_region_plan.v1`, checks the recorded

@@ -1076,6 +1076,172 @@ fn probe_region_plan_builds_apt_suggested_command_for_library_directory() {
 }
 
 #[test]
+fn probe_region_platform_registry_resolves_clariom_and_legacy_aliases() {
+    let temp = tempdir().expect("tempdir");
+    let cel = temp.path().join("sample.CEL");
+    fs::write(&cel, "synthetic CEL placeholder\n").expect("write cel");
+    let clariom_plan = GentleEngine::default().plan_probe_regions(ProbeRegionRequest {
+        cel_paths: vec![cel.to_string_lossy().to_string()],
+        genes: vec!["TP73".to_string()],
+        platform: Some("pd.clariom.d.human".to_string()),
+        normalization: "none".to_string(),
+        dry_run: true,
+        ..Default::default()
+    });
+    let clariom = clariom_plan.platform;
+    assert_eq!(clariom.normalized, "Clariom_D_Human");
+    assert_eq!(
+        clariom.registry_id.as_deref(),
+        Some("affymetrix.clariom_d_human.na36.hg38")
+    );
+    assert_eq!(clariom.family.as_deref(), Some("clariom"));
+    assert_eq!(clariom.species.as_deref(), Some("human"));
+    assert_eq!(
+        clariom.bioconductor_package.as_deref(),
+        Some("pd.clariom.d.human")
+    );
+    assert!(
+        clariom
+            .backend_kinds
+            .iter()
+            .any(|backend| backend == "r_oligo")
+    );
+    assert!(
+        clariom
+            .backend_kinds
+            .iter()
+            .any(|backend| backend == "affymetrix_power_tools")
+    );
+    assert_eq!(clariom.confidence, "verified");
+
+    let legacy_plan = GentleEngine::default().plan_probe_regions(ProbeRegionRequest {
+        cel_paths: vec![cel.to_string_lossy().to_string()],
+        genes: vec!["TP73".to_string()],
+        platform: Some("GPL570".to_string()),
+        normalization: "none".to_string(),
+        dry_run: true,
+        ..Default::default()
+    });
+    let legacy = legacy_plan.platform;
+    assert_eq!(legacy.normalized, "HG_U133_Plus_2");
+    assert_eq!(legacy.family.as_deref(), Some("legacy_3prime_ivt_cdf"));
+    assert_eq!(legacy.cdf_package.as_deref(), Some("hgu133plus2cdf"));
+    assert_eq!(legacy.annotation_package.as_deref(), Some("hgu133plus2.db"));
+    assert_eq!(legacy.backend_kinds, vec!["r_affy_cdf".to_string()]);
+    assert_eq!(legacy.confidence, "provisional");
+}
+
+#[test]
+fn probe_region_plan_uses_affy_cdf_backend_for_legacy_ivt_arrays() {
+    let temp = tempdir().expect("tempdir");
+    let cel = temp.path().join("sample.CEL");
+    fs::write(&cel, "synthetic CEL placeholder\n").expect("write cel");
+
+    let plan = GentleEngine::default().plan_probe_regions(ProbeRegionRequest {
+        cel_paths: vec![cel.to_string_lossy().to_string()],
+        genes: vec!["TP73".to_string()],
+        platform: Some("HG-U133 Plus 2.0".to_string()),
+        normalization: "rma".to_string(),
+        output_dir: Some(temp.path().join("affy_out").to_string_lossy().to_string()),
+        dry_run: true,
+        ..Default::default()
+    });
+
+    assert_eq!(plan.platform.normalized, "HG_U133_Plus_2");
+    assert_eq!(
+        plan.platform.family.as_deref(),
+        Some("legacy_3prime_ivt_cdf")
+    );
+    assert!(
+        plan.warnings
+            .iter()
+            .any(|warning| warning.contains("recognized") && warning.contains("provisional"))
+    );
+    let affy = plan
+        .backend_candidates
+        .iter()
+        .find(|candidate| candidate.backend == "r_affy_cdf")
+        .expect("legacy platform should use affy/CDF backend candidate");
+    assert_eq!(
+        affy.helper_script.as_deref(),
+        Some("scripts/probe_regions_affy.R")
+    );
+    let command = affy
+        .suggested_command
+        .as_deref()
+        .expect("affy/CDF suggested command");
+    assert!(command.contains("Rscript scripts/probe_regions_affy.R"));
+    assert!(command.contains("--cdf-package hgu133plus2cdf"));
+    assert!(command.contains("--annotation-package hgu133plus2.db"));
+    assert!(
+        affy.required_inputs
+            .iter()
+            .any(|required| required == "R package affy")
+    );
+    assert!(
+        !plan
+            .backend_candidates
+            .iter()
+            .any(|candidate| candidate.backend == "r_oligo"),
+        "legacy CDF arrays must not be offered through the whole-transcript oligo backend"
+    );
+}
+
+#[test]
+fn probe_region_plan_infers_clariom_platform_from_publication_dataset() {
+    let plan = GentleEngine::default().plan_probe_regions(ProbeRegionRequest {
+        dataset: Some("E-MTAB-14704".to_string()),
+        genes: vec!["TP73".to_string()],
+        normalization: "none".to_string(),
+        dry_run: true,
+        ..Default::default()
+    });
+
+    assert_eq!(plan.request.platform.as_deref(), Some("Clariom_D_Human"));
+    assert_eq!(plan.platform.normalized, "Clariom_D_Human");
+    assert!(
+        plan.warnings
+            .iter()
+            .any(|warning| warning.contains("inferred probe-region platform 'Clariom_D_Human'"))
+    );
+}
+
+#[test]
+fn probe_region_unknown_platform_still_honors_user_annotation_library() {
+    let temp = tempdir().expect("tempdir");
+    let cel = temp.path().join("sample.CEL");
+    let annotation_dir = temp.path().join("annotation");
+    fs::write(&cel, "synthetic CEL placeholder\n").expect("write cel");
+    fs::create_dir(&annotation_dir).expect("annotation dir");
+
+    let plan = GentleEngine::default().plan_probe_regions(ProbeRegionRequest {
+        cel_paths: vec![cel.to_string_lossy().to_string()],
+        genes: vec!["TP73".to_string()],
+        platform: Some("Local_Old_Array".to_string()),
+        annotation_library_path: Some(annotation_dir.to_string_lossy().to_string()),
+        normalization: "none".to_string(),
+        dry_run: true,
+        ..Default::default()
+    });
+
+    assert_eq!(plan.platform.confidence, "unknown");
+    assert_eq!(plan.annotation_source.usable, true);
+    assert_eq!(plan.annotation_source.source_kind, "annotation_directory");
+    assert!(
+        plan.warnings
+            .iter()
+            .any(|warning| warning.contains("not in GENtle's current Affymetrix backend map"))
+    );
+    assert!(
+        !plan
+            .errors
+            .iter()
+            .any(|error| error.contains("No --annotation-library was supplied")),
+        "user-supplied annotation library should suppress missing annotation errors"
+    );
+}
+
+#[test]
 fn import_apt_probe_region_output_writes_inspectable_helper_directory() {
     let temp = tempdir().expect("tempdir");
     let summary = temp.path().join("apt.summary.tsv");
@@ -39793,10 +39959,7 @@ fn construct_reasoning_action_dotplot_request_handles_revcomp_fallback_and_empty
     assert_eq!(request.mode, DotplotMode::SelfReverseComplement);
     assert_eq!(request.span_start_0based, 316);
     assert_eq!(request.span_end_0based, 515);
-    assert_eq!(
-        request.store_as,
-        "fallback_seq_1_reasoning_401_430_revcomp"
-    );
+    assert_eq!(request.store_as, "fallback_seq_1_reasoning_401_430_revcomp");
 
     let err = construct_reasoning_action_dotplot_request(&action, "fallback.seq-1", 0)
         .expect_err("empty sequence should not yield a dotplot request");
