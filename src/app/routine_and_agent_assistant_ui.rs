@@ -339,6 +339,38 @@ impl GENtleApp {
         })
     }
 
+    pub(super) fn selected_agent_base_url_placeholder(&self) -> String {
+        let Some(system) = self.selected_agent_system() else {
+            return GUI_OPENAI_COMPAT_DEFAULT_BASE_URL.to_string();
+        };
+        if !matches!(
+            system.transport,
+            AgentSystemTransport::NativeOpenai
+                | AgentSystemTransport::NativeAnthropic
+                | AgentSystemTransport::NativeMistral
+                | AgentSystemTransport::NativeOpenaiCompat
+        ) {
+            return GUI_OPENAI_COMPAT_DEFAULT_BASE_URL.to_string();
+        }
+        if let Some(catalog_base_url) = system
+            .base_url
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            return catalog_base_url.to_string();
+        }
+        match system.transport {
+            AgentSystemTransport::NativeOpenai => GUI_OPENAI_DEFAULT_BASE_URL.to_string(),
+            AgentSystemTransport::NativeAnthropic => GUI_ANTHROPIC_DEFAULT_BASE_URL.to_string(),
+            AgentSystemTransport::NativeMistral => GUI_MISTRAL_DEFAULT_BASE_URL.to_string(),
+            AgentSystemTransport::NativeOpenaiCompat => {
+                GUI_OPENAI_COMPAT_DEFAULT_BASE_URL.to_string()
+            }
+            _ => GUI_OPENAI_COMPAT_DEFAULT_BASE_URL.to_string(),
+        }
+    }
+
     pub(super) fn selected_agent_model_discovery_source_key(
         &self,
         system: &AgentSystemSpec,
@@ -2303,11 +2335,12 @@ impl GENtleApp {
                 preflight_inputs_changed = true;
             }
         });
+        let base_url_placeholder = self.selected_agent_base_url_placeholder();
         ui.horizontal(|ui| {
             ui.label(self.tr("agent.base_url_override"));
             let response = ui.add(
                 egui::TextEdit::singleline(&mut self.agent_base_url_override)
-                    .hint_text("http://localhost:11973/v1"),
+                    .hint_text(base_url_placeholder),
             );
             preflight_inputs_changed |= response.changed();
             if ui
@@ -2676,6 +2709,9 @@ impl GENtleApp {
         let prompt_submit_shortcut = ui.memory(|memory| memory.has_focus(prompt_edit_id))
             && ui.input_mut(|input| {
                 input.consume_shortcut(&egui::KeyboardShortcut::new(
+                    egui::Modifiers::COMMAND,
+                    egui::Key::Enter,
+                )) || input.consume_shortcut(&egui::KeyboardShortcut::new(
                     egui::Modifiers::CTRL,
                     egui::Key::Enter,
                 ))
@@ -2686,7 +2722,11 @@ impl GENtleApp {
                 .desired_rows(6)
                 .desired_width(f32::INFINITY),
         );
-        let running = self.agent_task.is_some();
+        let mut running = self.agent_task.is_some();
+        if running && Self::consume_command_or_ctrl_shortcut(ui.ctx(), egui::Key::Period) {
+            self.request_agent_task_cancel("agent assistant shortcut");
+            running = self.agent_task.is_some();
+        }
         if prompt_submit_shortcut && !running && selected_available {
             self.start_agent_assistant_request();
         }
@@ -2696,7 +2736,7 @@ impl GENtleApp {
                     !running && selected_available,
                     egui::Button::new(self.tr("agent.ask_agent")),
                 )
-                .on_hover_text("Send prompt to selected agent system (Ctrl+Return)")
+                .on_hover_text("Send prompt to selected agent system (Command/Ctrl+Return)")
                 .clicked()
             {
                 self.start_agent_assistant_request();
@@ -2717,6 +2757,7 @@ impl GENtleApp {
                 self.agent_execution_log.clear();
             }
         });
+        let mut stop_agent_request = false;
         if let Some(task) = &self.agent_task {
             ui.horizontal(|ui| {
                 ui.add(egui::Spinner::new());
@@ -2724,7 +2765,19 @@ impl GENtleApp {
                     "Agent request running ({:.1}s)",
                     task.started.elapsed().as_secs_f32()
                 ));
+                if ui
+                    .button("Stop")
+                    .on_hover_text(
+                        "Stop waiting for the current agent request (Command/Ctrl+Period)",
+                    )
+                    .clicked()
+                {
+                    stop_agent_request = true;
+                }
             });
+        }
+        if stop_agent_request {
+            self.request_agent_task_cancel("agent assistant");
         }
         if !self.agent_status.is_empty() {
             ui.separator();

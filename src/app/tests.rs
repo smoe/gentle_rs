@@ -2,8 +2,9 @@ use super::{
     AGENT_BASE_URL_ENV, AGENT_CONNECT_TIMEOUT_SECS_ENV, AGENT_MAX_RESPONSE_BYTES_ENV,
     AGENT_MAX_RETRIES_ENV, AGENT_MODEL_ENV, AGENT_READ_TIMEOUT_SECS_ENV, AGENT_TIMEOUT_SECS_ENV,
     ANTHROPIC_API_KEY_AUTH_HINT, ANTHROPIC_API_KEY_ENV, APP_CONFIGURATION_SCHEMA_VERSION,
-    BACKGROUND_JOB_HISTORY_METADATA_KEY, BACKGROUND_JOB_HISTORY_SCHEMA,
-    BACKGROUND_JOBS_RECENT_JOB_EVENTS_SCROLL_ID, BACKGROUND_JOBS_RETRY_CLEANUP_AUDIT_SCROLL_ID,
+    AgentAskTask, AgentAskTaskMessage, BACKGROUND_JOB_HISTORY_METADATA_KEY,
+    BACKGROUND_JOB_HISTORY_SCHEMA, BACKGROUND_JOBS_RECENT_JOB_EVENTS_SCROLL_ID,
+    BACKGROUND_JOBS_RETRY_CLEANUP_AUDIT_SCROLL_ID,
     BACKGROUND_JOBS_RETRY_SNAPSHOTS_REMOVED_PREVIEW_SCROLL_ID,
     BACKGROUND_JOBS_RETRY_SNAPSHOTS_RETAINED_PREVIEW_SCROLL_ID,
     BACKGROUND_JOBS_RETRY_SNAPSHOTS_SCROLL_ID, BackgroundJobEventPhase, BackgroundJobKind,
@@ -510,6 +511,35 @@ fn preferred_agent_quickstart_helpers_pick_expected_templates() {
     assert_eq!(
         preferred_local_agent_system_id(&systems).as_deref(),
         Some("msty_mlx_local_compat_template")
+    );
+}
+
+#[test]
+fn agent_base_url_placeholder_tracks_selected_msty_template() {
+    let mut msty_mlx = test_agent_system(
+        "msty_mlx_local_compat_template",
+        AgentSystemTransport::NativeOpenaiCompat,
+    );
+    msty_mlx.base_url = Some("http://localhost:11973/v1".to_string());
+    let mut msty_gateway = test_agent_system(
+        "msty_local_compat_template",
+        AgentSystemTransport::NativeOpenaiCompat,
+    );
+    msty_gateway.base_url = Some("http://localhost:11964".to_string());
+
+    let mut app = GENtleApp::default();
+    app.agent_systems = vec![msty_mlx, msty_gateway];
+
+    app.agent_system_id = "msty_local_compat_template".to_string();
+    assert_eq!(
+        app.selected_agent_base_url_placeholder(),
+        "http://localhost:11964"
+    );
+
+    app.agent_system_id = "msty_mlx_local_compat_template".to_string();
+    assert_eq!(
+        app.selected_agent_base_url_placeholder(),
+        "http://localhost:11973/v1"
     );
 }
 
@@ -10516,6 +10546,45 @@ fn request_blast_cancel_is_idempotent() {
             .cancel_requested
             .load(Ordering::Relaxed)
     );
+}
+
+#[test]
+fn request_agent_cancel_stops_waiting_and_logs_event() {
+    let mut app = GENtleApp::default();
+    let (_tx, rx) = mpsc::channel::<AgentAskTaskMessage>();
+    app.agent_task = Some(AgentAskTask {
+        job_id: 44,
+        started: Instant::now() - Duration::from_secs(2),
+        receiver: rx,
+    });
+
+    app.request_agent_task_cancel("test");
+
+    assert!(app.agent_task.is_none());
+    assert!(app.agent_status.contains("Agent request stopped"));
+    let cancel_events = app
+        .job_event_log
+        .iter()
+        .filter(|event| {
+            event.kind == BackgroundJobKind::AgentAssist
+                && event.phase == BackgroundJobEventPhase::CancelRequested
+                && event.job_id == Some(44)
+        })
+        .count();
+    assert_eq!(cancel_events, 1);
+
+    app.request_agent_task_cancel("test");
+    assert!(app.agent_status.contains("No running agent request"));
+    let cancel_events_after_second_request = app
+        .job_event_log
+        .iter()
+        .filter(|event| {
+            event.kind == BackgroundJobKind::AgentAssist
+                && event.phase == BackgroundJobEventPhase::CancelRequested
+                && event.job_id == Some(44)
+        })
+        .count();
+    assert_eq!(cancel_events_after_second_request, 1);
 }
 
 #[test]

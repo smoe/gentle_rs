@@ -4821,6 +4821,24 @@ Error: `{err}`"
         );
     }
 
+    fn request_agent_task_cancel(&mut self, origin: &str) {
+        let Some(task) = self.agent_task.take() else {
+            self.agent_status = "No running agent request to stop".to_string();
+            return;
+        };
+        let elapsed = task.started.elapsed().as_secs_f64();
+        self.agent_status = format!(
+            "Agent request stopped after {:.1}s; any late response from this request will be ignored",
+            elapsed
+        );
+        self.push_job_event(
+            BackgroundJobKind::AgentAssist,
+            BackgroundJobEventPhase::CancelRequested,
+            Some(task.job_id),
+            format!("Agent request stopped from {origin} after {:.1}s", elapsed),
+        );
+    }
+
     fn has_active_background_jobs(&self) -> bool {
         self.genome_prepare_task.is_some()
             || self.genome_blast_task.is_some()
@@ -21779,6 +21797,7 @@ Error: `{err}`"
 
             ui.separator();
             ui.strong("Agent Assistant");
+            let mut cancel_agent_clicked = false;
             if let Some(task) = &self.agent_task {
                 ui.horizontal(|ui| {
                     ui.add(egui::Spinner::new());
@@ -21786,32 +21805,43 @@ Error: `{err}`"
                         "Running ({:.1}s)",
                         task.started.elapsed().as_secs_f32()
                     ));
-                    ui.small("Cancellation is not yet available for agent requests");
+                    if ui
+                        .button("Stop")
+                        .on_hover_text("Stop waiting for the current agent request")
+                        .clicked()
+                    {
+                        cancel_agent_clicked = true;
+                    }
                 });
             } else {
                 ui.horizontal(|ui| {
-                        ui.small("Idle");
-                        if ui
-                            .button("Retry")
-                            .on_hover_text("Run the agent assistant request again with current prompt/settings")
-                            .clicked()
-                        {
-                            let snapshot_id = self.capture_retry_snapshot(
-                                BackgroundJobKind::AgentAssist,
-                                "background jobs panel",
-                                self.current_agent_retry_arguments(),
-                            );
-                            self.push_job_event(
-                                BackgroundJobKind::AgentAssist,
-                                BackgroundJobEventPhase::Retried,
-                                None,
-                                format!(
-                                    "Retry requested from background jobs panel (retry snapshot #{snapshot_id})"
-                                ),
-                            );
-                            self.start_agent_assistant_request();
-                        }
-                    });
+                    ui.small("Idle");
+                    if ui
+                        .button("Retry")
+                        .on_hover_text(
+                            "Run the agent assistant request again with current prompt/settings",
+                        )
+                        .clicked()
+                    {
+                        let snapshot_id = self.capture_retry_snapshot(
+                            BackgroundJobKind::AgentAssist,
+                            "background jobs panel",
+                            self.current_agent_retry_arguments(),
+                        );
+                        self.push_job_event(
+                            BackgroundJobKind::AgentAssist,
+                            BackgroundJobEventPhase::Retried,
+                            None,
+                            format!(
+                                "Retry requested from background jobs panel (retry snapshot #{snapshot_id})"
+                            ),
+                        );
+                        self.start_agent_assistant_request();
+                    }
+                });
+            }
+            if cancel_agent_clicked {
+                self.request_agent_task_cancel("background jobs panel");
             }
             if !self.agent_status.trim().is_empty() {
                 self.render_agent_status_message(ui, &self.agent_status, false);
