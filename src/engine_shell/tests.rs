@@ -2575,7 +2575,10 @@ fn execute_construct_reasoning_inspection_action_commands_list_and_run_dotplot()
             .expect("list construct-reasoning inspection actions by evidence");
             assert_eq!(
                 evidence_filtered.output["filters"]["evidence_id"].as_str(),
-                protocol_action.driving_evidence_ids.first().map(String::as_str)
+                protocol_action
+                    .driving_evidence_ids
+                    .first()
+                    .map(String::as_str)
             );
             assert_eq!(
                 evidence_filtered.output["filters"]["seq_id"].as_str(),
@@ -7462,6 +7465,77 @@ fn assert_arrays_probe_region_command_eq(
             },
         ) => assert_eq!(output_dir, expected_output_dir, "rendered line: {line}"),
         (
+            ShellCommand::ArraysImportAptProbeRegionOutput {
+                summary,
+                annotation,
+                output_dir,
+                metadata,
+                condition_column,
+                sample_column,
+                probe_intensity,
+                probe_id_column,
+                platform,
+                normalization,
+                coordinate_system,
+                genome_build,
+            },
+            ShellCommand::ArraysImportAptProbeRegionOutput {
+                summary: expected_summary,
+                annotation: expected_annotation,
+                output_dir: expected_output_dir,
+                metadata: expected_metadata,
+                condition_column: expected_condition_column,
+                sample_column: expected_sample_column,
+                probe_intensity: expected_probe_intensity,
+                probe_id_column: expected_probe_id_column,
+                platform: expected_platform,
+                normalization: expected_normalization,
+                coordinate_system: expected_coordinate_system,
+                genome_build: expected_genome_build,
+            },
+        ) => {
+            assert_eq!(summary, expected_summary, "rendered line: {line}");
+            assert_eq!(annotation, expected_annotation, "rendered line: {line}");
+            assert_eq!(output_dir, expected_output_dir, "rendered line: {line}");
+            assert_eq!(metadata, expected_metadata, "rendered line: {line}");
+            assert_eq!(
+                condition_column, expected_condition_column,
+                "rendered line: {line}"
+            );
+            assert_eq!(
+                sample_column, expected_sample_column,
+                "rendered line: {line}"
+            );
+            assert_eq!(
+                probe_intensity, expected_probe_intensity,
+                "rendered line: {line}"
+            );
+            assert_eq!(
+                probe_id_column, expected_probe_id_column,
+                "rendered line: {line}"
+            );
+            assert_eq!(platform, expected_platform, "rendered line: {line}");
+            assert_eq!(
+                normalization, expected_normalization,
+                "rendered line: {line}"
+            );
+            assert_eq!(
+                coordinate_system, expected_coordinate_system,
+                "rendered line: {line}"
+            );
+            assert_eq!(genome_build, expected_genome_build, "rendered line: {line}");
+        }
+        (
+            ShellCommand::ArraysRenderProbeRegionOutputSvg { output_dir, output },
+            ShellCommand::ArraysRenderProbeRegionOutputSvg {
+                output_dir: expected_output_dir,
+                output: expected_output,
+            },
+        ) => {
+            assert_eq!(output_dir, expected_output_dir, "rendered line: {line}");
+            assert_eq!(output, expected_output, "rendered line: {line}");
+        }
+        (
             ShellCommand::ArraysRunProbeRegionBackend {
                 plan,
                 backend,
@@ -7477,6 +7551,40 @@ fn assert_arrays_probe_region_command_eq(
             assert_eq!(backend, expected_backend, "rendered line: {line}");
             assert_eq!(
                 allow_external_execution, expected_allow_external_execution,
+                "rendered line: {line}"
+            );
+        }
+        (
+            ShellCommand::ArraysProjectProbeRegionOutput {
+                seq_id,
+                output_dir,
+                contrasts,
+                level,
+                min_abs_logfc,
+                max_features,
+                clear_existing,
+            },
+            ShellCommand::ArraysProjectProbeRegionOutput {
+                seq_id: expected_seq_id,
+                output_dir: expected_output_dir,
+                contrasts: expected_contrasts,
+                level: expected_level,
+                min_abs_logfc: expected_min_abs_logfc,
+                max_features: expected_max_features,
+                clear_existing: expected_clear_existing,
+            },
+        ) => {
+            assert_eq!(seq_id, expected_seq_id, "rendered line: {line}");
+            assert_eq!(output_dir, expected_output_dir, "rendered line: {line}");
+            assert_eq!(contrasts, expected_contrasts, "rendered line: {line}");
+            assert_eq!(level, expected_level, "rendered line: {line}");
+            assert_eq!(
+                min_abs_logfc, expected_min_abs_logfc,
+                "rendered line: {line}"
+            );
+            assert_eq!(max_features, expected_max_features, "rendered line: {line}");
+            assert_eq!(
+                clear_existing, expected_clear_existing,
                 "rendered line: {line}"
             );
         }
@@ -7574,10 +7682,37 @@ fn arrays_probe_region_shell_lines_round_trip() {
         ShellCommand::ArraysInspectProbeRegionOutput {
             output_dir: "analysis/probe regions".to_string(),
         },
+        ShellCommand::ArraysImportAptProbeRegionOutput {
+            summary: "apt outputs/summary table.tsv".to_string(),
+            annotation: "annotation libraries/NetAffx annotation.csv".to_string(),
+            output_dir: "analysis/probe regions".to_string(),
+            metadata: Some("metadata/sample sheet.tsv".to_string()),
+            condition_column: Some("condition name".to_string()),
+            sample_column: Some("file name".to_string()),
+            probe_intensity: Some("probe data/intensity.tsv".to_string()),
+            probe_id_column: Some("probe id".to_string()),
+            platform: Some("Clariom D Human".to_string()),
+            normalization: Some("rma sketch".to_string()),
+            coordinate_system: Some("hg38".to_string()),
+            genome_build: Some("GRCh38".to_string()),
+        },
+        ShellCommand::ArraysRenderProbeRegionOutputSvg {
+            output_dir: "analysis/probe regions".to_string(),
+            output: "analysis/probe regions/probe region plot.svg".to_string(),
+        },
         ShellCommand::ArraysRunProbeRegionBackend {
             plan: "analysis/probe regions/plan.json".to_string(),
             backend: Some("r_oligo".to_string()),
             allow_external_execution: true,
+        },
+        ShellCommand::ArraysProjectProbeRegionOutput {
+            seq_id: "tp73 evidence viewer".to_string(),
+            output_dir: "analysis/probe regions".to_string(),
+            contrasts: vec!["TAp73-AdGFP".to_string(), "DNp73-AdGFP".to_string()],
+            level: Some("pm_probe".to_string()),
+            min_abs_logfc: Some(0.5),
+            max_features: Some(25),
+            clear_existing: true,
         },
         ShellCommand::ArraysProbeRegions {
             cel_paths: vec![

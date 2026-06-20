@@ -3041,7 +3041,13 @@ The `Help` menu now includes:
   --allow-external-execution`, and `arrays inspect-probe-region-output`
   commands. Login-walled Thermo Fisher support ZIPs are only listed as expected
   local inputs; GENtle does not download them or run R package installation
-  from the GUI.
+  from the GUI. The same assistant also offers compact review-gated buttons for
+  the explicit local-file workflow:
+  `arrays import-apt-probe-region-output`,
+  `arrays inspect-probe-region-output`,
+  `arrays render-probe-region-output-svg`, and
+  `arrays project-probe-region-output`; these buttons use the shared shell
+  executor rather than GUI-local probe-region logic.
 - Prepared Clariom D array output can be projected with
   `arrays project-microarray-track`. The command validates that the manifest
   coordinate system matches the open sequence's genome anchor, or that the

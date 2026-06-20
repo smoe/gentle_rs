@@ -168,8 +168,11 @@ an agent has selected a deterministic operation.
 - `arrange-set-ladders`
 - `arrays inspect-microarray-track`
 - `arrays inspect-probe-region-output`
+- `arrays import-apt-probe-region-output`
 - `arrays probe-regions`
+- `arrays project-probe-region-output`
 - `arrays project-microarray-track`
+- `arrays render-probe-region-output-svg`
 - `batch plan`
 - `batch run`
 - `cache clear`

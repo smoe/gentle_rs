@@ -55,20 +55,8 @@ struct UndocumentedArraysSubcommand {
 
 const UNDOCUMENTED_ARRAYS_SUBCOMMANDS: &[UndocumentedArraysSubcommand] = &[
     UndocumentedArraysSubcommand {
-        path: "arrays import-apt-probe-region-output",
-        reason: "Unit 5 will decide the import-to-project GUI affordance and glossary contract.",
-    },
-    UndocumentedArraysSubcommand {
-        path: "arrays project-probe-region-output",
-        reason: "Unit 5 will decide projection fields, mutation wording, and glossary contract.",
-    },
-    UndocumentedArraysSubcommand {
-        path: "arrays render-probe-region-output-svg",
-        reason: "Unit 5 will decide SVG render affordance and glossary contract.",
-    },
-    UndocumentedArraysSubcommand {
         path: "arrays interpret-probe-region-evidence",
-        reason: "Unit 5 will decide read-only evidence interpretation surfacing and glossary contract.",
+        reason: "Deferred from Unit 5; richer interpretation remains in the DNA-window inspector for now.",
     },
 ];
 
@@ -390,8 +378,8 @@ fn arrays_parser_subcommands_are_glossary_paths_or_explicitly_allowlisted() {
         .collect::<BTreeSet<_>>();
     assert_eq!(
         UNDOCUMENTED_ARRAYS_SUBCOMMANDS.len(),
-        4,
-        "Unit 4 undocumented arrays allowlist should contain only the four expected probe-region commands"
+        1,
+        "Unit 5 should leave only the deferred interpretation command in the Unit 4 arrays allowlist"
     );
     assert_eq!(
         allowlisted.len(),

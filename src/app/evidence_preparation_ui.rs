@@ -27,7 +27,25 @@ pub(super) struct EvidencePreparationPanelState {
     feature_expert_svg_path: String,
     tfbs_score_tracks_path: String,
     tfbs_score_tracks_svg_path: String,
+    probe_region_apt_summary_path: String,
+    probe_region_apt_annotation_path: String,
+    probe_region_apt_metadata_path: String,
+    probe_region_apt_condition_column: String,
+    probe_region_apt_sample_column: String,
+    probe_region_apt_probe_intensity_path: String,
+    probe_region_apt_probe_id_column: String,
+    probe_region_apt_platform: String,
+    probe_region_apt_normalization: String,
+    probe_region_apt_coordinate_system: String,
+    probe_region_apt_genome_build: String,
     probe_region_output_dir: String,
+    probe_region_svg_output_path: String,
+    probe_region_projection_seq_id: String,
+    probe_region_projection_contrasts: String,
+    probe_region_projection_level: String,
+    probe_region_projection_min_abs_logfc: String,
+    probe_region_projection_max_features: String,
+    probe_region_projection_clear_existing: bool,
     status: String,
     error: Option<String>,
 }
@@ -62,7 +80,26 @@ impl EvidencePreparationPanelState {
             feature_expert_svg_path: defaults.feature_expert_svg_path.clone(),
             tfbs_score_tracks_path: defaults.tfbs_score_tracks_path.clone(),
             tfbs_score_tracks_svg_path: defaults.tfbs_score_tracks_svg_path.clone(),
+            probe_region_apt_summary_path: "apt.summary.tsv".to_string(),
+            probe_region_apt_annotation_path: "annotation.csv".to_string(),
+            probe_region_apt_metadata_path: "samples.csv".to_string(),
+            probe_region_apt_condition_column: "condition".to_string(),
+            probe_region_apt_sample_column: "file".to_string(),
+            probe_region_apt_probe_intensity_path: "probe_intensity.tsv".to_string(),
+            probe_region_apt_probe_id_column: "probe_id".to_string(),
+            probe_region_apt_platform: "Clariom_D_Human".to_string(),
+            probe_region_apt_normalization: "rma-sketch".to_string(),
+            probe_region_apt_coordinate_system: "hg38".to_string(),
+            probe_region_apt_genome_build: "GRCh38".to_string(),
             probe_region_output_dir: "analysis/probe_regions".to_string(),
+            probe_region_svg_output_path: "analysis/probe_regions/probe_region_plot.svg"
+                .to_string(),
+            probe_region_projection_seq_id: defaults.seq_id.clone(),
+            probe_region_projection_contrasts: "TAp73-AdGFP".to_string(),
+            probe_region_projection_level: "pm_probe".to_string(),
+            probe_region_projection_min_abs_logfc: "0.5".to_string(),
+            probe_region_projection_max_features: "25".to_string(),
+            probe_region_projection_clear_existing: true,
             status: "Ready. Defaults are loaded from the TP73 evidence-viewer proof workflow."
                 .to_string(),
             error: None,
@@ -444,7 +481,138 @@ impl GENtleApp {
                 ui.label("output dir");
                 ui.text_edit_singleline(&mut app.evidence_preparation_panel.probe_region_output_dir);
             });
+            ui.horizontal(|ui| {
+                ui.label("APT summary");
+                ui.text_edit_singleline(
+                    &mut app.evidence_preparation_panel.probe_region_apt_summary_path,
+                );
+                ui.label("annotation");
+                ui.text_edit_singleline(
+                    &mut app.evidence_preparation_panel.probe_region_apt_annotation_path,
+                );
+            });
+            ui.horizontal(|ui| {
+                ui.label("metadata");
+                ui.text_edit_singleline(
+                    &mut app.evidence_preparation_panel.probe_region_apt_metadata_path,
+                );
+                ui.label("condition");
+                ui.add(
+                    egui::TextEdit::singleline(
+                        &mut app.evidence_preparation_panel.probe_region_apt_condition_column,
+                    )
+                    .desired_width(96.0),
+                );
+                ui.label("sample");
+                ui.add(
+                    egui::TextEdit::singleline(
+                        &mut app.evidence_preparation_panel.probe_region_apt_sample_column,
+                    )
+                    .desired_width(96.0),
+                );
+            });
+            ui.horizontal(|ui| {
+                ui.label("probe intensity");
+                ui.text_edit_singleline(
+                    &mut app.evidence_preparation_panel.probe_region_apt_probe_intensity_path,
+                );
+                ui.label("probe id");
+                ui.add(
+                    egui::TextEdit::singleline(
+                        &mut app.evidence_preparation_panel.probe_region_apt_probe_id_column,
+                    )
+                    .desired_width(96.0),
+                );
+            });
+            ui.horizontal(|ui| {
+                ui.label("platform");
+                ui.add(
+                    egui::TextEdit::singleline(
+                        &mut app.evidence_preparation_panel.probe_region_apt_platform,
+                    )
+                    .desired_width(136.0),
+                );
+                ui.label("normalization");
+                ui.add(
+                    egui::TextEdit::singleline(
+                        &mut app.evidence_preparation_panel.probe_region_apt_normalization,
+                    )
+                    .desired_width(96.0),
+                );
+                ui.label("coordinate");
+                ui.add(
+                    egui::TextEdit::singleline(
+                        &mut app.evidence_preparation_panel.probe_region_apt_coordinate_system,
+                    )
+                    .desired_width(72.0),
+                );
+                ui.label("build");
+                ui.add(
+                    egui::TextEdit::singleline(
+                        &mut app.evidence_preparation_panel.probe_region_apt_genome_build,
+                    )
+                    .desired_width(72.0),
+                );
+            });
+            app.render_copyable_command(ui, &app.evidence_probe_regions_import_command());
             app.render_copyable_command(ui, &app.evidence_probe_regions_inspect_command());
+            ui.horizontal(|ui| {
+                ui.label("SVG output");
+                ui.text_edit_singleline(
+                    &mut app.evidence_preparation_panel.probe_region_svg_output_path,
+                );
+            });
+            app.render_copyable_command(ui, &app.evidence_probe_regions_render_svg_command());
+            ui.horizontal(|ui| {
+                ui.label("project seq");
+                ui.text_edit_singleline(
+                    &mut app.evidence_preparation_panel.probe_region_projection_seq_id,
+                );
+                if ui.button("Use proof seq").clicked() {
+                    app.evidence_preparation_panel.probe_region_projection_seq_id =
+                        app.evidence_seq_id();
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("contrasts");
+                ui.text_edit_singleline(
+                    &mut app.evidence_preparation_panel.probe_region_projection_contrasts,
+                );
+                ui.label("level");
+                ui.add(
+                    egui::TextEdit::singleline(
+                        &mut app.evidence_preparation_panel.probe_region_projection_level,
+                    )
+                    .desired_width(96.0),
+                );
+            });
+            ui.horizontal(|ui| {
+                ui.label("min |log2FC|");
+                ui.add(
+                    egui::TextEdit::singleline(
+                        &mut app
+                            .evidence_preparation_panel
+                            .probe_region_projection_min_abs_logfc,
+                    )
+                    .desired_width(72.0),
+                );
+                ui.label("max features");
+                ui.add(
+                    egui::TextEdit::singleline(
+                        &mut app
+                            .evidence_preparation_panel
+                            .probe_region_projection_max_features,
+                    )
+                    .desired_width(72.0),
+                );
+                ui.checkbox(
+                    &mut app
+                        .evidence_preparation_panel
+                        .probe_region_projection_clear_existing,
+                    "clear existing",
+                );
+            });
+            app.render_copyable_command(ui, &app.evidence_probe_regions_project_command());
             ui.small("Thermo Fisher Clariom D na36 hg38 support ZIPs are manually staged under data/resources/affymetrix/clariom_d_human_na36_hg38/. External Services remains the broader vendor handoff surface; this card stays limited to array-analysis preparation commands.");
             if ui.button("Run probe-region preflight").clicked() {
                 app.run_evidence_shell(
@@ -452,10 +620,28 @@ impl GENtleApp {
                     app.evidence_probe_regions_shell_command(),
                 );
             }
+            if ui.button("Import APT output").clicked() {
+                app.run_evidence_shell_result(
+                    "Import APT probe-region output",
+                    app.evidence_probe_regions_import_shell_command(),
+                );
+            }
             if ui.button("Inspect helper output").clicked() {
                 app.run_evidence_shell(
                     "Inspect probe-region helper output",
                     app.evidence_probe_regions_inspect_shell_command(),
+                );
+            }
+            if ui.button("Render output SVG").clicked() {
+                app.run_evidence_shell_result(
+                    "Render probe-region output SVG",
+                    app.evidence_probe_regions_render_svg_shell_command(),
+                );
+            }
+            if ui.button("Project output").clicked() {
+                app.run_evidence_shell_result(
+                    "Project probe-region helper output",
+                    app.evidence_probe_regions_project_shell_command(),
                 );
             }
         });
@@ -557,6 +743,20 @@ impl GENtleApp {
                         .unwrap_or_else(|_| "<output unavailable>".to_string())
                 );
             }
+            Err(error) => {
+                self.evidence_preparation_panel.error = Some(format!("{label} failed: {error}"));
+                self.evidence_preparation_panel.status.clear();
+            }
+        }
+    }
+
+    fn run_evidence_shell_result(
+        &mut self,
+        label: &str,
+        command: std::result::Result<ShellCommand, String>,
+    ) {
+        match command {
+            Ok(command) => self.run_evidence_shell(label, command),
             Err(error) => {
                 self.evidence_preparation_panel.error = Some(format!("{label} failed: {error}"));
                 self.evidence_preparation_panel.status.clear();
@@ -756,6 +956,183 @@ impl GENtleApp {
         }
     }
 
+    pub(super) fn evidence_probe_regions_import_shell_command(
+        &self,
+    ) -> std::result::Result<ShellCommand, String> {
+        let summary = self
+            .evidence_preparation_panel
+            .probe_region_apt_summary_path
+            .trim()
+            .to_string();
+        if summary.is_empty() {
+            return Err("APT summary path is empty".to_string());
+        }
+        let annotation = self
+            .evidence_preparation_panel
+            .probe_region_apt_annotation_path
+            .trim()
+            .to_string();
+        if annotation.is_empty() {
+            return Err("APT annotation path is empty".to_string());
+        }
+        let output_dir = self
+            .evidence_preparation_panel
+            .probe_region_output_dir
+            .trim()
+            .to_string();
+        if output_dir.is_empty() {
+            return Err("Probe-region output directory is empty".to_string());
+        }
+        Ok(ShellCommand::ArraysImportAptProbeRegionOutput {
+            summary,
+            annotation,
+            output_dir,
+            metadata: evidence_nonempty_text(
+                &self
+                    .evidence_preparation_panel
+                    .probe_region_apt_metadata_path,
+            ),
+            condition_column: evidence_nonempty_text(
+                &self
+                    .evidence_preparation_panel
+                    .probe_region_apt_condition_column,
+            ),
+            sample_column: evidence_nonempty_text(
+                &self
+                    .evidence_preparation_panel
+                    .probe_region_apt_sample_column,
+            ),
+            probe_intensity: evidence_nonempty_text(
+                &self
+                    .evidence_preparation_panel
+                    .probe_region_apt_probe_intensity_path,
+            ),
+            probe_id_column: evidence_nonempty_text(
+                &self
+                    .evidence_preparation_panel
+                    .probe_region_apt_probe_id_column,
+            ),
+            platform: evidence_nonempty_text(
+                &self.evidence_preparation_panel.probe_region_apt_platform,
+            ),
+            normalization: evidence_nonempty_text(
+                &self
+                    .evidence_preparation_panel
+                    .probe_region_apt_normalization,
+            ),
+            coordinate_system: evidence_nonempty_text(
+                &self
+                    .evidence_preparation_panel
+                    .probe_region_apt_coordinate_system,
+            ),
+            genome_build: evidence_nonempty_text(
+                &self
+                    .evidence_preparation_panel
+                    .probe_region_apt_genome_build,
+            ),
+        })
+    }
+
+    pub(super) fn evidence_probe_regions_render_svg_shell_command(
+        &self,
+    ) -> std::result::Result<ShellCommand, String> {
+        let output_dir = self
+            .evidence_preparation_panel
+            .probe_region_output_dir
+            .trim()
+            .to_string();
+        if output_dir.is_empty() {
+            return Err("Probe-region output directory is empty".to_string());
+        }
+        let output = self
+            .evidence_preparation_panel
+            .probe_region_svg_output_path
+            .trim()
+            .to_string();
+        if output.is_empty() {
+            return Err("Probe-region SVG output path is empty".to_string());
+        }
+        Ok(ShellCommand::ArraysRenderProbeRegionOutputSvg { output_dir, output })
+    }
+
+    pub(super) fn evidence_probe_regions_project_shell_command(
+        &self,
+    ) -> std::result::Result<ShellCommand, String> {
+        let seq_id = self
+            .evidence_preparation_panel
+            .probe_region_projection_seq_id
+            .trim()
+            .to_string();
+        if seq_id.is_empty() {
+            return Err("Probe-region projection sequence ID is empty".to_string());
+        }
+        let output_dir = self
+            .evidence_preparation_panel
+            .probe_region_output_dir
+            .trim()
+            .to_string();
+        if output_dir.is_empty() {
+            return Err("Probe-region output directory is empty".to_string());
+        }
+        let min_abs_logfc = match self
+            .evidence_preparation_panel
+            .probe_region_projection_min_abs_logfc
+            .trim()
+        {
+            "" => None,
+            value => {
+                let parsed = value.parse::<f64>().map_err(|error| {
+                    format!("Invalid probe-region min |log2FC| '{value}': {error}")
+                })?;
+                if !parsed.is_finite() || parsed < 0.0 {
+                    return Err(
+                        "Invalid probe-region min |log2FC|: expected a finite value >= 0"
+                            .to_string(),
+                    );
+                }
+                Some(parsed)
+            }
+        };
+        let max_features = match self
+            .evidence_preparation_panel
+            .probe_region_projection_max_features
+            .trim()
+        {
+            "" => None,
+            value => {
+                let parsed = value.parse::<usize>().map_err(|error| {
+                    format!("Invalid probe-region max features '{value}': {error}")
+                })?;
+                if parsed == 0 {
+                    return Err(
+                        "Invalid probe-region max features: expected a value greater than zero"
+                            .to_string(),
+                    );
+                }
+                Some(parsed)
+            }
+        };
+        Ok(ShellCommand::ArraysProjectProbeRegionOutput {
+            seq_id,
+            output_dir,
+            contrasts: split_evidence_csv(
+                &self
+                    .evidence_preparation_panel
+                    .probe_region_projection_contrasts,
+            ),
+            level: evidence_nonempty_text(
+                &self
+                    .evidence_preparation_panel
+                    .probe_region_projection_level,
+            ),
+            min_abs_logfc,
+            max_features,
+            clear_existing: self
+                .evidence_preparation_panel
+                .probe_region_projection_clear_existing,
+        })
+    }
+
     fn evidence_seq_id(&self) -> String {
         self.evidence_preparation_panel.seq_id.trim().to_string()
     }
@@ -810,8 +1187,27 @@ impl GENtleApp {
         rendered.unwrap_or_default()
     }
 
+    fn render_probe_region_shell_command(
+        command: std::result::Result<ShellCommand, String>,
+        debug_label: &str,
+    ) -> String {
+        let Ok(command) = command else {
+            return String::new();
+        };
+        let rendered = crate::engine_shell::arrays_shell_command_to_line(&command);
+        debug_assert!(rendered.is_some(), "{debug_label} command is renderable");
+        rendered.unwrap_or_default()
+    }
+
     pub(super) fn evidence_probe_regions_r_command(&self) -> String {
         "Rscript scripts/probe_regions_oligo.R --dataset E-MTAB-14704 --gene TP73 --platform Clariom_D_Human --output analysis/probe_regions".to_string()
+    }
+
+    pub(super) fn evidence_probe_regions_import_command(&self) -> String {
+        Self::render_probe_region_shell_command(
+            self.evidence_probe_regions_import_shell_command(),
+            "probe-region APT import",
+        )
     }
 
     pub(super) fn evidence_probe_regions_inspect_command(&self) -> String {
@@ -822,6 +1218,20 @@ impl GENtleApp {
             "probe-region inspect command is renderable"
         );
         rendered.unwrap_or_default()
+    }
+
+    pub(super) fn evidence_probe_regions_render_svg_command(&self) -> String {
+        Self::render_probe_region_shell_command(
+            self.evidence_probe_regions_render_svg_shell_command(),
+            "probe-region output SVG",
+        )
+    }
+
+    pub(super) fn evidence_probe_regions_project_command(&self) -> String {
+        Self::render_probe_region_shell_command(
+            self.evidence_probe_regions_project_shell_command(),
+            "probe-region projection",
+        )
     }
 
     fn evidence_repeat_command(&self) -> String {
@@ -975,7 +1385,10 @@ mod tests {
             app.evidence_array_inspect_command(),
             app.evidence_array_project_command(),
             app.evidence_probe_regions_dry_run_command(),
+            app.evidence_probe_regions_import_command(),
             app.evidence_probe_regions_inspect_command(),
+            app.evidence_probe_regions_render_svg_command(),
+            app.evidence_probe_regions_project_command(),
         ] {
             parse_shell_line(&command).unwrap_or_else(|error| {
                 panic!("copyable command should parse: {command}\n{error}")
@@ -1073,6 +1486,111 @@ mod tests {
                 assert_eq!(cache_dir, expected_cache_dir, "rendered line: {line}");
                 assert_eq!(dry_run, expected_dry_run, "rendered line: {line}");
             }
+            (
+                ShellCommand::ArraysImportAptProbeRegionOutput {
+                    summary,
+                    annotation,
+                    output_dir,
+                    metadata,
+                    condition_column,
+                    sample_column,
+                    probe_intensity,
+                    probe_id_column,
+                    platform,
+                    normalization,
+                    coordinate_system,
+                    genome_build,
+                },
+                ShellCommand::ArraysImportAptProbeRegionOutput {
+                    summary: expected_summary,
+                    annotation: expected_annotation,
+                    output_dir: expected_output_dir,
+                    metadata: expected_metadata,
+                    condition_column: expected_condition_column,
+                    sample_column: expected_sample_column,
+                    probe_intensity: expected_probe_intensity,
+                    probe_id_column: expected_probe_id_column,
+                    platform: expected_platform,
+                    normalization: expected_normalization,
+                    coordinate_system: expected_coordinate_system,
+                    genome_build: expected_genome_build,
+                },
+            ) => {
+                assert_eq!(summary, expected_summary, "rendered line: {line}");
+                assert_eq!(annotation, expected_annotation, "rendered line: {line}");
+                assert_eq!(output_dir, expected_output_dir, "rendered line: {line}");
+                assert_eq!(metadata, expected_metadata, "rendered line: {line}");
+                assert_eq!(
+                    condition_column, expected_condition_column,
+                    "rendered line: {line}"
+                );
+                assert_eq!(
+                    sample_column, expected_sample_column,
+                    "rendered line: {line}"
+                );
+                assert_eq!(
+                    probe_intensity, expected_probe_intensity,
+                    "rendered line: {line}"
+                );
+                assert_eq!(
+                    probe_id_column, expected_probe_id_column,
+                    "rendered line: {line}"
+                );
+                assert_eq!(platform, expected_platform, "rendered line: {line}");
+                assert_eq!(
+                    normalization, expected_normalization,
+                    "rendered line: {line}"
+                );
+                assert_eq!(
+                    coordinate_system, expected_coordinate_system,
+                    "rendered line: {line}"
+                );
+                assert_eq!(genome_build, expected_genome_build, "rendered line: {line}");
+            }
+            (
+                ShellCommand::ArraysRenderProbeRegionOutputSvg { output_dir, output },
+                ShellCommand::ArraysRenderProbeRegionOutputSvg {
+                    output_dir: expected_output_dir,
+                    output: expected_output,
+                },
+            ) => {
+                assert_eq!(output_dir, expected_output_dir, "rendered line: {line}");
+                assert_eq!(output, expected_output, "rendered line: {line}");
+            }
+            (
+                ShellCommand::ArraysProjectProbeRegionOutput {
+                    seq_id,
+                    output_dir,
+                    contrasts,
+                    level,
+                    min_abs_logfc,
+                    max_features,
+                    clear_existing,
+                },
+                ShellCommand::ArraysProjectProbeRegionOutput {
+                    seq_id: expected_seq_id,
+                    output_dir: expected_output_dir,
+                    contrasts: expected_contrasts,
+                    level: expected_level,
+                    min_abs_logfc: expected_min_abs_logfc,
+                    max_features: expected_max_features,
+                    clear_existing: expected_clear_existing,
+                },
+            ) => {
+                assert_eq!(seq_id, expected_seq_id, "rendered line: {line}");
+                assert_eq!(output_dir, expected_output_dir, "rendered line: {line}");
+                assert_eq!(contrasts, expected_contrasts, "rendered line: {line}");
+                assert_eq!(level, expected_level, "rendered line: {line}");
+                assert_eq!(
+                    min_abs_logfc, expected_min_abs_logfc,
+                    "rendered line: {line}"
+                );
+                assert_eq!(max_features, expected_max_features, "rendered line: {line}");
+                assert_eq!(
+                    clear_existing, expected_clear_existing,
+                    "rendered line: {line}"
+                );
+            }
             _ => panic!(
                 "unexpected rendered command shape: {line}\nparsed={parsed:?}\nexpected={expected:?}"
             ),
@@ -1092,11 +1610,35 @@ mod tests {
             &preflight,
         );
 
+        let import = app.evidence_probe_regions_import_command();
+        assert_probe_region_command_eq(
+            &parse_shell_line(&import).expect("parse rendered import command"),
+            &app.evidence_probe_regions_import_shell_command()
+                .expect("build import command"),
+            &import,
+        );
+
         let inspect = app.evidence_probe_regions_inspect_command();
         assert_probe_region_command_eq(
             &parse_shell_line(&inspect).expect("parse rendered inspect command"),
             &app.evidence_probe_regions_inspect_shell_command(),
             &inspect,
+        );
+
+        let render_svg = app.evidence_probe_regions_render_svg_command();
+        assert_probe_region_command_eq(
+            &parse_shell_line(&render_svg).expect("parse rendered SVG command"),
+            &app.evidence_probe_regions_render_svg_shell_command()
+                .expect("build SVG command"),
+            &render_svg,
+        );
+
+        let project = app.evidence_probe_regions_project_command();
+        assert_probe_region_command_eq(
+            &parse_shell_line(&project).expect("parse rendered project command"),
+            &app.evidence_probe_regions_project_shell_command()
+                .expect("build project command"),
+            &project,
         );
     }
 

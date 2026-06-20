@@ -2742,6 +2742,49 @@
       },
       {
          "aliases": [
+            "arrays convert-apt-probe-region-output"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "arrays import-apt-probe-region-output",
+         "summary": "Convert explicit APT probe-region summary and annotation tables into inspectable GENtle helper output.",
+         "usage": "arrays import-apt-probe-region-output SUMMARY.tsv ANNOTATION.csv OUTPUT_DIR [--metadata PATH] [--condition-column NAME] [--sample-column NAME] [--probe-intensity PATH] [--probe-id-column NAME] [--platform NAME] [--normalization NAME] [--coordinate-system ID] [--genome-build ID]"
+      },
+      {
+         "aliases": [
+            "arrays plot-probe-region-output",
+            "arrays plot-probe-region-output-svg"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "arrays render-probe-region-output-svg",
+         "summary": "Render completed probe-region helper output as a deterministic native SVG.",
+         "usage": "arrays render-probe-region-output-svg OUTPUT_DIR OUTPUT.svg"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ProjectProbeRegionOutput"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "arrays project-probe-region-output",
+         "summary": "Project selected probe-region helper output rows into genome-anchored array features.",
+         "usage": "arrays project-probe-region-output SEQ_ID OUTPUT_DIR [--contrasts CSV] [--level probe_region|pm_probe] [--min-abs-logfc N] [--max-features N] [--clear-existing]"
+      },
+      {
+         "aliases": [
             "arrays project-track"
          ],
          "engine_operations": [
