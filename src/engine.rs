@@ -138,6 +138,98 @@ impl ConstructReasoningCuratedRepeatSupport {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum RepeatFamilyClassKind {
+    Alu,
+    Sine,
+    Line,
+    Ltr,
+    Satellite,
+    SimpleRepeat,
+}
+
+impl RepeatFamilyClassKind {
+    fn parent_class(self) -> Self {
+        match self {
+            Self::Alu => Self::Sine,
+            other => other,
+        }
+    }
+
+    fn bare_tag(self) -> &'static str {
+        match self {
+            Self::Alu => "alu",
+            Self::Sine => "sine",
+            Self::Line => "line",
+            Self::Ltr => "ltr",
+            Self::Satellite => "satellite",
+            Self::SimpleRepeat => "simple_repeat",
+        }
+    }
+
+    fn class_tag(self) -> &'static str {
+        match self.parent_class() {
+            Self::Alu | Self::Sine => "repeat_class_sine",
+            Self::Line => "repeat_class_line",
+            Self::Ltr => "repeat_class_ltr",
+            Self::Satellite => "repeat_class_satellite",
+            Self::SimpleRepeat => "repeat_class_simple_repeat",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct RepeatFamilyClassMapping {
+    family: Option<RepeatFamilyClassKind>,
+    class: Option<RepeatFamilyClassKind>,
+}
+
+impl RepeatFamilyClassMapping {
+    fn is_classified(self) -> bool {
+        self.family.is_some() || self.class.is_some()
+    }
+
+    fn merge(&mut self, other: Self) {
+        if self.family.is_none() {
+            self.family = other.family;
+        }
+        if self.class.is_none() {
+            self.class = other.class;
+        }
+        if self.class.is_none() {
+            if let Some(family) = self.family {
+                self.class = Some(family.parent_class());
+            }
+        }
+    }
+
+    fn primary_class(self) -> Option<RepeatFamilyClassKind> {
+        self.class.or_else(|| self.family.map(RepeatFamilyClassKind::parent_class))
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum RepeatFamilyAgreementStrength {
+    Class,
+    Family,
+}
+
+impl RepeatFamilyAgreementStrength {
+    fn confidence(self) -> f64 {
+        match self {
+            Self::Family => 0.95,
+            Self::Class => 0.9,
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Family => "family",
+            Self::Class => "class",
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ConstructReasoningActionDotplotRequest {
     pub seq_id: String,
@@ -17327,6 +17419,178 @@ impl GentleEngine {
         modes
     }
 
+    fn construct_reasoning_repeat_family_class_from_token(
+        raw: &str,
+    ) -> RepeatFamilyClassMapping {
+        let token = Self::normalize_id_token(raw);
+        let token = ["repeat_name_", "repeat_class_", "repeat_family_"]
+            .iter()
+            .find_map(|prefix| token.strip_prefix(prefix))
+            .unwrap_or(token.as_str());
+        let compact = token.replace('_', "");
+        match compact.as_str() {
+            "alu" => RepeatFamilyClassMapping {
+                family: Some(RepeatFamilyClassKind::Alu),
+                class: Some(RepeatFamilyClassKind::Sine),
+            },
+            "sine" => RepeatFamilyClassMapping {
+                family: None,
+                class: Some(RepeatFamilyClassKind::Sine),
+            },
+            "line" => RepeatFamilyClassMapping {
+                family: None,
+                class: Some(RepeatFamilyClassKind::Line),
+            },
+            "ltr" => RepeatFamilyClassMapping {
+                family: None,
+                class: Some(RepeatFamilyClassKind::Ltr),
+            },
+            "satellite" | "satellites" => RepeatFamilyClassMapping {
+                family: None,
+                class: Some(RepeatFamilyClassKind::Satellite),
+            },
+            "simplerepeat" | "lowcomplexity" => RepeatFamilyClassMapping {
+                family: None,
+                class: Some(RepeatFamilyClassKind::SimpleRepeat),
+            },
+            _ if compact.starts_with("alu") => RepeatFamilyClassMapping {
+                family: Some(RepeatFamilyClassKind::Alu),
+                class: Some(RepeatFamilyClassKind::Sine),
+            },
+            _ if compact.starts_with("l1") || compact.starts_with("line") => {
+                RepeatFamilyClassMapping {
+                    family: None,
+                    class: Some(RepeatFamilyClassKind::Line),
+                }
+            }
+            _ if compact.starts_with("erv") => RepeatFamilyClassMapping {
+                family: None,
+                class: Some(RepeatFamilyClassKind::Ltr),
+            },
+            _ if compact.contains("satellite") => RepeatFamilyClassMapping {
+                family: None,
+                class: Some(RepeatFamilyClassKind::Satellite),
+            },
+            _ => RepeatFamilyClassMapping::default(),
+        }
+    }
+
+    fn construct_reasoning_repeat_family_class_from_value(
+        raw: &str,
+    ) -> RepeatFamilyClassMapping {
+        let mut mapping = Self::construct_reasoning_repeat_family_class_from_token(raw);
+        for part in raw
+            .split(|c: char| !c.is_ascii_alphanumeric())
+            .map(str::trim)
+            .filter(|part| !part.is_empty())
+        {
+            mapping.merge(Self::construct_reasoning_repeat_family_class_from_token(part));
+        }
+        mapping
+    }
+
+    fn construct_reasoning_repeat_family_class_from_parts(
+        repeat_name: Option<&str>,
+        repeat_class: Option<&str>,
+        repeat_family: Option<&str>,
+    ) -> RepeatFamilyClassMapping {
+        let mut mapping = RepeatFamilyClassMapping::default();
+        for value in [repeat_class, repeat_family, repeat_name].into_iter().flatten() {
+            mapping.merge(Self::construct_reasoning_repeat_family_class_from_value(value));
+        }
+        mapping
+    }
+
+    fn construct_reasoning_repeat_family_class_tags(
+        mapping: RepeatFamilyClassMapping,
+    ) -> Vec<String> {
+        let mut tags = vec![];
+        if let Some(family) = mapping.family {
+            tags.push(family.bare_tag().to_string());
+            if family != family.parent_class() {
+                tags.push(format!("repeat_family_{}", family.bare_tag()));
+            }
+            tags.push(family.parent_class().bare_tag().to_string());
+            tags.push(family.class_tag().to_string());
+        }
+        if let Some(class) = mapping.primary_class() {
+            tags.push(class.bare_tag().to_string());
+            tags.push(class.class_tag().to_string());
+        }
+        tags.sort();
+        tags.dedup();
+        tags
+    }
+
+    fn construct_reasoning_evidence_repeat_family_class(
+        row: &DesignEvidence,
+    ) -> RepeatFamilyClassMapping {
+        let repeat_name = Self::construct_reasoning_evidence_note_value(row, "repeat_name");
+        let repeat_class = Self::construct_reasoning_evidence_note_value(row, "repeat_class");
+        let repeat_family = Self::construct_reasoning_evidence_note_value(row, "repeat_family");
+        let mut mapping = Self::construct_reasoning_repeat_family_class_from_parts(
+            repeat_name.as_deref(),
+            repeat_class.as_deref(),
+            repeat_family.as_deref(),
+        );
+        for tag in &row.context_tags {
+            mapping.merge(Self::construct_reasoning_repeat_family_class_from_token(tag));
+        }
+        mapping
+    }
+
+    fn construct_reasoning_repeat_family_agreement_strength(
+        internal: RepeatFamilyClassMapping,
+        curated: RepeatFamilyClassMapping,
+    ) -> Option<RepeatFamilyAgreementStrength> {
+        if !internal.is_classified() || !curated.is_classified() {
+            return None;
+        }
+        if let (Some(internal_family), Some(curated_family)) = (internal.family, curated.family) {
+            if internal_family == curated_family {
+                return Some(RepeatFamilyAgreementStrength::Family);
+            }
+        }
+        let internal_class = internal.primary_class()?;
+        let curated_class = curated.primary_class()?;
+        (internal_class == curated_class).then_some(RepeatFamilyAgreementStrength::Class)
+    }
+
+    fn construct_reasoning_repeat_family_agreement_for_rows(
+        internal: &DesignEvidence,
+        curated: &DesignEvidence,
+    ) -> Option<RepeatFamilyAgreementStrength> {
+        Self::construct_reasoning_repeat_family_agreement_strength(
+            Self::construct_reasoning_evidence_repeat_family_class(internal),
+            Self::construct_reasoning_evidence_repeat_family_class(curated),
+        )
+    }
+
+    fn construct_reasoning_best_repeat_family_agreement_for_rows(
+        internal_rows: &[&DesignEvidence],
+        curated_rows: &[&DesignEvidence],
+    ) -> Option<RepeatFamilyAgreementStrength> {
+        internal_rows
+            .iter()
+            .flat_map(|internal| {
+                curated_rows.iter().filter_map(move |curated| {
+                    if Self::construct_reasoning_ranges_overlap(
+                        internal.start_0based,
+                        internal.end_0based_exclusive,
+                        curated.start_0based,
+                        curated.end_0based_exclusive,
+                    ) {
+                        Self::construct_reasoning_repeat_family_agreement_for_rows(
+                            internal, curated,
+                        )
+                    } else {
+                        None
+                    }
+                })
+            })
+            .max()
+    }
+
     fn construct_reasoning_evidence_note_value(
         row: &DesignEvidence,
         key: &str,
@@ -17394,22 +17658,20 @@ impl GentleEngine {
         internal: &DesignEvidence,
         curated: &DesignEvidence,
     ) -> bool {
-        if Self::construct_reasoning_evidence_has_tag(internal, "alu_like")
-            || Self::construct_reasoning_evidence_has_tag(internal, "sine")
-        {
-            return ["alu", "sine", "repeat_family_alu", "repeat_class_sine"]
-                .iter()
-                .any(|tag| Self::construct_reasoning_evidence_has_tag(curated, tag));
+        let internal_family_class =
+            Self::construct_reasoning_evidence_repeat_family_class(internal);
+        if !internal_family_class.is_classified() {
+            // Generic direct/inverted/low-complexity repeat calls are useful
+            // inspection cues, but they do not carry enough family/class
+            // specificity to let an arbitrary overlapping rmsk row corroborate
+            // them. Require an explicit class-level signal before upgrading.
+            return false;
         }
-        if Self::construct_reasoning_evidence_has_tag(internal, "line") {
-            return Self::construct_reasoning_evidence_has_tag(curated, "line")
-                || Self::construct_reasoning_evidence_has_tag(curated, "repeat_class_line");
-        }
-        if Self::construct_reasoning_evidence_has_tag(internal, "ltr") {
-            return Self::construct_reasoning_evidence_has_tag(curated, "ltr")
-                || Self::construct_reasoning_evidence_has_tag(curated, "repeat_class_ltr");
-        }
-        true
+        Self::construct_reasoning_repeat_family_agreement_strength(
+            internal_family_class,
+            Self::construct_reasoning_evidence_repeat_family_class(curated),
+        )
+        .is_some()
     }
 
     fn construct_reasoning_curated_repeat_support_for_rows(
@@ -17506,13 +17768,28 @@ impl GentleEngine {
             .collect::<BTreeSet<_>>()
             .into_iter()
             .collect::<Vec<_>>();
-        let confidence = rows
+        let curated_rows = rows
             .iter()
-            .filter(|row| evidence_ids.iter().any(|id| id == &row.evidence_id))
-            .filter_map(|row| row.confidence)
-            .fold(None, |best: Option<f64>, value| {
-                Some(best.map_or(value, |current| current.max(value)))
-            });
+            .copied()
+            .filter(|row| Self::construct_reasoning_evidence_is_curated_repeat_annotation(row))
+            .collect::<Vec<_>>();
+        let internal_rows = rows
+            .iter()
+            .copied()
+            .filter(|row| !Self::construct_reasoning_evidence_is_curated_repeat_annotation(row))
+            .collect::<Vec<_>>();
+        let confidence = Self::construct_reasoning_best_repeat_family_agreement_for_rows(
+            &internal_rows,
+            &curated_rows,
+        )
+        .map(RepeatFamilyAgreementStrength::confidence)
+        .or_else(|| {
+            supports
+                .iter()
+                .any(|row| row.source_kind.eq_ignore_ascii_case("ucsc_rmsk"))
+                .then_some(0.8)
+        })
+        .or(Some(0.65));
         Some(ConstructReasoningRepeatFamilyProvenance {
             source_kind,
             family_id: primary
@@ -18743,20 +19020,13 @@ impl GentleEngine {
                 }
             }
         }
-        let joined = [repeat_name, repeat_class, repeat_family]
-            .into_iter()
-            .flatten()
-            .collect::<Vec<_>>()
-            .join(" ")
-            .to_ascii_lowercase();
-        for family_tag in ["alu", "sine", "line", "ltr", "satellite"] {
-            if joined.contains(family_tag) {
-                tags.push(family_tag.to_string());
-            }
-        }
-        if joined.contains("simple") || joined.contains("low complexity") {
-            tags.push("simple_repeat".to_string());
-        }
+        tags.extend(Self::construct_reasoning_repeat_family_class_tags(
+            Self::construct_reasoning_repeat_family_class_from_parts(
+                repeat_name,
+                repeat_class,
+                repeat_family,
+            ),
+        ));
         tags.sort();
         tags.dedup();
         tags
@@ -22937,6 +23207,11 @@ impl GentleEngine {
                     &repeat_architecture_internal_rows,
                     &curated_repeat_family_rows,
                 );
+            let repeat_architecture_agreement =
+                Self::construct_reasoning_best_repeat_family_agreement_for_rows(
+                    &repeat_architecture_internal_rows,
+                    &curated_repeat_family_rows,
+                );
             let repeat_architecture_status = if !curated_repeat_support.is_empty() {
                 "curated_repeat_family_supported"
             } else if !inverted_repeat_rows.is_empty() {
@@ -22957,8 +23232,11 @@ impl GentleEngine {
                 inverted_repeat_rows.len()
             );
             if !curated_repeat_support.is_empty() {
+                let agreement_label = repeat_architecture_agreement
+                    .map(RepeatFamilyAgreementStrength::as_str)
+                    .unwrap_or("repeat-family");
                 repeat_architecture_rationale.push_str(&format!(
-                    " Overlapping curated repeat-family annotation(s) support this context: {}.",
+                    " Overlapping curated repeat-family annotation(s) support this context through {agreement_label}-level agreement: {}.",
                     Self::construct_reasoning_curated_repeat_support_labels(
                         &curated_repeat_support
                     )
@@ -23007,6 +23285,8 @@ impl GentleEngine {
                     "max_direct_repeat_risk_score": similarity_max_score(&direct_repeat_rows),
                     "max_inverted_repeat_risk_score": similarity_max_score(&inverted_repeat_rows),
                     "curated_repeat_support_count": curated_repeat_support.len(),
+                    "curated_repeat_agreement": repeat_architecture_agreement
+                        .map(RepeatFamilyAgreementStrength::as_str),
                     "curated_repeat_family_labels":
                         Self::construct_reasoning_curated_repeat_support_labels(
                             &curated_repeat_support
@@ -23017,6 +23297,9 @@ impl GentleEngine {
                         .collect::<Vec<_>>(),
                 }),
             );
+            if let Some(agreement) = repeat_architecture_agreement {
+                repeat_architecture_fact.confidence = Some(agreement.confidence());
+            }
             repeat_architecture_fact.task_severities = vec![
                 Self::construct_reasoning_task_severity(
                     ConstructReasoningRiskTask::ReadMapping,
@@ -24384,22 +24667,19 @@ impl GentleEngine {
         repeat_class: Option<&str>,
         repeat_family: Option<&str>,
     ) -> [u8; 3] {
-        let key = repeat_class
-            .or(repeat_family)
-            .unwrap_or_default()
-            .to_ascii_lowercase();
-        if key.contains("line") {
-            [239, 68, 68]
-        } else if key.contains("sine") {
-            [217, 119, 6]
-        } else if key.contains("ltr") {
-            [124, 58, 237]
-        } else if key.contains("satellite") {
-            [14, 116, 144]
-        } else if key.contains("simple") || key.contains("low_complexity") {
-            [100, 116, 139]
-        } else {
-            [71, 85, 105]
+        match Self::construct_reasoning_repeat_family_class_from_parts(
+            None,
+            repeat_class,
+            repeat_family,
+        )
+        .primary_class()
+        {
+            Some(RepeatFamilyClassKind::Line) => [239, 68, 68],
+            Some(RepeatFamilyClassKind::Sine) => [217, 119, 6],
+            Some(RepeatFamilyClassKind::Ltr) => [124, 58, 237],
+            Some(RepeatFamilyClassKind::Satellite) => [14, 116, 144],
+            Some(RepeatFamilyClassKind::SimpleRepeat) => [100, 116, 139],
+            Some(RepeatFamilyClassKind::Alu) | None => [71, 85, 105],
         }
     }
 
