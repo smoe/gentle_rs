@@ -31,6 +31,7 @@ Suggested command contract:
 - Current scope declaration: GENtle does not currently implement OpenClaw-like filesystem, operating-system, or gateway commands. That may change in a future gateway layer; for now, concentrate on actions GENtle can also perform through its GUI or shared shell on the same project state.
 - suggested_commands[].command must be one exact GENtle shared-shell command parseable by GENtle.
 - GENtle-local slash aliases are deliberately small and parser-validated. Allowed aliases are: /help; /list; /open; /import; /open file PATH [--id ID]; /import file PATH [--id ID]; /paste sequence --sequence-text DNA [--id ID]; /fetch genbank ACCESSION [--id ID]; /fetch ncbi ACCESSION [--id ID]; /fetch uniprot QUERY [--id ID]; /fetch ensembl QUERY [--species NAME] [--id ID]; /fetch ensembl-gene QUERY [--species NAME] [--id ID]; /fetch ensembl-protein QUERY [--id ID]; /fetch ensembl-region SPECIES CHR START END [--strand +|-] [--id ID]; /fetch dbsnp RS_ID GENOME_ID [--id ID].
+- Ensembl route rule: use species names such as homo_sapiens, not HUMAN. /fetch ensembl-protein does not accept --species; for a human gene symbol such as FUS, use /fetch ensembl FUS --species homo_sapiens --id fus_live or a prepared-genome genomes genes/extract-gene workflow.
 - External aliases such as /fetch genbank, /fetch ncbi, /fetch uniprot, /fetch ensembl*, and /fetch dbsnp require explicit user confirmation or network opt-in; mark them execution="ask" unless the caller has already opted into network execution.
 - Common valid non-slash examples include: state-summary; op '{"LoadFile":{"path":"PATH","as_id":"ID"}}'; sequence create --sequence-text DNA --output-id ID; genbank fetch ACCESSION --as-id ID; ensembl-gene fetch SYMBOL --species SPECIES --entry-id ID; ensembl-region fetch SPECIES CHR:START..END:+ --output-id ID; features restriction-scan SEQ_ID --enzyme EcoRI.
 - Do not invent OS, gateway, or OpenClaw-style commands such as fs.ls, fs.find, fs.grep, workspace.status, import.sequence, gentle.load_sequence, agent.help, sequence.new, /grep, /find, /ls, /new, or /example.
@@ -3251,8 +3252,7 @@ mod tests {
 
     #[test]
     fn openai_model_list_endpoint_candidates_use_v1_base_directly() {
-        let endpoints =
-            openai_model_list_endpoint_candidates("http://localhost:11973/v1").unwrap();
+        let endpoints = openai_model_list_endpoint_candidates("http://localhost:11973/v1").unwrap();
         assert_eq!(
             endpoints,
             vec!["http://localhost:11973/v1/models".to_string()]
@@ -3420,6 +3420,10 @@ mod tests {
         assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("/import"));
         assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("Spotlight"));
         assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("non-breaking hyphen"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("homo_sapiens"));
+        assert!(
+            AGENT_BRIDGE_SYSTEM_PROMPT.contains("/fetch ensembl-protein does not accept --species")
+        );
     }
 
     #[test]

@@ -3078,8 +3078,11 @@ impl GENtleApp {
                             let run_resp = ui
                                 .add_enabled(can_run, egui::Button::new("Run"))
                                 .on_hover_text(hover_text);
-                            if command_parse_error.is_some() {
-                                ui.small("Invalid GENtle command");
+                            if let Some(err) = &command_parse_error {
+                                ui.colored_label(
+                                    egui::Color32::from_rgb(190, 70, 70),
+                                    format!("Invalid GENtle command: {err}"),
+                                );
                             }
                             if run_resp.clicked() {
                                 run_request = Some((index_1based, suggestion.command.clone()));
