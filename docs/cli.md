@@ -5428,8 +5428,7 @@ Notes:
   Affymetrix CEL inspection. It emits `gentle.probe_region_plan.v1` JSON with
   CEL file size/mtime cache keys, parsed TSV/CSV/SDRF-style metadata previews,
   default condition contrasts, explicit output/cache path status, annotation
-  source checks, platform hints such as
-  resource-registry platform hints such as
+  source checks, resource-registry platform hints such as
   `Clariom_D_Human -> pd.clariom.d.human`, backend-candidate readiness for
   `r_oligo`, Affymetrix Power Tools, and legacy 3' IVT/CDF `r_affy_cdf`
   candidates, an advisory
@@ -5456,10 +5455,10 @@ Notes:
   both the concise canonical ZIP names documented in that directory and the
   browser-preserved `TFS-Assets_LSG_Support-Files_...` download names.
   Legacy 3' IVT arrays such as HG-U133 / Mouse 430 / Rat 230 families are
-  recognized as provisional CDF-backed platforms; until
-  `scripts/probe_regions_affy.R` lands, their `r_affy_cdf` candidate remains a
-  non-ready planning entry that tells users which CDF/package/library inputs are
-  needed.
+  recognized as provisional CDF-backed platforms; their `r_affy_cdf` candidate
+  renders an explicit `scripts/probe_regions_affy.R` command when CEL inputs
+  are present, while readiness still depends on local R/`affy`, `limma`, CDF,
+  and annotation resources.
 - `arrays run-probe-region-backend PLAN.json --allow-external-execution`
   (or `arrays run-probe-region-backend --plan PLAN.json --allow-external-execution`)
   reads a persisted `gentle.probe_region_plan.v1`, checks the recorded

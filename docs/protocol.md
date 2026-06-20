@@ -1316,6 +1316,12 @@ Behavior notes:
   currently supports `--normalization rma`; the Rust preflight emits an advisory
   command only for compatible explicit CEL requests, and users still run it
   explicitly.
+- `scripts/probe_regions_affy.R` is the matching explicit R/`affy` helper for
+  legacy 3' IVT/CDF arrays. It consumes explicit CEL paths, a local CDF package
+  or CDF name, optional metadata, optional Bioconductor annotation package, and
+  optional user-supplied probeset coordinate table, then writes the same
+  helper-output contract. A CDF supplies probe grouping for RMA; genome
+  placement for region displays still requires local annotation coordinates.
 - Affymetrix/Thermo Fisher platform knowledge for `arrays probe-regions` is
   now a resource specification:
   `data/resources/affymetrix/platform_registry.json`
@@ -2558,7 +2564,10 @@ Microarray track projection notes:
   backend-candidate readiness, normalized platform hints, planned outputs, and
   local dependency checks. The `r_oligo` backend candidate includes the
   `scripts/probe_regions_oligo.R` helper path and, for explicit RMA/CEL
-  requests, a suggested command. The `affymetrix_power_tools` candidate
+  requests, a suggested command. Legacy 3' IVT/CDF registry entries expose an
+  `r_affy_cdf` candidate with the `scripts/probe_regions_affy.R` helper path;
+  readiness depends on local R/`affy`, `limma`, CDF, CEL, and annotation
+  resources. The `affymetrix_power_tools` candidate
   recognizes user-supplied APT library directories/files containing at least
   PGF and CLF files, includes an optional MPS/meta-probesets file when present,
   and reports an explicit `apt-probeset-summarize -a rma-sketch ...` command
