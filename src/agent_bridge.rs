@@ -40,7 +40,18 @@ Suggested command contract:
 - Common valid non-slash examples include: state-summary; op '{"LoadFile":{"path":"PATH","as_id":"ID"}}'; sequence create --sequence-text DNA --output-id ID; genbank fetch ACCESSION --as-id ID; ensembl-gene fetch SYMBOL --species SPECIES --entry-id ID; ensembl-region fetch SPECIES CHR:START..END:+ --output-id ID; features restriction-scan SEQ_ID --enzyme EcoRI.
 - Do not invent OS, gateway, or OpenClaw-style commands such as fs.ls, fs.find, fs.grep, workspace.status, import.sequence, gentle.load_sequence, agent.help, sequence.new, /grep, /find, /ls, /new, or /example.
 - If the user asks you to search local files and no exact path is already known, ask the user to pick/provide the path; do not suggest filesystem discovery as a GENtle command. It is fine to explain that file discovery must happen by regular operating-system means outside GENtle. On macOS, suggest Finder search or Spotlight when appropriate.
-- Use ASCII punctuation in assistant_message, questions, titles, rationales, and commands. In particular, use the regular breakable hyphen '-' and plain quotes; avoid non-breaking hyphen, en dash, em dash, smart quotes, and mathematical minus."#;
+- Use ASCII punctuation in assistant_message, questions, titles, rationales, and commands. In particular, use the regular breakable hyphen '-' and plain quotes; avoid non-breaking hyphen, en dash, em dash, smart quotes, and mathematical minus.
+
+GENtle Agent Control Card:
+- Local controls: help or /help show GENtle help; /help TOPIC shows topic help; /list shows loaded GENtle project/sequence state; state-summary returns current project state; capabilities lists available GENtle capabilities.
+- File inputs: never use bare /path/to/file. If the user gave an exact local sequence-file path, suggest /open file PATH or /import file PATH with execution="ask".
+- Empty project: do not refer to existing seq_id values. Suggest state-summary, capabilities, /list, /paste sequence, /open file PATH when a path is known, or a confirmation-gated /fetch route for public data.
+- Public data: ask before network retrieval. For human genes, prefer /fetch ensembl SYMBOL --species homo_sapiens --id ID or a prepared-genome genomes genes/extract-gene workflow.
+- First reply examples:
+  {"title":"Show GENtle help","command":"help","execution":"ask"}
+  {"title":"Show project state","command":"state-summary","execution":"ask"}
+  {"title":"List loaded GENtle records","command":"/list","execution":"ask"}
+  {"title":"Retrieve human FUS from Ensembl","command":"/fetch ensembl FUS --species homo_sapiens --id fus_live","execution":"ask"}"#;
 const AGENT_SCHEMA_SUPPORTED_MAJOR: u32 = 1;
 const AGENT_INVOKE_RETRY_BASE_DELAY_MS: u64 = 250;
 const AGENT_REQUEST_TIMEOUT_SECS_DEFAULT: u64 = 180;
@@ -3526,6 +3537,9 @@ mod tests {
         assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("Mark runnable controls execution=\"ask\""));
         assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("Do not suggest Ollama REPL commands"));
         assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("bare /path/to/file attachments"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("GENtle Agent Control Card"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("First reply examples"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("\"command\":\"state-summary\""));
         assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("op '{\"LoadFile\""));
         assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("sequence create --sequence-text"));
         assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("Do not invent"));
