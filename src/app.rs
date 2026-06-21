@@ -15020,6 +15020,16 @@ Error: `{err}`"
         }
     }
 
+    fn current_project_display_name(&self) -> String {
+        match &self.current_project_path {
+            Some(path) => Path::new(path)
+                .file_name()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_else(|| path.clone()),
+            None => self.tr("project.untitled"),
+        }
+    }
+
     fn current_project_file_stem(&self) -> String {
         let display_name = self.current_project_name();
         let trimmed = display_name.trim();
@@ -15377,24 +15387,27 @@ Error: `{err}`"
         egui::MenuBar::new().ui(ui, |ui| {
             ui.menu_button(self.tr("menu.file"), |ui| {
                 if ui
-                    .button("New Project")
-                    .on_hover_text("Create a new empty project state")
+                    .button(self.tr("menu.file.new_project"))
+                    .on_hover_text(self.tr("menu.file.new_project.hover"))
                     .clicked()
                 {
                     self.request_project_action(ProjectAction::New);
                     ui.close();
                 }
                 if ui
-                    .button("Open Project...")
-                    .on_hover_text("Open an existing .gentle.json project")
+                    .button(self.tr("menu.file.open_project"))
+                    .on_hover_text(self.tr("menu.file.open_project.hover"))
                     .clicked()
                 {
                     self.request_project_action(ProjectAction::Open);
                     ui.close();
                 }
-                ui.menu_button("Open Recent Project...", |ui| {
+                ui.menu_button(self.tr("menu.file.open_recent_project"), |ui| {
                     if self.recent_project_paths.is_empty() {
-                        ui.add_enabled(false, egui::Button::new("No recent projects"));
+                        ui.add_enabled(
+                            false,
+                            egui::Button::new(self.tr("menu.file.no_recent_projects")),
+                        );
                         return;
                     }
 
@@ -15417,8 +15430,8 @@ Error: `{err}`"
 
                     ui.separator();
                     if ui
-                        .button("Clear Recent Projects")
-                        .on_hover_text("Remove all items from Open Recent Project menu")
+                        .button(self.tr("menu.file.clear_recent_projects"))
+                        .on_hover_text(self.tr("menu.file.clear_recent_projects.hover"))
                         .clicked()
                     {
                         self.clear_recent_project_paths();
@@ -15431,33 +15444,30 @@ Error: `{err}`"
                         ui.close();
                     }
                 });
-                ui.menu_button("Open Tutorial Project...", |ui| {
+                ui.menu_button(self.tr("menu.file.open_tutorial_project"), |ui| {
                     if let Some(task) = &self.tutorial_project_task {
                         let mut cancel_tutorial_clicked = false;
                         let mut show_jobs_clicked = false;
                         ui.horizontal(|ui| {
                             ui.add(egui::Spinner::new());
                             ui.label(format!(
-                                "Opening '{}' ({:.1}s)",
+                                "{} '{}' ({:.1}s)",
+                                self.tr("menu.file.opening_tutorial"),
                                 task.chapter_title,
                                 task.started.elapsed().as_secs_f32()
                             ));
                             if task.cancel_requested.load(Ordering::Relaxed) {
-                                ui.small("Cancellation requested...");
+                                ui.small(self.tr("menu.file.cancellation_requested"));
                             } else if ui
-                                .button("Cancel")
-                                .on_hover_text(
-                                    "Request cancellation of the running tutorial-project build",
-                                )
+                                .button(self.tr("button.cancel"))
+                                .on_hover_text(self.tr("menu.file.cancel_tutorial.hover"))
                                 .clicked()
                             {
                                 cancel_tutorial_clicked = true;
                             }
                             if ui
-                                .button("Jobs")
-                                .on_hover_text(
-                                    "Open the background-jobs panel to inspect tutorial build progress",
-                                )
+                                .button(self.tr("menu.file.jobs"))
+                                .on_hover_text(self.tr("menu.file.jobs.hover"))
                                 .clicked()
                             {
                                 show_jobs_clicked = true;
@@ -15482,11 +15492,13 @@ Error: `{err}`"
                     let mut selected_guided_tutorial: Option<HelpTutorialDocEntry> = None;
                     if !guided_entries.is_empty() {
                         ui.menu_button(
-                            format!("Guided walkthroughs ({})", guided_entries.len()),
+                            format!(
+                                "{} ({})",
+                                self.tr("menu.file.guided_walkthroughs"),
+                                guided_entries.len()
+                            ),
                             |ui| {
-                                ui.small(
-                                    "Documentation tutorials open in Help; executable chapters build project state.",
-                                );
+                                ui.small(self.tr("menu.file.guided_walkthroughs.note"));
                                 ui.separator();
                                 let mut by_group: BTreeMap<
                                     (usize, String),
@@ -15542,13 +15554,16 @@ Error: `{err}`"
                     let entries = match Self::load_tutorial_project_entries() {
                         Ok(entries) => entries,
                         Err(err) => {
-                            ui.label("Executable tutorial catalog unavailable");
+                            ui.label(self.tr("menu.file.executable_catalog_unavailable"));
                             ui.small(err);
                             return;
                         }
                     };
                     if entries.is_empty() {
-                        ui.add_enabled(false, egui::Button::new("No tutorial chapters"));
+                        ui.add_enabled(
+                            false,
+                            egui::Button::new(self.tr("menu.file.no_tutorial_chapters")),
+                        );
                         return;
                     }
 
@@ -15608,8 +15623,11 @@ Error: `{err}`"
                     }
                 });
                 if ui
-                    .add_enabled(self.can_close_project(), egui::Button::new("Close Project"))
-                    .on_hover_text("Close the current project from the workspace")
+                    .add_enabled(
+                        self.can_close_project(),
+                        egui::Button::new(self.tr("menu.file.close_project")),
+                    )
+                    .on_hover_text(self.tr("menu.file.close_project.hover"))
                     .clicked()
                 {
                     self.request_project_action(ProjectAction::Close);
@@ -15617,18 +15635,16 @@ Error: `{err}`"
                 }
                 ui.separator();
                 if ui
-                    .button("New Sequence...")
-                    .on_hover_text("Create a project sequence from typed or pasted IUPAC DNA")
+                    .button(self.tr("menu.file.new_sequence"))
+                    .on_hover_text(self.tr("menu.file.new_sequence.hover"))
                     .clicked()
                 {
                     self.open_new_sequence_dialog();
                     ui.close();
                 }
                 if ui
-                    .button("New Sequence from Clipboard...")
-                    .on_hover_text(
-                        "Read system clipboard text into the new-sequence dialog for review",
-                    )
+                    .button(self.tr("menu.file.new_sequence_from_clipboard"))
+                    .on_hover_text(self.tr("menu.file.new_sequence_from_clipboard.hover"))
                     .clicked()
                 {
                     self.open_new_sequence_from_clipboard();
@@ -15636,28 +15652,24 @@ Error: `{err}`"
                 }
                 ui.separator();
                 if ui
-                    .button("Open Sequence...")
-                    .on_hover_text("Import one or more sequence files into the current project")
+                    .button(self.tr("menu.file.open_sequence"))
+                    .on_hover_text(self.tr("menu.file.open_sequence.hover"))
                     .clicked()
                 {
                     self.prompt_open_sequence();
                     ui.close();
                 }
                 if ui
-                    .button("Protein Evidence...")
-                    .on_hover_text(
-                        "Fetch/import UniProt or Ensembl protein evidence and compare it against sequences",
-                    )
+                    .button(self.tr("menu.file.protein_evidence"))
+                    .on_hover_text(self.tr("menu.file.protein_evidence.hover"))
                     .clicked()
                 {
                     self.open_uniprot_dialog();
                     ui.close();
                 }
                 if ui
-                    .button("Fetch GenBank / dbSNP...")
-                    .on_hover_text(
-                        "Fetch one GenBank accession or resolve a dbSNP rsID into a genome region",
-                    )
+                    .button(self.tr("menu.file.fetch_genbank_dbsnp"))
+                    .on_hover_text(self.tr("menu.file.fetch_genbank_dbsnp.hover"))
                     .clicked()
                 {
                     self.open_genbank_dialog();
@@ -15666,7 +15678,7 @@ Error: `{err}`"
                 ui.separator();
                 if ui
                     .button(self.tr("menu.file.configuration"))
-                    .on_hover_text("Open global app configuration and graphics defaults")
+                    .on_hover_text(self.tr("menu.file.configuration.hover"))
                     .clicked()
                 {
                     self.open_configuration_dialog();
@@ -15674,57 +15686,55 @@ Error: `{err}`"
                 }
                 if ui
                     .button(self.tr("menu.file.agent_assistant"))
-                    .on_hover_text(
-                        "Ask configured agent systems and execute suggested shared-shell commands",
-                    )
+                    .on_hover_text(self.tr("menu.file.agent_assistant.hover"))
                     .clicked()
                 {
                     self.open_agent_assistant_dialog();
                     ui.close();
                 }
                 if ui
-                    .button("Import REBASE Data...")
-                    .on_hover_text("Import restriction-enzyme definitions from REBASE JSON/TXT")
+                    .button(self.tr("menu.file.import_rebase_data"))
+                    .on_hover_text(self.tr("menu.file.import_rebase_data.hover"))
                     .clicked()
                 {
                     self.prompt_import_rebase_resource();
                     ui.close();
                 }
                 if ui
-                    .button("Import JASPAR Data...")
-                    .on_hover_text("Import TF motif library from JASPAR JSON/TXT")
+                    .button(self.tr("menu.file.import_jaspar_data"))
+                    .on_hover_text(self.tr("menu.file.import_jaspar_data.hover"))
                     .clicked()
                 {
                     self.prompt_import_jaspar_resource();
                     ui.close();
                 }
                 if ui
-                    .button("JASPAR Expert...")
-                    .on_hover_text("Inspect local JASPAR motifs, sequence logos, and score distributions")
+                    .button(self.tr("menu.file.jaspar_expert"))
+                    .on_hover_text(self.tr("menu.file.jaspar_expert.hover"))
                     .clicked()
                 {
                     self.open_jaspar_expert_dialog();
                     ui.close();
                 }
                 if ui
-                    .button("Save Project...")
-                    .on_hover_text("Save current project state to disk")
+                    .button(self.tr("menu.file.save_project"))
+                    .on_hover_text(self.tr("menu.file.save_project.hover"))
                     .clicked()
                 {
                     self.prompt_save_project();
                     ui.close();
                 }
                 if ui
-                    .button("Export DALG SVG...")
-                    .on_hover_text("Export lineage graph as SVG")
+                    .button(self.tr("menu.file.export_dalg_svg"))
+                    .on_hover_text(self.tr("menu.file.export_dalg_svg.hover"))
                     .clicked()
                 {
                     self.prompt_export_lineage_svg();
                     ui.close();
                 }
                 if ui
-                    .button("Export Lab Assistant Report...")
-                    .on_hover_text("Export a bench-facing report with lineage graphics as ODT, DOCX, or Markdown")
+                    .button(self.tr("menu.file.export_lab_assistant_report"))
+                    .on_hover_text(self.tr("menu.file.export_lab_assistant_report.hover"))
                     .clicked()
                 {
                     self.prompt_export_lab_assistant_report();
@@ -15733,7 +15743,7 @@ Error: `{err}`"
                 ui.separator();
                 if ui
                     .button(self.tr("menu.file.quit"))
-                    .on_hover_text("Quit GENtle (Cmd/Ctrl+Q)")
+                    .on_hover_text(self.tr("menu.file.quit.hover"))
                     .clicked()
                 {
                     self.request_project_action(ProjectAction::Quit);
@@ -19926,21 +19936,30 @@ Error: `{err}`"
                     if project_dirty {
                         ui.label(Self::project_footer_status_text(
                             ui.ctx(),
-                            "unsaved changes",
+                            &self.tr("project.status"),
+                            &self.tr("project.status.unsaved_changes"),
                         ));
                     } else {
-                        ui.label(Self::project_footer_status_text(ui.ctx(), "saved"));
+                        ui.label(Self::project_footer_status_text(
+                            ui.ctx(),
+                            &self.tr("project.status"),
+                            &self.tr("project.status.saved"),
+                        ));
                     }
                 },
             );
         });
     }
 
-    fn project_footer_status_text(ctx: &egui::Context, project_status: &str) -> String {
+    fn project_footer_status_text(
+        ctx: &egui::Context,
+        status_label: &str,
+        project_status: &str,
+    ) -> String {
         if let Some(window_status) = crate::egui_compat::hosted_window_status_message(ctx) {
-            format!("Status: {project_status} | {window_status}")
+            format!("{status_label}: {project_status} | {window_status}")
         } else {
-            format!("Status: {project_status}")
+            format!("{status_label}: {project_status}")
         }
     }
 
@@ -19948,7 +19967,11 @@ Error: `{err}`"
         let min_size = Vec2::new(900.0, 560.0);
         let mut open = true;
         let spec = crate::egui_compat::HostedWindowSpec::new(
-            format!("Project — {}", self.current_project_name()),
+            format!(
+                "{} — {}",
+                self.tr("project.window_title"),
+                self.current_project_display_name()
+            ),
             Self::main_workspace_hosted_window_id(),
             Vec2::new(1280.0, 860.0),
             min_size,
