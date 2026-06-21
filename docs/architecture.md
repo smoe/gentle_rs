@@ -760,6 +760,13 @@ Practical rule:
   - consumed by runtime `help` rendering (`text|json|markdown`)
   - intended as single machine-readable command semantics index for
     CLI/GUI-shell/JS/Lua documentation generation
+  - glossary `usage` rows are syntax skeletons; operand metavariables such as
+    `QUERY`, `SEQ_ID`, `GENOME_ID`, `ENTRY_ID`, `PATH`, and `OUTPUT.svg` are
+    interpreted through the operand-convention section in `docs/cli.md` plus the
+    route-specific manual text
+  - AI helpers must not infer command operands from uppercase placeholder names
+    alone; when the relevant manual/glossary context is absent or ambiguous,
+    they should ask for the missing identifier instead of inventing one
 - Protocol-first workflow example contract:
   - canonical source files: `docs/examples/workflows/*.json`
   - schema: `gentle.workflow_example.v1`
@@ -1138,6 +1145,9 @@ Minimal-success rollout profile (recommended):
 - Include compact machine context (`state_summary`) instead of large free-form
   project dumps to keep prompts deterministic and understandable.
 - For local/small models, provide a domain bootstrap package:
+  - command glossary and operand conventions: `docs/glossary.json` plus
+    `docs/cli.md`
+  - agent/protocol contract: `docs/protocol.md`
   - `docs/ai_cloning_primer.md`
   - `docs/ai_task_playbooks.md`
   - `docs/ai_prompt_contract.md`

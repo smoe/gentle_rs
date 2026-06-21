@@ -12,6 +12,12 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-06-21
+
+- Added shared operand metavariable conventions for glossary `usage` rows and
+  updated Agent Assistant prompt guidance so inner helpers consult GENtle docs
+  before proposing commands and ask instead of guessing ambiguous operands.
+
 ## 2026-06-19
 
 - Deepened construct-reasoning repeat-family interpretation with a shared

@@ -108,6 +108,8 @@ Context policy:
 - Do not assume any loaded project or sequence context.
 - Answer in the user's language if it is clear from their wording; otherwise use concise English.
 - Keep the reply compact enough for a live demo.
+- Use GENtle docs/glossary.json plus docs/cli.md operand conventions when proposing commands.
+- If an operand such as QUERY, ID, SEQ_ID, ENTRY_ID, PATH, or SPECIES is unclear, ask instead of guessing.
 
 Output wanted:
 - 5-8 bullets about what you can help with inside GENtle.
@@ -221,6 +223,9 @@ ask-before-run"#
             r#"Objective:
 <one clear goal>
 
+Documentation context:
+Use GENtle docs/glossary.json for command paths, docs/cli.md for operand conventions, and docs/protocol.md for request/response semantics. If a placeholder such as QUERY, ID, SEQ_ID, ENTRY_ID, PATH, or SPECIES is unclear, ask instead of guessing.
+
 Context:
 <sequence/genome/helper IDs and short background>
 
@@ -327,8 +332,10 @@ mod tests {
         assert!(agent_prompt_template_text("compact_intro").contains("shared-shell"));
         assert!(agent_prompt_template_text("compact_intro").contains("not filesystem files"));
         assert!(agent_prompt_template_text("compact_intro").contains("Do not describe /list"));
+        assert!(agent_prompt_template_text("compact_intro").contains("docs/glossary.json"));
         assert!(agent_prompt_template_text("candidate_anchors").contains("candidates"));
         assert!(agent_prompt_template_text("unknown").contains("Objective:"));
+        assert!(agent_prompt_template_text("unknown").contains("operand conventions"));
     }
 
     #[test]

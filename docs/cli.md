@@ -33,6 +33,35 @@ Structured command glossary:
   - `gentle_cli shell 'genomes preview-ensembl-specs --catalog assets/genomes.json'`
   - `gentle_cli shell 'helpers preview-ensembl-specs --catalog assets/helper_genomes.json'`
 
+Operand metavariable conventions:
+
+- Uppercase words in glossary `usage` strings are placeholders, not literal
+  values. Replace `SEQ_ID`, `GENOME_ID`, `ENTRY_ID`, `REPORT_ID`, `PANEL_ID`,
+  and similar operands with identifiers already present in the active GENtle
+  project, catalog, or command result.
+- `ID` flags such as `--id`, `--entry-id`, `--output-id`, and `--as-id` usually
+  name the local GENtle record to create or reuse. They are not external
+  database accessions unless the command explicitly says so.
+- `QUERY` is intentionally command-specific. For fetch/search routes it may be
+  a gene symbol, accession, stable database identifier, or text query depending
+  on the route. For example, `ensembl-gene fetch QUERY` accepts an Ensembl gene
+  lookup query such as a gene symbol or stable Ensembl gene identifier, while
+  `--entry-id ID` names the local GENtle metadata entry that will store the
+  fetched result.
+- `SPECIES` and `SPECIES_DIR` should use the identifier expected by the target
+  service or catalog. For Ensembl routes prefer species directory names such as
+  `homo_sapiens`; avoid informal aliases such as `HUMAN` unless a command
+  explicitly documents that alias.
+- `PATH`, `OUTPUT`, and suffix-bearing operands such as `OUTPUT.svg` are local
+  filesystem paths. GENtle can open a user-selected file or an exact path, but
+  glossary commands do not search the operating system from vague descriptions.
+- `START`, `END`, `CHR`, `STRAND`, coordinate ranges, and sequence strings keep
+  the semantics documented by the specific command family. Do not infer strand,
+  coordinate system, or biological provenance from the placeholder name alone.
+- If an operand is not clear from the command summary, usage row, or surrounding
+  manual section, ask the user for the missing identifier instead of inventing a
+  value. This rule is especially important for AI helpers and local LLMs.
+
 Session-local operation history:
 
 - `gentle_cli shell 'history status'`
@@ -4125,6 +4154,9 @@ chat-only | ask-before-run | allow-auto-exec
 ```
 
 - For local models without cloning background, preload:
+  - `docs/glossary.json`
+  - `docs/cli.md` (especially Operand metavariable conventions)
+  - `docs/protocol.md`
   - `docs/ai_cloning_primer.md`
   - `docs/ai_task_playbooks.md`
   - `docs/ai_prompt_contract.md`

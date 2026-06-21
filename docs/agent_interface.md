@@ -149,6 +149,25 @@ Key properties:
 - `op`/`workflow` candidates require explicit confirmation when marked mutating
 - execution never silently re-plans
 
+### Documentation context for inner helpers
+
+GENtle's inner Agent Assistant should be grounded in GENtle's own
+documentation before it proposes commands. The minimum bundle is:
+
+- `docs/glossary.json` for command paths and syntax skeletons
+- `docs/cli.md` for operand conventions and shell examples
+- `docs/protocol.md` for request/response schemas and execution rules
+- `docs/ai_prompt_contract.md` for agent behavior expectations
+- `docs/ai_cloning_primer.md`, `docs/ai_task_playbooks.md`, and
+  `docs/examples/ai_cloning_examples.md` for biology-first context
+- optional compact terminology: `docs/ai_glossary_extensions.json`
+
+This matters most for small local models: glossary placeholders such as
+`QUERY`, `ID`, `SEQ_ID`, `ENTRY_ID`, and `PATH` are not enough on their own.
+If the model has not been given the relevant documentation, or if the operand
+semantics remain unclear, it should ask for the missing identifier or exact path
+instead of inventing a GENtle command.
+
 ### 3) MCP (`gentle_mcp`)
 
 MCP is the tool-based route for external AI clients that speak JSON-RPC over

@@ -28,6 +28,8 @@ The top-level field named "schema" is a literal protocol id string, not a JSON S
 Do not output JSON Schema definitions, "type"/"properties" schema documents, markdown fences, or explanatory prose outside the JSON object.
 Use only keys from the schema. Extensions may use x_ prefix. Do not include markdown fences.
 Suggested command contract:
+- Documentation context rule: before proposing commands, use the GENtle documentation bundle when available: docs/glossary.json for command paths, docs/cli.md for operand conventions and examples, docs/protocol.md for schemas/execution semantics, docs/ai_prompt_contract.md for agent behavior, and the biology/context docs docs/ai_cloning_primer.md, docs/ai_task_playbooks.md, docs/examples/ai_cloning_examples.md, plus docs/ai_glossary_extensions.json when present. If the relevant documentation is not available in your context, say what is missing or ask a clarifying question instead of guessing.
+- Operand rule: glossary usage words such as QUERY, ID, SEQ_ID, GENOME_ID, ENTRY_ID, PATH, START, END, CHR, and OUTPUT.svg are placeholders with route-specific meanings. Do not infer species aliases, accession formats, local output IDs, coordinate systems, or filesystem paths from the placeholder name alone.
 - Current scope declaration: GENtle does not currently implement OpenClaw-like filesystem, operating-system, or gateway commands. That may change in a future gateway layer; for now, concentrate on actions GENtle can also perform through its GUI or shared shell on the same project state.
 - suggested_commands[].command must be one exact GENtle shared-shell command parseable by GENtle.
 - GENtle-local slash aliases are deliberately small and parser-validated. Allowed aliases are: /help; /list; /open; /import; /open file PATH [--id ID]; /import file PATH [--id ID]; /paste sequence --sequence-text DNA [--id ID]; /fetch genbank ACCESSION [--id ID]; /fetch ncbi ACCESSION [--id ID]; /fetch uniprot QUERY [--id ID]; /fetch ensembl QUERY [--species NAME] [--id ID]; /fetch ensembl-gene QUERY [--species NAME] [--id ID]; /fetch ensembl-protein QUERY [--id ID]; /fetch ensembl-region SPECIES CHR START END [--strand +|-] [--id ID]; /fetch dbsnp RS_ID GENOME_ID [--id ID].
@@ -3549,6 +3551,8 @@ mod tests {
         assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("Spotlight"));
         assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("non-breaking hyphen"));
         assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("homo_sapiens"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("docs/glossary.json"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("Operand rule"));
         assert!(
             AGENT_BRIDGE_SYSTEM_PROMPT.contains("/fetch ensembl-protein does not accept --species")
         );

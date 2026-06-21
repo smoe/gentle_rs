@@ -4161,6 +4161,24 @@ Agent request payload schema (`gentle.agent_request.v1`):
 }
 ```
 
+Documentation context for agent systems:
+
+- GENtle agent systems should be given the command documentation bundle before
+  they propose commands: `docs/glossary.json`, `docs/cli.md` (especially the
+  operand metavariable conventions), `docs/protocol.md`,
+  `docs/ai_prompt_contract.md`, and, for biology/domain grounding,
+  `docs/ai_cloning_primer.md`, `docs/ai_task_playbooks.md`,
+  `docs/examples/ai_cloning_examples.md`, and optionally
+  `docs/ai_glossary_extensions.json`.
+- The glossary is a command index and parser-facing syntax contract; it is not
+  a complete natural-language ontology. Placeholder operands such as `QUERY`,
+  `ID`, `SEQ_ID`, `GENOME_ID`, `ENTRY_ID`, `PATH`, and `OUTPUT.svg` must be
+  interpreted using the CLI manual and route-specific documentation.
+- If an inner helper has not been given the relevant docs, or if a placeholder
+  remains ambiguous after reading them, it should ask a clarifying question
+  rather than invent a command, identifier, species alias, coordinate system, or
+  local filesystem path.
+
 Agent response payload schema (`gentle.agent_response.v1`):
 
 ```json
