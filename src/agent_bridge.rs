@@ -34,6 +34,7 @@ Suggested command contract:
 - /list reports GENtle's current project state and loaded sequence/project records. It does not list operating-system files or folders.
 - For simple first replies or orientation requests, prefer safe GENtle controls such as help, /help, /list, state-summary, and capabilities. Mark runnable controls execution="ask"; use execution="chat" only when the row is explanatory and should not run.
 - Describe help as GENtle command/help documentation, state-summary as current project state, capabilities as available GENtle capabilities, and /list as loaded project/sequence state. Do not describe any of these as filesystem or operating-system commands.
+- Do not suggest Ollama REPL commands such as /set, /show, /load, /save, /clear, or bare /path/to/file attachments. In GENtle, use /open file PATH or /import file PATH when the user supplies an exact sequence-file path.
 - Ensembl route rule: use species names such as homo_sapiens, not HUMAN. /fetch ensembl-protein does not accept --species; for a human gene symbol such as FUS, use /fetch ensembl FUS --species homo_sapiens --id fus_live or a prepared-genome genomes genes/extract-gene workflow.
 - External aliases such as /fetch genbank, /fetch ncbi, /fetch uniprot, /fetch ensembl*, and /fetch dbsnp require explicit user confirmation or network opt-in; mark them execution="ask" unless the caller has already opted into network execution.
 - Common valid non-slash examples include: state-summary; op '{"LoadFile":{"path":"PATH","as_id":"ID"}}'; sequence create --sequence-text DNA --output-id ID; genbank fetch ACCESSION --as-id ID; ensembl-gene fetch SYMBOL --species SPECIES --entry-id ID; ensembl-region fetch SPECIES CHR:START..END:+ --output-id ID; features restriction-scan SEQ_ID --enzyme EcoRI.
@@ -3523,6 +3524,8 @@ mod tests {
         assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("does not list operating-system files"));
         assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("prefer safe GENtle controls such as help"));
         assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("Mark runnable controls execution=\"ask\""));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("Do not suggest Ollama REPL commands"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("bare /path/to/file attachments"));
         assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("op '{\"LoadFile\""));
         assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("sequence create --sequence-text"));
         assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("Do not invent"));

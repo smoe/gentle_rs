@@ -698,6 +698,23 @@ impl GENtleApp {
         }
     }
 
+    fn agent_prompt_bare_absolute_path_hint(prompt: &str) -> Option<String> {
+        let trimmed = prompt.trim();
+        if trimmed.is_empty() || trimmed.contains('\n') || trimmed.split_whitespace().count() != 1 {
+            return None;
+        }
+        if !std::path::Path::new(trimmed).is_absolute() {
+            return None;
+        }
+        let without_root = trimmed.trim_start_matches('/');
+        if !without_root.contains('/') && !without_root.contains('.') {
+            return None;
+        }
+        Some(format!(
+            "Prompt command looks like a bare absolute file path. GENtle's Agent Assistant does not use Ollama-style `/path/to/file` attachments; use `/open file {trimmed}` for sequence files, or import/attach the file through the GENtle GUI."
+        ))
+    }
+
     pub(super) fn agent_preflight_next_actions(preflight: &AgentSystemPreflight) -> Vec<String> {
         let key_hint = match preflight.transport.as_str() {
             transport if transport == AgentSystemTransport::NativeAnthropic.as_str() => {
@@ -1139,6 +1156,25 @@ impl GENtleApp {
         let trimmed = command_text.trim();
         if trimmed.is_empty() {
             self.agent_status = format!("{source_label} is empty");
+            return;
+        }
+        if trigger == "prompt"
+            && let Some(hint) = Self::agent_prompt_bare_absolute_path_hint(trimmed)
+        {
+            self.agent_status = hint.clone();
+            self.agent_execution_log.push(AgentCommandExecutionRecord {
+                index_1based,
+                command: trimmed.to_string(),
+                trigger: trigger.to_string(),
+                ok: false,
+                state_changed: false,
+                summary: hint,
+                executed_at_unix_ms: Self::now_unix_ms(),
+            });
+            if self.agent_execution_log.len() > 100 {
+                let drain = self.agent_execution_log.len() - 100;
+                self.agent_execution_log.drain(0..drain);
+            }
             return;
         }
         let command = match parse_shell_line(trimmed) {

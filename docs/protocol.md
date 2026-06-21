@@ -4195,6 +4195,13 @@ Agent command-scope declaration:
 - Local slash aliases are a small GENtle-owned compatibility layer, described
   by `gentle_protocol::shell_alias_registry()`. They are not operating-system
   shell commands and are not an OpenClaw gateway.
+- In the GUI Agent Assistant prompt box, one-line local control commands are
+  intercepted before contacting the model: `/...` slash commands plus bare
+  `help`, `state-summary`, and `capabilities`. Mistyped slash commands fail
+  locally instead of being reinterpreted as natural-language prompts.
+- Bare absolute paths such as `/path/to/file` are not Ollama-style attachments
+  in GENtle. Use `/open file PATH`, `/import file PATH`, or the GUI import path
+  for local sequence files.
 - Accepted read-only aliases:
   - `/help [TOPIC]`
   - `/list`

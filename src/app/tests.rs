@@ -945,6 +945,35 @@ fn agent_prompt_invalid_slash_command_reports_local_parse_error() {
 }
 
 #[test]
+fn agent_prompt_bare_absolute_path_reports_gentle_import_hint() {
+    let mut app = GENtleApp::default();
+
+    app.execute_agent_prompt_command("/Users/example/demo.gb");
+
+    assert!(
+        app.agent_status
+            .contains("does not use Ollama-style `/path/to/file` attachments"),
+        "unexpected status: {}",
+        app.agent_status
+    );
+    assert!(
+        app.agent_status
+            .contains("/open file /Users/example/demo.gb"),
+        "unexpected status: {}",
+        app.agent_status
+    );
+    let entry = app
+        .agent_execution_log
+        .last()
+        .expect("bare path hint should be logged");
+    assert_eq!(entry.index_1based, 0);
+    assert_eq!(entry.trigger, "prompt");
+    assert_eq!(entry.command, "/Users/example/demo.gb");
+    assert!(!entry.ok);
+    assert!(entry.summary.contains("Ollama-style"));
+}
+
+#[test]
 fn external_agent_mcp_snippet_includes_binary_and_state_path() {
     let mut app = GENtleApp::default();
     assert_eq!(app.external_agent_mcp_state_path(), ".gentle_state.json");

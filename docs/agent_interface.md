@@ -66,6 +66,14 @@ suggestion is a valid GENtle command. Good first suggestions include
 Native HTTP transports tolerate a single top-level Markdown `json` code fence,
 but they still reject prose wrapped around the JSON.
 
+The prompt box is still an Agent Assistant prompt, not the full GENtle shell.
+For convenience it intercepts a small set of local control commands before
+contacting the model: `/...` Agent Assistant slash commands plus bare `help`,
+`state-summary`, and `capabilities`. Mistyped slash commands fail locally
+instead of being reinterpreted as prose. Ollama REPL habits such as bare
+`/path/to/file` attachments are not used here; use `/open file PATH`, `/import
+file PATH`, or the GUI import path for local sequence files.
+
 After the format probe passes, ask for the real task while keeping execution
 reviewed:
 
