@@ -569,6 +569,25 @@ impl GENtleApp {
                     "Suggestion #{index_1based} is not parseable by GENtle: {err}"
                 ));
             }
+            if command.eq_ignore_ascii_case("/list") {
+                let described_text = format!(
+                    "{}\n{}\n{}",
+                    response.assistant_message,
+                    suggestion.title.clone().unwrap_or_default(),
+                    suggestion.rationale.clone().unwrap_or_default()
+                )
+                .to_ascii_lowercase();
+                if (described_text.contains("file")
+                    || described_text.contains("folder")
+                    || described_text.contains("director"))
+                    && (described_text.contains("list") || described_text.contains("/list"))
+                {
+                    warnings.push(
+                        "Suggestion #{index_1based} describes /list like a filesystem command; in GENtle, /list reports project state and loaded sequences."
+                            .to_string(),
+                    );
+                }
+            }
         }
 
         let lower_prompt = prompt.to_ascii_lowercase();
@@ -664,6 +683,19 @@ impl GENtleApp {
             || lower.starts_with("helpers genes ")
             || lower.starts_with("helpers extract-gene ")
             || lower.contains("dbsnp")
+    }
+
+    pub(super) fn agent_prompt_direct_shell_command(prompt: &str) -> Option<&str> {
+        let trimmed = prompt.trim();
+        if trimmed.contains('\n') {
+            return None;
+        }
+        if trimmed.starts_with('/') || matches!(trimmed, "capabilities" | "help" | "state-summary")
+        {
+            Some(trimmed)
+        } else {
+            None
+        }
     }
 
     pub(super) fn agent_preflight_next_actions(preflight: &AgentSystemPreflight) -> Vec<String> {
@@ -1084,15 +1116,35 @@ impl GENtleApp {
         command_text: &str,
         trigger: &str,
     ) {
+        let source_label = format!("Suggestion #{index_1based}");
+        self.execute_agent_shell_command_from_ui(
+            index_1based,
+            &source_label,
+            command_text,
+            trigger,
+        );
+    }
+
+    pub(super) fn execute_agent_prompt_command(&mut self, command_text: &str) {
+        self.execute_agent_shell_command_from_ui(0, "Prompt command", command_text, "prompt");
+    }
+
+    fn execute_agent_shell_command_from_ui(
+        &mut self,
+        index_1based: usize,
+        source_label: &str,
+        command_text: &str,
+        trigger: &str,
+    ) {
         let trimmed = command_text.trim();
         if trimmed.is_empty() {
-            self.agent_status = format!("Suggestion #{index_1based} is empty");
+            self.agent_status = format!("{source_label} is empty");
             return;
         }
         let command = match parse_shell_line(trimmed) {
             Ok(command) => command,
             Err(err) => {
-                self.agent_status = format!("Suggestion #{index_1based} parse error: {err}");
+                self.agent_status = format!("{source_label} parse error: {err}");
                 self.agent_execution_log.push(AgentCommandExecutionRecord {
                     index_1based,
                     command: trimmed.to_string(),
@@ -1112,7 +1164,7 @@ impl GENtleApp {
                 | ShellCommand::AgentsExecutePlan { .. }
         ) {
             self.agent_status = format!(
-                "Suggestion #{index_1based} rejected: agent-to-agent 'agents ...' commands are blocked"
+                "{source_label} rejected: agent-to-agent 'agents ...' commands are blocked"
             );
             self.agent_execution_log.push(AgentCommandExecutionRecord {
                 index_1based,
@@ -1126,7 +1178,7 @@ impl GENtleApp {
             return;
         }
         if let Some(summary) = self.try_apply_shell_ui_intent(&command) {
-            self.agent_status = format!("Suggestion #{index_1based}: {summary}");
+            self.agent_status = format!("{source_label}: {summary}");
             self.agent_execution_log.push(AgentCommandExecutionRecord {
                 index_1based,
                 command: trimmed.to_string(),
@@ -1185,7 +1237,7 @@ impl GENtleApp {
                 } else {
                     "executed".to_string()
                 };
-                self.agent_status = format!("Suggestion #{index_1based}: {summary}");
+                self.agent_status = format!("{source_label}: {summary}");
                 self.agent_execution_log.push(AgentCommandExecutionRecord {
                     index_1based,
                     command: trimmed.to_string(),
@@ -1197,7 +1249,7 @@ impl GENtleApp {
                 });
             }
             Err(err) => {
-                self.agent_status = format!("Suggestion #{index_1based} failed: {err}");
+                self.agent_status = format!("{source_label} failed: {err}");
                 self.agent_execution_log.push(AgentCommandExecutionRecord {
                     index_1based,
                     command: trimmed.to_string(),
@@ -2929,19 +2981,37 @@ impl GENtleApp {
             self.request_agent_task_cancel("agent assistant shortcut");
             running = self.agent_task.is_some();
         }
-        if prompt_submit_shortcut && !running && selected_available {
-            self.start_agent_assistant_request();
+        let direct_prompt_command =
+            Self::agent_prompt_direct_shell_command(&self.agent_prompt).map(str::to_string);
+        let can_submit_prompt = !running && (selected_available || direct_prompt_command.is_some());
+        if prompt_submit_shortcut && can_submit_prompt {
+            if let Some(command) = direct_prompt_command.as_deref() {
+                self.execute_agent_prompt_command(command);
+            } else {
+                self.start_agent_assistant_request();
+            }
         }
         ui.horizontal(|ui| {
+            let ask_button_text = if direct_prompt_command.is_some() {
+                "Run command".to_string()
+            } else {
+                self.tr("agent.ask_agent")
+            };
+            let ask_hover_text = if direct_prompt_command.is_some() {
+                "Run this GENtle Agent Assistant slash command locally (Command/Ctrl+Return)"
+            } else {
+                "Send prompt to selected agent system (Command/Ctrl+Return)"
+            };
             if ui
-                .add_enabled(
-                    !running && selected_available,
-                    egui::Button::new(self.tr("agent.ask_agent")),
-                )
-                .on_hover_text("Send prompt to selected agent system (Command/Ctrl+Return)")
+                .add_enabled(can_submit_prompt, egui::Button::new(ask_button_text))
+                .on_hover_text(ask_hover_text)
                 .clicked()
             {
-                self.start_agent_assistant_request();
+                if let Some(command) = direct_prompt_command.as_deref() {
+                    self.execute_agent_prompt_command(command);
+                } else {
+                    self.start_agent_assistant_request();
+                }
             }
             if ui
                 .button(self.tr("agent.clear_response"))
@@ -3144,9 +3214,14 @@ impl GENtleApp {
                         scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
                     );
                     for entry in self.agent_execution_log.iter().rev() {
+                        let source = if entry.index_1based == 0 {
+                            "prompt".to_string()
+                        } else {
+                            format!("#{}", entry.index_1based)
+                        };
                         ui.label(format!(
-                            "#{} [{}] {} | {} | changed={} | t={}",
-                            entry.index_1based,
+                            "{} [{}] {} | {} | changed={} | t={}",
+                            source,
                             entry.trigger,
                             if entry.ok { "ok" } else { "error" },
                             entry.command,

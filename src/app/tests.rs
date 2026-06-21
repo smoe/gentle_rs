@@ -859,6 +859,92 @@ fn agent_assistant_suggestions_block_nested_agent_family_commands() {
 }
 
 #[test]
+fn agent_prompt_direct_shell_command_detects_agent_control_commands_only() {
+    assert_eq!(
+        GENtleApp::agent_prompt_direct_shell_command("  /list  "),
+        Some("/list")
+    );
+    assert_eq!(
+        GENtleApp::agent_prompt_direct_shell_command("/lisst"),
+        Some("/lisst")
+    );
+    assert_eq!(
+        GENtleApp::agent_prompt_direct_shell_command("state-summary"),
+        Some("state-summary")
+    );
+    assert_eq!(
+        GENtleApp::agent_prompt_direct_shell_command("capabilities"),
+        Some("capabilities")
+    );
+    assert_eq!(
+        GENtleApp::agent_prompt_direct_shell_command("help"),
+        Some("help")
+    );
+    assert_eq!(
+        GENtleApp::agent_prompt_direct_shell_command("help me retrieve FUS"),
+        None
+    );
+    assert_eq!(
+        GENtleApp::agent_prompt_direct_shell_command(
+            "features restriction-scan demo_seq --enzyme EcoRI"
+        ),
+        None
+    );
+    assert_eq!(
+        GENtleApp::agent_prompt_direct_shell_command("/list\nExplain it"),
+        None
+    );
+    assert_eq!(
+        GENtleApp::agent_prompt_direct_shell_command("Please explain /list"),
+        None
+    );
+}
+
+#[test]
+fn agent_prompt_direct_shell_command_executes_without_agent_roundtrip() {
+    let mut app = GENtleApp::default();
+
+    app.execute_agent_prompt_command("/list");
+
+    assert!(
+        app.agent_status.contains("Prompt command: executed"),
+        "unexpected status: {}",
+        app.agent_status
+    );
+    let entry = app
+        .agent_execution_log
+        .last()
+        .expect("prompt command execution should be logged");
+    assert_eq!(entry.index_1based, 0);
+    assert_eq!(entry.trigger, "prompt");
+    assert_eq!(entry.command, "/list");
+    assert!(entry.ok);
+    assert!(!entry.state_changed);
+}
+
+#[test]
+fn agent_prompt_invalid_slash_command_reports_local_parse_error() {
+    let mut app = GENtleApp::default();
+
+    app.execute_agent_prompt_command("/lisst");
+
+    assert!(
+        app.agent_status.contains("Prompt command parse error"),
+        "unexpected status: {}",
+        app.agent_status
+    );
+    let entry = app
+        .agent_execution_log
+        .last()
+        .expect("invalid prompt command should be logged");
+    assert_eq!(entry.index_1based, 0);
+    assert_eq!(entry.trigger, "prompt");
+    assert_eq!(entry.command, "/lisst");
+    assert!(!entry.ok);
+    assert!(entry.summary.contains("parse error"));
+}
+
+#[test]
 fn external_agent_mcp_snippet_includes_binary_and_state_path() {
     let mut app = GENtleApp::default();
     assert_eq!(app.external_agent_mcp_state_path(), ".gentle_state.json");
@@ -966,6 +1052,31 @@ fn agent_response_sanity_accepts_fus_retrieval_commands() {
     );
 
     assert_eq!(warnings, Vec::<String>::new());
+}
+
+#[test]
+fn agent_response_sanity_flags_list_as_filesystem_hallucination() {
+    let response = AgentResponse {
+        schema: "gentle.agent_response.v1".to_string(),
+        assistant_message: "/list will display files and folders in the current directory."
+            .to_string(),
+        questions: vec![],
+        suggested_commands: vec![AgentSuggestedCommand {
+            title: Some("List Files".to_string()),
+            rationale: Some("See files available in the current directory.".to_string()),
+            command: "/list".to_string(),
+            execution: AgentExecutionIntent::Chat,
+        }],
+    };
+
+    let warnings = GENtleApp::agent_response_sanity_warnings_for_prompt("", &response);
+
+    assert!(
+        warnings
+            .iter()
+            .any(|warning| warning.contains("filesystem command")),
+        "warnings: {warnings:?}"
+    );
 }
 
 struct EnvVarGuard {

@@ -112,14 +112,17 @@ Context policy:
 Output wanted:
 - 5-8 bullets about what you can help with inside GENtle.
 - 2-4 safe suggested_commands using GENtle shared-shell commands only.
-- Mark suggestions execution="ask".
+- Mark runnable suggestions execution="ask"; use execution="chat" only for purely explanatory rows that should not run.
 - Mention that external database/network actions require explicit confirmation.
 
 Good demo commands:
 - /help
+- /list (current GENtle project state and loaded sequences, not filesystem files)
 - state-summary
 - /paste sequence --sequence-text GAATTCGCGGCCGCTTCTAGA --id demo_seq
-- features restriction-scan demo_seq --enzyme EcoRI"#
+- features restriction-scan demo_seq --enzyme EcoRI
+
+Do not describe /list as a directory listing. Do not suggest placeholder commands such as /open file PATH [--id ID] unless the user supplied a real PATH."#
         }
         "candidate_anchors" => {
             r#"Objective:
@@ -322,6 +325,8 @@ mod tests {
             "structured"
         ));
         assert!(agent_prompt_template_text("compact_intro").contains("shared-shell"));
+        assert!(agent_prompt_template_text("compact_intro").contains("not filesystem files"));
+        assert!(agent_prompt_template_text("compact_intro").contains("Do not describe /list"));
         assert!(agent_prompt_template_text("candidate_anchors").contains("candidates"));
         assert!(agent_prompt_template_text("unknown").contains("Objective:"));
     }
