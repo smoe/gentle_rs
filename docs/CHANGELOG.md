@@ -17,6 +17,9 @@ Maintenance rule:
 - Added shared operand metavariable conventions for glossary `usage` rows and
   updated Agent Assistant prompt guidance so inner helpers consult GENtle docs
   before proposing commands and ask instead of guessing ambiguous operands.
+- Added JS and Lua adapter bindings for construct-reasoning inspection actions,
+  so scripts can list and run the same portable dotplot recommendations exposed
+  through CLI, ClawBio, and MCP shell routes.
 
 ## 2026-06-19
 

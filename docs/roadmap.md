@@ -204,9 +204,9 @@ should I inspect for this warning?" through portable construct-reasoning
 graph actions for its `Dotplot` / `RevComp Dotplot` buttons; CLI/agent-facing
 work uses `construct-reasoning list-inspection-actions` and
 `construct-reasoning run-inspection-action`, and ClawBio now exposes typed
-request modes over the same shell contract. Remaining MCP/JS/Lua readers should
-inspect the same action object through shared shell/protocol routes rather than
-adding adapter-local recommendation logic.
+request modes over the same shell contract. MCP, JS, and Lua readers now
+inspect and run the same action object through shared shell/protocol routes
+rather than adapter-local recommendation logic.
 
 Phase 2 direction: the existing GUI inspector should expose action rationale,
 focus range, dotplot mode, context tags, and driving evidence ids directly from

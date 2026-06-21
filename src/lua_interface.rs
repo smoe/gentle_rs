@@ -5,7 +5,7 @@ use crate::engine::{
     Engine, FeatureExpertTarget, GenomeAnchorSide, GenomeAnnotationScope, GenomeGeneExtractMode,
     GentleEngine, Operation, ProjectState, Workflow,
 };
-use crate::engine_shell::{ShellCommand, execute_shell_command};
+use crate::engine_shell::{execute_shell_command, ShellCommand};
 use crate::enzymes::active_restriction_enzymes;
 use crate::methylation_sites::MethylationMode;
 use crate::resource_sync;
@@ -129,6 +129,12 @@ impl LuaInterface {
         );
         println!(
             "  - show_construct_reasoning_graph(project, graph_id): Shows one construct-reasoning graph plus compact summary details"
+        );
+        println!(
+            "  - list_construct_reasoning_inspection_actions(project, graph_id, [fact_id], [annotation_id], [summary_id]): Lists recommended construct-reasoning inspection actions"
+        );
+        println!(
+            "  - run_construct_reasoning_inspection_action(project, graph_id, action_id, [word_size], [step_bp], [max_mismatches], [tile_bp], [dotplot_id], [render_svg_path]): Runs a recommended inspection action and stores the resulting view"
         );
         println!(
             "  - set_construct_reasoning_annotation_status(project, graph_id, annotation_id, status): Updates one stored annotation-candidate review status"
@@ -356,6 +362,87 @@ impl LuaInterface {
         let run = execute_shell_command(&mut engine, &command)
             .map_err(|e| Self::err(&format!("construct-reasoning show-graph failed: {e}")))?;
         Ok(run.output)
+    }
+
+    fn list_construct_reasoning_inspection_actions(
+        state: ProjectState,
+        graph_id: String,
+        fact_id: Option<String>,
+        annotation_id: Option<String>,
+        summary_id: Option<String>,
+    ) -> LuaResult<serde_json::Value> {
+        let mut engine = GentleEngine::from_state(state);
+        let command = ShellCommand::ConstructReasoningListInspectionActions {
+            graph_id: graph_id.trim().to_string(),
+            fact_id: fact_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .map(str::to_string),
+            annotation_id: annotation_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .map(str::to_string),
+            candidate_id: None,
+            evidence_id: None,
+            seq_id: None,
+            action_kind: None,
+            summary_id: summary_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .map(str::to_string),
+        };
+        let run = execute_shell_command(&mut engine, &command).map_err(|e| {
+            Self::err(&format!(
+                "construct-reasoning list-inspection-actions failed: {e}"
+            ))
+        })?;
+        Ok(run.output)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn run_construct_reasoning_inspection_action(
+        state: ProjectState,
+        graph_id: String,
+        action_id: String,
+        word_size: Option<usize>,
+        step_bp: Option<usize>,
+        max_mismatches: Option<usize>,
+        tile_bp: Option<usize>,
+        dotplot_id: Option<String>,
+        render_svg_path: Option<String>,
+    ) -> LuaResult<ShellUtilityResponse> {
+        let mut engine = GentleEngine::from_state(state);
+        let command = ShellCommand::ConstructReasoningRunInspectionAction {
+            graph_id: graph_id.trim().to_string(),
+            action_id: action_id.trim().to_string(),
+            word_size: word_size.unwrap_or(12),
+            step_bp: step_bp.unwrap_or(2),
+            max_mismatches: max_mismatches.unwrap_or(0),
+            tile_bp,
+            dotplot_id: dotplot_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .map(str::to_string),
+            render_svg_path: render_svg_path
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .map(str::to_string),
+        };
+        let run = execute_shell_command(&mut engine, &command).map_err(|e| {
+            Self::err(&format!(
+                "construct-reasoning run-inspection-action failed: {e}"
+            ))
+        })?;
+        Ok(ShellUtilityResponse {
+            state: engine.state().clone(),
+            state_changed: run.state_changed,
+            output: run.output,
+        })
     }
 
     fn set_construct_reasoning_annotation_status(
@@ -913,6 +1000,76 @@ impl LuaInterface {
                     let output = Self::show_construct_reasoning_graph(state, graph_id)?;
                     lua.to_value(&output)
                 })?,
+        )?;
+
+        self.lua.globals().set(
+            "list_construct_reasoning_inspection_actions",
+            self.lua.create_function(
+                |lua,
+                 (state, graph_id, fact_id, annotation_id, summary_id): (
+                    Value,
+                    String,
+                    Option<String>,
+                    Option<String>,
+                    Option<String>,
+                )| {
+                    let state: ProjectState = lua
+                        .from_value(state)
+                        .map_err(|e| Self::err(&format!("Invalid project value: {e}")))?;
+                    let output = Self::list_construct_reasoning_inspection_actions(
+                        state,
+                        graph_id,
+                        fact_id,
+                        annotation_id,
+                        summary_id,
+                    )?;
+                    lua.to_value(&output)
+                },
+            )?,
+        )?;
+
+        self.lua.globals().set(
+            "run_construct_reasoning_inspection_action",
+            self.lua.create_function(
+                |lua,
+                 (
+                    state,
+                    graph_id,
+                    action_id,
+                    word_size,
+                    step_bp,
+                    max_mismatches,
+                    tile_bp,
+                    dotplot_id,
+                    render_svg_path,
+                ): (
+                    Value,
+                    String,
+                    String,
+                    Option<usize>,
+                    Option<usize>,
+                    Option<usize>,
+                    Option<usize>,
+                    Option<String>,
+                    Option<String>,
+                )| {
+                    let state: ProjectState = lua
+                        .from_value(state)
+                        .map_err(|e| Self::err(&format!("Invalid project value: {e}")))?;
+                    let output = Self::run_construct_reasoning_inspection_action(
+                        state,
+                        graph_id,
+                        action_id,
+                        word_size,
+                        step_bp,
+                        max_mismatches,
+                        tile_bp,
+                        dotplot_id,
+                        render_svg_path,
+                    )?;
+                    lua.to_value(&output)
+                },
+            )?,
         )?;
 
         self.lua.globals().set(
@@ -2308,7 +2465,7 @@ mod tests {
             .expect("register rust functions");
         lua.lua()
             .load(
-                "assert(type(list_reference_catalog_entries) == 'function')\nassert(type(list_helper_catalog_entries) == 'function')\nassert(type(list_helper_semantics_vocabulary) == 'function')\nassert(type(list_host_profile_catalog_entries) == 'function')\nassert(type(list_ensembl_installable_genomes) == 'function')\nassert(type(list_construct_reasoning_graphs) == 'function')\nassert(type(show_construct_reasoning_graph) == 'function')\nassert(type(set_construct_reasoning_annotation_status) == 'function')\nassert(type(write_back_construct_reasoning_annotation) == 'function')",
+                "assert(type(list_reference_catalog_entries) == 'function')\nassert(type(list_helper_catalog_entries) == 'function')\nassert(type(list_helper_semantics_vocabulary) == 'function')\nassert(type(list_host_profile_catalog_entries) == 'function')\nassert(type(list_ensembl_installable_genomes) == 'function')\nassert(type(list_construct_reasoning_graphs) == 'function')\nassert(type(show_construct_reasoning_graph) == 'function')\nassert(type(list_construct_reasoning_inspection_actions) == 'function')\nassert(type(run_construct_reasoning_inspection_action) == 'function')\nassert(type(set_construct_reasoning_annotation_status) == 'function')\nassert(type(write_back_construct_reasoning_annotation) == 'function')",
             )
             .exec()
             .expect("catalog entry wrappers should be registered");
@@ -2362,14 +2519,12 @@ mod tests {
         let rows_value: Value = lua.lua().globals().get("rows").expect("rows value");
         let rows: Vec<crate::genomes::GenomeCatalogListEntry> =
             lua.lua().from_value(rows_value).expect("rows decode");
-        assert!(
-            rows[0]
-                .interpretation
-                .as_ref()
-                .expect("interpretation")
-                .offered_functions
-                .contains(&"fusion_tagging".to_string())
-        );
+        assert!(rows[0]
+            .interpretation
+            .as_ref()
+            .expect("interpretation")
+            .offered_functions
+            .contains(&"fusion_tagging".to_string()));
     }
 
     #[test]
@@ -2520,14 +2675,174 @@ mod tests {
 
         assert_eq!(wrapper_list, shell_list.output);
         assert_eq!(wrapper_show, shell_show.output);
-        assert!(
-            wrapper_show["summary"]["fact_summaries"]
-                .as_array()
-                .map(|rows| rows.iter().any(|row| {
-                    row["fact_type"].as_str() == Some("adapter_restriction_capture_context")
-                }))
-                .unwrap_or(false)
+        assert!(wrapper_show["summary"]["fact_summaries"]
+            .as_array()
+            .map(|rows| rows.iter().any(|row| {
+                row["fact_type"].as_str() == Some("adapter_restriction_capture_context")
+            }))
+            .unwrap_or(false));
+    }
+
+    #[test]
+    fn lua_construct_reasoning_inspection_action_wrappers_match_shared_shell_output() {
+        let sequence = format!(
+            "{}{}{}{}{}",
+            "ACGT".repeat(12),
+            "AAAAAAAAAAAAAA",
+            "ATATATATATATATATATAT",
+            "GATTACAGATTACCCGGGGATTACAGATTA",
+            "GCGTACGCTATTTTTAGCGTACGC"
         );
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "construct_reasoning_lua_inspection".to_string(),
+            DNAsequence::from_sequence(&sequence).expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+        let graph = engine
+            .build_construct_reasoning_graph("construct_reasoning_lua_inspection", None, None)
+            .expect("build construct-reasoning graph");
+        let repeat_fact = graph
+            .facts
+            .iter()
+            .find(|fact| fact.fact_type == "repeat_architecture_context")
+            .expect("repeat architecture fact");
+        let protocol_action = graph
+            .inspection_actions
+            .iter()
+            .find(|action| {
+                action.mode == gentle_protocol::DotplotMode::SelfReverseComplement
+                    && action
+                        .source_fact_ids
+                        .iter()
+                        .any(|id| id == &repeat_fact.fact_id)
+            })
+            .cloned()
+            .expect("revcomp repeat inspection action");
+        let direct_action = graph
+            .inspection_actions
+            .iter()
+            .find(|action| {
+                action.mode == gentle_protocol::DotplotMode::SelfForward
+                    && action
+                        .source_fact_ids
+                        .iter()
+                        .any(|id| id == &repeat_fact.fact_id)
+            })
+            .cloned()
+            .expect("direct repeat inspection action");
+        assert_ne!(direct_action.action_id, protocol_action.action_id);
+        state = engine.state().clone();
+
+        let wrapper_list = LuaInterface::list_construct_reasoning_inspection_actions(
+            state.clone(),
+            graph.graph_id.clone(),
+            Some(repeat_fact.fact_id.clone()),
+            None,
+            None,
+        )
+        .expect("lua inspection-action list wrapper");
+        let mut shell_engine = GentleEngine::from_state(state.clone());
+        let shell_list = execute_shell_command(
+            &mut shell_engine,
+            &ShellCommand::ConstructReasoningListInspectionActions {
+                graph_id: graph.graph_id.clone(),
+                fact_id: Some(repeat_fact.fact_id.clone()),
+                annotation_id: None,
+                candidate_id: None,
+                evidence_id: None,
+                seq_id: None,
+                action_kind: None,
+                summary_id: None,
+            },
+        )
+        .expect("shell inspection-action list");
+        assert_eq!(wrapper_list, shell_list.output);
+        assert!(wrapper_list["actions"]
+            .as_array()
+            .is_some_and(|actions| actions
+                .iter()
+                .any(|row| row["action_id"].as_str() == Some(protocol_action.action_id.as_str()))));
+        assert!(wrapper_list["actions"].as_array().is_some_and(|actions| {
+            actions.iter().any(|row| {
+                row["action_id"].as_str() == Some(direct_action.action_id.as_str())
+                    && row["mode"].as_str()
+                        == Some(gentle_protocol::DotplotMode::SelfForward.as_str())
+            }) && actions.iter().any(|row| {
+                row["action_id"].as_str() == Some(protocol_action.action_id.as_str())
+                    && row["mode"].as_str()
+                        == Some(gentle_protocol::DotplotMode::SelfReverseComplement.as_str())
+            })
+        }));
+
+        let filtered = LuaInterface::list_construct_reasoning_inspection_actions(
+            state.clone(),
+            graph.graph_id.clone(),
+            Some("missing_fact".to_string()),
+            None,
+            None,
+        )
+        .expect("lua filtered inspection-action list");
+        assert_eq!(filtered["action_count"].as_u64(), Some(0));
+        assert!(LuaInterface::list_construct_reasoning_inspection_actions(
+            state.clone(),
+            "missing_graph".to_string(),
+            None,
+            None,
+            None,
+        )
+        .is_err());
+
+        let wrapper_run = LuaInterface::run_construct_reasoning_inspection_action(
+            state.clone(),
+            graph.graph_id.clone(),
+            protocol_action.action_id.clone(),
+            Some(4),
+            Some(1),
+            Some(0),
+            Some(128),
+            Some("lua_reasoning_action_plot".to_string()),
+            None,
+        )
+        .expect("lua inspection-action run wrapper");
+        assert!(wrapper_run.state_changed);
+        assert_eq!(
+            wrapper_run.output["schema"].as_str(),
+            Some("gentle.construct_reasoning_inspection_action_dotplot_run.v1")
+        );
+        assert_eq!(
+            wrapper_run.output["action"]["action_id"].as_str(),
+            Some(protocol_action.action_id.as_str())
+        );
+        assert_eq!(
+            wrapper_run.output["dotplot"]["dotplot_id"].as_str(),
+            Some("lua_reasoning_action_plot")
+        );
+        assert_eq!(
+            wrapper_run.output["compute_parameters"]["span_start_0based"],
+            wrapper_run.output["dotplot"]["span_start_0based"]
+        );
+        assert_eq!(
+            wrapper_run.output["compute_parameters"]["span_end_0based"],
+            wrapper_run.output["dotplot"]["span_end_0based"]
+        );
+        let stored = GentleEngine::from_state(wrapper_run.state.clone())
+            .list_dotplot_views(Some("construct_reasoning_lua_inspection"));
+        assert!(stored
+            .iter()
+            .any(|row| row.dotplot_id == "lua_reasoning_action_plot"));
+        assert!(LuaInterface::run_construct_reasoning_inspection_action(
+            state,
+            graph.graph_id,
+            "missing_action".to_string(),
+            Some(4),
+            Some(1),
+            Some(0),
+            Some(128),
+            Some("lua_missing_action_plot".to_string()),
+            None,
+        )
+        .is_err());
     }
 
     #[test]

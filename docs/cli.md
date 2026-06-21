@@ -624,10 +624,10 @@ Reference genome capability status:
 
 Construct-reasoning inspection capability status:
 
-- `gentle_cli`: supported via shared shell/direct commands (`construct-reasoning list-graphs`, `construct-reasoning show-graph`, `construct-reasoning set-annotation-status`, `construct-reasoning write-annotation`, `construct-reasoning export-graph`)
-- `gentle_js`: supported via dedicated shared-shell-backed helpers (`list_construct_reasoning_graphs`, `show_construct_reasoning_graph`, `set_construct_reasoning_annotation_status`, `write_back_construct_reasoning_annotation`)
-- `gentle_lua`: supported via dedicated shared-shell-backed helpers (`list_construct_reasoning_graphs`, `show_construct_reasoning_graph`, `set_construct_reasoning_annotation_status`, `write_back_construct_reasoning_annotation`)
-- `gentle_mcp`: supported via thin tool wrappers over the same shared shell contracts (`construct_reasoning_graphs`, `construct_reasoning_graph`, `construct_reasoning_set_annotation_status`, `construct_reasoning_write_annotation`)
+- `gentle_cli`: supported via shared shell/direct commands (`construct-reasoning list-graphs`, `construct-reasoning show-graph`, `construct-reasoning list-inspection-actions`, `construct-reasoning run-inspection-action`, `construct-reasoning set-annotation-status`, `construct-reasoning write-annotation`, `construct-reasoning export-graph`)
+- `gentle_js`: supported via dedicated shared-shell-backed helpers (`list_construct_reasoning_graphs`, `show_construct_reasoning_graph`, `list_construct_reasoning_inspection_actions`, `run_construct_reasoning_inspection_action`, `set_construct_reasoning_annotation_status`, `write_back_construct_reasoning_annotation`)
+- `gentle_lua`: supported via dedicated shared-shell-backed helpers (`list_construct_reasoning_graphs`, `show_construct_reasoning_graph`, `list_construct_reasoning_inspection_actions`, `run_construct_reasoning_inspection_action`, `set_construct_reasoning_annotation_status`, `write_back_construct_reasoning_annotation`)
+- `gentle_mcp`: supported via thin tool wrappers over the same shared shell contracts (`construct_reasoning_graphs`, `construct_reasoning_graph`, `construct_reasoning_inspection_actions`, `construct_reasoning_run_inspection_action`, `construct_reasoning_set_annotation_status`, `construct_reasoning_write_annotation`)
 
 Agent-assistant capability status:
 
@@ -1350,6 +1350,12 @@ Exit methods:
     - `seq_id` is optional and limits rows to one active sequence.
 19. `show_construct_reasoning_graph(state, graph_id)`
     - Returns one stored construct-reasoning graph plus the same compact summary block exposed by `construct-reasoning show-graph`.
+20. `list_construct_reasoning_inspection_actions(state, graph_id, options)`
+    - Lists portable recommended inspection actions for a construct-reasoning graph through `construct-reasoning list-inspection-actions`.
+    - `options.fact_id`, `options.annotation_id`, and `options.summary_id` are optional filters.
+20. `run_construct_reasoning_inspection_action(state, graph_id, action_id, options)`
+    - Runs a portable recommended inspection action through `construct-reasoning run-inspection-action` and returns the updated state plus shared-shell mutation output.
+    - Dotplot options include `word_size`, `step_bp`, `max_mismatches`, `tile_bp`, `dotplot_id`, and `render_svg_path`.
 20. `set_construct_reasoning_annotation_status(state, graph_id, annotation_id, status)`
     - Updates one stored annotation-candidate review status and returns the updated state plus shared-shell mutation output.
 21. `is_reference_genome_prepared(genome_id, catalog_path, cache_dir)`
@@ -1706,6 +1712,10 @@ Exit methods:
     - Lists stored construct-reasoning graphs plus compact shared-shell summary rows.
 19. `show_construct_reasoning_graph(project, graph_id)`
     - Returns one stored construct-reasoning graph plus the same compact summary block exposed by `construct-reasoning show-graph`.
+20. `list_construct_reasoning_inspection_actions(project, graph_id, [fact_id], [annotation_id], [summary_id])`
+    - Lists portable recommended inspection actions for a construct-reasoning graph through `construct-reasoning list-inspection-actions`.
+20. `run_construct_reasoning_inspection_action(project, graph_id, action_id, [word_size], [step_bp], [max_mismatches], [tile_bp], [dotplot_id], [render_svg_path])`
+    - Runs a portable recommended inspection action through `construct-reasoning run-inspection-action` and returns the updated project state plus shared-shell mutation output.
 20. `set_construct_reasoning_annotation_status(project, graph_id, annotation_id, status)`
     - Updates one stored annotation-candidate review status and returns the updated project state plus shared-shell mutation output.
 21. `is_reference_genome_prepared(genome_id, catalog_path, cache_dir)`
