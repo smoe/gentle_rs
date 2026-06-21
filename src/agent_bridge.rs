@@ -1654,14 +1654,15 @@ fn agent_stdout_excerpt(stdout: &str) -> String {
 
 fn normalize_native_agent_response_text(stdout: &str) -> String {
     let trimmed = stdout.trim();
-    let Ok(value) = serde_json::from_str::<Value>(trimmed) else {
+    let json_text = unwrap_markdown_json_code_fence(trimmed).unwrap_or(trimmed);
+    let Ok(value) = serde_json::from_str::<Value>(json_text) else {
         return stdout.to_string();
     };
     if let Some(chat_text) = extract_openai_chat_completions_text(&value) {
         return normalize_native_agent_response_text(&chat_text);
     }
     let Value::Object(mut obj) = value else {
-        return stdout.to_string();
+        return json_text.to_string();
     };
     let looks_like_agent_response = obj.contains_key("assistant_message")
         || obj.contains_key("questions")
@@ -1674,8 +1675,20 @@ fn normalize_native_agent_response_text(stdout: &str) -> String {
         );
         serde_json::to_string(&Value::Object(obj)).unwrap_or_else(|_| stdout.to_string())
     } else {
-        stdout.to_string()
+        json_text.to_string()
     }
+}
+
+fn unwrap_markdown_json_code_fence(text: &str) -> Option<&str> {
+    let fenced = text.strip_prefix("```")?;
+    let line_end = fenced.find('\n')?;
+    let info = fenced[..line_end].trim();
+    if !info.is_empty() && !info.eq_ignore_ascii_case("json") {
+        return None;
+    }
+    let body = fenced[line_end + 1..].trim_end();
+    let body = body.strip_suffix("```")?.trim();
+    if body.is_empty() { None } else { Some(body) }
 }
 
 fn parse_native_agent_response(stdout: &str) -> Result<AgentResponse, String> {
@@ -3070,6 +3083,40 @@ mod tests {
         .expect("native model schema-object payload should be repaired");
         assert_eq!(response.schema, AGENT_RESPONSE_SCHEMA);
         assert_eq!(response.assistant_message, "ready");
+    }
+
+    #[test]
+    fn parse_native_agent_response_accepts_fenced_json_payload() {
+        let response = parse_native_agent_response(
+            r#"```json
+{
+  "schema": "gentle.agent_response.v1",
+  "assistant_message": "ready",
+  "questions": [],
+  "suggested_commands": []
+}
+```"#,
+        )
+        .expect("native model fenced json payload should be unwrapped");
+        assert_eq!(response.schema, AGENT_RESPONSE_SCHEMA);
+        assert_eq!(response.assistant_message, "ready");
+    }
+
+    #[test]
+    fn parse_native_agent_response_rejects_prose_around_fenced_json() {
+        let err = parse_native_agent_response(
+            r#"Here is the JSON:
+```json
+{
+  "schema": "gentle.agent_response.v1",
+  "assistant_message": "ready",
+  "questions": [],
+  "suggested_commands": []
+}
+```"#,
+        )
+        .expect_err("native model prose around fenced json should stay rejected");
+        assert!(err.starts_with("AGENT_RESPONSE_PARSE:"));
     }
 
     #[test]

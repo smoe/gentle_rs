@@ -4182,8 +4182,11 @@ Agent response payload schema (`gentle.agent_response.v1`):
 Native HTTP transports parse stochastic LLM text after provider extraction. If
 that text is already a JSON object with `assistant_message`, `questions`, or
 `suggested_commands`, GENtle may repair a missing/non-string `schema` field to
-`gentle.agent_response.v1` before validation. `external_json_stdio` adapters
-remain strict and must emit the `schema` string themselves.
+`gentle.agent_response.v1` before validation. Native HTTP transports also
+unwrap a single top-level Markdown `json` code fence before validation, because
+local chat models often add that wrapper despite a JSON-only instruction.
+`external_json_stdio` adapters remain strict and must emit the `schema` string
+themselves.
 
 Agent command-scope declaration:
 

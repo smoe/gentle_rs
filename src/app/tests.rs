@@ -8975,6 +8975,43 @@ fn embedded_agent_assistant_renders_as_single_hosted_window_without_viewport_tit
 }
 
 #[test]
+fn embedded_agent_assistant_focus_does_not_emit_child_viewport_focus_commands() {
+    let ctx = egui::Context::default();
+    ctx.set_embed_viewports(true);
+    let mut app = GENtleApp::default();
+    app.show_agent_assistant_dialog = true;
+
+    ctx.begin_pass(egui::RawInput::default());
+    app.render_agent_assistant_dialog(&ctx);
+    app.focus_window_viewport(&ctx, GENtleApp::agent_assistant_viewport_id());
+    let output = ctx.end_pass();
+
+    let root_output = output
+        .viewport_output
+        .get(&egui::ViewportId::ROOT)
+        .expect("root viewport should receive focus commands for hosted embedded windows");
+    assert!(
+        root_output
+            .commands
+            .contains(&egui::ViewportCommand::Visible(true))
+    );
+    assert!(root_output.commands.contains(&egui::ViewportCommand::Focus));
+    assert!(
+        output
+            .viewport_output
+            .get(&GENtleApp::agent_assistant_viewport_id())
+            .map(|viewport| {
+                !viewport
+                    .commands
+                    .contains(&egui::ViewportCommand::Visible(true))
+                    && !viewport.commands.contains(&egui::ViewportCommand::Focus)
+            })
+            .unwrap_or(true),
+        "embedded Agent Assistant should not also request focus for a native child viewport"
+    );
+}
+
+#[test]
 fn agent_assistant_content_scrolls_on_small_viewport() {
     let ctx = egui::Context::default();
     let screen_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(640.0, 260.0));

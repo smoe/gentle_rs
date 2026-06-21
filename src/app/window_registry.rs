@@ -817,14 +817,17 @@ impl GENtleApp {
             self.show_genbank_dialog = true;
         }
 
-        if ctx.embed_viewports()
+        let focused_embedded_host = if ctx.embed_viewports()
             && let Some(layer_id) = self.embedded_window_layer_id_for_viewport(viewport_id)
         {
             ctx.move_to_top(layer_id);
             ctx.send_viewport_cmd_to(ViewportId::ROOT, egui::ViewportCommand::Visible(true));
             ctx.send_viewport_cmd_to(ViewportId::ROOT, egui::ViewportCommand::Focus);
-        }
-        if !embedded_auxiliary_focus {
+            true
+        } else {
+            false
+        };
+        if !embedded_auxiliary_focus && !focused_embedded_host {
             ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Visible(true));
             ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Focus);
         }

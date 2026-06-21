@@ -4,7 +4,7 @@
 > Status: `manual/reference`
 > Audience: users operating GENtle through the in-app Agent Assistant, CLI/shared shell, MCP, or external coding agents.
 
-Last updated: 2026-05-18
+Last updated: 2026-06-21
 
 This tutorial explains how to let an AI assistant help with GENtle without
 giving up reproducibility. The most important idea is simple:
@@ -201,6 +201,57 @@ expects a `gentle.agent_response.v1` reply:
 Important: `suggested_commands[].command` contains GENtle shared-shell
 commands, not operating-system shell commands. GENtle runs them internally after
 you review them.
+
+### Starting from an empty project
+
+An empty project is a good first test because it removes project-state
+ambiguity. The assistant should not pretend that sequences already exist.
+
+Use this order:
+
+1. Open `File -> Agent Assistant...`.
+2. Select the agent system.
+3. For local OpenAI-compatible services such as Ollama, Jan, or Msty, set the
+   base URL, click `Discover Models`, and choose a concrete model.
+4. Click `Test Setup`.
+5. Keep `Project summary` / `Include state summary` unchecked for the first
+   request. There is no useful project context yet, and smaller local models
+   tend to follow shorter prompts more reliably.
+6. Send a format probe:
+
+```text
+Introduce yourself briefly as GENtle's internal Agent Assistant.
+
+Return strict gentle.agent_response.v1 JSON only.
+Suggest 2-3 valid GENtle shared-shell commands only.
+Do not invent slash commands.
+```
+
+Passing this probe means GENtle parsed the response and the suggested-command
+rows are valid GENtle commands. Good first suggestions include
+`state-summary`, `capabilities`, or `/help`.
+
+If the status says `AGENT_RESPONSE_PARSE`, the model did not return a
+machine-readable response. Native HTTP local-model adapters accept a single
+top-level Markdown `json` code fence, but they still reject free prose around
+the JSON. If GENtle parses the response but marks a suggested row as
+`Invalid GENtle command`, the model invented or misspelled a command; do not
+run it.
+
+Once the format probe passes, ask for the real empty-project task with explicit
+network confirmation:
+
+```text
+I want to retrieve the human FUS gene with isoform annotations from a public
+database and present it in GENtle's DNA sequence viewer.
+
+Suggest only valid GENtle shared-shell commands.
+Ask before any network/database retrieval.
+```
+
+At this point a good answer should propose a discovery/import command path. It
+should not refer to an existing project sequence ID until one has actually been
+created.
 
 ## 5) First internal test: offline demo
 

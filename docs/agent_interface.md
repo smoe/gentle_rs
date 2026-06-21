@@ -1,6 +1,6 @@
 # GENtle Agent Interface
 
-Last updated: 2026-04-28
+Last updated: 2026-06-21
 
 This guide explains how agents can control GENtle and how the available
 interfaces differ.
@@ -31,6 +31,57 @@ Plain-language note used in this file:
 
 - "fixed format" means a command/tool with defined inputs and predictable
   outputs (usually JSON).
+
+## First run from an empty project
+
+When GENtle opens with an empty project, the inner Agent Assistant should be
+treated as a command-suggestion layer, not as a database client that already
+knows the current project. Start with a small, observable loop:
+
+1. Open `File -> Agent Assistant...`.
+2. Choose the provider profile (`Local Model`, `Codex Local`, OpenAI, Claude,
+   Mistral, or another catalog entry).
+3. For local OpenAI-compatible services such as Ollama, Jan, or Msty, set the
+   base URL and click `Discover Models`; then pick one concrete discovered
+   model.
+4. Click `Test Setup`. This checks endpoint/model reachability without sending
+   a generation request.
+5. Leave `Project summary` / `Include state summary` unchecked for the first
+   prompt. In an empty project there is no useful project context to send, and
+   small local models often behave better with the shortest possible request.
+6. Ask a response-format probe before asking biology:
+
+```text
+Introduce yourself briefly as GENtle's internal Agent Assistant.
+
+Return strict gentle.agent_response.v1 JSON only.
+Suggest 2-3 valid GENtle shared-shell commands only.
+Do not invent slash commands.
+```
+
+The first pass is successful only when GENtle parses the reply and every shown
+suggestion is a valid GENtle command. Good first suggestions include
+`state-summary`, `capabilities`, or `/help`. If the status reports
+`AGENT_RESPONSE_PARSE`, the provider answered in a form GENtle could not parse.
+Native HTTP transports tolerate a single top-level Markdown `json` code fence,
+but they still reject prose wrapped around the JSON.
+
+After the format probe passes, ask for the real task while keeping execution
+reviewed:
+
+```text
+I want to retrieve the human FUS gene with isoform annotations from a public
+database and present it in GENtle's DNA sequence viewer.
+
+Suggest only valid GENtle shared-shell commands.
+Ask before any network/database retrieval.
+```
+
+For an empty project, expect the model to suggest a discovery/import path, not
+to refer to an existing `seq_id`. Network/database actions should remain
+explicitly confirmation-gated. If a model suggests an invalid command, treat
+that as a model output problem; GENtle should mark the row as invalid and avoid
+running it.
 
 ## Agent-facing routes
 
@@ -506,7 +557,7 @@ Entry points:
 
 - CLI/shared shell: `agents list`, `agents ask`, `agents preflight`,
   `agents preflight --live`, `agents discover-models`
-- GUI: `Tools -> Agent Assistant...`
+- GUI: `File -> Agent Assistant...`
 
 What it is good for:
 
