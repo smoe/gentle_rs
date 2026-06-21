@@ -985,7 +985,7 @@
             "gui-shell"
          ],
          "path": "genbank fetch",
-         "summary": "Fetch one GenBank accession via NCBI EFetch and import it as a sequence.",
+         "summary": "Fetch one NCBI GenBank nucleotide accession (for example NM_, NC_, NG_, or other nucleotide accession records) via EFetch and import it as a sequence; --as-id names the local GENtle sequence id.",
          "usage": "genbank fetch ACCESSION [--as-id ID]"
       },
       {
@@ -998,7 +998,7 @@
             "gui-shell"
          ],
          "path": "dbsnp fetch",
-         "summary": "Resolve one dbSNP rsID and extract an annotated genomic region from a prepared genome.",
+         "summary": "Resolve one dbSNP rsID (for example rs9923231) and extract an annotated flanking genomic region from the prepared GENOME_ID reference; --output-id names the local GENtle sequence id.",
          "usage": "dbsnp fetch RS_ID GENOME_ID [--flank-bp N] [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--catalog PATH] [--cache-dir PATH]"
       },
       {
@@ -1069,7 +1069,7 @@
             "gui-shell"
          ],
          "path": "uniprot fetch",
-         "summary": "Fetch one UniProt SWISS-PROT text entry by accession or ID.",
+         "summary": "Fetch one UniProtKB/Swiss-Prot text entry by UniProt accession or entry name (for example P04637 or P53_HUMAN); --entry-id names the local GENtle metadata entry.",
          "usage": "uniprot fetch QUERY [--entry-id ID]"
       },
       {
@@ -1316,7 +1316,7 @@
             "cli-direct"
          ],
          "path": "ensembl-gene fetch",
-         "summary": "Fetch one Ensembl gene entry from Ensembl REST into project metadata.",
+         "summary": "Fetch one Ensembl gene lookup record from Ensembl REST by HGNC-approved gene symbol or stable Ensembl gene id (for example FUS or ENSG00000089280); --species should be an Ensembl species name such as homo_sapiens; --entry-id names the local GENtle metadata entry. HGNC:n identifiers are nomenclature ids and may need resolution before use.",
          "usage": "ensembl-gene fetch QUERY [--species NAME] [--entry-id ID]"
       },
       {
@@ -1370,7 +1370,7 @@
             "cli-direct"
          ],
          "path": "ensembl-region fetch",
-         "summary": "Fetch one live Ensembl genomic region/ROI directly as an anchored DNA sequence.",
+         "summary": "Fetch one live Ensembl genomic region directly as an anchored DNA sequence; SPECIES is an Ensembl species name such as homo_sapiens, CHR/START/END are assembly coordinates, and --output-id names the local GENtle sequence id.",
          "usage": "ensembl-region fetch SPECIES CHR START END [--strand +|-] [--output-id ID] [--coord-system-version VERSION]"
       },
       {
@@ -1384,7 +1384,7 @@
             "cli-direct"
          ],
          "path": "ensembl-protein fetch",
-         "summary": "Fetch one Ensembl protein/transcript-backed protein entry from Ensembl REST.",
+         "summary": "Fetch one Ensembl protein or translation lookup record from Ensembl REST by Ensembl protein/transcript stable id or accepted lookup query; --entry-id names the local GENtle metadata entry.",
          "usage": "ensembl-protein fetch QUERY [--entry-id ID]"
       },
       {

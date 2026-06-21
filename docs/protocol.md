@@ -2895,21 +2895,37 @@ Sequencing-trace evidence notes:
 - `ImportIsoformPanel { seq_id, panel_path, panel_id?, strict }`
 - `ImportUniprotSwissProt { path, entry_id? }`
 - `FetchUniprotSwissProt { query, entry_id? }`
+  - `query` is a UniProtKB/Swiss-Prot accession or entry name, for example
+    `P04637` or `P53_HUMAN`; `entry_id` is the local GENtle metadata key used
+    to store the fetched entry.
 - `ImportUniprotEntrySequence { entry_id, output_id? }`
   - imports one first-class protein sequence plus projected UniProt feature
     annotations into regular project sequence state.
 - `FetchEnsemblProtein { query, entry_id? }`
   - fetches one Ensembl transcript/protein-backed protein entry from Ensembl
     REST and persists it in `gentle.ensembl_protein_entries.v1`.
+  - `query` is an Ensembl protein/translation stable id or accepted Ensembl
+    lookup query; it is not a UniProt accession. `entry_id` is the local GENtle
+    metadata key used to store the fetched entry.
 - `ImportEnsemblProteinSequence { entry_id, output_id? }`
   - imports one stored Ensembl protein entry as a first-class protein sequence
     with imported Ensembl protein-feature annotations.
 - `FetchEnsemblGene { query, species?, entry_id? }`
   - fetches one Ensembl gene entry from Ensembl REST and persists it in
     `gentle.ensembl_gene_entries.v1`.
+  - for human genes, `query` may be an HGNC-approved symbol such as `FUS` or
+    `TP53`, or a stable Ensembl gene id such as `ENSG00000089280`; `species`
+    should use Ensembl species names such as `homo_sapiens`; `entry_id` is the
+    local GENtle metadata key used to store the fetched entry.
+  - HGNC IDs such as `HGNC:11998` are nomenclature-record identifiers, not
+    Ensembl, GenBank, or UniProt accessions; resolve them to an approved symbol
+    or linked external accession before calling a database-specific fetch.
 - `FetchEnsemblRegion { species, chromosome, start_1based, end_1based, strand?, output_id?, coord_system_version? }`
   - fetches one arbitrary Ensembl REST genomic region/ROI directly as a
     first-class DNA sequence without requiring a prepared local reference.
+  - `species` is an Ensembl species name such as `homo_sapiens`; `chromosome`,
+    `start_1based`, and `end_1based` are assembly coordinates for that species;
+    `output_id` names the local GENtle sequence created from the fetched slice.
   - `strand` defaults to `+`; `-` requests the reverse-strand sequence from
     Ensembl and records `anchor_strand = "-"` in genome-extraction provenance.
   - the imported sequence gets a top-level `source` feature with organism,
@@ -2930,7 +2946,12 @@ Sequencing-trace evidence notes:
     sequence coordinates so same-strand transcript/CDS features derive proteins
     without an extra reverse-complement step.
 - `FetchGenBankAccession { accession, as_id? }`
+  - `accession` is an NCBI GenBank nucleotide accession; `as_id` names the local
+    GENtle sequence created from the fetched record.
 - `FetchDbSnpRegion { rs_id, genome_id, flank_bp?, output_id?, annotation_scope?, max_annotation_features?, catalog_path?, cache_dir? }`
+  - `rs_id` is a dbSNP identifier such as `rs9923231`; `genome_id` is a
+    prepared GENtle genome catalog id; `output_id` names the local sequence
+    extracted around that variant.
 - `DeriveTranscriptSequences { seq_id, feature_ids[], scope?, output_prefix? }`
 - `PlanExonSkippedIsoform { seq_id, transcript_feature_id, criteria[], plan_id? }`
 - `MaterializeExonSkippedIsoform { plan_id, selected_candidate_ids[], output_prefix? }`
@@ -3184,6 +3205,9 @@ external coding agent runtime, see:
   - `panels validate-isoform PANEL_PATH [--panel-id ID]`
 - shared-shell UniProt routes:
   - `uniprot fetch QUERY [--entry-id ID]`
+    - `QUERY` is a UniProtKB/Swiss-Prot accession or entry name, for example
+      `P04637` or `P53_HUMAN`; `--entry-id` names the local GENtle metadata
+      entry.
   - `uniprot import-swissprot PATH [--entry-id ID]`
   - `uniprot list`
   - `uniprot show ENTRY_ID`
@@ -3201,6 +3225,9 @@ external coding agent runtime, see:
   - `uniprot audit-parity-list|show|export ...`
 - shared-shell Ensembl protein routes:
   - `ensembl-protein fetch QUERY [--entry-id ID]`
+    - `QUERY` is an Ensembl protein/translation stable id or accepted Ensembl
+      lookup query; `--entry-id` names the local GENtle metadata entry. This is
+      not the same identifier space as UniProt accessions.
   - `ensembl-protein list`
   - `ensembl-protein show ENTRY_ID`
   - `ensembl-protein import-sequence ENTRY_ID [--output-id ID]`
@@ -3226,11 +3253,21 @@ external coding agent runtime, see:
       unless the shell caller passes `--predict-only`
 - shared-shell Ensembl gene routes:
   - `ensembl-gene fetch QUERY [--species NAME] [--entry-id ID]`
+    - `QUERY` is an approved gene symbol for the requested species (for human,
+      an HGNC-approved symbol such as `FUS` or `TP53`) or a stable Ensembl gene
+      id; `--entry-id` names the local GENtle metadata entry.
+    - HGNC IDs such as `HGNC:11998` are stable nomenclature-record identifiers,
+      not GenBank, UniProt, or Ensembl accessions. Resolve them to an approved
+      symbol or linked database accession before using a database-specific fetch
+      route.
   - `ensembl-gene list`
   - `ensembl-gene show ENTRY_ID`
   - `ensembl-gene import-sequence ENTRY_ID [--output-id ID]`
 - shared-shell Ensembl region route:
   - `ensembl-region fetch SPECIES CHR START END [--strand +|-] [--output-id ID] [--coord-system-version VERSION]`
+    - `SPECIES` is an Ensembl species name such as `homo_sapiens`; `CHR`,
+      `START`, and `END` are assembly coordinates; `--output-id` names the
+      local GENtle sequence created from the fetched interval.
   - equivalent compact form:
     `ensembl-region fetch SPECIES CHR:START..END[:STRAND] [--output-id ID]`
 - shared-shell inline sequence creation route:
@@ -3343,8 +3380,13 @@ external coding agent runtime, see:
     position; reverse-strand transcript exon 1 is the transcript 5' exon
 - shared-shell GenBank route:
   - `genbank fetch ACCESSION [--as-id ID]`
+    - `ACCESSION` is an NCBI GenBank nucleotide accession; `--as-id` names the
+      local GENtle sequence id created from the fetched record.
 - shared-shell dbSNP route:
   - `dbsnp fetch RS_ID GENOME_ID [--flank-bp N] [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--catalog PATH] [--cache-dir PATH]`
+    - `RS_ID` is a dbSNP identifier such as `rs9923231`; `GENOME_ID` is a
+      prepared GENtle genome catalog id; `--output-id` names the local sequence
+      extracted around the variant.
 - shared-shell protocol-cartoon routes:
   - `protocol-cartoon list`
   - `protocol-cartoon render-svg PROTOCOL_ID OUTPUT.svg`
@@ -4232,13 +4274,27 @@ Agent command-scope declaration:
 - Accepted explicit sequence/fetch aliases:
   - `/paste sequence --sequence-text DNA [--id ID]`
   - `/fetch genbank ACCESSION [--id ID]`
+    - `ACCESSION` is an NCBI GenBank nucleotide accession; `--id` names the
+      local GENtle sequence id.
   - `/fetch ncbi ACCESSION [--id ID]` (synonym for GenBank accession fetch)
   - `/fetch uniprot QUERY [--id ID]`
+    - `QUERY` is a UniProtKB/Swiss-Prot accession or entry name; `--id` names
+      the local GENtle metadata entry.
   - `/fetch ensembl QUERY [--species NAME] [--id ID]`
   - `/fetch ensembl-gene QUERY [--species NAME] [--id ID]`
+    - `QUERY` is an approved gene symbol for the requested species or a stable
+      Ensembl gene id; for human symbols this means HGNC-approved symbols such
+      as `FUS` or `TP53`, while HGNC IDs such as `HGNC:11998` need resolution
+      before database-specific fetching.
   - `/fetch ensembl-protein QUERY [--id ID]`
+    - `QUERY` is an Ensembl protein/translation stable id or accepted Ensembl
+      lookup query, not a UniProt accession.
   - `/fetch ensembl-region SPECIES CHR START END [--strand +|-] [--id ID]`
+    - `SPECIES` is an Ensembl species name such as `homo_sapiens`; coordinates
+      are assembly positions; `--id` names the local GENtle sequence id.
   - `/fetch dbsnp RS_ID GENOME_ID [--id ID]`
+    - `RS_ID` is a dbSNP identifier and `GENOME_ID` is a prepared GENtle genome
+      catalog id.
 - External fetch aliases are tagged as `CapabilityMutation::External` and
   should require explicit confirmation/network opt-in on agent surfaces.
 - Unknown slash commands return a typed

@@ -3,6 +3,41 @@
   "description": "Compact domain bootstrap terms for AI assistants used with GENtle.",
   "terms": [
     {
+      "term": "HUGO Gene Nomenclature Committee",
+      "definition": "The HGNC is the authority for approved human gene nomenclature. It assigns approved human gene symbols, approved gene names, and stable HGNC IDs.",
+      "synonyms": ["HGNC", "HUGO", "HUGO Gene Nomenclature Committee", "genenames.org"],
+      "not_confused_with": ["Ensembl", "GenBank", "UniProt", "local GENtle sequence id"],
+      "prompt_hint": "Treat HGNC symbols such as TP53 or FUS as approved human gene symbols, but treat HGNC IDs such as HGNC:11998 as nomenclature-record identifiers that may need resolution before using Ensembl, GenBank, or UniProt fetch commands."
+    },
+    {
+      "term": "HGNC ID",
+      "definition": "Stable identifier assigned by the HUGO Gene Nomenclature Committee to one approved human gene-symbol record. The format is HGNC:n, for example HGNC:11998.",
+      "synonyms": ["HUGO gene id", "HGNC accession"],
+      "not_confused_with": ["Ensembl gene id", "NCBI GeneID", "GenBank accession", "UniProt accession"],
+      "prompt_hint": "Do not pass an HGNC ID directly to GenBank or UniProt fetch routes. If a user provides an HGNC ID, first resolve it to an approved symbol or linked external accession before suggesting a database-specific GENtle fetch command."
+    },
+    {
+      "term": "GenBank",
+      "definition": "NCBI nucleotide sequence archive and flat-file record format used for accessions such as NM_, NC_, NG_, or other GenBank nucleotide records.",
+      "synonyms": ["NCBI GenBank", "GenBank accession"],
+      "not_confused_with": ["local GENtle sequence id", "Ensembl stable id", "UniProt accession"],
+      "prompt_hint": "For GENtle `genbank fetch ACCESSION`, ask for an exact NCBI nucleotide accession; `--as-id` or slash-alias `--id` names the local GENtle sequence created from that record."
+    },
+    {
+      "term": "Ensembl",
+      "definition": "Genome annotation resource with species-specific REST endpoints and stable identifiers for genes, transcripts, proteins/translations, and genomic regions.",
+      "synonyms": ["Ensembl REST", "Ensembl gene", "Ensembl protein"],
+      "not_confused_with": ["GenBank accession", "UniProtKB accession", "local GENtle sequence id"],
+      "prompt_hint": "Use species names such as homo_sapiens. For `ensembl-gene fetch`, QUERY can be a gene symbol or stable Ensembl gene id; `--entry-id` names the local GENtle metadata entry."
+    },
+    {
+      "term": "UniProt",
+      "definition": "Protein knowledgebase; GENtle fetches Swiss-Prot text entries for protein evidence and projection workflows.",
+      "synonyms": ["UniProtKB", "Swiss-Prot"],
+      "not_confused_with": ["Ensembl protein", "GenBank nucleotide accession", "local GENtle sequence id"],
+      "prompt_hint": "For GENtle `uniprot fetch QUERY`, use a UniProt accession or entry name such as P04637 or P53_HUMAN; `--entry-id` names the local GENtle metadata entry."
+    },
+    {
       "term": "vector",
       "definition": "Carrier DNA backbone used to host an insert.",
       "synonyms": ["backbone", "plasmid vector"],
@@ -29,6 +64,27 @@
       "synonyms": ["locus"],
       "not_confused_with": ["transcript", "CDS"],
       "prompt_hint": "If transcript ambiguity exists, ask user to disambiguate."
+    },
+    {
+      "term": "non-coding RNA",
+      "definition": "RNA gene or transcript whose functional product is RNA rather than a translated protein.",
+      "synonyms": ["ncRNA", "noncoding RNA"],
+      "not_confused_with": ["CDS", "protein-coding transcript", "protein isoform"],
+      "prompt_hint": "Do not assume a CDS or protein product. For cloning or expression planning, ask whether the user wants the RNA locus, mature RNA, precursor RNA, promoter, or assay target."
+    },
+    {
+      "term": "microRNA",
+      "definition": "Short regulatory non-coding RNA, commonly represented as a precursor hairpin and one or more mature miRNA products.",
+      "synonyms": ["miRNA", "mature miRNA", "pre-miRNA"],
+      "not_confused_with": ["mRNA", "siRNA", "protein-coding gene"],
+      "prompt_hint": "Clarify whether the user means the MIR gene locus, precursor hairpin, or mature miRNA sequence before suggesting extraction, cloning, or target-site commands."
+    },
+    {
+      "term": "long non-coding RNA",
+      "definition": "Long non-coding RNA transcript, often at least 200 nucleotides, with no intended protein-coding product.",
+      "synonyms": ["lncRNA", "lincRNA", "long intergenic non-coding RNA"],
+      "not_confused_with": ["protein-coding transcript", "CDS", "mRNA isoform"],
+      "prompt_hint": "For lncRNA/lincRNA requests, avoid protein-gel or CDS assumptions unless explicit coding evidence is provided; ask for transcript/locus/promoter intent."
     },
     {
       "term": "promoter",

@@ -1036,6 +1036,9 @@ UniProt mapping capability status:
 
 - shared shell (`gentle_cli shell`, GUI shell): supported via `uniprot ...` commands
   - `uniprot fetch QUERY [--entry-id ID]`
+    - `QUERY` is a UniProtKB/Swiss-Prot accession or entry name, for example
+      `P04637` or `P53_HUMAN`; `--entry-id` names the stored GENtle metadata
+      entry and is not the UniProt accession unless you deliberately reuse it.
   - `uniprot import-swissprot PATH [--entry-id ID]`
   - `uniprot list` / `uniprot show ENTRY_ID`
   - `uniprot map ENTRY_ID SEQ_ID [--projection-id ID] [--transcript ID]`
@@ -1083,8 +1086,13 @@ UniProt mapping capability status:
     protein rail so dense labels stay readable
 - shared shell (`gentle_cli shell`, GUI shell): GenBank accession import
   - `genbank fetch ACCESSION [--as-id ID]`
+    - `ACCESSION` is an NCBI GenBank nucleotide accession; `--as-id` names the
+      local GENtle sequence id created from the fetched record.
 - shared shell (`gentle_cli shell`, GUI shell): dbSNP-guided annotated region extraction
   - `dbsnp fetch RS_ID GENOME_ID [--flank-bp N] [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--catalog PATH] [--cache-dir PATH]`
+    - `RS_ID` is a dbSNP identifier such as `rs9923231`; `GENOME_ID` is a
+      prepared GENtle genome catalog id, and `--output-id` names the local
+      sequence extracted around that variant.
 - engine operations behind those commands:
   - `FetchUniprotSwissProt`, `ImportUniprotSwissProt`, `ProjectUniprotToGenome`,
     `FetchGenBankAccession`, `FetchDbSnpRegion`
@@ -3017,6 +3025,13 @@ Isoform architecture panel workflow:
       derivation as the authoritative product model
   - direct Ensembl gene metadata routes:
     - `ensembl-gene fetch QUERY [--species NAME] [--entry-id ID]`
+      - `QUERY` is an HGNC-approved human gene symbol such as `FUS` or `TP53`
+        when `--species homo_sapiens` is used, or a stable Ensembl gene id such
+        as `ENSG00000089280`; `--entry-id` names the stored GENtle metadata
+        entry.
+      - An HGNC ID such as `HGNC:11998` identifies an HGNC nomenclature record,
+        not a GenBank, UniProt, or Ensembl accession. Resolve it to an approved
+        symbol or linked database id before choosing a database-specific fetch.
     - `ensembl-gene list`
     - `ensembl-gene show ENTRY_ID`
     - `ensembl-gene import-sequence ENTRY_ID [--output-id ID]`
@@ -3041,6 +3056,10 @@ Isoform architecture panel workflow:
       preflight controls
   - direct Ensembl region/ROI route:
     - `ensembl-region fetch SPECIES CHR START END [--strand +|-] [--output-id ID] [--coord-system-version VERSION]`
+      - `SPECIES` is an Ensembl species name such as `homo_sapiens`; `CHR`,
+        `START`, and `END` are assembly coordinates for that Ensembl species
+        and coordinate-system version; `--output-id` names the local GENtle
+        sequence created from the fetched interval.
     - compact coordinates are accepted as
       `ensembl-region fetch SPECIES CHR:START..END[:STRAND]`
     - this imports the live REST sequence slice immediately as an anchored DNA
