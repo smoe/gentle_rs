@@ -2624,6 +2624,24 @@ fn render_routine_assistant_contents_texts(app: &mut GENtleApp) -> Vec<String> {
     texts
 }
 
+fn render_help_contents_texts(app: &mut GENtleApp) -> Vec<String> {
+    let ctx = egui::Context::default();
+    ctx.begin_pass(egui::RawInput::default());
+    crate::egui_compat::show_central_panel_for_test_context(
+        &ctx,
+        egui::CentralPanel::default(),
+        |ui| {
+            app.render_help_contents(ui);
+        },
+    );
+    let full_output = ctx.end_pass();
+    let mut texts = Vec::new();
+    for clipped in full_output.shapes {
+        collect_rendered_text_from_shape(&clipped.shape, &mut texts);
+    }
+    texts
+}
+
 #[test]
 fn open_routine_assistant_dialog_focuses_existing_window_without_resetting_state() {
     let mut app = GENtleApp::default();
@@ -4734,6 +4752,23 @@ fn rendered_help_markdown_cache_reuses_entry_until_source_changes() {
         GENtleApp::help_display_markdown(app.help_gui_markdown.as_str())
     );
     assert!(!std::sync::Arc::ptr_eq(&first, &third));
+}
+
+#[test]
+fn agent_interface_help_renders_without_commonmark_scroll_panic() {
+    let mut app = GENtleApp::default();
+    app.help_doc = HelpDoc::AgentInterface;
+    app.help_selectable_text_mode = false;
+
+    let texts = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        render_help_contents_texts(&mut app)
+    }))
+    .expect("agent interface help render should not panic");
+
+    assert!(
+        texts.iter().any(|text| text.contains("Agent Interface")),
+        "rendered help should include Agent Interface text: {texts:?}"
+    );
 }
 
 #[test]
@@ -10684,6 +10719,31 @@ fn request_agent_cancel_stops_waiting_and_logs_event() {
         })
         .count();
     assert_eq!(cancel_events_after_second_request, 1);
+}
+
+#[test]
+fn poll_agent_assistant_task_updates_phase_status() {
+    let mut app = GENtleApp::default();
+    let (tx, rx) = mpsc::channel::<AgentAskTaskMessage>();
+    app.agent_task = Some(AgentAskTask {
+        job_id: 45,
+        started: Instant::now(),
+        receiver: rx,
+    });
+    tx.send(AgentAskTaskMessage::Status {
+        job_id: 45,
+        message: "Contacting agent system 'local'".to_string(),
+    })
+    .expect("status message send");
+
+    app.poll_agent_assistant_task(&egui::Context::default());
+
+    assert!(app.agent_task.is_some());
+    assert!(
+        app.agent_status.contains("Contacting agent system 'local'"),
+        "status should reflect current phase: {}",
+        app.agent_status
+    );
 }
 
 #[test]

@@ -1824,6 +1824,10 @@ struct AgentAskTask {
 }
 
 enum AgentAskTaskMessage {
+    Status {
+        job_id: u64,
+        message: String,
+    },
     Done {
         job_id: u64,
         result: Result<AgentInvocationOutcome, String>,
@@ -22901,10 +22905,11 @@ Error: `{err}`"
                                 );
                             });
                     } else {
-                        ui.allocate_ui_with_layout(
-                            help_body_size,
-                            egui::Layout::top_down(egui::Align::Min),
-                            |ui| {
+                        egui::ScrollArea::vertical()
+                            .id_salt(scroll_source_id)
+                            .auto_shrink([false, false])
+                            .max_height(help_body_size.y)
+                            .show(ui, |ui| {
                                 scroll_input_policy::apply_scrollarea_keyboard_navigation(
                                     ui,
                                     scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
@@ -22912,14 +22917,12 @@ Error: `{err}`"
                                 let rendered_markdown = self.rendered_help_markdown_for(active_doc);
                                 CommonMarkViewer::new()
                                     .max_image_width(Some(max_image_width))
-                                    .show_scrollable(
-                                        scroll_source_id,
+                                    .show(
                                         ui,
                                         &mut self.help_markdown_cache,
                                         rendered_markdown.as_ref(),
                                     );
-                            },
-                        );
+                            });
                     }
                 },
             );

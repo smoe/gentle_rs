@@ -1627,10 +1627,29 @@ fn parse_agent_response(stdout: &str) -> Result<AgentResponse, String> {
     let value = serde_json::from_str::<Value>(trimmed).map_err(|e| {
         agent_err(
             AgentBridgeErrorCode::ResponseParse,
-            format!("agent stdout was not valid JSON: {e}"),
+            format!(
+                "agent stdout was not valid JSON: {e}; first output: {}",
+                agent_stdout_excerpt(trimmed)
+            ),
         )
     })?;
     parse_agent_response_value(value)
+}
+
+fn agent_stdout_excerpt(stdout: &str) -> String {
+    const MAX_EXCERPT_CHARS: usize = 240;
+    let mut excerpt = String::new();
+    let mut chars = stdout.chars();
+    for _ in 0..MAX_EXCERPT_CHARS {
+        let Some(ch) = chars.next() else {
+            return excerpt.replace('\n', "\\n");
+        };
+        excerpt.push(ch);
+    }
+    if chars.next().is_some() {
+        excerpt.push_str("...");
+    }
+    excerpt.replace('\n', "\\n")
 }
 
 fn normalize_native_agent_response_text(stdout: &str) -> String {
@@ -2975,6 +2994,7 @@ mod tests {
     fn parse_agent_response_rejects_plain_text() {
         let err = parse_agent_response("hello world").expect_err("plain text should fail");
         assert!(err.starts_with("AGENT_RESPONSE_PARSE:"));
+        assert!(err.contains("first output: hello world"));
     }
 
     #[test]

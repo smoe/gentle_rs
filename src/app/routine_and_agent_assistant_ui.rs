@@ -1023,23 +1023,20 @@ impl GENtleApp {
             }
         }
 
-        let state_summary = if self.agent_include_state_summary {
-            Some(self.engine.read().unwrap().summarize_state())
-        } else {
-            None
-        };
+        let include_state_summary = self.agent_include_state_summary;
+        let engine = self.engine.clone();
         let catalog_path = self.agent_catalog_path.trim().to_string();
         let job_id = self.alloc_background_job_id();
         let (tx, rx) = mpsc::channel::<AgentAskTaskMessage>();
         self.agent_status = if let Some(timeout) = timeout_seconds {
             format!(
-                "Asking agent '{}' in background (timeout={}s, retries={})",
+                "Starting agent '{}' in background (timeout={}s, retries={})",
                 system_id,
                 timeout,
                 max_retries.unwrap_or(2)
             )
         } else {
-            format!("Asking agent '{}' in background", system_id)
+            format!("Starting agent '{}' in background", system_id)
         };
         self.push_job_event(
             BackgroundJobKind::AgentAssist,
@@ -1053,6 +1050,19 @@ impl GENtleApp {
             receiver: rx,
         });
         std::thread::spawn(move || {
+            let state_summary = if include_state_summary {
+                let _ = tx.send(AgentAskTaskMessage::Status {
+                    job_id,
+                    message: "Building project summary for agent request".to_string(),
+                });
+                Some(engine.read().unwrap().summarize_state())
+            } else {
+                None
+            };
+            let _ = tx.send(AgentAskTaskMessage::Status {
+                job_id,
+                message: format!("Contacting agent system '{}'", system_id),
+            });
             let result = invoke_agent_support_with_env_overrides(
                 Some(catalog_path.as_str()),
                 &system_id,
@@ -1356,16 +1366,33 @@ impl GENtleApp {
         }
         ctx.request_repaint_after(Duration::from_millis(100));
         let mut done: Option<(u64, Result<AgentInvocationOutcome, String>)> = None;
+        let mut latest_status: Option<(String, f64)> = None;
         if let Some(task) = &self.agent_task {
-            match task.receiver.try_recv() {
-                Ok(AgentAskTaskMessage::Done { job_id, result }) => {
-                    done = Some((job_id, result));
-                }
-                Err(mpsc::TryRecvError::Empty) => {}
-                Err(mpsc::TryRecvError::Disconnected) => {
-                    done = Some((task.job_id, Err("Agent worker disconnected".to_string())));
+            loop {
+                match task.receiver.try_recv() {
+                    Ok(AgentAskTaskMessage::Status { job_id, message }) => {
+                        if job_id == task.job_id {
+                            latest_status = Some((message, task.started.elapsed().as_secs_f64()));
+                        }
+                    }
+                    Ok(AgentAskTaskMessage::Done { job_id, result }) => {
+                        if job_id == task.job_id {
+                            done = Some((job_id, result));
+                        }
+                        break;
+                    }
+                    Err(mpsc::TryRecvError::Empty) => break,
+                    Err(mpsc::TryRecvError::Disconnected) => {
+                        done = Some((task.job_id, Err("Agent worker disconnected".to_string())));
+                        break;
+                    }
                 }
             }
+        }
+        if let Some((message, elapsed)) = latest_status
+            && done.is_none()
+        {
+            self.agent_status = format!("{message} ({elapsed:.1}s)");
         }
         if let Some((job_id, outcome)) = done {
             let elapsed = self
