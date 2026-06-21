@@ -489,15 +489,19 @@ impl GENtleApp {
     pub(super) fn render_main_lineage(&mut self, ui: &mut Ui) {
         self.refresh_lineage_cache_if_needed();
 
-        ui.heading("Lineage Graph");
-        ui.label(format!("Project: {}", self.current_project_name()));
-        ui.label("Project-level sequence lineage (branch and merge aware)");
+        ui.heading(self.tr("lineage.heading"));
+        ui.label(format!(
+            "{}: {}",
+            self.tr("project.label"),
+            self.current_project_display_name()
+        ));
+        ui.label(self.tr("lineage.description"));
         if self.render_project_overview_strip(ui) {
             self.persist_lineage_graph_workspace_to_state();
         }
         ui.horizontal_wrapped(|ui| {
             let table = self.track_hover_status(
-                ui.selectable_label(!self.lineage_graph_view, "Table")
+                ui.selectable_label(!self.lineage_graph_view, self.tr("lineage.view.table"))
                     .on_hover_text("Show lineage as table"),
                 "Lineage > View Table",
             );
@@ -506,7 +510,7 @@ impl GENtleApp {
                 self.persist_lineage_graph_workspace_to_state();
             }
             let graph = self.track_hover_status(
-                ui.selectable_label(self.lineage_graph_view, "Graph")
+                ui.selectable_label(self.lineage_graph_view, self.tr("lineage.view.graph"))
                     .on_hover_text("Show lineage as node graph"),
                 "Lineage > View Graph",
             );
@@ -2720,16 +2724,16 @@ impl GENtleApp {
                         .min_col_width(72.0)
                         .spacing(egui::vec2(10.0, 6.0))
                         .show(ui, |ui| {
-                            ui.strong("Node");
-                            ui.strong("Sequence");
-                            ui.strong("Parents");
-                            ui.strong("Origin");
-                            ui.strong("Op");
-                            ui.strong("Length");
-                            ui.strong("Topology");
-                            ui.strong("Genome anchor");
-                            ui.strong("Pattern");
-                            ui.strong("Action");
+                            ui.strong(self.tr("lineage.table.node"));
+                            ui.strong(self.tr("lineage.table.sequence"));
+                            ui.strong(self.tr("lineage.table.parents"));
+                            ui.strong(self.tr("lineage.table.origin"));
+                            ui.strong(self.tr("lineage.table.op"));
+                            ui.strong(self.tr("lineage.table.length"));
+                            ui.strong(self.tr("lineage.table.topology"));
+                            ui.strong(self.tr("lineage.table.genome_anchor"));
+                            ui.strong(self.tr("lineage.table.pattern"));
+                            ui.strong(self.tr("lineage.table.action"));
                             ui.end_row();
                             for entry in &table_entries {
                                 let row = &entry.row;
@@ -3598,7 +3602,7 @@ impl GENtleApp {
             self.lineage_main_split_drag_start_y = None;
             persist_workspace_after_frame = true;
         }
-        ui.small("Drag split bar to resize graph/table and container sections");
+        ui.small(self.tr("lineage.split.resize_graph_containers"));
         let container_panel_width = ui.available_width().max(1.0);
         let subpanel_total_height = container_area_height.max(220.0);
         let (mut containers_panel_height, mut arrangements_panel_height, normalized_subsplit) =
@@ -3614,8 +3618,8 @@ impl GENtleApp {
             |ui| {
                 ui.set_min_width(container_panel_width);
                 ui.set_max_width(container_panel_width);
-                ui.heading("Containers");
-                ui.label("Container-level view of candidate sequence sets");
+                ui.heading(self.tr("lineage.containers.heading"));
+                ui.label(self.tr("lineage.containers.description"));
                 egui::ScrollArea::both()
                     .id_salt("lineage_container_grid_scroll")
                     .auto_shrink([false, false])
@@ -3628,12 +3632,12 @@ impl GENtleApp {
                         egui::Grid::new("container_grid")
                             .striped(true)
                             .show(ui, |ui| {
-                                ui.strong("Container");
-                                ui.strong("Kind");
-                                ui.strong("Contents");
-                                ui.strong("Members");
-                                ui.strong("Representative");
-                                ui.strong("Action");
+                                ui.strong(self.tr("lineage.containers.table.container"));
+                                ui.strong(self.tr("lineage.containers.table.kind"));
+                                ui.strong(self.tr("lineage.containers.table.contents"));
+                                ui.strong(self.tr("lineage.containers.table.members"));
+                                ui.strong(self.tr("lineage.containers.table.representative"));
+                                ui.strong(self.tr("lineage.containers.table.action"));
                                 ui.end_row();
                                 for c in &self.lineage_containers {
                                     ui.monospace(&c.container_id);
@@ -3672,7 +3676,7 @@ impl GENtleApp {
                                     ui.horizontal(|ui| {
                                         if c.member_count > 1 {
                                             if ui
-                                                .button("Open Pool")
+                                                .button(self.tr("lineage.action.open_pool"))
                                                 .on_hover_text("Open this container as a pool view")
                                                 .clicked()
                                             {
@@ -3683,7 +3687,7 @@ impl GENtleApp {
                                             }
                                         } else if !c.representative.is_empty() {
                                             if ui
-                                                .button("Open Seq")
+                                                .button(self.tr("lineage.action.open_seq"))
                                                 .on_hover_text(
                                                     "Open this representative sequence",
                                                 )
@@ -3696,7 +3700,7 @@ impl GENtleApp {
                                         }
                                         if c.member_count > 0
                                             && ui
-                                                .button("Gel SVG")
+                                                .button(self.tr("lineage.action.gel_svg"))
                                                 .on_hover_text(
                                                     "Export a serial gel lane for this container",
                                                 )
@@ -3786,7 +3790,7 @@ impl GENtleApp {
             self.lineage_container_arrangement_split_drag_start_y = None;
             persist_workspace_after_frame = true;
         }
-        ui.small("Drag split bar to resize containers and arrangements");
+        ui.small(self.tr("lineage.split.resize_containers_arrangements"));
 
         ui.allocate_ui_with_layout(
             egui::vec2(container_panel_width, arrangements_panel_height),
@@ -3794,10 +3798,10 @@ impl GENtleApp {
             |ui| {
                 ui.set_min_width(container_panel_width);
                 ui.set_max_width(container_panel_width);
-                ui.heading("Arrangements");
-                ui.label("Serial lane setups from one or more containers");
+                ui.heading(self.tr("lineage.arrangements.heading"));
+                ui.label(self.tr("lineage.arrangements.description"));
                 ui.horizontal(|ui| {
-                    ui.label("Label preset");
+                    ui.label(self.tr("lineage.arrangements.label_preset"));
                     egui::ComboBox::from_id_salt("arrangement_label_sheet_preset_combo")
                         .selected_text(Self::rack_label_sheet_preset_label(
                             self.rack_label_sheet_preset,
@@ -3820,7 +3824,7 @@ impl GENtleApp {
                     );
                 });
                 ui.horizontal(|ui| {
-                    ui.label("Carrier preset");
+                    ui.label(self.tr("lineage.arrangements.carrier_preset"));
                     egui::ComboBox::from_id_salt("arrangement_carrier_label_preset_combo")
                         .selected_text(Self::rack_carrier_label_preset_label(
                             self.rack_carrier_label_preset,
@@ -3852,20 +3856,20 @@ impl GENtleApp {
                             scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
                         );
                         if self.lineage_arrangements.is_empty() {
-                            ui.label("No arrangements recorded");
+                            ui.label(self.tr("lineage.arrangements.none"));
                         } else {
                             let arrangement_rows = self.lineage_arrangements.clone();
                             egui::Grid::new("arrangement_grid")
                                 .striped(true)
                                 .show(ui, |ui| {
-                                    ui.strong("Arrangement");
-                                    ui.strong("Mode");
-                                    ui.strong("Name");
-                                    ui.strong("Lanes");
-                                    ui.strong("Lane containers");
-                                    ui.strong("Ladders");
-                                    ui.strong("Rack");
-                                    ui.strong("Action");
+                                    ui.strong(self.tr("lineage.arrangements.table.arrangement"));
+                                    ui.strong(self.tr("lineage.arrangements.table.mode"));
+                                    ui.strong(self.tr("lineage.arrangements.table.name"));
+                                    ui.strong(self.tr("lineage.arrangements.table.lanes"));
+                                    ui.strong(self.tr("lineage.arrangements.table.lane_containers"));
+                                    ui.strong(self.tr("lineage.arrangements.table.ladders"));
+                                    ui.strong(self.tr("lineage.arrangements.table.rack"));
+                                    ui.strong(self.tr("lineage.arrangements.table.action"));
                                     ui.end_row();
                                     for arrangement in &arrangement_rows {
                                         ui.monospace(&arrangement.arrangement_id);
@@ -3894,7 +3898,7 @@ impl GENtleApp {
                                         );
                                         ui.horizontal(|ui| {
                                             if ui
-                                                .button("Preview Gel")
+                                                .button(self.tr("lineage.action.preview_gel"))
                                                 .on_hover_text(
                                                     "Open an in-app gel preview where left/right ladder choices update the visual result together",
                                                 )
@@ -3904,7 +3908,7 @@ impl GENtleApp {
                                                     Some(arrangement.arrangement_id.clone());
                                             }
                                             if ui
-                                                .button("Export Gel")
+                                                .button(self.tr("lineage.action.export_gel"))
                                                 .on_hover_text(
                                                     "Export one serial gel using this arrangement",
                                                 )
@@ -3928,7 +3932,7 @@ impl GENtleApp {
                                                 );
                                             }
                                             if ui
-                                                .button("Open Rack")
+                                                .button(self.tr("lineage.action.open_rack"))
                                                 .on_hover_text(
                                                     "Open the linked physical rack draft for this arrangement, creating the default one when needed",
                                                 )
@@ -3939,7 +3943,7 @@ impl GENtleApp {
                                                 );
                                             }
                                             if ui
-                                                .button("Preview Labels")
+                                                .button(self.tr("lineage.action.preview_labels"))
                                                 .on_hover_text(
                                                     "Open an in-app preview of the deterministic label sheet for this arrangement from its linked rack draft before exporting it",
                                                 )
@@ -3950,7 +3954,7 @@ impl GENtleApp {
                                                 );
                                             }
                                             if ui
-                                                .button("Carrier SVG")
+                                                .button(self.tr("lineage.action.carrier_svg"))
                                                 .on_hover_text(
                                                     "Export carrier-matched front-strip and module-label SVGs for this arrangement from its linked rack draft using the current physical template",
                                                 )
@@ -3962,7 +3966,7 @@ impl GENtleApp {
                                             }
                                             if !self.lineage_racks.is_empty()
                                                 && ui
-                                                    .button("Place on Existing Rack...")
+                                                    .button(self.tr("lineage.action.place_on_existing_rack"))
                                                     .on_hover_text(
                                                         "Append this arrangement as one contiguous block onto another saved rack",
                                                     )
