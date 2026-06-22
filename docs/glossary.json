@@ -1471,6 +1471,42 @@
             "gui-shell",
             "cli-direct"
          ],
+         "path": "resources import-gene-list-cache",
+         "summary": "Normalize a local TSV/CSV gene list into an offline direct gene-list cache for retrieval-backed gene-set producers.",
+         "usage": "resources import-gene-list-cache --input INPUT.tsv_or_csv --output CACHE.json --provider PROVIDER --version VERSION [--organism NAME|--taxon-id N|--namespace NAMESPACE] [--cache-id ID] [--cache-version VERSION] [--list-id ID] [--list-label LABEL]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "resources import-ontology-assignment-cache",
+         "summary": "Normalize local TSV/CSV ontology assignment rows into an offline ontology-assignment cache for retrieval-backed gene-set producers.",
+         "usage": "resources import-ontology-assignment-cache --input INPUT.tsv_or_csv --output CACHE.json --provider PROVIDER --version VERSION [--ontology-namespace GO] [--organism NAME|--taxon-id N|--symbol-namespace NAMESPACE] [--cache-id ID] [--cache-version VERSION]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "resources import-co-regulated-cache",
+         "summary": "Normalize local TSV/CSV scored gene rows into an offline co-regulated cohort cache for retrieval-backed gene-set producers.",
+         "usage": "resources import-co-regulated-cache --input INPUT.tsv_or_csv --output CACHE.json --provider PROVIDER --version VERSION [--dataset DATASET_ID] [--contrast LABEL] [--condition LABEL] [--normalization METHOD] [--score METHOD] [--organism NAME|--taxon-id N|--namespace NAMESPACE] [--cache-id ID] [--cache-version VERSION]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
          "path": "resources install-ucsc-rmsk",
          "summary": "Install a UCSC RepeatMasker rmsk resource snapshot and prepared interval index in one step.",
          "usage": "resources install-ucsc-rmsk [--assembly DB] [--input PATH_OR_URL] [--resource-output PATH] [--index-output PATH]"
@@ -1725,6 +1761,61 @@
          "path": "gene-sets promoter-cohort",
          "summary": "Build strand-aware promoter windows for a resolved gene set using the shared promoter/TSS resolver and default 1000 bp upstream / 200 bp downstream geometry.",
          "usage": "gene-sets promoter-cohort GENOME_ID [--resolution RESOLUTION.json|--group GROUP_ID|--members A,B|--go GO:NNNNNNN|--neighbors GENE --flank-genes N|--random-size N --seed N] [--relationship manual|co-regulated|anti-co-regulated] [--upstream-bp N] [--downstream-bp N] [--catalog PATH] [--genome-catalog PATH] [--output OUTPUT.json]"
+      },
+      {
+         "aliases": [
+            "gene_sets produce direct-list",
+            "genesets produce direct-list",
+            "gene-sets produce direct_list"
+         ],
+         "engine_operations": [
+            "ProduceGeneSetDirectList"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "gene-sets produce direct-list",
+         "summary": "Produce a gene-set resolution report from a local direct gene-list JSON/TSV cache, preserving provider/cache/query provenance before resolving members through the existing explicit-member resolver.",
+         "usage": "gene-sets produce direct-list --cache CACHE.json_or_tsv [--query LIST_ID] [--genome GENOME_ID] [--provider-id ID] [--provider-version VERSION] [--cache-version VERSION] [--organism NAME|--taxon-id N|--namespace NAMESPACE] [--filter FIELD=VALUE] [--output OUTPUT.json]"
+      },
+      {
+         "aliases": [
+            "gene_sets produce ontology-assignment",
+            "genesets produce ontology-assignment",
+            "gene-sets produce ontology_assignment"
+         ],
+         "engine_operations": [
+            "ProduceGeneSetOntologyAssignment"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "gene-sets produce ontology-assignment",
+         "summary": "Produce a gene-set resolution report from a local ontology assignment JSON/TSV cache, selecting members by term and evidence/filter metadata before resolving them through the existing explicit-member resolver.",
+         "usage": "gene-sets produce ontology-assignment --cache CACHE.json_or_tsv --term GO:NNNNNNN [--ontology-namespace GO] [--evidence-code CODE] [--genome GENOME_ID] [--provider-id ID] [--provider-version VERSION] [--cache-version VERSION] [--organism NAME|--taxon-id N|--namespace NAMESPACE] [--filter FIELD=VALUE] [--output OUTPUT.json]"
+      },
+      {
+         "aliases": [
+            "gene_sets produce co-regulated",
+            "genesets produce co-regulated",
+            "gene-sets produce co_regulated",
+            "gene-sets produce co-regulated-cohort"
+         ],
+         "engine_operations": [
+            "ProduceGeneSetCoRegulatedCohort"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "gene-sets produce co-regulated",
+         "summary": "Produce a gene-set resolution report from a local evidence-derived cohort cache, applying explicit dataset/contrast, score threshold, and direction rules while preserving a declared relationship expectation.",
+         "usage": "gene-sets produce co-regulated --cache CACHE.json_or_tsv --dataset DATASET_ID --contrast LABEL --score METHOD --threshold RULE --direction both|positive|negative [--relationship co-regulated|anti-co-regulated|manual] [--genome GENOME_ID] [--provider-id ID] [--provider-version VERSION] [--organism NAME|--taxon-id N|--namespace NAMESPACE] [--filter FIELD=VALUE] [--output OUTPUT.json]"
       },
       {
          "aliases": [

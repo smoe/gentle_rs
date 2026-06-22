@@ -1,7 +1,11 @@
 //! Lineage graph export and serialization utilities.
 
 use crate::{
-    engine::{GentleEngine, LineageMacroPortBinding, Operation, OperationRecord, ProjectState},
+    engine::{
+        GeneSetCutRunRegulatorySupportReport, GeneSetProducerKind, GeneSetPromoterCohortReport,
+        GeneSetRequest, GeneSetResolutionReport, GentleEngine, LineageMacroPortBinding, Operation,
+        OperationRecord, ProjectState,
+    },
     gibson_planning::GibsonAssemblyPlan,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -19,6 +23,7 @@ const BOTTOM_PADDING: f32 = 72.0;
 pub enum LineageSvgNodeKind {
     Sequence,
     Pool,
+    GeneSet,
     Arrangement,
     Macro,
     Analysis,
@@ -172,6 +177,30 @@ pub fn export_projected_lineage_svg(
                         .set("stroke-width", 1),
                 );
             }
+            LineageSvgNodeKind::GeneSet => {
+                let points = format!(
+                    "{},{} {},{} {},{} {},{} {},{} {},{}",
+                    x - 22.0,
+                    y - 16.0,
+                    x + 22.0,
+                    y - 16.0,
+                    x + 34.0,
+                    y,
+                    x + 22.0,
+                    y + 16.0,
+                    x - 22.0,
+                    y + 16.0,
+                    x - 34.0,
+                    y
+                );
+                doc = doc.add(
+                    Polygon::new()
+                        .set("points", points)
+                        .set("fill", "#477f8d")
+                        .set("stroke", "#315f6c")
+                        .set("stroke-width", 1),
+                );
+            }
             LineageSvgNodeKind::Arrangement => {
                 doc = doc.add(
                     Rectangle::new()
@@ -262,6 +291,7 @@ pub fn export_projected_lineage_svg(
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum EngineLineageRenderRowKind {
     Sequence,
+    GeneSet,
     Arrangement,
     Macro,
     Analysis,
@@ -291,6 +321,13 @@ struct EngineLineageRenderRow {
     analysis_variant_count: Option<usize>,
     macro_instance_id: Option<String>,
     macro_op_count: usize,
+    gene_set_artifact_id: Option<String>,
+    gene_set_producer_kind: Option<String>,
+    gene_set_resolved_member_count: Option<usize>,
+    gene_set_unresolved_member_count: Option<usize>,
+    gene_set_organism: Option<String>,
+    gene_set_taxon_id: Option<String>,
+    gene_set_symbol_namespace: Option<String>,
 }
 
 fn operation_variant_name(op: &Operation) -> String {
@@ -365,6 +402,151 @@ fn summarize_operation_for_lineage(op: &Operation) -> String {
             report_id.as_deref().unwrap_or("-"),
         ),
         _ => humanize_operation_variant_name(&operation_variant_name(op)),
+    }
+}
+
+fn gene_set_producer_kind_label(report: &GeneSetResolutionReport) -> String {
+    match report
+        .producer
+        .as_ref()
+        .map(|producer| producer.producer_kind)
+    {
+        Some(GeneSetProducerKind::DirectGeneList) => "direct_gene_list".to_string(),
+        Some(GeneSetProducerKind::OntologyAssignment) => "ontology_assignment".to_string(),
+        Some(GeneSetProducerKind::CoRegulatedCohort) => "co_regulated_cohort".to_string(),
+        None => report.request.source_kind_label().to_string(),
+    }
+}
+
+fn gene_set_request_display_label(request: &GeneSetRequest) -> String {
+    match request {
+        GeneSetRequest::CatalogGroup { query } => query.clone(),
+        GeneSetRequest::ExplicitMembers { members } => {
+            if members.is_empty() {
+                "Explicit gene set".to_string()
+            } else {
+                format!("Explicit gene set ({})", members.len())
+            }
+        }
+        GeneSetRequest::ExternalMapping { namespace, id } => format!("{namespace}:{id}"),
+        GeneSetRequest::GenomicNeighbors { anchor, .. } => format!("Neighbors of {anchor}"),
+        GeneSetRequest::Random { count, .. } => format!("Random gene set ({count})"),
+    }
+}
+
+fn gene_set_resolution_display_name(report: &GeneSetResolutionReport) -> String {
+    report
+        .query_metadata
+        .as_ref()
+        .and_then(|metadata| {
+            metadata
+                .query_label
+                .as_deref()
+                .filter(|value| !value.trim().is_empty())
+                .or_else(|| {
+                    metadata
+                        .query_id
+                        .as_deref()
+                        .filter(|value| !value.trim().is_empty())
+                })
+        })
+        .map(str::to_string)
+        .unwrap_or_else(|| gene_set_request_display_label(&report.request))
+}
+
+fn gene_set_resolution_node_id(report: &GeneSetResolutionReport) -> String {
+    format!(
+        "gene_set:{}",
+        GentleEngine::gene_set_resolution_artifact_id(report)
+    )
+}
+
+fn gene_set_promoter_cohort_node_id(report: &GeneSetPromoterCohortReport) -> String {
+    format!(
+        "analysis:gene_set_promoter:{}",
+        GentleEngine::gene_set_promoter_cohort_artifact_id(report)
+    )
+}
+
+fn gene_set_cutrun_support_node_id(report: &GeneSetCutRunRegulatorySupportReport) -> String {
+    format!(
+        "analysis:gene_set_cutrun:{}",
+        GentleEngine::gene_set_cutrun_support_artifact_id(report)
+    )
+}
+
+fn gene_set_resolution_render_row(report: &GeneSetResolutionReport) -> EngineLineageRenderRow {
+    let artifact_id = GentleEngine::gene_set_resolution_artifact_id(report);
+    EngineLineageRenderRow {
+        node_id: format!("gene_set:{artifact_id}"),
+        seq_id: artifact_id.clone(),
+        display_name: gene_set_resolution_display_name(report),
+        created_by_op: report.op_id.clone().unwrap_or_else(|| "-".to_string()),
+        created_at: report.generated_at_unix_ms,
+        kind: EngineLineageRenderRowKind::GeneSet,
+        length: 0,
+        circular: false,
+        pool_size: 0,
+        arrangement_id: None,
+        arrangement_mode: None,
+        lane_count: 0,
+        analysis_kind: None,
+        analysis_status: None,
+        analysis_reference_seq_id: None,
+        analysis_read_count: None,
+        analysis_trace_count: None,
+        analysis_target_count: None,
+        analysis_variant_count: None,
+        macro_instance_id: None,
+        macro_op_count: 0,
+        gene_set_artifact_id: Some(artifact_id),
+        gene_set_producer_kind: Some(gene_set_producer_kind_label(report)),
+        gene_set_resolved_member_count: Some(report.resolved_member_count),
+        gene_set_unresolved_member_count: Some(report.unresolved_member_count),
+        gene_set_organism: report.organism.clone(),
+        gene_set_taxon_id: report.taxon_id.clone(),
+        gene_set_symbol_namespace: report.symbol_namespace.clone(),
+    }
+}
+
+fn gene_set_analysis_render_row(
+    node_id: String,
+    display_name: String,
+    created_by_op: Option<String>,
+    created_at: u128,
+    analysis_kind: &str,
+    target_count: usize,
+    read_count: Option<usize>,
+) -> EngineLineageRenderRow {
+    EngineLineageRenderRow {
+        node_id: node_id.clone(),
+        seq_id: node_id,
+        display_name,
+        created_by_op: created_by_op.unwrap_or_else(|| "-".to_string()),
+        created_at,
+        kind: EngineLineageRenderRowKind::Analysis,
+        length: 0,
+        circular: false,
+        pool_size: 0,
+        arrangement_id: None,
+        arrangement_mode: None,
+        lane_count: 0,
+        analysis_kind: Some(analysis_kind.to_string()),
+        analysis_status: None,
+        analysis_reference_seq_id: None,
+        analysis_read_count: read_count,
+        analysis_trace_count: None,
+        analysis_target_count: Some(target_count),
+        analysis_variant_count: None,
+        macro_instance_id: None,
+        macro_op_count: 0,
+        gene_set_artifact_id: None,
+        gene_set_producer_kind: None,
+        gene_set_resolved_member_count: None,
+        gene_set_unresolved_member_count: None,
+        gene_set_organism: None,
+        gene_set_taxon_id: None,
+        gene_set_symbol_namespace: None,
     }
 }
 
@@ -761,6 +943,13 @@ fn project_lineage_operation_hubs(
             analysis_variant_count: None,
             macro_instance_id: None,
             macro_op_count: 0,
+            gene_set_artifact_id: None,
+            gene_set_producer_kind: None,
+            gene_set_resolved_member_count: None,
+            gene_set_unresolved_member_count: None,
+            gene_set_organism: None,
+            gene_set_taxon_id: None,
+            gene_set_symbol_namespace: None,
         });
 
         let inbound_op_id = format!("{op_id}::hub_in");
@@ -800,6 +989,7 @@ fn lineage_svg_node_kind(row: &EngineLineageRenderRow) -> LineageSvgNodeKind {
     match row.kind {
         EngineLineageRenderRowKind::Sequence if row.pool_size > 1 => LineageSvgNodeKind::Pool,
         EngineLineageRenderRowKind::Sequence => LineageSvgNodeKind::Sequence,
+        EngineLineageRenderRowKind::GeneSet => LineageSvgNodeKind::GeneSet,
         EngineLineageRenderRowKind::Arrangement => LineageSvgNodeKind::Arrangement,
         EngineLineageRenderRowKind::Macro => LineageSvgNodeKind::Macro,
         EngineLineageRenderRowKind::Analysis => LineageSvgNodeKind::Analysis,
@@ -811,6 +1001,11 @@ fn lineage_svg_node_title(row: &EngineLineageRenderRow) -> String {
     let display = row.display_name.trim();
     if !display.is_empty() {
         display.to_string()
+    } else if row.kind == EngineLineageRenderRowKind::GeneSet {
+        row.gene_set_artifact_id
+            .as_deref()
+            .unwrap_or(&row.seq_id)
+            .to_string()
     } else {
         row.seq_id.clone()
     }
@@ -828,6 +1023,23 @@ fn lineage_svg_node_subtitle(row: &EngineLineageRenderRow) -> String {
             let topology = if row.circular { "circular" } else { "linear" };
             format!("{} ({} bp, {topology})", row.seq_id, row.length)
         }
+        EngineLineageRenderRowKind::GeneSet => {
+            let producer = row.gene_set_producer_kind.as_deref().unwrap_or("-");
+            let taxon_or_organism = row
+                .gene_set_taxon_id
+                .as_deref()
+                .or(row.gene_set_organism.as_deref())
+                .unwrap_or("-");
+            let namespace = row.gene_set_symbol_namespace.as_deref().unwrap_or("-");
+            format!(
+                "members={} unresolved={} | producer={} | taxon={} | ns={}",
+                row.gene_set_resolved_member_count.unwrap_or(0),
+                row.gene_set_unresolved_member_count.unwrap_or(0),
+                producer,
+                taxon_or_organism,
+                namespace
+            )
+        }
         EngineLineageRenderRowKind::Arrangement => format!(
             "{} | {} | lanes={}",
             row.arrangement_id.as_deref().unwrap_or(&row.seq_id),
@@ -840,6 +1052,17 @@ fn lineage_svg_node_subtitle(row: &EngineLineageRenderRow) -> String {
             row.macro_op_count
         ),
         EngineLineageRenderRowKind::Analysis => match row.analysis_kind.as_deref() {
+            Some("gene_set_promoter_cohort") => {
+                format!(
+                    "gene-set promoters | windows={}",
+                    row.analysis_target_count.unwrap_or(0)
+                )
+            }
+            Some("gene_set_cutrun_regulatory_support") => format!(
+                "gene-set CUT&RUN | members={} | reads={}",
+                row.analysis_target_count.unwrap_or(0),
+                row.analysis_read_count.unwrap_or(0)
+            ),
             Some("sequencing_confirmation") => {
                 let baseline = row.analysis_reference_seq_id.as_deref().unwrap_or("-");
                 format!(
@@ -868,6 +1091,46 @@ pub fn build_lineage_svg_graph(
         String,
         (String, String, Option<String>),
     > = HashMap::new();
+    let mut gene_set_resolution_reports: BTreeMap<String, GeneSetResolutionReport> =
+        BTreeMap::new();
+    let mut gene_set_promoter_cohort_reports: BTreeMap<String, GeneSetPromoterCohortReport> =
+        BTreeMap::new();
+    let mut gene_set_cutrun_support_reports: BTreeMap<
+        String,
+        GeneSetCutRunRegulatorySupportReport,
+    > = BTreeMap::new();
+    for report in GentleEngine::gene_set_resolution_artifacts_from_state(state) {
+        gene_set_resolution_reports.insert(
+            GentleEngine::gene_set_resolution_artifact_id(&report),
+            report,
+        );
+    }
+    for report in GentleEngine::gene_set_promoter_cohort_artifacts_from_state(state) {
+        gene_set_resolution_reports.insert(
+            GentleEngine::gene_set_resolution_artifact_id(&report.gene_set_resolution),
+            report.gene_set_resolution.clone(),
+        );
+        gene_set_promoter_cohort_reports.insert(
+            GentleEngine::gene_set_promoter_cohort_artifact_id(&report),
+            report,
+        );
+    }
+    for report in GentleEngine::gene_set_cutrun_support_artifacts_from_state(state) {
+        gene_set_resolution_reports.insert(
+            GentleEngine::gene_set_resolution_artifact_id(
+                &report.promoter_cohort.gene_set_resolution,
+            ),
+            report.promoter_cohort.gene_set_resolution.clone(),
+        );
+        gene_set_promoter_cohort_reports.insert(
+            GentleEngine::gene_set_promoter_cohort_artifact_id(&report.promoter_cohort),
+            report.promoter_cohort.clone(),
+        );
+        gene_set_cutrun_support_reports.insert(
+            GentleEngine::gene_set_cutrun_support_artifact_id(&report),
+            report,
+        );
+    }
     let mut hub_op_ids = infer_gibson_like_operation_ids_from_state(state);
     let mut individually_rendered_multi_output_ops = hub_op_ids.clone();
     for record in operation_log {
@@ -891,6 +1154,38 @@ pub fn build_lineage_svg_graph(
                     report.expected_seq_id.clone(),
                     report.baseline_seq_id.clone(),
                 ),
+            );
+        }
+        if let Some(report) = record.result.gene_set_resolution.as_ref() {
+            gene_set_resolution_reports.insert(
+                GentleEngine::gene_set_resolution_artifact_id(report),
+                report.clone(),
+            );
+        }
+        if let Some(report) = record.result.gene_set_promoter_cohort.as_ref() {
+            gene_set_resolution_reports.insert(
+                GentleEngine::gene_set_resolution_artifact_id(&report.gene_set_resolution),
+                report.gene_set_resolution.clone(),
+            );
+            gene_set_promoter_cohort_reports.insert(
+                GentleEngine::gene_set_promoter_cohort_artifact_id(report),
+                report.clone(),
+            );
+        }
+        if let Some(report) = record.result.gene_set_cutrun_regulatory_support.as_ref() {
+            gene_set_resolution_reports.insert(
+                GentleEngine::gene_set_resolution_artifact_id(
+                    &report.promoter_cohort.gene_set_resolution,
+                ),
+                report.promoter_cohort.gene_set_resolution.clone(),
+            );
+            gene_set_promoter_cohort_reports.insert(
+                GentleEngine::gene_set_promoter_cohort_artifact_id(&report.promoter_cohort),
+                report.promoter_cohort.clone(),
+            );
+            gene_set_cutrun_support_reports.insert(
+                GentleEngine::gene_set_cutrun_support_artifact_id(report),
+                report.clone(),
             );
         }
     }
@@ -949,6 +1244,13 @@ pub fn build_lineage_svg_graph(
                 analysis_variant_count: None,
                 macro_instance_id: None,
                 macro_op_count: 0,
+                gene_set_artifact_id: None,
+                gene_set_producer_kind: None,
+                gene_set_resolved_member_count: None,
+                gene_set_unresolved_member_count: None,
+                gene_set_organism: None,
+                gene_set_taxon_id: None,
+                gene_set_symbol_namespace: None,
             }
         })
         .collect();
@@ -1018,6 +1320,13 @@ pub fn build_lineage_svg_graph(
             analysis_variant_count: None,
             macro_instance_id: None,
             macro_op_count: 0,
+            gene_set_artifact_id: None,
+            gene_set_producer_kind: None,
+            gene_set_resolved_member_count: None,
+            gene_set_unresolved_member_count: None,
+            gene_set_organism: None,
+            gene_set_taxon_id: None,
+            gene_set_symbol_namespace: None,
         });
         for from_node_id in source_node_ids {
             projected_edges.push((
@@ -1061,6 +1370,13 @@ pub fn build_lineage_svg_graph(
             analysis_variant_count: None,
             macro_instance_id: Some(instance.macro_instance_id.clone()),
             macro_op_count: instance.expanded_op_ids.len(),
+            gene_set_artifact_id: None,
+            gene_set_producer_kind: None,
+            gene_set_resolved_member_count: None,
+            gene_set_unresolved_member_count: None,
+            gene_set_organism: None,
+            gene_set_taxon_id: None,
+            gene_set_symbol_namespace: None,
         });
         for binding in &instance.bound_inputs {
             let edge_label_id = format!(
@@ -1138,6 +1454,13 @@ pub fn build_lineage_svg_graph(
             analysis_variant_count: Some(report.variants.len()),
             macro_instance_id: None,
             macro_op_count: 0,
+            gene_set_artifact_id: None,
+            gene_set_producer_kind: None,
+            gene_set_resolved_member_count: None,
+            gene_set_unresolved_member_count: None,
+            gene_set_organism: None,
+            gene_set_taxon_id: None,
+            gene_set_symbol_namespace: None,
         });
         let mut seen_sources: HashSet<String> = HashSet::new();
         for source_seq_id in std::iter::once(expected_seq_id)
@@ -1149,6 +1472,134 @@ pub fn build_lineage_svg_graph(
             };
             if seen_sources.insert(source_node_id.clone()) {
                 projected_edges.push((source_node_id.clone(), node_id.clone(), edge_op_id.clone()));
+            }
+        }
+    }
+
+    let mut projected_row_ids: HashSet<String> = projected_rows
+        .iter()
+        .map(|row| row.node_id.clone())
+        .collect();
+    let mut projected_edge_ids: HashSet<(String, String, String)> =
+        projected_edges.iter().cloned().collect();
+    for report in gene_set_resolution_reports.values() {
+        let gene_set_node_id = gene_set_resolution_node_id(report);
+        if projected_row_ids.insert(gene_set_node_id.clone()) {
+            projected_rows.push(gene_set_resolution_render_row(report));
+        }
+        let Some(op_id) = report
+            .op_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|op_id| !op_id.is_empty())
+        else {
+            continue;
+        };
+        let op_id = op_id.to_string();
+        let operation_node_id = format!("operation:{op_id}");
+        if projected_row_ids.insert(operation_node_id.clone()) {
+            projected_rows.push(EngineLineageRenderRow {
+                node_id: operation_node_id.clone(),
+                seq_id: op_id.clone(),
+                display_name: op_label_by_id.get(&op_id).cloned().unwrap_or_else(|| {
+                    format!("Gene set {}", gene_set_producer_kind_label(report))
+                }),
+                created_by_op: op_id.clone(),
+                created_at: report.generated_at_unix_ms,
+                kind: EngineLineageRenderRowKind::OperationHub,
+                length: 0,
+                circular: false,
+                pool_size: 0,
+                arrangement_id: None,
+                arrangement_mode: None,
+                lane_count: 0,
+                analysis_kind: None,
+                analysis_status: None,
+                analysis_reference_seq_id: None,
+                analysis_read_count: None,
+                analysis_trace_count: None,
+                analysis_target_count: None,
+                analysis_variant_count: None,
+                macro_instance_id: None,
+                macro_op_count: 0,
+                gene_set_artifact_id: None,
+                gene_set_producer_kind: None,
+                gene_set_resolved_member_count: None,
+                gene_set_unresolved_member_count: None,
+                gene_set_organism: None,
+                gene_set_taxon_id: None,
+                gene_set_symbol_namespace: None,
+            });
+        }
+        op_label_by_id
+            .entry(op_id.clone())
+            .or_insert_with(|| format!("Gene set {}", gene_set_producer_kind_label(report)));
+        let edge = (operation_node_id, gene_set_node_id, op_id);
+        if projected_edge_ids.insert(edge.clone()) {
+            projected_edges.push(edge);
+        }
+    }
+
+    for report in gene_set_promoter_cohort_reports.values() {
+        let gene_set_node_id = gene_set_resolution_node_id(&report.gene_set_resolution);
+        let node_id = gene_set_promoter_cohort_node_id(report);
+        if projected_row_ids.insert(node_id.clone()) {
+            projected_rows.push(gene_set_analysis_render_row(
+                node_id.clone(),
+                format!(
+                    "Promoters: {}",
+                    gene_set_resolution_display_name(&report.gene_set_resolution)
+                ),
+                report.op_id.clone(),
+                report.generated_at_unix_ms,
+                "gene_set_promoter_cohort",
+                report.windows.len(),
+                None,
+            ));
+        }
+        let edge_op_id = report
+            .op_id
+            .clone()
+            .unwrap_or_else(|| format!("gene_set_promoter:{}", report.generated_at_unix_ms));
+        op_label_by_id
+            .entry(edge_op_id.clone())
+            .or_insert_with(|| "Gene-set promoter cohort".to_string());
+        let edge = (gene_set_node_id, node_id, edge_op_id);
+        if projected_edge_ids.insert(edge.clone()) {
+            projected_edges.push(edge);
+        }
+    }
+
+    for report in gene_set_cutrun_support_reports.values() {
+        let gene_set_node_id =
+            gene_set_resolution_node_id(&report.promoter_cohort.gene_set_resolution);
+        let promoter_node_id = gene_set_promoter_cohort_node_id(&report.promoter_cohort);
+        let node_id = gene_set_cutrun_support_node_id(report);
+        if projected_row_ids.insert(node_id.clone()) {
+            projected_rows.push(gene_set_analysis_render_row(
+                node_id.clone(),
+                format!(
+                    "CUT&RUN: {}",
+                    gene_set_resolution_display_name(&report.promoter_cohort.gene_set_resolution)
+                ),
+                report.op_id.clone(),
+                report.generated_at_unix_ms,
+                "gene_set_cutrun_regulatory_support",
+                report.member_support.len(),
+                Some(report.read_report_ids.len()),
+            ));
+        }
+        let edge_op_id = report
+            .op_id
+            .clone()
+            .unwrap_or_else(|| format!("gene_set_cutrun:{}", report.generated_at_unix_ms));
+        op_label_by_id
+            .entry(edge_op_id.clone())
+            .or_insert_with(|| "Gene-set CUT&RUN support".to_string());
+        for from_node_id in [gene_set_node_id, promoter_node_id] {
+            let edge = (from_node_id, node_id.clone(), edge_op_id.clone());
+            if projected_edge_ids.insert(edge.clone()) {
+                projected_edges.push(edge);
             }
         }
     }

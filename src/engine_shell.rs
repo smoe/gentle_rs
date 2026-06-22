@@ -48,15 +48,16 @@ use crate::{
         DotplotOverlayQuerySpec, DotplotOverlayXAxisMode, EditableStatus, Engine,
         ExonSkipReturnKind, ExonSkipSelectionCriterion, FeatureBedCoordinateMode,
         FeatureExpertTarget, FeatureExpertView, FlexibilityModel, GUIDE_DESIGN_METADATA_KEY,
-        GeneSetCohortRelationship, GeneSetPromoterCohortReport, GeneSetRequest,
-        GeneSetResolutionReport, GenomeAnchorSide, GenomeAnnotationScope, GenomeGeneExtractMode,
-        GenomeTrackSource, GenomeTrackSubscription, GentleEngine, GuideCandidate,
-        GuideOligoExportFormat, GuideOligoPlateFormat, GuidePracticalFilterConfig,
-        InlineSequenceTopology, LabAssistantInstructionsFormat, LineageMacroInstance,
-        LineageMacroPortBinding, MacroInstanceStatus, OligoOrderFormCreateRequest, Operation,
-        OperationProgress, OrthologAmbiguityPolicy, OrthologPromoterCohortReport,
-        PLANNING_CLONING_CONSULTATION_SCHEMA, PLANNING_ESTIMATE_SCHEMA, PLANNING_OBJECTIVE_SCHEMA,
-        PLANNING_PROFILE_SCHEMA, PLANNING_SUGGESTION_SCHEMA, PLANNING_SYNC_STATUS_SCHEMA,
+        GeneSetCohortRelationship, GeneSetProducerFilter, GeneSetPromoterCohortReport,
+        GeneSetRequest, GeneSetResolutionReport, GeneSetResolutionReviewStatus, GenomeAnchorSide,
+        GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackSource, GenomeTrackSubscription,
+        GentleEngine, GuideCandidate, GuideOligoExportFormat, GuideOligoPlateFormat,
+        GuidePracticalFilterConfig, InlineSequenceTopology, LabAssistantInstructionsFormat,
+        LineageMacroInstance, LineageMacroPortBinding, MacroInstanceStatus,
+        OligoOrderFormCreateRequest, Operation, OperationProgress, OrthologAmbiguityPolicy,
+        OrthologPromoterCohortReport, PLANNING_CLONING_CONSULTATION_SCHEMA,
+        PLANNING_ESTIMATE_SCHEMA, PLANNING_OBJECTIVE_SCHEMA, PLANNING_PROFILE_SCHEMA,
+        PLANNING_SUGGESTION_SCHEMA, PLANNING_SYNC_STATUS_SCHEMA,
         PRIMER_DESIGN_REPORTS_METADATA_KEY, PROTEIN_EXPRESSION_HANDOFF_SCHEMA,
         PairwiseAlignmentMode, PlanningCloningConsultation, PlanningCloningHelperVectorSummary,
         PlanningCloningHostProfileSummary, PlanningCloningLocalConstraint,
@@ -125,7 +126,8 @@ use crate::{
 use gentle_protocol::{
     EXTERNAL_SERVICE_DELIVERY_ROUTE_REQUEST_SCHEMA, EXTERNAL_SERVICE_REQUEST_SCHEMA,
     ExternalServiceDeliveryRouteReport, ExternalServiceDeliveryRouteRequest,
-    ExternalServiceRequest,
+    ExternalServiceRequest, GENE_SET_CO_REGULATED_CACHE_SCHEMA, GENE_SET_DIRECT_LIST_CACHE_SCHEMA,
+    GENE_SET_ONTOLOGY_ASSIGNMENT_CACHE_SCHEMA,
 };
 #[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
 use objc2_app_kit::NSApplication;
@@ -962,6 +964,50 @@ pub enum ShellCommand {
         assembly_database: Option<String>,
         max_records: Option<usize>,
     },
+    ResourcesImportGeneListCache {
+        input: String,
+        output: String,
+        provider_id: String,
+        provider_label: Option<String>,
+        provider_version: String,
+        cache_id: Option<String>,
+        cache_version: Option<String>,
+        organism: Option<String>,
+        taxon_id: Option<String>,
+        symbol_namespace: Option<String>,
+        list_id: Option<String>,
+        list_label: Option<String>,
+    },
+    ResourcesImportOntologyAssignmentCache {
+        input: String,
+        output: String,
+        provider_id: String,
+        provider_label: Option<String>,
+        provider_version: String,
+        cache_id: Option<String>,
+        cache_version: Option<String>,
+        ontology_namespace: Option<String>,
+        organism: Option<String>,
+        taxon_id: Option<String>,
+        symbol_namespace: Option<String>,
+    },
+    ResourcesImportCoRegulatedCache {
+        input: String,
+        output: String,
+        provider_id: String,
+        provider_label: Option<String>,
+        provider_version: String,
+        cache_id: Option<String>,
+        cache_version: Option<String>,
+        dataset_id: Option<String>,
+        contrast_label: Option<String>,
+        condition_label: Option<String>,
+        normalization_method: Option<String>,
+        scoring_method: String,
+        organism: Option<String>,
+        taxon_id: Option<String>,
+        symbol_namespace: Option<String>,
+    },
     ResourcesInstallUcscRmsk {
         assembly_database: Option<String>,
         input: Option<String>,
@@ -1052,6 +1098,74 @@ pub enum ShellCommand {
         cache_dir: Option<String>,
         allow_draft: bool,
         allow_deprecated: bool,
+        output: Option<String>,
+    },
+    GeneSetsProduceDirectList {
+        cache_path: String,
+        query: Option<String>,
+        genome_id: Option<String>,
+        gene_group_catalog_path: Option<String>,
+        genome_catalog_path: Option<String>,
+        cache_dir: Option<String>,
+        provider_id: Option<String>,
+        provider_label: Option<String>,
+        provider_version: Option<String>,
+        cache_id: Option<String>,
+        cache_version: Option<String>,
+        cache_digest: Option<String>,
+        organism: Option<String>,
+        taxon_id: Option<String>,
+        symbol_namespace: Option<String>,
+        review_status: Option<GeneSetResolutionReviewStatus>,
+        filters: Vec<GeneSetProducerFilter>,
+        output: Option<String>,
+    },
+    GeneSetsProduceOntologyAssignment {
+        cache_path: String,
+        term: String,
+        ontology_namespace: Option<String>,
+        genome_id: Option<String>,
+        gene_group_catalog_path: Option<String>,
+        genome_catalog_path: Option<String>,
+        cache_dir: Option<String>,
+        provider_id: Option<String>,
+        provider_label: Option<String>,
+        provider_version: Option<String>,
+        cache_id: Option<String>,
+        cache_version: Option<String>,
+        cache_digest: Option<String>,
+        organism: Option<String>,
+        taxon_id: Option<String>,
+        symbol_namespace: Option<String>,
+        review_status: Option<GeneSetResolutionReviewStatus>,
+        filters: Vec<GeneSetProducerFilter>,
+        output: Option<String>,
+    },
+    GeneSetsProduceCoRegulatedCohort {
+        cache_path: String,
+        dataset_ids: Vec<String>,
+        contrast_labels: Vec<String>,
+        condition_labels: Vec<String>,
+        normalization_method: Option<String>,
+        scoring_method: String,
+        threshold_rule: String,
+        sign_direction_rule: String,
+        relationship: GeneSetCohortRelationship,
+        genome_id: Option<String>,
+        gene_group_catalog_path: Option<String>,
+        genome_catalog_path: Option<String>,
+        cache_dir: Option<String>,
+        provider_id: Option<String>,
+        provider_label: Option<String>,
+        provider_version: Option<String>,
+        cache_id: Option<String>,
+        cache_version: Option<String>,
+        cache_digest: Option<String>,
+        organism: Option<String>,
+        taxon_id: Option<String>,
+        symbol_namespace: Option<String>,
+        review_status: Option<GeneSetResolutionReviewStatus>,
+        filters: Vec<GeneSetProducerFilter>,
         output: Option<String>,
     },
     GeneSetsPromoterCohort {
@@ -4864,6 +4978,42 @@ fn parse_gene_set_relationship(
     }
 }
 
+fn parse_gene_set_review_status(
+    raw: &str,
+    context: &str,
+) -> Result<GeneSetResolutionReviewStatus, String> {
+    match raw.trim().to_ascii_lowercase().replace('-', "_").as_str() {
+        "" => Err(format!("{context} --review-status must not be empty")),
+        "unreviewed" => Ok(GeneSetResolutionReviewStatus::Unreviewed),
+        "reviewed" => Ok(GeneSetResolutionReviewStatus::Reviewed),
+        "included" => Ok(GeneSetResolutionReviewStatus::Included),
+        "draft" => Ok(GeneSetResolutionReviewStatus::Draft),
+        "deprecated" => Ok(GeneSetResolutionReviewStatus::Deprecated),
+        other => Err(format!(
+            "Unknown gene-set review status '{other}' for {context}; expected unreviewed, reviewed, included, draft, or deprecated"
+        )),
+    }
+}
+
+fn parse_gene_set_producer_filter(
+    raw: &str,
+    context: &str,
+) -> Result<GeneSetProducerFilter, String> {
+    let (field, value) = raw
+        .split_once('=')
+        .ok_or_else(|| format!("{context} --filter expects FIELD=VALUE"))?;
+    let field = field.trim();
+    let value = value.trim();
+    if field.is_empty() || value.is_empty() {
+        return Err(format!("{context} --filter expects non-empty FIELD=VALUE"));
+    }
+    Ok(GeneSetProducerFilter {
+        field: field.to_string(),
+        operator: "equals".to_string(),
+        value: value.to_string(),
+    })
+}
+
 fn parse_ortholog_ambiguity_policy(
     raw: &str,
     context: &str,
@@ -6969,6 +7119,47 @@ impl ShellCommand {
                         .unwrap_or_default()
                 )
             }
+            Self::ResourcesImportGeneListCache {
+                input,
+                output,
+                provider_id,
+                provider_version,
+                list_id,
+                ..
+            } => format!(
+                "import gene-list cache from '{}' to '{}' (provider={}, version={}, list_id={})",
+                input,
+                output,
+                provider_id,
+                provider_version,
+                list_id.as_deref().unwrap_or("auto"),
+            ),
+            Self::ResourcesImportOntologyAssignmentCache {
+                input,
+                output,
+                provider_id,
+                provider_version,
+                ontology_namespace,
+                ..
+            } => format!(
+                "import ontology-assignment cache from '{}' to '{}' (provider={}, version={}, namespace={})",
+                input,
+                output,
+                provider_id,
+                provider_version,
+                ontology_namespace.as_deref().unwrap_or("row"),
+            ),
+            Self::ResourcesImportCoRegulatedCache {
+                input,
+                output,
+                provider_id,
+                provider_version,
+                scoring_method,
+                ..
+            } => format!(
+                "import co-regulated cohort cache from '{}' to '{}' (provider={}, version={}, score={})",
+                input, output, provider_id, provider_version, scoring_method,
+            ),
             Self::ResourcesInstallUcscRmsk {
                 assembly_database,
                 input,
@@ -7176,6 +7367,73 @@ impl ShellCommand {
                     .unwrap_or(default_catalog_discovery_token(false)),
                 allow_draft,
                 allow_deprecated,
+                output.as_deref().unwrap_or("-"),
+            ),
+            Self::GeneSetsProduceDirectList {
+                cache_path,
+                query,
+                genome_id,
+                provider_id,
+                provider_version,
+                output,
+                ..
+            } => format!(
+                "produce direct-list gene set from cache '{}' (query='{}', genome='{}', provider='{}', provider_version='{}', output='{}')",
+                cache_path,
+                query.as_deref().unwrap_or("-"),
+                genome_id.as_deref().unwrap_or("-"),
+                provider_id.as_deref().unwrap_or("-"),
+                provider_version.as_deref().unwrap_or("-"),
+                output.as_deref().unwrap_or("-"),
+            ),
+            Self::GeneSetsProduceOntologyAssignment {
+                cache_path,
+                term,
+                ontology_namespace,
+                genome_id,
+                provider_id,
+                provider_version,
+                output,
+                ..
+            } => format!(
+                "produce ontology-assignment gene set from cache '{}' (term='{}', ontology_namespace='{}', genome='{}', provider='{}', provider_version='{}', output='{}')",
+                cache_path,
+                term,
+                ontology_namespace.as_deref().unwrap_or("-"),
+                genome_id.as_deref().unwrap_or("-"),
+                provider_id.as_deref().unwrap_or("-"),
+                provider_version.as_deref().unwrap_or("-"),
+                output.as_deref().unwrap_or("-"),
+            ),
+            Self::GeneSetsProduceCoRegulatedCohort {
+                cache_path,
+                dataset_ids,
+                contrast_labels,
+                scoring_method,
+                threshold_rule,
+                sign_direction_rule,
+                relationship,
+                genome_id,
+                output,
+                ..
+            } => format!(
+                "produce co-regulated cohort gene set from cache '{}' (datasets='{}', contrasts='{}', scoring_method='{}', threshold='{}', direction='{}', relationship={:?}, genome='{}', output='{}')",
+                cache_path,
+                if dataset_ids.is_empty() {
+                    "-".to_string()
+                } else {
+                    dataset_ids.join(",")
+                },
+                if contrast_labels.is_empty() {
+                    "-".to_string()
+                } else {
+                    contrast_labels.join(",")
+                },
+                scoring_method,
+                threshold_rule,
+                sign_direction_rule,
+                relationship,
+                genome_id.as_deref().unwrap_or("-"),
                 output.as_deref().unwrap_or("-"),
             ),
             Self::GeneSetsPromoterCohort {
@@ -12947,6 +13205,17 @@ fn parse_option_path(
     let value = tokens[*idx + 1].clone();
     *idx += 2;
     Ok(value)
+}
+
+fn required_shell_option(
+    value: Option<String>,
+    option_name: &str,
+    context: &str,
+) -> Result<String, String> {
+    value
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| format!("{context} requires {option_name}"))
 }
 
 fn parse_mode(mode: &str) -> Result<RenderSvgMode, String> {
@@ -21300,7 +21569,9 @@ fn parse_ui_command(tokens: &[String]) -> Result<ShellCommand, String> {
 
 fn parse_gene_sets_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
-        return Err("gene-sets requires a subcommand: resolve or promoter-cohort".to_string());
+        return Err(
+            "gene-sets requires a subcommand: resolve, produce, or promoter-cohort".to_string(),
+        );
     }
     match tokens[1].as_str() {
         "resolve" => {
@@ -21368,6 +21639,545 @@ fn parse_gene_sets_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 allow_deprecated,
                 output,
             })
+        }
+        "produce" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "gene-sets produce requires a producer: direct-list, ontology-assignment, or co-regulated"
+                        .to_string(),
+                );
+            }
+            match tokens[2].as_str() {
+                "direct-list" | "direct_list" => {
+                    let context = "gene-sets produce direct-list";
+                    let mut cache_path: Option<String> = None;
+                    let mut query: Option<String> = None;
+                    let mut genome_id: Option<String> = None;
+                    let mut gene_group_catalog_path: Option<String> = None;
+                    let mut genome_catalog_path: Option<String> = None;
+                    let mut cache_dir: Option<String> = None;
+                    let mut provider_id: Option<String> = None;
+                    let mut provider_label: Option<String> = None;
+                    let mut provider_version: Option<String> = None;
+                    let mut cache_id: Option<String> = None;
+                    let mut cache_version: Option<String> = None;
+                    let mut cache_digest: Option<String> = None;
+                    let mut organism: Option<String> = None;
+                    let mut taxon_id: Option<String> = None;
+                    let mut symbol_namespace: Option<String> = None;
+                    let mut review_status: Option<GeneSetResolutionReviewStatus> = None;
+                    let mut filters: Vec<GeneSetProducerFilter> = vec![];
+                    let mut output: Option<String> = None;
+                    let mut idx = 3usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--cache" | "--cache-path" | "--cache_path" => {
+                                let flag = tokens[idx].clone();
+                                cache_path =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--query" => {
+                                query =
+                                    Some(parse_option_path(tokens, &mut idx, "--query", context)?);
+                            }
+                            "--genome" | "--genome-id" | "--genome_id" => {
+                                let flag = tokens[idx].clone();
+                                genome_id =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--catalog" | "--gene-group-catalog" | "--gene_group_catalog" => {
+                                let flag = tokens[idx].clone();
+                                gene_group_catalog_path =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--genome-catalog" | "--genome_catalog" => {
+                                let flag = tokens[idx].clone();
+                                genome_catalog_path =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--cache-dir" | "--cache_dir" => {
+                                let flag = tokens[idx].clone();
+                                cache_dir =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--provider" | "--provider-id" | "--provider_id" => {
+                                let flag = tokens[idx].clone();
+                                provider_id =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--provider-label" | "--provider_label" => {
+                                let flag = tokens[idx].clone();
+                                provider_label =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--provider-version" | "--provider_version" => {
+                                let flag = tokens[idx].clone();
+                                provider_version =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--cache-id" | "--cache_id" => {
+                                let flag = tokens[idx].clone();
+                                cache_id =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--cache-version" | "--cache_version" => {
+                                let flag = tokens[idx].clone();
+                                cache_version =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--cache-digest" | "--cache_digest" => {
+                                let flag = tokens[idx].clone();
+                                cache_digest =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--organism" | "--species" => {
+                                let flag = tokens[idx].clone();
+                                organism =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--taxon-id" | "--taxon_id" | "--tax-id" | "--tax_id" => {
+                                let flag = tokens[idx].clone();
+                                taxon_id =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--namespace" | "--symbol-namespace" | "--symbol_namespace" => {
+                                let flag = tokens[idx].clone();
+                                symbol_namespace =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--review-status" | "--review_status" => {
+                                let raw = parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--review-status",
+                                    context,
+                                )?;
+                                review_status = Some(parse_gene_set_review_status(&raw, context)?);
+                            }
+                            "--filter" => {
+                                let raw = parse_option_path(tokens, &mut idx, "--filter", context)?;
+                                filters.push(parse_gene_set_producer_filter(&raw, context)?);
+                            }
+                            "--output" | "--path" => {
+                                let flag = tokens[idx].clone();
+                                output = Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            other if !other.starts_with("--") && cache_path.is_none() => {
+                                cache_path = Some(other.to_string());
+                                idx += 1;
+                            }
+                            other => return Err(format!("Unknown option '{other}' for {context}")),
+                        }
+                    }
+                    let cache_path =
+                        cache_path.ok_or_else(|| format!("{context} requires --cache PATH"))?;
+                    Ok(ShellCommand::GeneSetsProduceDirectList {
+                        cache_path,
+                        query,
+                        genome_id,
+                        gene_group_catalog_path,
+                        genome_catalog_path,
+                        cache_dir,
+                        provider_id,
+                        provider_label,
+                        provider_version,
+                        cache_id,
+                        cache_version,
+                        cache_digest,
+                        organism,
+                        taxon_id,
+                        symbol_namespace,
+                        review_status,
+                        filters,
+                        output,
+                    })
+                }
+                "ontology-assignment" | "ontology_assignment" => {
+                    let context = "gene-sets produce ontology-assignment";
+                    let mut cache_path: Option<String> = None;
+                    let mut term: Option<String> = None;
+                    let mut ontology_namespace: Option<String> = None;
+                    let mut genome_id: Option<String> = None;
+                    let mut gene_group_catalog_path: Option<String> = None;
+                    let mut genome_catalog_path: Option<String> = None;
+                    let mut cache_dir: Option<String> = None;
+                    let mut provider_id: Option<String> = None;
+                    let mut provider_label: Option<String> = None;
+                    let mut provider_version: Option<String> = None;
+                    let mut cache_id: Option<String> = None;
+                    let mut cache_version: Option<String> = None;
+                    let mut cache_digest: Option<String> = None;
+                    let mut organism: Option<String> = None;
+                    let mut taxon_id: Option<String> = None;
+                    let mut symbol_namespace: Option<String> = None;
+                    let mut review_status: Option<GeneSetResolutionReviewStatus> = None;
+                    let mut filters: Vec<GeneSetProducerFilter> = vec![];
+                    let mut output: Option<String> = None;
+                    let mut idx = 3usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--cache" | "--cache-path" | "--cache_path" => {
+                                let flag = tokens[idx].clone();
+                                cache_path =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--term" | "--go" | "--ontology-term" | "--ontology_term" => {
+                                let flag = tokens[idx].clone();
+                                term = Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--ontology-namespace"
+                            | "--ontology_namespace"
+                            | "--term-namespace"
+                            | "--term_namespace" => {
+                                let flag = tokens[idx].clone();
+                                ontology_namespace =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--genome" | "--genome-id" | "--genome_id" => {
+                                let flag = tokens[idx].clone();
+                                genome_id =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--catalog" | "--gene-group-catalog" | "--gene_group_catalog" => {
+                                let flag = tokens[idx].clone();
+                                gene_group_catalog_path =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--genome-catalog" | "--genome_catalog" => {
+                                let flag = tokens[idx].clone();
+                                genome_catalog_path =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--cache-dir" | "--cache_dir" => {
+                                let flag = tokens[idx].clone();
+                                cache_dir =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--provider" | "--provider-id" | "--provider_id" => {
+                                let flag = tokens[idx].clone();
+                                provider_id =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--provider-label" | "--provider_label" => {
+                                let flag = tokens[idx].clone();
+                                provider_label =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--provider-version" | "--provider_version" => {
+                                let flag = tokens[idx].clone();
+                                provider_version =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--cache-id" | "--cache_id" => {
+                                let flag = tokens[idx].clone();
+                                cache_id =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--cache-version" | "--cache_version" => {
+                                let flag = tokens[idx].clone();
+                                cache_version =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--cache-digest" | "--cache_digest" => {
+                                let flag = tokens[idx].clone();
+                                cache_digest =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--organism" | "--species" => {
+                                let flag = tokens[idx].clone();
+                                organism =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--taxon-id" | "--taxon_id" | "--tax-id" | "--tax_id" => {
+                                let flag = tokens[idx].clone();
+                                taxon_id =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--namespace" | "--symbol-namespace" | "--symbol_namespace" => {
+                                let flag = tokens[idx].clone();
+                                symbol_namespace =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--review-status" | "--review_status" => {
+                                let raw = parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--review-status",
+                                    context,
+                                )?;
+                                review_status = Some(parse_gene_set_review_status(&raw, context)?);
+                            }
+                            "--evidence-code" | "--evidence_code" => {
+                                let value = parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--evidence-code",
+                                    context,
+                                )?;
+                                filters.push(GeneSetProducerFilter {
+                                    field: "evidence_code".to_string(),
+                                    operator: "equals".to_string(),
+                                    value,
+                                });
+                            }
+                            "--filter" => {
+                                let raw = parse_option_path(tokens, &mut idx, "--filter", context)?;
+                                filters.push(parse_gene_set_producer_filter(&raw, context)?);
+                            }
+                            "--output" | "--path" => {
+                                let flag = tokens[idx].clone();
+                                output = Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            other if !other.starts_with("--") && cache_path.is_none() => {
+                                cache_path = Some(other.to_string());
+                                idx += 1;
+                            }
+                            other if !other.starts_with("--") && term.is_none() => {
+                                term = Some(other.to_string());
+                                idx += 1;
+                            }
+                            other => return Err(format!("Unknown option '{other}' for {context}")),
+                        }
+                    }
+                    let cache_path =
+                        cache_path.ok_or_else(|| format!("{context} requires --cache PATH"))?;
+                    let term = term.ok_or_else(|| format!("{context} requires --term GO:ID"))?;
+                    Ok(ShellCommand::GeneSetsProduceOntologyAssignment {
+                        cache_path,
+                        term,
+                        ontology_namespace,
+                        genome_id,
+                        gene_group_catalog_path,
+                        genome_catalog_path,
+                        cache_dir,
+                        provider_id,
+                        provider_label,
+                        provider_version,
+                        cache_id,
+                        cache_version,
+                        cache_digest,
+                        organism,
+                        taxon_id,
+                        symbol_namespace,
+                        review_status,
+                        filters,
+                        output,
+                    })
+                }
+                "co-regulated" | "co_regulated" | "co-regulated-cohort" | "co_regulated_cohort" => {
+                    let context = "gene-sets produce co-regulated";
+                    let mut cache_path: Option<String> = None;
+                    let mut dataset_ids: Vec<String> = vec![];
+                    let mut contrast_labels: Vec<String> = vec![];
+                    let mut condition_labels: Vec<String> = vec![];
+                    let mut normalization_method: Option<String> = None;
+                    let mut scoring_method: Option<String> = None;
+                    let mut threshold_rule: Option<String> = None;
+                    let mut sign_direction_rule: Option<String> = None;
+                    let mut relationship = GeneSetCohortRelationship::CoRegulated;
+                    let mut genome_id: Option<String> = None;
+                    let mut gene_group_catalog_path: Option<String> = None;
+                    let mut genome_catalog_path: Option<String> = None;
+                    let mut cache_dir: Option<String> = None;
+                    let mut provider_id: Option<String> = None;
+                    let mut provider_label: Option<String> = None;
+                    let mut provider_version: Option<String> = None;
+                    let mut cache_id: Option<String> = None;
+                    let mut cache_version: Option<String> = None;
+                    let mut cache_digest: Option<String> = None;
+                    let mut organism: Option<String> = None;
+                    let mut taxon_id: Option<String> = None;
+                    let mut symbol_namespace: Option<String> = None;
+                    let mut review_status: Option<GeneSetResolutionReviewStatus> = None;
+                    let mut filters: Vec<GeneSetProducerFilter> = vec![];
+                    let mut output: Option<String> = None;
+                    let mut idx = 3usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--cache" | "--cache-path" | "--cache_path" => {
+                                let flag = tokens[idx].clone();
+                                cache_path =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--dataset" | "--dataset-id" | "--dataset_id" => {
+                                let flag = tokens[idx].clone();
+                                let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                                dataset_ids.extend(split_csv_tokens_with_empty_error(&raw)?);
+                            }
+                            "--contrast" | "--contrast-label" | "--contrast_label" => {
+                                let flag = tokens[idx].clone();
+                                let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                                contrast_labels.extend(split_csv_tokens_with_empty_error(&raw)?);
+                            }
+                            "--condition" | "--condition-label" | "--condition_label" => {
+                                let flag = tokens[idx].clone();
+                                let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                                condition_labels.extend(split_csv_tokens_with_empty_error(&raw)?);
+                            }
+                            "--normalization" | "--normalization-method" | "--normalization_method" => {
+                                let flag = tokens[idx].clone();
+                                normalization_method =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--score" | "--scoring-method" | "--scoring_method" => {
+                                let flag = tokens[idx].clone();
+                                scoring_method =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--threshold" | "--threshold-rule" | "--threshold_rule" => {
+                                let flag = tokens[idx].clone();
+                                threshold_rule =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--direction" | "--sign-direction" | "--sign_direction" | "--direction-rule" | "--direction_rule" => {
+                                let flag = tokens[idx].clone();
+                                sign_direction_rule =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--relationship" => {
+                                let raw = parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--relationship",
+                                    context,
+                                )?;
+                                relationship = parse_gene_set_relationship(&raw, context)?;
+                            }
+                            "--genome" | "--genome-id" | "--genome_id" => {
+                                let flag = tokens[idx].clone();
+                                genome_id =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--catalog" | "--gene-group-catalog" | "--gene_group_catalog" => {
+                                let flag = tokens[idx].clone();
+                                gene_group_catalog_path =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--genome-catalog" | "--genome_catalog" => {
+                                let flag = tokens[idx].clone();
+                                genome_catalog_path =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--cache-dir" | "--cache_dir" => {
+                                let flag = tokens[idx].clone();
+                                cache_dir =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--provider" | "--provider-id" | "--provider_id" => {
+                                let flag = tokens[idx].clone();
+                                provider_id =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--provider-label" | "--provider_label" => {
+                                let flag = tokens[idx].clone();
+                                provider_label =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--provider-version" | "--provider_version" => {
+                                let flag = tokens[idx].clone();
+                                provider_version =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--cache-id" | "--cache_id" => {
+                                let flag = tokens[idx].clone();
+                                cache_id =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--cache-version" | "--cache_version" => {
+                                let flag = tokens[idx].clone();
+                                cache_version =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--cache-digest" | "--cache_digest" => {
+                                let flag = tokens[idx].clone();
+                                cache_digest =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--organism" | "--species" => {
+                                let flag = tokens[idx].clone();
+                                organism =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--taxon-id" | "--taxon_id" | "--tax-id" | "--tax_id" => {
+                                let flag = tokens[idx].clone();
+                                taxon_id =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--namespace" | "--symbol-namespace" | "--symbol_namespace" => {
+                                let flag = tokens[idx].clone();
+                                symbol_namespace =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--review-status" | "--review_status" => {
+                                let raw = parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--review-status",
+                                    context,
+                                )?;
+                                review_status = Some(parse_gene_set_review_status(&raw, context)?);
+                            }
+                            "--filter" => {
+                                let raw = parse_option_path(tokens, &mut idx, "--filter", context)?;
+                                filters.push(parse_gene_set_producer_filter(&raw, context)?);
+                            }
+                            "--output" | "--path" => {
+                                let flag = tokens[idx].clone();
+                                output = Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            other if !other.starts_with("--") && cache_path.is_none() => {
+                                cache_path = Some(other.to_string());
+                                idx += 1;
+                            }
+                            other => return Err(format!("Unknown option '{other}' for {context}")),
+                        }
+                    }
+                    let cache_path =
+                        cache_path.ok_or_else(|| format!("{context} requires --cache PATH"))?;
+                    if dataset_ids.is_empty() {
+                        return Err(format!("{context} requires --dataset DATASET_ID"));
+                    }
+                    if contrast_labels.is_empty() {
+                        return Err(format!("{context} requires --contrast LABEL"));
+                    }
+                    let scoring_method =
+                        scoring_method.ok_or_else(|| format!("{context} requires --score METHOD"))?;
+                    let threshold_rule = threshold_rule
+                        .ok_or_else(|| format!("{context} requires --threshold RULE"))?;
+                    let sign_direction_rule =
+                        sign_direction_rule.ok_or_else(|| format!("{context} requires --direction RULE"))?;
+                    Ok(ShellCommand::GeneSetsProduceCoRegulatedCohort {
+                        cache_path,
+                        dataset_ids,
+                        contrast_labels,
+                        condition_labels,
+                        normalization_method,
+                        scoring_method,
+                        threshold_rule,
+                        sign_direction_rule,
+                        relationship,
+                        genome_id,
+                        gene_group_catalog_path,
+                        genome_catalog_path,
+                        cache_dir,
+                        provider_id,
+                        provider_label,
+                        provider_version,
+                        cache_id,
+                        cache_version,
+                        cache_digest,
+                        organism,
+                        taxon_id,
+                        symbol_namespace,
+                        review_status,
+                        filters,
+                        output,
+                    })
+                }
+                other => Err(format!(
+                    "Unknown gene-sets producer '{other}' (expected direct-list, ontology-assignment, or co-regulated)"
+                )),
+            }
         }
         "promoter-cohort" | "promoter_cohort" => {
             let context = "gene-sets promoter-cohort";
@@ -21476,7 +22286,7 @@ fn parse_gene_sets_command(tokens: &[String]) -> Result<ShellCommand, String> {
             })
         }
         other => Err(format!(
-            "Unknown gene-sets subcommand '{other}' (expected resolve or promoter-cohort)"
+            "Unknown gene-sets subcommand '{other}' (expected resolve, produce, or promoter-cohort)"
         )),
     }
 }
@@ -25213,6 +26023,350 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         output,
                         assembly_database,
                         max_records,
+                    })
+                }
+                "import-gene-list-cache" => {
+                    let context = "resources import-gene-list-cache";
+                    let mut input: Option<String> = None;
+                    let mut output: Option<String> = None;
+                    let mut provider_id: Option<String> = None;
+                    let mut provider_label: Option<String> = None;
+                    let mut provider_version: Option<String> = None;
+                    let mut cache_id: Option<String> = None;
+                    let mut cache_version: Option<String> = None;
+                    let mut organism: Option<String> = None;
+                    let mut taxon_id: Option<String> = None;
+                    let mut symbol_namespace: Option<String> = None;
+                    let mut list_id: Option<String> = None;
+                    let mut list_label: Option<String> = None;
+                    let mut idx = 2usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--input" => {
+                                input = Some(parse_option_path(tokens, &mut idx, "--input", context)?);
+                            }
+                            "--output" | "--path" => {
+                                output =
+                                    Some(parse_option_path(tokens, &mut idx, "--output", context)?);
+                            }
+                            "--provider" | "--provider-id" | "--provider_id" => {
+                                let flag = tokens[idx].clone();
+                                provider_id =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--provider-label" | "--provider_label" => {
+                                let flag = tokens[idx].clone();
+                                provider_label =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--version" | "--provider-version" | "--provider_version" => {
+                                let flag = tokens[idx].clone();
+                                provider_version =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--cache-id" | "--cache_id" => {
+                                let flag = tokens[idx].clone();
+                                cache_id =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--cache-version" | "--cache_version" => {
+                                let flag = tokens[idx].clone();
+                                cache_version =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--organism" | "--species" => {
+                                let flag = tokens[idx].clone();
+                                organism =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--taxon-id" | "--taxon_id" | "--tax-id" | "--tax_id" => {
+                                let flag = tokens[idx].clone();
+                                taxon_id =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--namespace" | "--symbol-namespace" | "--symbol_namespace" => {
+                                let flag = tokens[idx].clone();
+                                symbol_namespace =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--list-id" | "--list_id" => {
+                                let flag = tokens[idx].clone();
+                                list_id = Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--list-label" | "--list_label" => {
+                                let flag = tokens[idx].clone();
+                                list_label =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            value if value.starts_with("--") => {
+                                return Err(format!("Unknown option '{value}' for {context}"));
+                            }
+                            value => {
+                                if input.is_none() {
+                                    input = Some(value.to_string());
+                                } else if output.is_none() {
+                                    output = Some(value.to_string());
+                                } else {
+                                    return Err(format!(
+                                        "Unexpected extra positional argument '{value}' for {context}"
+                                    ));
+                                }
+                                idx += 1;
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::ResourcesImportGeneListCache {
+                        input: required_shell_option(input, "--input PATH", context)?,
+                        output: required_shell_option(output, "--output PATH", context)?,
+                        provider_id: required_shell_option(provider_id, "--provider ID", context)?,
+                        provider_label,
+                        provider_version: required_shell_option(
+                            provider_version,
+                            "--version VERSION",
+                            context,
+                        )?,
+                        cache_id,
+                        cache_version,
+                        organism,
+                        taxon_id,
+                        symbol_namespace,
+                        list_id,
+                        list_label,
+                    })
+                }
+                "import-ontology-assignment-cache" => {
+                    let context = "resources import-ontology-assignment-cache";
+                    let mut input: Option<String> = None;
+                    let mut output: Option<String> = None;
+                    let mut provider_id: Option<String> = None;
+                    let mut provider_label: Option<String> = None;
+                    let mut provider_version: Option<String> = None;
+                    let mut cache_id: Option<String> = None;
+                    let mut cache_version: Option<String> = None;
+                    let mut ontology_namespace: Option<String> = None;
+                    let mut organism: Option<String> = None;
+                    let mut taxon_id: Option<String> = None;
+                    let mut symbol_namespace: Option<String> = None;
+                    let mut idx = 2usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--input" => {
+                                input = Some(parse_option_path(tokens, &mut idx, "--input", context)?);
+                            }
+                            "--output" | "--path" => {
+                                output =
+                                    Some(parse_option_path(tokens, &mut idx, "--output", context)?);
+                            }
+                            "--provider" | "--provider-id" | "--provider_id" => {
+                                let flag = tokens[idx].clone();
+                                provider_id =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--provider-label" | "--provider_label" => {
+                                let flag = tokens[idx].clone();
+                                provider_label =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--version" | "--provider-version" | "--provider_version" => {
+                                let flag = tokens[idx].clone();
+                                provider_version =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--cache-id" | "--cache_id" => {
+                                let flag = tokens[idx].clone();
+                                cache_id =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--cache-version" | "--cache_version" => {
+                                let flag = tokens[idx].clone();
+                                cache_version =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--ontology-namespace" | "--ontology_namespace" | "--term-namespace"
+                            | "--term_namespace" | "--namespace" => {
+                                let flag = tokens[idx].clone();
+                                ontology_namespace =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--organism" | "--species" => {
+                                let flag = tokens[idx].clone();
+                                organism =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--taxon-id" | "--taxon_id" | "--tax-id" | "--tax_id" => {
+                                let flag = tokens[idx].clone();
+                                taxon_id =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--symbol-namespace" | "--symbol_namespace" => {
+                                let flag = tokens[idx].clone();
+                                symbol_namespace =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            value if value.starts_with("--") => {
+                                return Err(format!("Unknown option '{value}' for {context}"));
+                            }
+                            value => {
+                                if input.is_none() {
+                                    input = Some(value.to_string());
+                                } else if output.is_none() {
+                                    output = Some(value.to_string());
+                                } else {
+                                    return Err(format!(
+                                        "Unexpected extra positional argument '{value}' for {context}"
+                                    ));
+                                }
+                                idx += 1;
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::ResourcesImportOntologyAssignmentCache {
+                        input: required_shell_option(input, "--input PATH", context)?,
+                        output: required_shell_option(output, "--output PATH", context)?,
+                        provider_id: required_shell_option(provider_id, "--provider ID", context)?,
+                        provider_label,
+                        provider_version: required_shell_option(
+                            provider_version,
+                            "--version VERSION",
+                            context,
+                        )?,
+                        cache_id,
+                        cache_version,
+                        ontology_namespace,
+                        organism,
+                        taxon_id,
+                        symbol_namespace,
+                    })
+                }
+                "import-co-regulated-cache" => {
+                    let context = "resources import-co-regulated-cache";
+                    let mut input: Option<String> = None;
+                    let mut output: Option<String> = None;
+                    let mut provider_id: Option<String> = None;
+                    let mut provider_label: Option<String> = None;
+                    let mut provider_version: Option<String> = None;
+                    let mut cache_id: Option<String> = None;
+                    let mut cache_version: Option<String> = None;
+                    let mut dataset_id: Option<String> = None;
+                    let mut contrast_label: Option<String> = None;
+                    let mut condition_label: Option<String> = None;
+                    let mut normalization_method: Option<String> = None;
+                    let mut scoring_method: Option<String> = None;
+                    let mut organism: Option<String> = None;
+                    let mut taxon_id: Option<String> = None;
+                    let mut symbol_namespace: Option<String> = None;
+                    let mut idx = 2usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--input" => {
+                                input = Some(parse_option_path(tokens, &mut idx, "--input", context)?);
+                            }
+                            "--output" | "--path" => {
+                                output =
+                                    Some(parse_option_path(tokens, &mut idx, "--output", context)?);
+                            }
+                            "--provider" | "--provider-id" | "--provider_id" => {
+                                let flag = tokens[idx].clone();
+                                provider_id =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--provider-label" | "--provider_label" => {
+                                let flag = tokens[idx].clone();
+                                provider_label =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--version" | "--provider-version" | "--provider_version" => {
+                                let flag = tokens[idx].clone();
+                                provider_version =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--cache-id" | "--cache_id" => {
+                                let flag = tokens[idx].clone();
+                                cache_id =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--cache-version" | "--cache_version" => {
+                                let flag = tokens[idx].clone();
+                                cache_version =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--dataset" | "--dataset-id" | "--dataset_id" => {
+                                let flag = tokens[idx].clone();
+                                dataset_id =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--contrast" | "--contrast-label" | "--contrast_label" => {
+                                let flag = tokens[idx].clone();
+                                contrast_label =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--condition" | "--condition-label" | "--condition_label" => {
+                                let flag = tokens[idx].clone();
+                                condition_label =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--normalization" | "--normalization-method" | "--normalization_method" => {
+                                let flag = tokens[idx].clone();
+                                normalization_method =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--score" | "--scoring" | "--scoring-method" | "--scoring_method" => {
+                                let flag = tokens[idx].clone();
+                                scoring_method =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--organism" | "--species" => {
+                                let flag = tokens[idx].clone();
+                                organism =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--taxon-id" | "--taxon_id" | "--tax-id" | "--tax_id" => {
+                                let flag = tokens[idx].clone();
+                                taxon_id =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            "--namespace" | "--symbol-namespace" | "--symbol_namespace" => {
+                                let flag = tokens[idx].clone();
+                                symbol_namespace =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                            }
+                            value if value.starts_with("--") => {
+                                return Err(format!("Unknown option '{value}' for {context}"));
+                            }
+                            value => {
+                                if input.is_none() {
+                                    input = Some(value.to_string());
+                                } else if output.is_none() {
+                                    output = Some(value.to_string());
+                                } else {
+                                    return Err(format!(
+                                        "Unexpected extra positional argument '{value}' for {context}"
+                                    ));
+                                }
+                                idx += 1;
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::ResourcesImportCoRegulatedCache {
+                        input: required_shell_option(input, "--input PATH", context)?,
+                        output: required_shell_option(output, "--output PATH", context)?,
+                        provider_id: required_shell_option(provider_id, "--provider ID", context)?,
+                        provider_label,
+                        provider_version: required_shell_option(
+                            provider_version,
+                            "--version VERSION",
+                            context,
+                        )?,
+                        cache_id,
+                        cache_version,
+                        dataset_id,
+                        contrast_label,
+                        condition_label,
+                        normalization_method,
+                        scoring_method: scoring_method.unwrap_or_else(|| "score".to_string()),
+                        organism,
+                        taxon_id,
+                        symbol_namespace,
                     })
                 }
                 "install-ucsc-rmsk" => {
@@ -30118,6 +31272,485 @@ fn ensure_shell_output_parent_dir(path: &str) -> Result<(), String> {
         .map_err(|e| format!("Could not create output directory for '{path}': {e}"))
 }
 
+fn gene_set_import_delimiter(path: &str) -> u8 {
+    match Path::new(path)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("tsv") | Some("tab") => b'\t',
+        _ => b',',
+    }
+}
+
+fn gene_set_import_cache_id(input: &str, output: &str, cache_id: Option<&String>) -> String {
+    cache_id
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            Path::new(output)
+                .file_stem()
+                .and_then(|stem| stem.to_str())
+                .map(str::to_string)
+        })
+        .or_else(|| {
+            Path::new(input)
+                .file_stem()
+                .and_then(|stem| stem.to_str())
+                .map(str::to_string)
+        })
+        .unwrap_or_else(|| "gene_set_cache".to_string())
+}
+
+fn gene_set_import_header_key(raw: &str) -> String {
+    raw.trim()
+        .to_ascii_lowercase()
+        .replace('-', "_")
+        .replace(' ', "_")
+}
+
+fn gene_set_import_header_index(headers: &csv::StringRecord) -> HashMap<String, usize> {
+    headers
+        .iter()
+        .enumerate()
+        .map(|(idx, header)| (gene_set_import_header_key(header), idx))
+        .collect()
+}
+
+fn gene_set_import_record_value(
+    record: &csv::StringRecord,
+    header_index: &HashMap<String, usize>,
+    names: &[&str],
+) -> Option<String> {
+    names.iter().find_map(|name| {
+        let key = gene_set_import_header_key(name);
+        let idx = *header_index.get(&key)?;
+        record
+            .get(idx)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+    })
+}
+
+fn gene_set_import_read_records(
+    input: &str,
+    context: &str,
+) -> Result<(HashMap<String, usize>, Vec<csv::StringRecord>), String> {
+    let mut reader = csv::ReaderBuilder::new()
+        .delimiter(gene_set_import_delimiter(input))
+        .flexible(true)
+        .from_path(input)
+        .map_err(|e| format!("Could not open {context} input '{input}': {e}"))?;
+    let headers = reader
+        .headers()
+        .map_err(|e| format!("Could not read {context} header '{input}': {e}"))?
+        .clone();
+    let header_index = gene_set_import_header_index(&headers);
+    let records = reader
+        .records()
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Could not read {context} rows '{input}': {e}"))?;
+    Ok((header_index, records))
+}
+
+fn gene_set_import_member_value(
+    record: &csv::StringRecord,
+    header_index: &HashMap<String, usize>,
+) -> Option<Value> {
+    let symbol = gene_set_import_record_value(
+        record,
+        header_index,
+        &["symbol", "gene_symbol", "gene", "gene_name"],
+    );
+    let gene_id = gene_set_import_record_value(
+        record,
+        header_index,
+        &["gene_id", "ensembl_gene_id", "id"],
+    );
+    if symbol.is_none() && gene_id.is_none() {
+        return None;
+    }
+    let mut object = serde_json::Map::new();
+    if let Some(symbol) = symbol {
+        object.insert("symbol".to_string(), json!(symbol));
+    }
+    if let Some(gene_id) = gene_id {
+        object.insert("gene_id".to_string(), json!(gene_id));
+    }
+    if let Some(aliases) =
+        gene_set_import_record_value(record, header_index, &["aliases", "alias", "synonyms"])
+    {
+        let aliases = aliases
+            .split([',', ';', '|'])
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        if !aliases.is_empty() {
+            object.insert("aliases".to_string(), json!(aliases));
+        }
+    }
+    Some(Value::Object(object))
+}
+
+fn gene_set_import_insert_optional(
+    object: &mut serde_json::Map<String, Value>,
+    key: &str,
+    value: Option<&String>,
+) {
+    if let Some(value) = value.map(|value| value.trim()).filter(|value| !value.is_empty()) {
+        object.insert(key.to_string(), json!(value));
+    }
+}
+
+fn gene_set_import_write_cache(
+    output: &str,
+    cache: &Value,
+    context: &str,
+) -> Result<(), String> {
+    ensure_shell_output_parent_dir(output)?;
+    let mut text = serde_json::to_string_pretty(cache)
+        .map_err(|e| format!("Could not serialize {context} cache: {e}"))?;
+    text.push('\n');
+    fs::write(output, text).map_err(|e| format!("Could not write {context} cache '{output}': {e}"))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn import_gene_set_direct_list_cache(
+    input: &str,
+    output: &str,
+    provider_id: &str,
+    provider_label: Option<&String>,
+    provider_version: &str,
+    cache_id: Option<&String>,
+    cache_version: Option<&String>,
+    organism: Option<&String>,
+    taxon_id: Option<&String>,
+    symbol_namespace: Option<&String>,
+    list_id: Option<&String>,
+    list_label: Option<&String>,
+) -> Result<Value, String> {
+    let context = "gene-list cache import";
+    let (header_index, records) = gene_set_import_read_records(input, context)?;
+    let default_list_id = list_id
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| gene_set_import_cache_id(input, output, cache_id));
+    let default_list_label = list_label
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| default_list_id.clone());
+    let mut lists: BTreeMap<String, (String, Vec<Value>)> = BTreeMap::new();
+    let mut skipped_row_count = 0usize;
+    for record in records {
+        let Some(member) = gene_set_import_member_value(&record, &header_index) else {
+            skipped_row_count += 1;
+            continue;
+        };
+        let row_list_id = gene_set_import_record_value(
+            &record,
+            &header_index,
+            &["list_id", "query", "set_id", "collection_id"],
+        )
+        .unwrap_or_else(|| default_list_id.clone());
+        let row_list_label = gene_set_import_record_value(
+            &record,
+            &header_index,
+            &["list_label", "label", "set_label", "collection_label"],
+        )
+        .unwrap_or_else(|| {
+            if row_list_id == default_list_id {
+                default_list_label.clone()
+            } else {
+                row_list_id.clone()
+            }
+        });
+        lists
+            .entry(row_list_id)
+            .or_insert_with(|| (row_list_label, Vec::new()))
+            .1
+            .push(member);
+    }
+    let member_count = lists.values().map(|(_, members)| members.len()).sum::<usize>();
+    let mut root = serde_json::Map::new();
+    root.insert("schema".to_string(), json!(GENE_SET_DIRECT_LIST_CACHE_SCHEMA));
+    root.insert("provider_id".to_string(), json!(provider_id));
+    gene_set_import_insert_optional(&mut root, "provider_label", provider_label);
+    root.insert("provider_version".to_string(), json!(provider_version));
+    root.insert(
+        "cache_id".to_string(),
+        json!(gene_set_import_cache_id(input, output, cache_id)),
+    );
+    root.insert(
+        "cache_version".to_string(),
+        json!(cache_version.map(String::as_str).unwrap_or("1")),
+    );
+    gene_set_import_insert_optional(&mut root, "organism", organism);
+    gene_set_import_insert_optional(&mut root, "taxon_id", taxon_id);
+    gene_set_import_insert_optional(&mut root, "symbol_namespace", symbol_namespace);
+    root.insert(
+        "lists".to_string(),
+        Value::Array(
+            lists
+                .into_iter()
+                .map(|(id, (label, members))| {
+                    json!({
+                        "id": id,
+                        "label": label,
+                        "members": members,
+                    })
+                })
+                .collect(),
+        ),
+    );
+    let cache = Value::Object(root);
+    gene_set_import_write_cache(output, &cache, context)?;
+    Ok(json!({
+        "message": format!("Imported {member_count} direct gene-list member row(s) to '{output}'"),
+        "cache_schema": GENE_SET_DIRECT_LIST_CACHE_SCHEMA,
+        "input": input,
+        "output": output,
+        "provider_id": provider_id,
+        "provider_version": provider_version,
+        "member_count": member_count,
+        "skipped_row_count": skipped_row_count,
+    }))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn import_gene_set_ontology_assignment_cache(
+    input: &str,
+    output: &str,
+    provider_id: &str,
+    provider_label: Option<&String>,
+    provider_version: &str,
+    cache_id: Option<&String>,
+    cache_version: Option<&String>,
+    ontology_namespace: Option<&String>,
+    organism: Option<&String>,
+    taxon_id: Option<&String>,
+    symbol_namespace: Option<&String>,
+) -> Result<Value, String> {
+    let context = "ontology-assignment cache import";
+    let (header_index, records) = gene_set_import_read_records(input, context)?;
+    let mut assignments: BTreeMap<(String, String, String, String), Vec<Value>> = BTreeMap::new();
+    let mut skipped_row_count = 0usize;
+    for record in records {
+        let Some(member) = gene_set_import_member_value(&record, &header_index) else {
+            skipped_row_count += 1;
+            continue;
+        };
+        let Some(term) = gene_set_import_record_value(
+            &record,
+            &header_index,
+            &["term", "term_id", "go_id", "ontology_id", "accession"],
+        ) else {
+            skipped_row_count += 1;
+            continue;
+        };
+        let term_label = gene_set_import_record_value(
+            &record,
+            &header_index,
+            &["term_label", "label", "ontology_label"],
+        )
+        .unwrap_or_default();
+        let evidence_code = gene_set_import_record_value(
+            &record,
+            &header_index,
+            &["evidence_code", "evidence", "go_evidence"],
+        )
+        .unwrap_or_default();
+        let assigned_by =
+            gene_set_import_record_value(&record, &header_index, &["assigned_by", "source"])
+                .unwrap_or_default();
+        assignments
+            .entry((term, term_label, evidence_code, assigned_by))
+            .or_default()
+            .push(member);
+    }
+    let member_count = assignments
+        .values()
+        .map(|members| members.len())
+        .sum::<usize>();
+    let mut root = serde_json::Map::new();
+    root.insert(
+        "schema".to_string(),
+        json!(GENE_SET_ONTOLOGY_ASSIGNMENT_CACHE_SCHEMA),
+    );
+    root.insert("provider_id".to_string(), json!(provider_id));
+    gene_set_import_insert_optional(&mut root, "provider_label", provider_label);
+    root.insert("provider_version".to_string(), json!(provider_version));
+    root.insert(
+        "cache_id".to_string(),
+        json!(gene_set_import_cache_id(input, output, cache_id)),
+    );
+    root.insert(
+        "cache_version".to_string(),
+        json!(cache_version.map(String::as_str).unwrap_or("1")),
+    );
+    gene_set_import_insert_optional(&mut root, "ontology_namespace", ontology_namespace);
+    gene_set_import_insert_optional(&mut root, "organism", organism);
+    gene_set_import_insert_optional(&mut root, "taxon_id", taxon_id);
+    gene_set_import_insert_optional(&mut root, "symbol_namespace", symbol_namespace);
+    root.insert(
+        "assignments".to_string(),
+        Value::Array(
+            assignments
+                .into_iter()
+                .map(|((term, term_label, evidence_code, assigned_by), members)| {
+                    let mut row = serde_json::Map::new();
+                    row.insert("term".to_string(), json!(term));
+                    if !term_label.is_empty() {
+                        row.insert("term_label".to_string(), json!(term_label));
+                    }
+                    if !evidence_code.is_empty() {
+                        row.insert("evidence_code".to_string(), json!(evidence_code));
+                    }
+                    if !assigned_by.is_empty() {
+                        row.insert("assigned_by".to_string(), json!(assigned_by));
+                    }
+                    row.insert("members".to_string(), Value::Array(members));
+                    Value::Object(row)
+                })
+                .collect(),
+        ),
+    );
+    let cache = Value::Object(root);
+    gene_set_import_write_cache(output, &cache, context)?;
+    Ok(json!({
+        "message": format!("Imported {member_count} ontology-assignment member row(s) to '{output}'"),
+        "cache_schema": GENE_SET_ONTOLOGY_ASSIGNMENT_CACHE_SCHEMA,
+        "input": input,
+        "output": output,
+        "provider_id": provider_id,
+        "provider_version": provider_version,
+        "member_count": member_count,
+        "skipped_row_count": skipped_row_count,
+    }))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn import_gene_set_co_regulated_cache(
+    input: &str,
+    output: &str,
+    provider_id: &str,
+    provider_label: Option<&String>,
+    provider_version: &str,
+    cache_id: Option<&String>,
+    cache_version: Option<&String>,
+    dataset_id: Option<&String>,
+    contrast_label: Option<&String>,
+    condition_label: Option<&String>,
+    normalization_method: Option<&String>,
+    scoring_method: &str,
+    organism: Option<&String>,
+    taxon_id: Option<&String>,
+    symbol_namespace: Option<&String>,
+) -> Result<Value, String> {
+    let context = "co-regulated cache import";
+    let (header_index, records) = gene_set_import_read_records(input, context)?;
+    let mut rows: Vec<Value> = vec![];
+    let mut skipped_row_count = 0usize;
+    for record in records {
+        let Some(member) = gene_set_import_member_value(&record, &header_index) else {
+            skipped_row_count += 1;
+            continue;
+        };
+        let score = gene_set_import_record_value(
+            &record,
+            &header_index,
+            &[scoring_method, "score", "value", "logfc", "statistic"],
+        );
+        let Some(score) = score else {
+            skipped_row_count += 1;
+            continue;
+        };
+        let mut row = match member {
+            Value::Object(object) => object,
+            _ => serde_json::Map::new(),
+        };
+        let dataset = gene_set_import_record_value(
+            &record,
+            &header_index,
+            &["dataset_id", "dataset", "source_dataset"],
+        )
+        .or_else(|| dataset_id.cloned());
+        let contrast = gene_set_import_record_value(
+            &record,
+            &header_index,
+            &["contrast", "contrast_label", "comparison"],
+        )
+        .or_else(|| contrast_label.cloned());
+        let condition = gene_set_import_record_value(
+            &record,
+            &header_index,
+            &["condition", "condition_label", "group"],
+        )
+        .or_else(|| condition_label.cloned());
+        let normalization = gene_set_import_record_value(
+            &record,
+            &header_index,
+            &["normalization", "normalization_method"],
+        )
+        .or_else(|| normalization_method.cloned());
+        if let Some(dataset) = dataset {
+            row.insert("dataset_id".to_string(), json!(dataset));
+        }
+        if let Some(contrast) = contrast {
+            row.insert("contrast".to_string(), json!(contrast));
+        }
+        if let Some(condition) = condition {
+            row.insert("condition".to_string(), json!(condition));
+        }
+        if let Some(normalization) = normalization {
+            row.insert("normalization_method".to_string(), json!(normalization));
+        }
+        let score_value = score
+            .parse::<f64>()
+            .map(Value::from)
+            .unwrap_or_else(|_| json!(score));
+        row.insert(scoring_method.to_string(), score_value.clone());
+        row.insert("score".to_string(), score_value);
+        rows.push(Value::Object(row));
+    }
+    let mut root = serde_json::Map::new();
+    root.insert(
+        "schema".to_string(),
+        json!(GENE_SET_CO_REGULATED_CACHE_SCHEMA),
+    );
+    root.insert("provider_id".to_string(), json!(provider_id));
+    gene_set_import_insert_optional(&mut root, "provider_label", provider_label);
+    root.insert("provider_version".to_string(), json!(provider_version));
+    root.insert(
+        "cache_id".to_string(),
+        json!(gene_set_import_cache_id(input, output, cache_id)),
+    );
+    root.insert(
+        "cache_version".to_string(),
+        json!(cache_version.map(String::as_str).unwrap_or("1")),
+    );
+    gene_set_import_insert_optional(&mut root, "organism", organism);
+    gene_set_import_insert_optional(&mut root, "taxon_id", taxon_id);
+    gene_set_import_insert_optional(&mut root, "symbol_namespace", symbol_namespace);
+    gene_set_import_insert_optional(&mut root, "normalization_method", normalization_method);
+    root.insert("scoring_method".to_string(), json!(scoring_method));
+    root.insert("rows".to_string(), Value::Array(rows.clone()));
+    let cache = Value::Object(root);
+    gene_set_import_write_cache(output, &cache, context)?;
+    Ok(json!({
+        "message": format!("Imported {} co-regulated cohort row(s) to '{}'", rows.len(), output),
+        "cache_schema": GENE_SET_CO_REGULATED_CACHE_SCHEMA,
+        "input": input,
+        "output": output,
+        "provider_id": provider_id,
+        "provider_version": provider_version,
+        "row_count": rows.len(),
+        "skipped_row_count": skipped_row_count,
+    }))
+}
+
 #[inline(never)]
 fn execute_export_import_and_resource_command(
     engine: &mut GentleEngine,
@@ -30345,6 +31978,100 @@ fn execute_export_import_and_resource_command(
                 }),
             })
         }
+        ShellCommand::ResourcesImportGeneListCache {
+            input,
+            output,
+            provider_id,
+            provider_label,
+            provider_version,
+            cache_id,
+            cache_version,
+            organism,
+            taxon_id,
+            symbol_namespace,
+            list_id,
+            list_label,
+        } => Ok(ShellRunResult {
+            state_changed: false,
+            output: import_gene_set_direct_list_cache(
+                input,
+                output,
+                provider_id,
+                provider_label.as_ref(),
+                provider_version,
+                cache_id.as_ref(),
+                cache_version.as_ref(),
+                organism.as_ref(),
+                taxon_id.as_ref(),
+                symbol_namespace.as_ref(),
+                list_id.as_ref(),
+                list_label.as_ref(),
+            )?,
+        }),
+        ShellCommand::ResourcesImportOntologyAssignmentCache {
+            input,
+            output,
+            provider_id,
+            provider_label,
+            provider_version,
+            cache_id,
+            cache_version,
+            ontology_namespace,
+            organism,
+            taxon_id,
+            symbol_namespace,
+        } => Ok(ShellRunResult {
+            state_changed: false,
+            output: import_gene_set_ontology_assignment_cache(
+                input,
+                output,
+                provider_id,
+                provider_label.as_ref(),
+                provider_version,
+                cache_id.as_ref(),
+                cache_version.as_ref(),
+                ontology_namespace.as_ref(),
+                organism.as_ref(),
+                taxon_id.as_ref(),
+                symbol_namespace.as_ref(),
+            )?,
+        }),
+        ShellCommand::ResourcesImportCoRegulatedCache {
+            input,
+            output,
+            provider_id,
+            provider_label,
+            provider_version,
+            cache_id,
+            cache_version,
+            dataset_id,
+            contrast_label,
+            condition_label,
+            normalization_method,
+            scoring_method,
+            organism,
+            taxon_id,
+            symbol_namespace,
+        } => Ok(ShellRunResult {
+            state_changed: false,
+            output: import_gene_set_co_regulated_cache(
+                input,
+                output,
+                provider_id,
+                provider_label.as_ref(),
+                provider_version,
+                cache_id.as_ref(),
+                cache_version.as_ref(),
+                dataset_id.as_ref(),
+                contrast_label.as_ref(),
+                condition_label.as_ref(),
+                normalization_method.as_ref(),
+                scoring_method,
+                organism.as_ref(),
+                taxon_id.as_ref(),
+                symbol_namespace.as_ref(),
+            )?,
+        }),
         ShellCommand::ResourcesInstallUcscRmsk {
             assembly_database,
             input,
@@ -30652,6 +32379,177 @@ fn execute_export_import_and_resource_command(
                 state_changed: false,
                 output: serde_json::to_value(&report)
                     .map_err(|e| format!("Could not serialize gene-set resolution: {e}"))?,
+            })
+        }
+        ShellCommand::GeneSetsProduceDirectList {
+            cache_path,
+            query,
+            genome_id,
+            gene_group_catalog_path,
+            genome_catalog_path,
+            cache_dir,
+            provider_id,
+            provider_label,
+            provider_version,
+            cache_id,
+            cache_version,
+            cache_digest,
+            organism,
+            taxon_id,
+            symbol_namespace,
+            review_status,
+            filters,
+            output,
+        } => {
+            let result = engine
+                .apply(Operation::ProduceGeneSetDirectList {
+                    cache_path: cache_path.clone(),
+                    query: query.clone(),
+                    genome_id: genome_id.clone(),
+                    gene_group_catalog_path: gene_group_catalog_path.clone(),
+                    genome_catalog_path: genome_catalog_path.clone(),
+                    cache_dir: cache_dir.clone(),
+                    provider_id: provider_id.clone(),
+                    provider_label: provider_label.clone(),
+                    provider_version: provider_version.clone(),
+                    cache_id: cache_id.clone(),
+                    cache_version: cache_version.clone(),
+                    cache_digest: cache_digest.clone(),
+                    organism: organism.clone(),
+                    taxon_id: taxon_id.clone(),
+                    symbol_namespace: symbol_namespace.clone(),
+                    review_status: *review_status,
+                    filters: filters.clone(),
+                    path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let report = result.gene_set_resolution.ok_or_else(|| {
+                "ProduceGeneSetDirectList did not return a gene-set resolution".to_string()
+            })?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(&report)
+                    .map_err(|e| format!("Could not serialize direct-list gene-set: {e}"))?,
+            })
+        }
+        ShellCommand::GeneSetsProduceOntologyAssignment {
+            cache_path,
+            term,
+            ontology_namespace,
+            genome_id,
+            gene_group_catalog_path,
+            genome_catalog_path,
+            cache_dir,
+            provider_id,
+            provider_label,
+            provider_version,
+            cache_id,
+            cache_version,
+            cache_digest,
+            organism,
+            taxon_id,
+            symbol_namespace,
+            review_status,
+            filters,
+            output,
+        } => {
+            let result = engine
+                .apply(Operation::ProduceGeneSetOntologyAssignment {
+                    cache_path: cache_path.clone(),
+                    term: term.clone(),
+                    ontology_namespace: ontology_namespace.clone(),
+                    genome_id: genome_id.clone(),
+                    gene_group_catalog_path: gene_group_catalog_path.clone(),
+                    genome_catalog_path: genome_catalog_path.clone(),
+                    cache_dir: cache_dir.clone(),
+                    provider_id: provider_id.clone(),
+                    provider_label: provider_label.clone(),
+                    provider_version: provider_version.clone(),
+                    cache_id: cache_id.clone(),
+                    cache_version: cache_version.clone(),
+                    cache_digest: cache_digest.clone(),
+                    organism: organism.clone(),
+                    taxon_id: taxon_id.clone(),
+                    symbol_namespace: symbol_namespace.clone(),
+                    review_status: *review_status,
+                    filters: filters.clone(),
+                    path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let report = result.gene_set_resolution.ok_or_else(|| {
+                "ProduceGeneSetOntologyAssignment did not return a gene-set resolution".to_string()
+            })?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(&report).map_err(|e| {
+                    format!("Could not serialize ontology-assignment gene-set: {e}")
+                })?,
+            })
+        }
+        ShellCommand::GeneSetsProduceCoRegulatedCohort {
+            cache_path,
+            dataset_ids,
+            contrast_labels,
+            condition_labels,
+            normalization_method,
+            scoring_method,
+            threshold_rule,
+            sign_direction_rule,
+            relationship,
+            genome_id,
+            gene_group_catalog_path,
+            genome_catalog_path,
+            cache_dir,
+            provider_id,
+            provider_label,
+            provider_version,
+            cache_id,
+            cache_version,
+            cache_digest,
+            organism,
+            taxon_id,
+            symbol_namespace,
+            review_status,
+            filters,
+            output,
+        } => {
+            let result = engine
+                .apply(Operation::ProduceGeneSetCoRegulatedCohort {
+                    cache_path: cache_path.clone(),
+                    dataset_ids: dataset_ids.clone(),
+                    contrast_labels: contrast_labels.clone(),
+                    condition_labels: condition_labels.clone(),
+                    normalization_method: normalization_method.clone(),
+                    scoring_method: scoring_method.clone(),
+                    threshold_rule: threshold_rule.clone(),
+                    sign_direction_rule: sign_direction_rule.clone(),
+                    relationship: *relationship,
+                    genome_id: genome_id.clone(),
+                    gene_group_catalog_path: gene_group_catalog_path.clone(),
+                    genome_catalog_path: genome_catalog_path.clone(),
+                    cache_dir: cache_dir.clone(),
+                    provider_id: provider_id.clone(),
+                    provider_label: provider_label.clone(),
+                    provider_version: provider_version.clone(),
+                    cache_id: cache_id.clone(),
+                    cache_version: cache_version.clone(),
+                    cache_digest: cache_digest.clone(),
+                    organism: organism.clone(),
+                    taxon_id: taxon_id.clone(),
+                    symbol_namespace: symbol_namespace.clone(),
+                    review_status: *review_status,
+                    filters: filters.clone(),
+                    path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let report = result.gene_set_resolution.ok_or_else(|| {
+                "ProduceGeneSetCoRegulatedCohort did not return a gene-set resolution".to_string()
+            })?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(&report).map_err(|e| {
+                    format!("Could not serialize co-regulated cohort gene-set: {e}")
+                })?,
             })
         }
         ShellCommand::GeneSetsPromoterCohort {
@@ -40233,6 +42131,9 @@ fn execute_shell_command_with_options_dispatch(
             | ShellCommand::ResourcesSyncRebase { .. }
             | ShellCommand::ResourcesSyncJaspar { .. }
             | ShellCommand::ResourcesSyncUcscRmsk { .. }
+            | ShellCommand::ResourcesImportGeneListCache { .. }
+            | ShellCommand::ResourcesImportOntologyAssignmentCache { .. }
+            | ShellCommand::ResourcesImportCoRegulatedCache { .. }
             | ShellCommand::ResourcesInstallUcscRmsk { .. }
             | ShellCommand::ResourcesPrepareUcscRmskIndex { .. }
             | ShellCommand::ResourcesSuggestUcscRmskIndex { .. }
@@ -40246,6 +42147,9 @@ fn execute_shell_command_with_options_dispatch(
             | ShellCommand::GeneGroupsDoctor { .. }
             | ShellCommand::GeneGroupsDraft { .. }
             | ShellCommand::GeneSetsResolve { .. }
+            | ShellCommand::GeneSetsProduceDirectList { .. }
+            | ShellCommand::GeneSetsProduceOntologyAssignment { .. }
+            | ShellCommand::GeneSetsProduceCoRegulatedCohort { .. }
             | ShellCommand::GeneSetsPromoterCohort { .. }
             | ShellCommand::OrthologsResolvePromoterCohort { .. }
             | ShellCommand::OrthologsPromoterComparison { .. }
@@ -40932,6 +42836,9 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ResourcesSyncRebase { .. }
         | ShellCommand::ResourcesSyncJaspar { .. }
         | ShellCommand::ResourcesSyncUcscRmsk { .. }
+        | ShellCommand::ResourcesImportGeneListCache { .. }
+        | ShellCommand::ResourcesImportOntologyAssignmentCache { .. }
+        | ShellCommand::ResourcesImportCoRegulatedCache { .. }
         | ShellCommand::ResourcesInstallUcscRmsk { .. }
         | ShellCommand::ResourcesPrepareUcscRmskIndex { .. }
         | ShellCommand::ResourcesSuggestUcscRmskIndex { .. }
@@ -40945,6 +42852,9 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::GeneGroupsDoctor { .. }
         | ShellCommand::GeneGroupsDraft { .. }
         | ShellCommand::GeneSetsResolve { .. }
+        | ShellCommand::GeneSetsProduceDirectList { .. }
+        | ShellCommand::GeneSetsProduceOntologyAssignment { .. }
+        | ShellCommand::GeneSetsProduceCoRegulatedCohort { .. }
         | ShellCommand::GeneSetsPromoterCohort { .. }
         | ShellCommand::OrthologsResolvePromoterCohort { .. }
         | ShellCommand::OrthologsPromoterComparison { .. }

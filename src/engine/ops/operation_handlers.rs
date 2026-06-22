@@ -19932,6 +19932,7 @@ impl GentleEngine {
                     )?;
                     report.op_id = Some(result.op_id.clone());
                     report.run_id = Some(run_id.to_string());
+                    self.upsert_gene_set_resolution_artifact(report.clone())?;
                     if let Some(path) = path.as_deref() {
                         self.write_pretty_json_file(&report, path, "gene-set resolution report")?;
                         result
@@ -19942,6 +19943,222 @@ impl GentleEngine {
                     result.messages.push(format!(
                         "Resolved gene set from {}: {} member(s), {} unresolved",
                         report.request.source_kind_label(),
+                        report.resolved_member_count,
+                        report.unresolved_member_count
+                    ));
+                    result.gene_set_resolution = Some(report);
+                }
+                Operation::ProduceGeneSetDirectList {
+                    cache_path,
+                    query,
+                    genome_id,
+                    gene_group_catalog_path,
+                    genome_catalog_path,
+                    cache_dir,
+                    provider_id,
+                    provider_label,
+                    provider_version,
+                    cache_id,
+                    cache_version,
+                    cache_digest,
+                    organism,
+                    taxon_id,
+                    symbol_namespace,
+                    review_status,
+                    filters,
+                    path,
+                } => {
+                    let mut report = self.produce_gene_set_direct_list(
+                        &cache_path,
+                        query.as_deref(),
+                        genome_id.as_deref(),
+                        gene_group_catalog_path.as_deref(),
+                        genome_catalog_path.as_deref(),
+                        cache_dir.as_deref(),
+                        provider_id.as_deref(),
+                        provider_label.as_deref(),
+                        provider_version.as_deref(),
+                        cache_id.as_deref(),
+                        cache_version.as_deref(),
+                        cache_digest.as_deref(),
+                        organism.as_deref(),
+                        taxon_id.as_deref(),
+                        symbol_namespace.as_deref(),
+                        review_status,
+                        &filters,
+                    )?;
+                    report.op_id = Some(result.op_id.clone());
+                    report.run_id = Some(run_id.to_string());
+                    self.upsert_gene_set_resolution_artifact(report.clone())?;
+                    if let Some(path) = path.as_deref() {
+                        self.write_pretty_json_file(&report, path, "direct gene-list set report")?;
+                        result.messages.push(format!(
+                            "Wrote direct gene-list gene-set resolution report to '{}'",
+                            path
+                        ));
+                    }
+                    result.warnings.extend(report.warnings.clone());
+                    let query_label = report
+                        .query_metadata
+                        .as_ref()
+                        .and_then(|metadata| metadata.query_id.as_deref())
+                        .unwrap_or("-");
+                    result.messages.push(format!(
+                        "Produced direct-list gene set from '{}' query '{}': {} member(s), {} unresolved",
+                        cache_path,
+                        query_label,
+                        report.resolved_member_count,
+                        report.unresolved_member_count
+                    ));
+                    result.gene_set_resolution = Some(report);
+                }
+                Operation::ProduceGeneSetOntologyAssignment {
+                    cache_path,
+                    term,
+                    ontology_namespace,
+                    genome_id,
+                    gene_group_catalog_path,
+                    genome_catalog_path,
+                    cache_dir,
+                    provider_id,
+                    provider_label,
+                    provider_version,
+                    cache_id,
+                    cache_version,
+                    cache_digest,
+                    organism,
+                    taxon_id,
+                    symbol_namespace,
+                    review_status,
+                    filters,
+                    path,
+                } => {
+                    let mut report = self.produce_gene_set_ontology_assignment(
+                        &cache_path,
+                        &term,
+                        ontology_namespace.as_deref(),
+                        genome_id.as_deref(),
+                        gene_group_catalog_path.as_deref(),
+                        genome_catalog_path.as_deref(),
+                        cache_dir.as_deref(),
+                        provider_id.as_deref(),
+                        provider_label.as_deref(),
+                        provider_version.as_deref(),
+                        cache_id.as_deref(),
+                        cache_version.as_deref(),
+                        cache_digest.as_deref(),
+                        organism.as_deref(),
+                        taxon_id.as_deref(),
+                        symbol_namespace.as_deref(),
+                        review_status,
+                        &filters,
+                    )?;
+                    report.op_id = Some(result.op_id.clone());
+                    report.run_id = Some(run_id.to_string());
+                    self.upsert_gene_set_resolution_artifact(report.clone())?;
+                    if let Some(path) = path.as_deref() {
+                        self.write_pretty_json_file(
+                            &report,
+                            path,
+                            "ontology assignment gene-set report",
+                        )?;
+                        result.messages.push(format!(
+                            "Wrote ontology-assignment gene-set resolution report to '{}'",
+                            path
+                        ));
+                    }
+                    result.warnings.extend(report.warnings.clone());
+                    let query_label = report
+                        .query_metadata
+                        .as_ref()
+                        .and_then(|metadata| metadata.query_id.as_deref())
+                        .unwrap_or(term.as_str());
+                    result.messages.push(format!(
+                        "Produced ontology-assignment gene set from '{}' term '{}': {} member(s), {} unresolved",
+                        cache_path,
+                        query_label,
+                        report.resolved_member_count,
+                        report.unresolved_member_count
+                    ));
+                    result.gene_set_resolution = Some(report);
+                }
+                Operation::ProduceGeneSetCoRegulatedCohort {
+                    cache_path,
+                    dataset_ids,
+                    contrast_labels,
+                    condition_labels,
+                    normalization_method,
+                    scoring_method,
+                    threshold_rule,
+                    sign_direction_rule,
+                    relationship,
+                    genome_id,
+                    gene_group_catalog_path,
+                    genome_catalog_path,
+                    cache_dir,
+                    provider_id,
+                    provider_label,
+                    provider_version,
+                    cache_id,
+                    cache_version,
+                    cache_digest,
+                    organism,
+                    taxon_id,
+                    symbol_namespace,
+                    review_status,
+                    filters,
+                    path,
+                } => {
+                    let mut report = self.produce_gene_set_co_regulated_cohort(
+                        &cache_path,
+                        &dataset_ids,
+                        &contrast_labels,
+                        &condition_labels,
+                        normalization_method.as_deref(),
+                        &scoring_method,
+                        &threshold_rule,
+                        &sign_direction_rule,
+                        relationship,
+                        genome_id.as_deref(),
+                        gene_group_catalog_path.as_deref(),
+                        genome_catalog_path.as_deref(),
+                        cache_dir.as_deref(),
+                        provider_id.as_deref(),
+                        provider_label.as_deref(),
+                        provider_version.as_deref(),
+                        cache_id.as_deref(),
+                        cache_version.as_deref(),
+                        cache_digest.as_deref(),
+                        organism.as_deref(),
+                        taxon_id.as_deref(),
+                        symbol_namespace.as_deref(),
+                        review_status,
+                        &filters,
+                    )?;
+                    report.op_id = Some(result.op_id.clone());
+                    report.run_id = Some(run_id.to_string());
+                    self.upsert_gene_set_resolution_artifact(report.clone())?;
+                    if let Some(path) = path.as_deref() {
+                        self.write_pretty_json_file(
+                            &report,
+                            path,
+                            "co-regulated cohort gene-set report",
+                        )?;
+                        result.messages.push(format!(
+                            "Wrote co-regulated cohort gene-set resolution report to '{}'",
+                            path
+                        ));
+                    }
+                    result.warnings.extend(report.warnings.clone());
+                    let query_label = report
+                        .query_metadata
+                        .as_ref()
+                        .and_then(|metadata| metadata.query_id.as_deref())
+                        .unwrap_or("-");
+                    result.messages.push(format!(
+                        "Produced co-regulated cohort gene set from '{}' query '{}': {} member(s), {} unresolved",
+                        cache_path,
+                        query_label,
                         report.resolved_member_count,
                         report.unresolved_member_count
                     ));
@@ -19992,6 +20209,7 @@ impl GentleEngine {
                     )?;
                     report.op_id = Some(result.op_id.clone());
                     report.run_id = Some(run_id.to_string());
+                    self.upsert_gene_set_promoter_cohort_artifact(report.clone())?;
                     if let Some(path) = path.as_deref() {
                         self.write_pretty_json_file(&report, path, "gene-set promoter cohort")?;
                         result.messages.push(format!(
@@ -20072,6 +20290,7 @@ impl GentleEngine {
                     )?;
                     report.op_id = Some(result.op_id.clone());
                     report.run_id = Some(run_id.to_string());
+                    self.upsert_gene_set_cutrun_support_artifact(report.clone())?;
                     if let Some(path) = path.as_deref() {
                         self.write_pretty_json_file(
                             &report,

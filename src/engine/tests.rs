@@ -4267,6 +4267,719 @@ fn resolve_gene_set_external_mapping_unions_local_groups_and_gates_status() {
 }
 
 #[test]
+fn produce_gene_set_direct_list_json_records_provenance_and_unresolved_rows() {
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let mut engine = GentleEngine::new();
+    let genome_catalog_path = prepare_gene_set_test_genome(root, &mut engine);
+    let cache_path = root.join("direct_gene_lists.json");
+    fs::write(
+        &cache_path,
+        format!(
+            r#"{{
+  "schema": "{GENE_SET_DIRECT_LIST_CACHE_SCHEMA}",
+  "provider_id": "local_curator",
+  "provider_label": "Local curator cache",
+  "provider_version": "2026-06",
+  "cache_id": "direct-cache",
+  "organism": "Homo sapiens",
+  "taxon_id": "9606",
+  "symbol_namespace": "HGNC",
+  "filters": [{{"field": "source", "operator": "equals", "value": "curated"}}],
+  "lists": [
+    {{
+      "id": "splicing_panel",
+      "label": "Splicing panel",
+      "members": ["POS1", {{"symbol": "NEG1"}}, "MISSING"]
+    }}
+  ]
+}}"#
+        ),
+    )
+    .expect("write direct-list cache");
+
+    let report = engine
+        .apply(Operation::ProduceGeneSetDirectList {
+            cache_path: cache_path.to_string_lossy().to_string(),
+            query: Some("splicing_panel".to_string()),
+            genome_id: Some("ToyGenome".to_string()),
+            gene_group_catalog_path: None,
+            genome_catalog_path: Some(genome_catalog_path),
+            cache_dir: None,
+            provider_id: None,
+            provider_label: None,
+            provider_version: None,
+            cache_id: None,
+            cache_version: None,
+            cache_digest: Some("sha256:test".to_string()),
+            organism: None,
+            taxon_id: None,
+            symbol_namespace: None,
+            review_status: Some(GeneSetResolutionReviewStatus::Reviewed),
+            filters: vec![GeneSetProducerFilter {
+                field: "evidence".to_string(),
+                operator: "equals".to_string(),
+                value: "manual".to_string(),
+            }],
+            path: None,
+        })
+        .expect("produce direct-list gene set")
+        .gene_set_resolution
+        .expect("gene-set resolution report");
+
+    assert_eq!(
+        report.review_status,
+        GeneSetResolutionReviewStatus::Reviewed
+    );
+    assert_eq!(report.resolved_member_count, 2);
+    assert_eq!(report.unresolved_member_count, 1);
+    assert_eq!(report.organism.as_deref(), Some("Homo sapiens"));
+    assert_eq!(report.taxon_id.as_deref(), Some("9606"));
+    assert_eq!(report.symbol_namespace.as_deref(), Some("HGNC"));
+    assert!(matches!(
+        report.request,
+        GeneSetRequest::ExplicitMembers { .. }
+    ));
+    let producer = report.producer.as_ref().expect("producer metadata");
+    assert_eq!(producer.producer_kind, GeneSetProducerKind::DirectGeneList);
+    assert_eq!(producer.provider_id, "local_curator");
+    assert_eq!(producer.cache_id.as_deref(), Some("direct-cache"));
+    assert_eq!(producer.cache_version.as_deref(), Some("1"));
+    assert_eq!(producer.cache_digest.as_deref(), Some("sha256:test"));
+    let metadata = report.query_metadata.as_ref().expect("query metadata");
+    assert_eq!(metadata.query_kind, "direct_gene_list");
+    assert_eq!(metadata.query_id.as_deref(), Some("splicing_panel"));
+    assert_eq!(metadata.filters.len(), 2);
+    assert!(report.resolved_members.iter().all(|member| {
+        member
+            .provenance
+            .iter()
+            .any(|row| row.source_kind == "direct_gene_list")
+    }));
+    let unresolved = report
+        .unresolved_members
+        .iter()
+        .find(|member| member.query == "MISSING")
+        .expect("missing member retained");
+    assert_eq!(unresolved.source_kind, "direct_gene_list");
+    assert_eq!(unresolved.source_id.as_deref(), Some("splicing_panel"));
+}
+
+#[test]
+fn produce_gene_set_direct_list_tsv_selects_query_and_uses_overrides() {
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let mut engine = GentleEngine::new();
+    let cache_path = root.join("direct_lists.tsv");
+    fs::write(
+        &cache_path,
+        "list_id\tlist_label\tsymbol\nalpha\tAlpha list\tPOS1\nbeta\tBeta list\tNEG1\n",
+    )
+    .expect("write direct-list TSV cache");
+
+    let report = engine
+        .apply(Operation::ProduceGeneSetDirectList {
+            cache_path: cache_path.to_string_lossy().to_string(),
+            query: Some("beta".to_string()),
+            genome_id: None,
+            gene_group_catalog_path: None,
+            genome_catalog_path: None,
+            cache_dir: None,
+            provider_id: Some("tsv_provider".to_string()),
+            provider_label: None,
+            provider_version: Some("2026-06".to_string()),
+            cache_id: None,
+            cache_version: None,
+            cache_digest: None,
+            organism: Some("Homo sapiens".to_string()),
+            taxon_id: None,
+            symbol_namespace: Some("HGNC".to_string()),
+            review_status: None,
+            filters: vec![],
+            path: None,
+        })
+        .expect("produce direct-list gene set from TSV")
+        .gene_set_resolution
+        .expect("gene-set resolution report");
+
+    assert_eq!(report.resolved_member_count, 1);
+    assert_eq!(report.resolved_members[0].symbol, "NEG1");
+    let producer = report.producer.as_ref().expect("producer metadata");
+    assert_eq!(producer.provider_id, "tsv_provider");
+    assert_eq!(producer.provider_version.as_deref(), Some("2026-06"));
+    assert_eq!(producer.cache_id.as_deref(), Some("direct_lists"));
+    let metadata = report.query_metadata.as_ref().expect("query metadata");
+    assert_eq!(metadata.query_id.as_deref(), Some("beta"));
+    assert_eq!(metadata.query_label.as_deref(), Some("Beta list"));
+    assert_eq!(metadata.symbol_namespace.as_deref(), Some("HGNC"));
+}
+
+#[test]
+fn produce_gene_set_retrieval_producers_reject_unsupported_cache_major_versions() {
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let mut engine = GentleEngine::new();
+
+    let missing_err = engine
+        .apply(Operation::ProduceGeneSetDirectList {
+            cache_path: root.join("missing_direct_cache.json").to_string_lossy().to_string(),
+            query: None,
+            genome_id: None,
+            gene_group_catalog_path: None,
+            genome_catalog_path: None,
+            cache_dir: None,
+            provider_id: None,
+            provider_label: None,
+            provider_version: None,
+            cache_id: None,
+            cache_version: None,
+            cache_digest: None,
+            organism: None,
+            taxon_id: None,
+            symbol_namespace: None,
+            review_status: None,
+            filters: vec![],
+            path: None,
+        })
+        .expect_err("missing direct-list cache should fail");
+    assert_eq!(missing_err.code, ErrorCode::InvalidInput);
+    assert!(
+        missing_err
+            .message
+            .contains("Could not read direct gene-list cache")
+    );
+
+    let direct_path = root.join("direct_v2.json");
+    fs::write(
+        &direct_path,
+        format!(
+            r#"{{
+  "schema": "{GENE_SET_DIRECT_LIST_CACHE_SCHEMA}",
+  "provider_id": "local",
+  "provider_version": "2026-06",
+  "cache_version": "2",
+  "organism": "Homo sapiens",
+  "members": ["SRSF1"]
+}}"#
+        ),
+    )
+    .expect("write direct-list v2 cache");
+    let direct_err = engine
+        .apply(Operation::ProduceGeneSetDirectList {
+            cache_path: direct_path.to_string_lossy().to_string(),
+            query: None,
+            genome_id: None,
+            gene_group_catalog_path: None,
+            genome_catalog_path: None,
+            cache_dir: None,
+            provider_id: None,
+            provider_label: None,
+            provider_version: None,
+            cache_id: None,
+            cache_version: None,
+            cache_digest: None,
+            organism: None,
+            taxon_id: None,
+            symbol_namespace: None,
+            review_status: None,
+            filters: vec![],
+            path: None,
+        })
+        .expect_err("unsupported direct-list cache version should fail");
+    assert!(
+        direct_err
+            .to_string()
+            .contains("Unsupported direct gene-list cache_version '2'")
+    );
+
+    let ontology_path = root.join("ontology_v2.json");
+    fs::write(
+        &ontology_path,
+        format!(
+            r#"{{
+  "schema": "{GENE_SET_ONTOLOGY_ASSIGNMENT_CACHE_SCHEMA}",
+  "provider_id": "goa",
+  "provider_version": "2026-06",
+  "cache_version": "2",
+  "organism": "Homo sapiens",
+  "assignments": [
+    {{"term": "GO:0000381", "members": ["SRSF1"]}}
+  ]
+}}"#
+        ),
+    )
+    .expect("write ontology v2 cache");
+    let ontology_err = engine
+        .apply(Operation::ProduceGeneSetOntologyAssignment {
+            cache_path: ontology_path.to_string_lossy().to_string(),
+            term: "GO:0000381".to_string(),
+            ontology_namespace: None,
+            genome_id: None,
+            gene_group_catalog_path: None,
+            genome_catalog_path: None,
+            cache_dir: None,
+            provider_id: None,
+            provider_label: None,
+            provider_version: None,
+            cache_id: None,
+            cache_version: None,
+            cache_digest: None,
+            organism: None,
+            taxon_id: None,
+            symbol_namespace: None,
+            review_status: None,
+            filters: vec![],
+            path: None,
+        })
+        .expect_err("unsupported ontology cache version should fail");
+    assert!(
+        ontology_err
+            .to_string()
+            .contains("Unsupported ontology assignment cache_version '2'")
+    );
+
+    let co_regulated_path = root.join("co_regulated_v2.json");
+    fs::write(
+        &co_regulated_path,
+        format!(
+            r#"{{
+  "schema": "{GENE_SET_CO_REGULATED_CACHE_SCHEMA}",
+  "provider_id": "expr",
+  "provider_version": "2026-06",
+  "cache_version": "2",
+  "organism": "Homo sapiens",
+  "dataset_id": "expr1",
+  "contrast": "case_vs_control",
+  "rows": [
+    {{"symbol": "SRSF1", "score": 2.0}}
+  ]
+}}"#
+        ),
+    )
+    .expect("write co-regulated v2 cache");
+    let co_regulated_err = engine
+        .apply(Operation::ProduceGeneSetCoRegulatedCohort {
+            cache_path: co_regulated_path.to_string_lossy().to_string(),
+            dataset_ids: vec!["expr1".to_string()],
+            contrast_labels: vec!["case_vs_control".to_string()],
+            condition_labels: vec![],
+            normalization_method: None,
+            scoring_method: "score".to_string(),
+            threshold_rule: "score>=1".to_string(),
+            sign_direction_rule: "both".to_string(),
+            relationship: GeneSetCohortRelationship::CoRegulated,
+            genome_id: None,
+            gene_group_catalog_path: None,
+            genome_catalog_path: None,
+            cache_dir: None,
+            provider_id: None,
+            provider_label: None,
+            provider_version: None,
+            cache_id: None,
+            cache_version: None,
+            cache_digest: None,
+            organism: None,
+            taxon_id: None,
+            symbol_namespace: None,
+            review_status: None,
+            filters: vec![],
+            path: None,
+        })
+        .expect_err("unsupported co-regulated cache version should fail");
+    assert!(
+        co_regulated_err
+            .to_string()
+            .contains("Unsupported co-regulated cohort cache_version '2'")
+    );
+}
+
+#[test]
+fn produce_gene_set_ontology_assignment_json_records_provenance_and_stays_distinct_from_external_mapping()
+ {
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let mut engine = GentleEngine::new();
+    let genome_catalog_path = prepare_gene_set_test_genome(root, &mut engine);
+    let group_catalog_path = write_gene_set_test_group_catalog(root);
+    let cache_path = root.join("go_assignments.json");
+    fs::write(
+        &cache_path,
+        format!(
+            r#"{{
+  "schema": "{GENE_SET_ONTOLOGY_ASSIGNMENT_CACHE_SCHEMA}",
+  "provider_id": "goa_cache",
+  "provider_label": "Synthetic GOA cache",
+  "provider_version": "2026-06",
+  "cache_id": "goa-cache",
+  "organism": "Homo sapiens",
+  "taxon_id": "9606",
+  "symbol_namespace": "HGNC",
+  "assignments": [
+    {{
+      "term": "GO:0000381",
+      "term_label": "regulation of alternative mRNA splicing",
+      "evidence_code": "IDA",
+      "assigned_by": "UniProt",
+      "members": ["EDGE1", "MISSING"]
+    }},
+    {{
+      "term": "GO:0000381",
+      "evidence_code": "IMP",
+      "assigned_by": "UniProt",
+      "members": ["POS1"]
+    }}
+  ]
+}}"#
+        ),
+    )
+    .expect("write ontology assignment cache");
+
+    let report = engine
+        .apply(Operation::ProduceGeneSetOntologyAssignment {
+            cache_path: cache_path.to_string_lossy().to_string(),
+            term: "GO:0000381".to_string(),
+            ontology_namespace: None,
+            genome_id: Some("ToyGenome".to_string()),
+            gene_group_catalog_path: Some(group_catalog_path),
+            genome_catalog_path: Some(genome_catalog_path),
+            cache_dir: None,
+            provider_id: None,
+            provider_label: None,
+            provider_version: None,
+            cache_id: None,
+            cache_version: None,
+            cache_digest: Some("sha256:goa-test".to_string()),
+            organism: None,
+            taxon_id: None,
+            symbol_namespace: None,
+            review_status: Some(GeneSetResolutionReviewStatus::Unreviewed),
+            filters: vec![
+                GeneSetProducerFilter {
+                    field: "evidence_code".to_string(),
+                    operator: "equals".to_string(),
+                    value: "IDA".to_string(),
+                },
+                GeneSetProducerFilter {
+                    field: "assigned_by".to_string(),
+                    operator: "equals".to_string(),
+                    value: "UniProt".to_string(),
+                },
+            ],
+            path: None,
+        })
+        .expect("produce ontology assignment gene set")
+        .gene_set_resolution
+        .expect("gene-set resolution report");
+
+    assert_eq!(
+        report.review_status,
+        GeneSetResolutionReviewStatus::Unreviewed
+    );
+    assert_eq!(report.resolved_member_count, 1);
+    assert_eq!(report.resolved_members[0].symbol, "EDGE1");
+    assert_eq!(report.unresolved_member_count, 1);
+    assert!(matches!(
+        report.request,
+        GeneSetRequest::ExplicitMembers { .. }
+    ));
+    assert!(
+        report.contributing_group_ids.is_empty(),
+        "ontology assignment producer must not reuse local external_mapping groups"
+    );
+    let producer = report.producer.as_ref().expect("producer metadata");
+    assert_eq!(
+        producer.producer_kind,
+        GeneSetProducerKind::OntologyAssignment
+    );
+    assert_eq!(producer.provider_id, "goa_cache");
+    assert_eq!(producer.cache_id.as_deref(), Some("goa-cache"));
+    assert_eq!(producer.cache_version.as_deref(), Some("1"));
+    assert_eq!(producer.cache_digest.as_deref(), Some("sha256:goa-test"));
+    let metadata = report.query_metadata.as_ref().expect("query metadata");
+    assert_eq!(metadata.query_kind, "ontology_assignment");
+    assert_eq!(metadata.query_id.as_deref(), Some("GO:0000381"));
+    assert_eq!(
+        metadata.query_label.as_deref(),
+        Some("regulation of alternative mRNA splicing")
+    );
+    assert_eq!(metadata.filters.len(), 2);
+    assert!(report.resolved_members.iter().all(|member| {
+        member
+            .provenance
+            .iter()
+            .any(|row| row.source_kind == "ontology_assignment")
+    }));
+    let unresolved = report
+        .unresolved_members
+        .iter()
+        .find(|member| member.query == "MISSING")
+        .expect("missing member retained");
+    assert_eq!(unresolved.source_kind, "ontology_assignment");
+    assert_eq!(unresolved.source_id.as_deref(), Some("GO:0000381"));
+}
+
+#[test]
+fn produce_gene_set_ontology_assignment_zero_rows_reports_unresolved_term() {
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let mut engine = GentleEngine::new();
+    let cache_path = root.join("go_assignments_zero.json");
+    fs::write(
+        &cache_path,
+        format!(
+            r#"{{
+  "schema": "{GENE_SET_ONTOLOGY_ASSIGNMENT_CACHE_SCHEMA}",
+  "provider_id": "goa_cache",
+  "provider_version": "2026-06",
+  "organism": "Homo sapiens",
+  "assignments": [
+    {{"term": "GO:0000001", "members": ["POS1"]}}
+  ]
+}}"#
+        ),
+    )
+    .expect("write ontology assignment cache");
+
+    let report = engine
+        .apply(Operation::ProduceGeneSetOntologyAssignment {
+            cache_path: cache_path.to_string_lossy().to_string(),
+            term: "GO:9999999".to_string(),
+            ontology_namespace: None,
+            genome_id: None,
+            gene_group_catalog_path: None,
+            genome_catalog_path: None,
+            cache_dir: None,
+            provider_id: None,
+            provider_label: None,
+            provider_version: None,
+            cache_id: None,
+            cache_version: None,
+            cache_digest: None,
+            organism: None,
+            taxon_id: None,
+            symbol_namespace: None,
+            review_status: None,
+            filters: vec![],
+            path: None,
+        })
+        .expect("zero assignment rows are a report, not a fatal error")
+        .gene_set_resolution
+        .expect("gene-set resolution report");
+
+    assert_eq!(report.resolved_member_count, 0);
+    assert_eq!(report.unresolved_member_count, 1);
+    assert_eq!(report.unresolved_members[0].query, "GO:9999999");
+    assert_eq!(
+        report.unresolved_members[0].source_kind,
+        "ontology_assignment"
+    );
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("has no rows for term 'GO:9999999'"))
+    );
+    let producer = report.producer.as_ref().expect("producer metadata");
+    assert_eq!(
+        producer.producer_kind,
+        GeneSetProducerKind::OntologyAssignment
+    );
+}
+
+#[test]
+fn produce_gene_set_co_regulated_json_filters_direction_and_preserves_anti_relationship() {
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let mut engine = GentleEngine::new();
+    let genome_catalog_path = prepare_gene_set_test_genome(root, &mut engine);
+    let cache_path = root.join("co_regulated.json");
+    fs::write(
+        &cache_path,
+        format!(
+            r#"{{
+  "schema": "{GENE_SET_CO_REGULATED_CACHE_SCHEMA}",
+  "provider_id": "expr_cache",
+  "provider_version": "2026-06",
+  "cache_id": "expr-cache",
+  "organism": "Homo sapiens",
+  "symbol_namespace": "HGNC",
+  "dataset_id": "expr1",
+  "contrast": "case_vs_control",
+  "normalization_method": "vst",
+  "scoring_method": "logfc",
+  "rows": [
+    {{"symbol": "POS1", "logfc": 2.1, "padj": "0.05"}},
+    {{"symbol": "NEG1", "logfc": -2.4, "padj": "0.05"}},
+    {{"symbol": "MID1", "logfc": 0.4, "padj": "0.05"}},
+    {{"symbol": "EDGE1", "logfc": 1.8, "padj": "0.05"}}
+  ]
+}}"#
+        ),
+    )
+    .expect("write co-regulated cache");
+
+    let report = engine
+        .apply(Operation::ProduceGeneSetCoRegulatedCohort {
+            cache_path: cache_path.to_string_lossy().to_string(),
+            dataset_ids: vec!["expr1".to_string()],
+            contrast_labels: vec!["case_vs_control".to_string()],
+            condition_labels: vec![],
+            normalization_method: None,
+            scoring_method: "logfc".to_string(),
+            threshold_rule: "abs>=1.5".to_string(),
+            sign_direction_rule: "positive".to_string(),
+            relationship: GeneSetCohortRelationship::AntiCoRegulated,
+            genome_id: Some("ToyGenome".to_string()),
+            gene_group_catalog_path: None,
+            genome_catalog_path: Some(genome_catalog_path.clone()),
+            cache_dir: None,
+            provider_id: None,
+            provider_label: None,
+            provider_version: None,
+            cache_id: None,
+            cache_version: None,
+            cache_digest: None,
+            organism: None,
+            taxon_id: None,
+            symbol_namespace: None,
+            review_status: None,
+            filters: vec![GeneSetProducerFilter {
+                field: "padj".to_string(),
+                operator: "equals".to_string(),
+                value: "0.05".to_string(),
+            }],
+            path: None,
+        })
+        .expect("produce co-regulated gene set")
+        .gene_set_resolution
+        .expect("gene-set resolution report");
+
+    assert_eq!(report.resolved_member_count, 2);
+    assert_eq!(
+        report
+            .resolved_members
+            .iter()
+            .map(|member| member.symbol.as_str())
+            .collect::<Vec<_>>(),
+        vec!["POS1", "EDGE1"]
+    );
+    assert!(matches!(
+        report.request,
+        GeneSetRequest::ExplicitMembers { .. }
+    ));
+    let producer = report.producer.as_ref().expect("producer metadata");
+    assert_eq!(
+        producer.producer_kind,
+        GeneSetProducerKind::CoRegulatedCohort
+    );
+    assert_eq!(producer.provider_id, "expr_cache");
+    let metadata = report
+        .co_regulated_metadata
+        .as_ref()
+        .expect("co-regulated metadata");
+    assert_eq!(metadata.dataset_ids, vec!["expr1"]);
+    assert_eq!(metadata.contrast_labels, vec!["case_vs_control"]);
+    assert_eq!(metadata.normalization_method, "vst");
+    assert_eq!(metadata.scoring_method, "logfc");
+    assert_eq!(metadata.threshold_rule, "abs>=1.5");
+    assert_eq!(metadata.sign_direction_rule, "positive");
+    assert_eq!(
+        metadata.relationship,
+        GeneSetCohortRelationship::AntiCoRegulated
+    );
+    assert!(
+        metadata
+            .interpretation_note
+            .contains("does not prove regulation")
+    );
+    assert!(report.resolved_members.iter().all(|member| {
+        member
+            .provenance
+            .iter()
+            .any(|row| row.source_kind == "co_regulated_cohort")
+    }));
+
+    let cohort = engine
+        .build_gene_set_promoter_cohort(
+            "ToyGenome",
+            report,
+            GeneSetCohortRelationship::Unspecified,
+            100,
+            20,
+            Some(&genome_catalog_path),
+            None,
+        )
+        .expect("build promoter cohort");
+    assert_eq!(
+        cohort.relationship,
+        GeneSetCohortRelationship::AntiCoRegulated
+    );
+}
+
+#[test]
+fn produce_gene_set_co_regulated_tsv_negative_direction_preserves_co_relationship() {
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let mut engine = GentleEngine::new();
+    let cache_path = root.join("co_regulated.tsv");
+    fs::write(
+        &cache_path,
+        concat!(
+            "dataset_id\tcontrast\tsymbol\tlogfc\tprovider_id\tprovider_version\torganism\tsymbol_namespace\tnormalization_method\tscoring_method\n",
+            "expr1\tcase_vs_control\tPOS1\t2.2\texpr_cache\t2026-06\tHomo sapiens\tHGNC\tvst\tlogfc\n",
+            "expr1\tcase_vs_control\tNEG1\t-2.2\texpr_cache\t2026-06\tHomo sapiens\tHGNC\tvst\tlogfc\n",
+            "expr1\tcase_vs_control\tMID1\t-0.3\texpr_cache\t2026-06\tHomo sapiens\tHGNC\tvst\tlogfc\n",
+        ),
+    )
+    .expect("write co-regulated TSV cache");
+
+    let report = engine
+        .apply(Operation::ProduceGeneSetCoRegulatedCohort {
+            cache_path: cache_path.to_string_lossy().to_string(),
+            dataset_ids: vec!["expr1".to_string()],
+            contrast_labels: vec!["case_vs_control".to_string()],
+            condition_labels: vec![],
+            normalization_method: None,
+            scoring_method: "logfc".to_string(),
+            threshold_rule: "abs>=1".to_string(),
+            sign_direction_rule: "negative".to_string(),
+            relationship: GeneSetCohortRelationship::CoRegulated,
+            genome_id: None,
+            gene_group_catalog_path: None,
+            genome_catalog_path: None,
+            cache_dir: None,
+            provider_id: None,
+            provider_label: None,
+            provider_version: None,
+            cache_id: None,
+            cache_version: Some("1".to_string()),
+            cache_digest: None,
+            organism: None,
+            taxon_id: None,
+            symbol_namespace: None,
+            review_status: None,
+            filters: vec![],
+            path: None,
+        })
+        .expect("produce co-regulated TSV gene set")
+        .gene_set_resolution
+        .expect("gene-set resolution report");
+
+    assert_eq!(report.resolved_member_count, 1);
+    assert_eq!(report.resolved_members[0].symbol, "NEG1");
+    let metadata = report
+        .co_regulated_metadata
+        .as_ref()
+        .expect("co-regulated metadata");
+    assert_eq!(
+        metadata.relationship,
+        GeneSetCohortRelationship::CoRegulated
+    );
+    assert_eq!(metadata.sign_direction_rule, "negative");
+    assert_eq!(metadata.threshold_rule, "abs>=1");
+}
+
+#[test]
 fn build_gene_set_promoter_cohort_uses_default_strand_geometry_and_keeps_unresolved() {
     let td = tempdir().expect("tempdir");
     let root = td.path();
@@ -29185,6 +29898,130 @@ fn test_build_lineage_svg_graph_projects_sequencing_confirmation_artifact() {
     assert!(reloaded_edges.iter().any(|edge| {
         edge.to_node_id == "analysis:seq_confirm:lineage_confirm"
             && edge.label.contains("Sequencing confirmation")
+    }));
+}
+
+#[test]
+fn test_build_lineage_svg_graph_projects_gene_set_artifacts() {
+    let temp = tempdir().expect("tempdir");
+    let root = temp.path();
+    let mut engine = GentleEngine::new();
+    let genome_catalog_path = prepare_gene_set_test_genome(root, &mut engine);
+    let cache_path = root.join("lineage_gene_lists.json");
+    fs::write(
+        &cache_path,
+        format!(
+            r#"{{
+  "schema": "{GENE_SET_DIRECT_LIST_CACHE_SCHEMA}",
+  "provider_id": "local_curator",
+  "provider_label": "Local curator cache",
+  "provider_version": "2026-06",
+  "cache_id": "lineage-direct-cache",
+  "cache_version": "1",
+  "organism": "Homo sapiens",
+  "taxon_id": "9606",
+  "symbol_namespace": "HGNC",
+  "lists": [
+    {{
+      "id": "lineage_panel",
+      "label": "Lineage panel",
+      "members": ["POS1", "NEG1", "MISSING"]
+    }}
+  ]
+}}"#
+        ),
+    )
+    .expect("write direct-list cache");
+
+    let gene_set_result = engine
+        .apply(Operation::ProduceGeneSetDirectList {
+            cache_path: cache_path.to_string_lossy().to_string(),
+            query: Some("lineage_panel".to_string()),
+            genome_id: Some("ToyGenome".to_string()),
+            gene_group_catalog_path: None,
+            genome_catalog_path: Some(genome_catalog_path.clone()),
+            cache_dir: None,
+            provider_id: None,
+            provider_label: None,
+            provider_version: None,
+            cache_id: None,
+            cache_version: None,
+            cache_digest: Some("sha256:lineage".to_string()),
+            organism: None,
+            taxon_id: None,
+            symbol_namespace: None,
+            review_status: Some(GeneSetResolutionReviewStatus::Reviewed),
+            filters: vec![],
+            path: None,
+        })
+        .expect("produce lineage gene set");
+    let resolution = gene_set_result
+        .gene_set_resolution
+        .clone()
+        .expect("gene-set resolution");
+
+    engine
+        .apply(Operation::BuildGeneSetPromoterCohort {
+            genome_id: "ToyGenome".to_string(),
+            source: None,
+            resolution: Some(Box::new(resolution.clone())),
+            relationship: GeneSetCohortRelationship::Manual,
+            upstream_bp: DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP,
+            downstream_bp: DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP,
+            gene_group_catalog_path: None,
+            genome_catalog_path: Some(genome_catalog_path),
+            cache_dir: None,
+            allow_draft: false,
+            allow_deprecated: false,
+            path: None,
+        })
+        .expect("build lineage promoter cohort");
+
+    let (nodes, edges) = build_lineage_svg_graph(engine.state(), engine.operation_log());
+    let gene_set_node = nodes
+        .iter()
+        .find(|node| node.kind == LineageSvgNodeKind::GeneSet)
+        .expect("gene-set lineage node");
+    assert_ne!(gene_set_node.kind, LineageSvgNodeKind::Sequence);
+    assert_eq!(gene_set_node.title, "Lineage panel");
+    assert!(gene_set_node.subtitle.contains("members=2"));
+    assert!(gene_set_node.subtitle.contains("unresolved=1"));
+    assert!(gene_set_node.subtitle.contains("producer=direct_gene_list"));
+    assert!(gene_set_node.subtitle.contains("taxon=9606"));
+
+    let operation_node_id = format!("operation:{}", gene_set_result.op_id);
+    assert!(nodes.iter().any(|node| {
+        node.kind == LineageSvgNodeKind::OperationHub && node.node_id == operation_node_id
+    }));
+    assert!(edges.iter().any(|edge| {
+        edge.from_node_id == operation_node_id && edge.to_node_id == gene_set_node.node_id
+    }));
+    assert!(edges.iter().any(|edge| {
+        edge.from_node_id == gene_set_node.node_id
+            && edge.to_node_id.starts_with("analysis:gene_set_promoter:")
+    }));
+
+    let svg = export_lineage_svg(engine.state(), engine.operation_log());
+    assert!(svg.contains("Lineage panel"));
+    assert!(svg.contains("members=2 unresolved=1"));
+    assert!(svg.contains("producer=direct_gene_list"));
+
+    let state_path = root.join("lineage_gene_set.state.json");
+    engine
+        .state()
+        .save_to_path(state_path.to_string_lossy().as_ref())
+        .expect("save state");
+    let reloaded_state =
+        ProjectState::load_from_path(state_path.to_string_lossy().as_ref()).expect("reload state");
+    let (reloaded_nodes, reloaded_edges) = build_lineage_svg_graph(&reloaded_state, &[]);
+    let reloaded_gene_set_node = reloaded_nodes
+        .iter()
+        .find(|node| node.kind == LineageSvgNodeKind::GeneSet)
+        .expect("reloaded gene-set node");
+    assert_eq!(reloaded_gene_set_node.title, "Lineage panel");
+    assert!(reloaded_edges.iter().any(|edge| {
+        edge.from_node_id == reloaded_gene_set_node.node_id
+            && edge.to_node_id.starts_with("analysis:gene_set_promoter:")
     }));
 }
 

@@ -617,6 +617,8 @@ pub const SEQUENCING_TRACE_IMPORT_REPORT_SCHEMA: &str = "gentle.sequencing_trace
 pub const SEQUENCING_CONFIRMATION_REPORTS_METADATA_KEY: &str = "sequencing_confirmation_reports";
 const SEQUENCING_CONFIRMATION_REPORTS_SCHEMA: &str = "gentle.sequencing_confirmation_reports.v1";
 pub const SEQUENCING_CONFIRMATION_REPORT_SCHEMA: &str = "gentle.sequencing_confirmation_report.v1";
+pub const GENE_SET_ARTIFACTS_METADATA_KEY: &str = "gene_set_artifacts";
+const GENE_SET_ARTIFACTS_SCHEMA: &str = "gentle.gene_set_artifacts.v1";
 pub const SEQUENCING_PRIMER_OVERLAY_REPORT_SCHEMA: &str =
     "gentle.sequencing_primer_overlay_report.v1";
 pub const SEQUENCING_CONFIRMATION_SUPPORT_TSV_SCHEMA: &str =
@@ -2532,6 +2534,16 @@ struct SequencingConfirmationReportStore {
     reports: BTreeMap<String, SequencingConfirmationReport>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+struct GeneSetArtifactStore {
+    schema: String,
+    updated_at_unix_ms: u128,
+    resolutions: BTreeMap<String, GeneSetResolutionReport>,
+    promoter_cohorts: BTreeMap<String, GeneSetPromoterCohortReport>,
+    cutrun_support_reports: BTreeMap<String, GeneSetCutRunRegulatorySupportReport>,
+}
+
 impl PlanningProfileScope {
     pub fn as_str(self) -> &'static str {
         match self {
@@ -3387,6 +3399,128 @@ pub enum Operation {
         allow_draft: bool,
         #[serde(default)]
         allow_deprecated: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    ProduceGeneSetDirectList {
+        cache_path: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        query: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        genome_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        gene_group_catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        genome_catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_dir: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        provider_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        provider_label: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        provider_version: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_version: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_digest: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        organism: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        taxon_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        symbol_namespace: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        review_status: Option<GeneSetResolutionReviewStatus>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        filters: Vec<GeneSetProducerFilter>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    ProduceGeneSetOntologyAssignment {
+        cache_path: String,
+        term: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        ontology_namespace: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        genome_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        gene_group_catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        genome_catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_dir: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        provider_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        provider_label: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        provider_version: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_version: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_digest: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        organism: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        taxon_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        symbol_namespace: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        review_status: Option<GeneSetResolutionReviewStatus>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        filters: Vec<GeneSetProducerFilter>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    ProduceGeneSetCoRegulatedCohort {
+        cache_path: String,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        dataset_ids: Vec<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        contrast_labels: Vec<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        condition_labels: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        normalization_method: Option<String>,
+        scoring_method: String,
+        threshold_rule: String,
+        sign_direction_rule: String,
+        relationship: GeneSetCohortRelationship,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        genome_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        gene_group_catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        genome_catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_dir: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        provider_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        provider_label: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        provider_version: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_version: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_digest: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        organism: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        taxon_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        symbol_namespace: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        review_status: Option<GeneSetResolutionReviewStatus>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        filters: Vec<GeneSetProducerFilter>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
@@ -8277,6 +8411,9 @@ impl GentleEngine {
                 | Operation::BenchmarkJasparRegistry { .. }
                 | Operation::ListJasparCatalog { .. }
                 | Operation::SyncJasparRemoteMetadata { .. }
+                | Operation::ProduceGeneSetDirectList { .. }
+                | Operation::ProduceGeneSetOntologyAssignment { .. }
+                | Operation::ProduceGeneSetCoRegulatedCohort { .. }
                 | Operation::SummarizeVariantPromoterContext { .. }
                 | Operation::SuggestPromoterReporterFragments { .. }
                 | Operation::ListReporterCatalog { .. }

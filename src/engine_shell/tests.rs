@@ -17,17 +17,17 @@ use crate::engine::{
     BIGWIG_TO_BEDGRAPH_ENV_BIN, CdnaAssayTranscriptMapCoordinateMode, CdnaAssayTranscriptOrder,
     ConstructObjective, ConstructRole, Container, ContainerKind, CutRunAlignConfig,
     CutRunCoverageKind, CutRunInputFormat, CutRunReadLayout, CutRunSeedFilterConfig, DisplayTarget,
-    EditableStatus, ExonSkipReturnKind, GeneSetCohortRelationship, InlineSequenceTopology,
-    OrthologAmbiguityPolicy, PrimerDesignProgress, PromoterCohortKind, PromoterTfbsGeneQuery,
-    ProteinExternalOpinionSource, ProteinFeatureFilter, QpcrTranscriptSpecificityEvidence,
-    QpcrTranscriptTargetingMode, Rack, RackAuthoringTemplate, RackCarrierLabelPreset,
-    RackFillDirection, RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind,
-    RackPlacementEntry, RackProfileKind, RackProfileSnapshot, ReadAcquisitionAnalysisFormat,
-    ReadAcquisitionReadLayout, RepeatEnvironmentGeometryMode, RestrictionCloningPcrHandoffMode,
-    RnaReadAlignConfig, RnaReadInterpretationHit, RnaReadInterpretationReport, RnaReadMappingHit,
-    RnaReadOriginClass, SequenceOrigin, SequenceScanTarget, TfThresholdOverride,
-    TfbsScoreTrackCorrelationSignalSource, TfbsScoreTrackValueKind,
-    TfbsTrackSimilarityRankingMetric,
+    EditableStatus, ExonSkipReturnKind, GeneSetCohortRelationship, GeneSetResolutionReviewStatus,
+    InlineSequenceTopology, OrthologAmbiguityPolicy, PrimerDesignProgress, PromoterCohortKind,
+    PromoterTfbsGeneQuery, ProteinExternalOpinionSource, ProteinFeatureFilter,
+    QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargetingMode, Rack, RackAuthoringTemplate,
+    RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset, RackOccupant,
+    RackPhysicalTemplateKind, RackPlacementEntry, RackProfileKind, RackProfileSnapshot,
+    ReadAcquisitionAnalysisFormat, ReadAcquisitionReadLayout, RepeatEnvironmentGeometryMode,
+    RestrictionCloningPcrHandoffMode, RnaReadAlignConfig, RnaReadInterpretationHit,
+    RnaReadInterpretationReport, RnaReadMappingHit, RnaReadOriginClass, SequenceOrigin,
+    SequenceScanTarget, TfThresholdOverride, TfbsScoreTrackCorrelationSignalSource,
+    TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric,
 };
 use crate::ensembl_gene::{
     EnsemblGeneEntry, EnsemblGeneExonSummary, EnsemblGeneTranscriptSummary,
@@ -424,7 +424,25 @@ fn smoke_command_override(path: &str) -> Option<&'static str> {
         "cutrun gene-set-regulatory-support" => Some(
             "cutrun gene-set-regulatory-support ToyGenome --group yamanaka_factors --dataset toy_ctcf",
         ),
+        "resources import-gene-list-cache" => Some(
+            "resources import-gene-list-cache --input genes.tsv --output genes.json --provider local --version 1 --organism Homo_sapiens",
+        ),
+        "resources import-ontology-assignment-cache" => Some(
+            "resources import-ontology-assignment-cache --input go.tsv --output go.json --provider goa --version 1 --ontology-namespace GO --organism Homo_sapiens",
+        ),
+        "resources import-co-regulated-cache" => Some(
+            "resources import-co-regulated-cache --input expression.tsv --output expression.json --provider local --version 1 --dataset expr1 --contrast case_vs_control --score logfc --organism Homo_sapiens",
+        ),
         "gene-sets resolve" => Some("gene-sets resolve --group yamanaka_factors"),
+        "gene-sets produce direct-list" => Some(
+            "gene-sets produce direct-list --cache lists.json --provider local --provider-version 1 --organism Homo_sapiens",
+        ),
+        "gene-sets produce ontology-assignment" => Some(
+            "gene-sets produce ontology-assignment --cache go.json --term GO:0000381 --provider goa --provider-version 1 --organism Homo_sapiens",
+        ),
+        "gene-sets produce co-regulated" => Some(
+            "gene-sets produce co-regulated --cache expression.json --dataset expr1 --contrast case_vs_control --score logfc --threshold abs>=1 --direction both --provider local --provider-version 1 --organism Homo_sapiens",
+        ),
         "gene-sets promoter-cohort" => {
             Some("gene-sets promoter-cohort ToyGenome --group yamanaka_factors")
         }
@@ -15123,6 +15141,355 @@ fn parse_gene_sets_resolve_and_promoter_cohort_commands() {
     )
     .expect_err("empty relationship is rejected");
     assert!(empty.contains("Missing value after --relationship"));
+}
+
+#[test]
+fn parse_gene_sets_produce_direct_list_command() {
+    let command = parse_shell_line(
+        "gene-sets produce direct-list --cache lists.json --query splicing_panel --genome ToyGenome --provider local_curator --provider-version 2026-06 --cache-version 1 --organism 'Homo sapiens' --taxon-id 9606 --namespace HGNC --review-status reviewed --filter evidence=manual --output set.json",
+    )
+    .expect("parse direct-list producer");
+
+    match command {
+        ShellCommand::GeneSetsProduceDirectList {
+            cache_path,
+            query,
+            genome_id,
+            provider_id,
+            provider_version,
+            cache_version,
+            organism,
+            taxon_id,
+            symbol_namespace,
+            review_status,
+            filters,
+            output,
+            ..
+        } => {
+            assert_eq!(cache_path, "lists.json");
+            assert_eq!(query.as_deref(), Some("splicing_panel"));
+            assert_eq!(genome_id.as_deref(), Some("ToyGenome"));
+            assert_eq!(provider_id.as_deref(), Some("local_curator"));
+            assert_eq!(provider_version.as_deref(), Some("2026-06"));
+            assert_eq!(cache_version.as_deref(), Some("1"));
+            assert_eq!(organism.as_deref(), Some("Homo sapiens"));
+            assert_eq!(taxon_id.as_deref(), Some("9606"));
+            assert_eq!(symbol_namespace.as_deref(), Some("HGNC"));
+            assert_eq!(review_status, Some(GeneSetResolutionReviewStatus::Reviewed));
+            assert_eq!(filters.len(), 1);
+            assert_eq!(filters[0].field, "evidence");
+            assert_eq!(filters[0].operator, "equals");
+            assert_eq!(filters[0].value, "manual");
+            assert_eq!(output.as_deref(), Some("set.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let invalid_filter =
+        parse_shell_line("gene-sets produce direct-list --cache lists.json --filter malformed")
+            .expect_err("invalid filter rejected");
+    assert!(invalid_filter.contains("FIELD=VALUE"));
+}
+
+#[test]
+fn parse_gene_sets_produce_ontology_assignment_command() {
+    let command = parse_shell_line(
+        "gene-sets produce ontology-assignment --cache go.json --term GO:0000381 --ontology-namespace GO --genome ToyGenome --provider goa --provider-version 2026-06 --cache-version 1 --organism 'Homo sapiens' --taxon-id 9606 --namespace HGNC --review-status unreviewed --evidence-code IDA --filter assigned_by=UniProt --output go_set.json",
+    )
+    .expect("parse ontology-assignment producer");
+
+    match command {
+        ShellCommand::GeneSetsProduceOntologyAssignment {
+            cache_path,
+            term,
+            ontology_namespace,
+            genome_id,
+            provider_id,
+            provider_version,
+            cache_version,
+            organism,
+            taxon_id,
+            symbol_namespace,
+            review_status,
+            filters,
+            output,
+            ..
+        } => {
+            assert_eq!(cache_path, "go.json");
+            assert_eq!(term, "GO:0000381");
+            assert_eq!(ontology_namespace.as_deref(), Some("GO"));
+            assert_eq!(genome_id.as_deref(), Some("ToyGenome"));
+            assert_eq!(provider_id.as_deref(), Some("goa"));
+            assert_eq!(provider_version.as_deref(), Some("2026-06"));
+            assert_eq!(cache_version.as_deref(), Some("1"));
+            assert_eq!(organism.as_deref(), Some("Homo sapiens"));
+            assert_eq!(taxon_id.as_deref(), Some("9606"));
+            assert_eq!(symbol_namespace.as_deref(), Some("HGNC"));
+            assert_eq!(review_status, Some(GeneSetResolutionReviewStatus::Unreviewed));
+            assert_eq!(filters.len(), 2);
+            assert_eq!(filters[0].field, "evidence_code");
+            assert_eq!(filters[0].value, "IDA");
+            assert_eq!(filters[1].field, "assigned_by");
+            assert_eq!(filters[1].value, "UniProt");
+            assert_eq!(output.as_deref(), Some("go_set.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let missing_term =
+        parse_shell_line("gene-sets produce ontology-assignment --cache go.json")
+            .expect_err("missing term rejected");
+    assert!(missing_term.contains("requires --term"));
+}
+
+#[test]
+fn parse_gene_sets_produce_co_regulated_command() {
+    let command = parse_shell_line(
+        "gene-sets produce co-regulated --cache expr.json --dataset expr1,expr2 --contrast case_vs_control --condition case --normalization vst --score logfc --threshold abs>=1.5 --direction positive --relationship anti-co-regulated --genome ToyGenome --provider local_expr --provider-version 2026-06 --organism 'Homo sapiens' --namespace HGNC --filter padj=0.05 --output co_set.json",
+    )
+    .expect("parse co-regulated producer");
+
+    match command {
+        ShellCommand::GeneSetsProduceCoRegulatedCohort {
+            cache_path,
+            dataset_ids,
+            contrast_labels,
+            condition_labels,
+            normalization_method,
+            scoring_method,
+            threshold_rule,
+            sign_direction_rule,
+            relationship,
+            genome_id,
+            provider_id,
+            provider_version,
+            organism,
+            symbol_namespace,
+            filters,
+            output,
+            ..
+        } => {
+            assert_eq!(cache_path, "expr.json");
+            assert_eq!(dataset_ids, vec!["expr1", "expr2"]);
+            assert_eq!(contrast_labels, vec!["case_vs_control"]);
+            assert_eq!(condition_labels, vec!["case"]);
+            assert_eq!(normalization_method.as_deref(), Some("vst"));
+            assert_eq!(scoring_method, "logfc");
+            assert_eq!(threshold_rule, "abs>=1.5");
+            assert_eq!(sign_direction_rule, "positive");
+            assert_eq!(relationship, GeneSetCohortRelationship::AntiCoRegulated);
+            assert_eq!(genome_id.as_deref(), Some("ToyGenome"));
+            assert_eq!(provider_id.as_deref(), Some("local_expr"));
+            assert_eq!(provider_version.as_deref(), Some("2026-06"));
+            assert_eq!(organism.as_deref(), Some("Homo sapiens"));
+            assert_eq!(symbol_namespace.as_deref(), Some("HGNC"));
+            assert_eq!(filters.len(), 1);
+            assert_eq!(filters[0].field, "padj");
+            assert_eq!(filters[0].value, "0.05");
+            assert_eq!(output.as_deref(), Some("co_set.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let missing_dataset = parse_shell_line(
+        "gene-sets produce co-regulated --cache expr.json --contrast c --score logfc --threshold abs>=1 --direction both",
+    )
+    .expect_err("missing dataset rejected");
+    assert!(missing_dataset.contains("requires --dataset"));
+}
+
+#[test]
+fn parse_resources_import_gene_set_cache_commands() {
+    let direct = parse_shell_line(
+        "resources import-gene-list-cache --input genes.tsv --output genes.json --provider local_curator --version 2026-06 --cache-id direct-cache --cache-version 1 --organism 'Homo sapiens' --taxon-id 9606 --namespace HGNC --list-id splicing --list-label 'Splicing panel'",
+    )
+    .expect("parse direct-list cache import");
+    match direct {
+        ShellCommand::ResourcesImportGeneListCache {
+            input,
+            output,
+            provider_id,
+            provider_version,
+            cache_id,
+            cache_version,
+            organism,
+            taxon_id,
+            symbol_namespace,
+            list_id,
+            list_label,
+            ..
+        } => {
+            assert_eq!(input, "genes.tsv");
+            assert_eq!(output, "genes.json");
+            assert_eq!(provider_id, "local_curator");
+            assert_eq!(provider_version, "2026-06");
+            assert_eq!(cache_id.as_deref(), Some("direct-cache"));
+            assert_eq!(cache_version.as_deref(), Some("1"));
+            assert_eq!(organism.as_deref(), Some("Homo sapiens"));
+            assert_eq!(taxon_id.as_deref(), Some("9606"));
+            assert_eq!(symbol_namespace.as_deref(), Some("HGNC"));
+            assert_eq!(list_id.as_deref(), Some("splicing"));
+            assert_eq!(list_label.as_deref(), Some("Splicing panel"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let ontology = parse_shell_line(
+        "resources import-ontology-assignment-cache go.csv go.json --provider goa --version 2026-06 --ontology-namespace GO --organism 'Homo sapiens' --symbol-namespace HGNC",
+    )
+    .expect("parse ontology-assignment cache import");
+    match ontology {
+        ShellCommand::ResourcesImportOntologyAssignmentCache {
+            input,
+            output,
+            provider_id,
+            provider_version,
+            ontology_namespace,
+            organism,
+            symbol_namespace,
+            ..
+        } => {
+            assert_eq!(input, "go.csv");
+            assert_eq!(output, "go.json");
+            assert_eq!(provider_id, "goa");
+            assert_eq!(provider_version, "2026-06");
+            assert_eq!(ontology_namespace.as_deref(), Some("GO"));
+            assert_eq!(organism.as_deref(), Some("Homo sapiens"));
+            assert_eq!(symbol_namespace.as_deref(), Some("HGNC"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let co_regulated = parse_shell_line(
+        "resources import-co-regulated-cache expression.tsv expression.json --provider local_expr --version 2026-06 --dataset expr1 --contrast case_vs_control --condition case --normalization vst --score logfc --organism 'Homo sapiens' --namespace HGNC",
+    )
+    .expect("parse co-regulated cache import");
+    match co_regulated {
+        ShellCommand::ResourcesImportCoRegulatedCache {
+            input,
+            output,
+            provider_id,
+            provider_version,
+            dataset_id,
+            contrast_label,
+            condition_label,
+            normalization_method,
+            scoring_method,
+            organism,
+            symbol_namespace,
+            ..
+        } => {
+            assert_eq!(input, "expression.tsv");
+            assert_eq!(output, "expression.json");
+            assert_eq!(provider_id, "local_expr");
+            assert_eq!(provider_version, "2026-06");
+            assert_eq!(dataset_id.as_deref(), Some("expr1"));
+            assert_eq!(contrast_label.as_deref(), Some("case_vs_control"));
+            assert_eq!(condition_label.as_deref(), Some("case"));
+            assert_eq!(normalization_method.as_deref(), Some("vst"));
+            assert_eq!(scoring_method, "logfc");
+            assert_eq!(organism.as_deref(), Some("Homo sapiens"));
+            assert_eq!(symbol_namespace.as_deref(), Some("HGNC"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let missing_provider =
+        parse_shell_line("resources import-gene-list-cache --input genes.tsv --output genes.json")
+            .expect_err("missing provider rejected");
+    assert!(missing_provider.contains("requires --provider ID"));
+}
+
+#[test]
+fn execute_resources_import_gene_set_caches_and_direct_list_output_is_consumable() {
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let direct_tsv = root.join("genes.tsv");
+    let direct_json = root.join("genes.json");
+    fs::write(
+        &direct_tsv,
+        "list_id\tlist_label\tsymbol\taliases\nsplicing\tSplicing panel\tSRSF1\tASF|SF2\nsplicing\tSplicing panel\tRBFOX2\t\n",
+    )
+    .expect("write direct-list TSV");
+
+    let mut engine = GentleEngine::new();
+    let direct_command = parse_shell_line(&format!(
+        "resources import-gene-list-cache --input {} --output {} --provider local_curator --version 2026-06 --cache-id direct-cache --organism 'Homo sapiens' --taxon-id 9606 --namespace HGNC",
+        direct_tsv.to_string_lossy(),
+        direct_json.to_string_lossy()
+    ))
+    .expect("parse direct import");
+    let direct_run =
+        execute_shell_command(&mut engine, &direct_command).expect("execute direct import");
+    assert_eq!(
+        direct_run.output["cache_schema"].as_str(),
+        Some(GENE_SET_DIRECT_LIST_CACHE_SCHEMA)
+    );
+    assert_eq!(direct_run.output["member_count"].as_u64(), Some(2));
+    let direct_cache: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(&direct_json).expect("read imported direct-list cache"),
+    )
+    .expect("parse direct-list cache");
+    assert_eq!(
+        direct_cache["schema"].as_str(),
+        Some(GENE_SET_DIRECT_LIST_CACHE_SCHEMA)
+    );
+    assert_eq!(direct_cache["lists"][0]["id"].as_str(), Some("splicing"));
+
+    let produce_command = parse_shell_line(&format!(
+        "gene-sets produce direct-list --cache {} --query splicing",
+        direct_json.to_string_lossy()
+    ))
+    .expect("parse direct-list producer over imported cache");
+    let produced = execute_shell_command(&mut engine, &produce_command)
+        .expect("produce gene set from imported cache");
+    assert_eq!(
+        produced.output["producer"]["provider_id"].as_str(),
+        Some("local_curator")
+    );
+    assert_eq!(produced.output["resolved_member_count"].as_u64(), Some(2));
+
+    let ontology_csv = root.join("go.csv");
+    let ontology_json = root.join("go.json");
+    fs::write(
+        &ontology_csv,
+        "term,term_label,evidence_code,assigned_by,symbol\nGO:0000381,regulation of alternative mRNA splicing,IDA,UniProt,SRSF1\n",
+    )
+    .expect("write ontology CSV");
+    let ontology_command = parse_shell_line(&format!(
+        "resources import-ontology-assignment-cache {} {} --provider goa --version 2026-06 --ontology-namespace GO --organism 'Homo sapiens' --symbol-namespace HGNC",
+        ontology_csv.to_string_lossy(),
+        ontology_json.to_string_lossy()
+    ))
+    .expect("parse ontology import");
+    let ontology_run =
+        execute_shell_command(&mut engine, &ontology_command).expect("execute ontology import");
+    assert_eq!(
+        ontology_run.output["cache_schema"].as_str(),
+        Some(GENE_SET_ONTOLOGY_ASSIGNMENT_CACHE_SCHEMA)
+    );
+    assert_eq!(ontology_run.output["member_count"].as_u64(), Some(1));
+
+    let co_tsv = root.join("co_regulated.tsv");
+    let co_json = root.join("co_regulated.json");
+    fs::write(
+        &co_tsv,
+        "symbol\tlogfc\tdataset_id\tcontrast\nSRSF1\t2.5\texpr1\tcase_vs_control\nRBFOX2\t-2.0\texpr1\tcase_vs_control\n",
+    )
+    .expect("write co-regulated TSV");
+    let co_command = parse_shell_line(&format!(
+        "resources import-co-regulated-cache {} {} --provider local_expr --version 2026-06 --dataset expr1 --contrast case_vs_control --score logfc --organism 'Homo sapiens' --namespace HGNC",
+        co_tsv.to_string_lossy(),
+        co_json.to_string_lossy()
+    ))
+    .expect("parse co-regulated import");
+    let co_run =
+        execute_shell_command(&mut engine, &co_command).expect("execute co-regulated import");
+    assert_eq!(
+        co_run.output["cache_schema"].as_str(),
+        Some(GENE_SET_CO_REGULATED_CACHE_SCHEMA)
+    );
+    assert_eq!(co_run.output["row_count"].as_u64(), Some(2));
 }
 
 #[test]
