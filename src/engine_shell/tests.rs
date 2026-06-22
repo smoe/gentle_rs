@@ -18799,6 +18799,82 @@ fn execute_state_summary_returns_json() {
 }
 
 #[test]
+fn execute_facts_graph_returns_loaded_sequence_facts() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "demo_seq".to_string(),
+        DNAsequence::from_sequence("ACGTACGT").expect("sequence"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+
+    let cmd = parse_shell_line("facts graph").expect("parse facts graph");
+    let out = execute_shell_command(&mut engine, &cmd).expect("execute facts graph");
+
+    assert!(!out.state_changed);
+    assert_eq!(
+        out.output["schema"].as_str(),
+        Some("gentle.project_fact_graph.v1")
+    );
+    let facts = out.output["facts"].as_array().expect("facts array");
+    assert!(facts.iter().any(|fact| {
+        fact["fact"].as_str() == Some("sequence.exists")
+            && fact["subject"]["kind"].as_str() == Some("sequence")
+            && fact["subject"]["id"].as_str() == Some("demo_seq")
+    }));
+}
+
+#[test]
+fn execute_facts_eval_accepts_restriction_scan_evidence_file() {
+    let tmp = tempdir().expect("tempdir");
+    let scan_path = tmp.path().join("clean_seq.restriction_scan.json");
+    let expr_path = tmp.path().join("absent_ecori.fact.json");
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "clean_seq".to_string(),
+        DNAsequence::from_sequence("AAGGCCCCAAGGCCCC").expect("sequence"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+
+    let scan_cmd = parse_shell_line(&format!(
+        "features restriction-scan clean_seq --enzyme EcoRI --path {}",
+        scan_path.display()
+    ))
+    .expect("parse scan");
+    execute_shell_command(&mut engine, &scan_cmd).expect("execute scan");
+    assert!(scan_path.is_file());
+
+    fs::write(
+        &expr_path,
+        serde_json::to_string(&serde_json::json!({
+            "fact": "restriction_site.absent",
+            "subject": {"kind": "sequence", "id": "clean_seq"},
+            "enzyme": "EcoRI",
+            "range": {"kind": "whole_sequence"}
+        }))
+        .expect("serialize expression"),
+    )
+    .expect("write expression");
+    let eval_cmd = parse_shell_line(&format!(
+        "facts eval @{} --evidence {}",
+        expr_path.display(),
+        scan_path.display()
+    ))
+    .expect("parse eval");
+    let out = execute_shell_command(&mut engine, &eval_cmd).expect("execute facts eval");
+
+    assert!(!out.state_changed);
+    assert_eq!(
+        out.output["schema"].as_str(),
+        Some("gentle.fact_evaluation.v1")
+    );
+    assert_eq!(out.output["truth"].as_str(), Some("satisfied"));
+    assert_eq!(
+        out.output["unknown_atoms"].as_array().map(Vec::len),
+        Some(0)
+    );
+}
+
+#[test]
 fn parse_containers_set_exclusive_command() {
     let cmd = parse_shell_line("containers set-exclusive container-1 false")
         .expect("parse containers set-exclusive");

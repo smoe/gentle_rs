@@ -21,6 +21,195 @@ pub(crate) struct PrimerDesignProgressContext<'a> {
     pub(crate) max_output: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProjectFactWorld {
+    Closed,
+    Open,
+}
+
+struct ProjectFactTypeSpec {
+    world: ProjectFactWorld,
+    requires_basis: bool,
+}
+
+fn project_fact_type_spec(name: &str) -> Option<ProjectFactTypeSpec> {
+    let (world, requires_basis) = match name {
+        "sequence.exists" | "sequence.kind" | "sequence.length" | "sequence.circular" => {
+            (ProjectFactWorld::Closed, false)
+        }
+        "ui.host_available" => (ProjectFactWorld::Closed, false),
+        "report.exists" | "restriction_site.present" | "restriction_site.absent" => {
+            (ProjectFactWorld::Open, true)
+        }
+        _ => return None,
+    };
+    Some(ProjectFactTypeSpec {
+        world,
+        requires_basis,
+    })
+}
+
+fn fact_subject(kind: FactSubjectKind, id: impl Into<String>) -> FactSubject {
+    FactSubject {
+        kind,
+        id: id.into(),
+    }
+}
+
+fn fact_subject_sort_key(subject: &FactSubject) -> (&'static str, &str) {
+    let kind = match subject.kind {
+        FactSubjectKind::Sequence => "sequence",
+        FactSubjectKind::Report => "report",
+        FactSubjectKind::Container => "container",
+        FactSubjectKind::Ui => "ui",
+        FactSubjectKind::Other => "other",
+    };
+    (kind, subject.id.as_str())
+}
+
+fn fact_value_key(value: &Option<serde_json::Value>) -> String {
+    value
+        .as_ref()
+        .map(|value| serde_json::to_string(value).unwrap_or_default())
+        .unwrap_or_default()
+}
+
+fn fact_range_key(range: &Option<FactRange>) -> String {
+    range
+        .as_ref()
+        .map(|range| serde_json::to_string(range).unwrap_or_default())
+        .unwrap_or_default()
+}
+
+fn sort_project_facts(facts: &mut Vec<ProjectFact>) {
+    facts.sort_by(|a, b| {
+        a.fact
+            .cmp(&b.fact)
+            .then(fact_subject_sort_key(&a.subject).cmp(&fact_subject_sort_key(&b.subject)))
+            .then(a.enzyme.cmp(&b.enzyme))
+            .then(fact_range_key(&a.range).cmp(&fact_range_key(&b.range)))
+            .then(fact_value_key(&a.value).cmp(&fact_value_key(&b.value)))
+            .then(
+                a.basis
+                    .as_ref()
+                    .map(|basis| basis.report_id.as_str())
+                    .unwrap_or("")
+                    .cmp(
+                        b.basis
+                            .as_ref()
+                            .map(|basis| basis.report_id.as_str())
+                            .unwrap_or(""),
+                    ),
+            )
+    });
+}
+
+fn fact_range_contains(proven: Option<&FactRange>, required: Option<&FactRange>) -> bool {
+    match (proven, required) {
+        (_, None) => true,
+        (None, Some(_)) => false,
+        (Some(FactRange::WholeSequence), Some(_)) => true,
+        (Some(FactRange::Span { .. }), Some(FactRange::WholeSequence)) => false,
+        (
+            Some(FactRange::Span {
+                start_0based: proven_start,
+                end_0based_exclusive: proven_end,
+                topology: proven_topology,
+            }),
+            Some(FactRange::Span {
+                start_0based: required_start,
+                end_0based_exclusive: required_end,
+                topology: required_topology,
+            }),
+        ) => {
+            proven_topology == required_topology
+                && proven_start <= required_start
+                && proven_end >= required_end
+        }
+    }
+}
+
+fn fact_range_satisfies_atom(
+    fact_name: &str,
+    proven: Option<&FactRange>,
+    required: Option<&FactRange>,
+) -> bool {
+    if fact_name == "restriction_site.present" {
+        return required
+            .map(|required| fact_range_contains(Some(required), proven))
+            .unwrap_or(true);
+    }
+    fact_range_contains(proven, required)
+}
+
+fn normalize_fact_atom_subject(atom: &FactAtom) -> Option<FactSubject> {
+    atom.subject.clone().or_else(|| {
+        atom.id
+            .as_ref()
+            .map(|id| fact_subject(FactSubjectKind::Sequence, id.trim().to_string()))
+    })
+}
+
+fn fact_atom_subject_matches(atom: &FactAtom, fact: &ProjectFact) -> bool {
+    normalize_fact_atom_subject(atom)
+        .map(|subject| subject == fact.subject)
+        .unwrap_or(true)
+}
+
+fn fact_atom_scalar_matches(atom: &FactAtom, fact: &ProjectFact) -> bool {
+    if let Some(expected) = &atom.equals
+        && fact.value.as_ref() != Some(expected)
+    {
+        return false;
+    }
+    if let Some(compare) = &atom.compare {
+        let Some(actual) = fact.value.as_ref().and_then(serde_json::Value::as_f64) else {
+            return false;
+        };
+        let Some(expected) = compare.value.as_f64() else {
+            return false;
+        };
+        let ok = match compare.op.as_str() {
+            "eq" | "=" | "==" => (actual - expected).abs() < f64::EPSILON,
+            "ne" | "!=" => (actual - expected).abs() >= f64::EPSILON,
+            "gt" | ">" => actual > expected,
+            "gte" | ">=" => actual >= expected,
+            "lt" | "<" => actual < expected,
+            "lte" | "<=" => actual <= expected,
+            _ => false,
+        };
+        if !ok {
+            return false;
+        }
+    }
+    true
+}
+
+fn fact_atom_matches_fact(atom: &FactAtom, fact: &ProjectFact) -> bool {
+    atom.fact == fact.fact
+        && fact_atom_subject_matches(atom, fact)
+        && atom
+            .enzyme
+            .as_ref()
+            .map(|enzyme| {
+                fact.enzyme
+                    .as_ref()
+                    .map(|value| value.eq_ignore_ascii_case(enzyme))
+                    .unwrap_or(false)
+            })
+            .unwrap_or(true)
+        && fact_range_satisfies_atom(&fact.fact, fact.range.as_ref(), atom.range.as_ref())
+        && fact_atom_scalar_matches(atom, fact)
+}
+
+fn contradiction_fact_name(name: &str) -> Option<&'static str> {
+    match name {
+        "restriction_site.present" => Some("restriction_site.absent"),
+        "restriction_site.absent" => Some("restriction_site.present"),
+        _ => None,
+    }
+}
+
 impl GentleEngine {
     pub(crate) fn summarize_process_run_bundle_construct_reasoning_graph(
         graph: &ConstructReasoningGraph,
@@ -866,6 +1055,287 @@ impl GentleEngine {
             arrangements,
             display: self.state.display.clone(),
         }
+    }
+
+    pub fn project_fact_graph(&self) -> ProjectFactGraph {
+        self.project_fact_graph_with_restriction_evidence(&[])
+    }
+
+    pub fn project_fact_graph_with_restriction_evidence(
+        &self,
+        restriction_reports: &[RestrictionSiteScanReport],
+    ) -> ProjectFactGraph {
+        let mut facts: Vec<ProjectFact> = vec![];
+
+        for (id, dna) in &self.state.sequences {
+            let subject = fact_subject(FactSubjectKind::Sequence, id.clone());
+            facts.push(ProjectFact {
+                fact: "sequence.exists".to_string(),
+                subject: subject.clone(),
+                ..ProjectFact::default()
+            });
+            facts.push(ProjectFact {
+                fact: "sequence.kind".to_string(),
+                subject: subject.clone(),
+                value: Some(serde_json::json!("dna")),
+                ..ProjectFact::default()
+            });
+            facts.push(ProjectFact {
+                fact: "sequence.length".to_string(),
+                subject: subject.clone(),
+                value: Some(serde_json::json!(dna.len())),
+                ..ProjectFact::default()
+            });
+            facts.push(ProjectFact {
+                fact: "sequence.circular".to_string(),
+                subject,
+                value: Some(serde_json::json!(dna.is_circular())),
+                ..ProjectFact::default()
+            });
+        }
+
+        for report in restriction_reports {
+            Self::push_restriction_scan_facts(&mut facts, report);
+        }
+
+        sort_project_facts(&mut facts);
+        ProjectFactGraph {
+            schema: PROJECT_FACT_GRAPH_SCHEMA.to_string(),
+            facts,
+        }
+    }
+
+    fn push_restriction_scan_facts(
+        facts: &mut Vec<ProjectFact>,
+        report: &RestrictionSiteScanReport,
+    ) {
+        let report_id = if report.report_id.trim().is_empty() {
+            Self::restriction_site_scan_report_id(report)
+        } else {
+            report.report_id.trim().to_string()
+        };
+        let report_subject = fact_subject(FactSubjectKind::Report, report_id.clone());
+        let basis = FactBasis {
+            report_id: report_id.clone(),
+            report_kind: "restriction_scan".to_string(),
+            evidence_class: EvidenceClass::HardFact,
+            op_id: report.op_id.clone(),
+            run_id: report.run_id.clone(),
+        };
+        facts.push(ProjectFact {
+            fact: "report.exists".to_string(),
+            subject: report_subject,
+            value: Some(serde_json::json!("restriction_scan")),
+            basis: Some(basis.clone()),
+            ..ProjectFact::default()
+        });
+
+        if report.target_kind != "seq_id" {
+            return;
+        }
+        let subject = fact_subject(FactSubjectKind::Sequence, report.target_label.clone());
+        let range = Self::restriction_report_fact_range(report);
+        let skipped = report
+            .skipped_enzyme_names_due_to_max_sites
+            .iter()
+            .map(|name| name.to_ascii_lowercase())
+            .collect::<BTreeSet<_>>();
+
+        for enzyme in &report.enzymes_scanned {
+            if skipped.contains(&enzyme.to_ascii_lowercase()) {
+                continue;
+            }
+            let matching_hits = report
+                .rows
+                .iter()
+                .filter(|row| row.enzyme_name.eq_ignore_ascii_case(enzyme))
+                .collect::<Vec<_>>();
+            if matching_hits.is_empty() {
+                facts.push(ProjectFact {
+                    fact: "restriction_site.absent".to_string(),
+                    subject: subject.clone(),
+                    enzyme: Some(enzyme.clone()),
+                    range: Some(range.clone()),
+                    value: Some(serde_json::json!(0)),
+                    basis: Some(basis.clone()),
+                });
+            } else {
+                for hit in matching_hits {
+                    facts.push(ProjectFact {
+                        fact: "restriction_site.present".to_string(),
+                        subject: subject.clone(),
+                        enzyme: Some(hit.enzyme_name.clone()),
+                        range: Some(FactRange::Span {
+                            start_0based: hit.source_recognition_start_0based,
+                            end_0based_exclusive: hit.source_recognition_end_0based_exclusive,
+                            topology: report.scan_topology,
+                        }),
+                        value: Some(serde_json::json!(true)),
+                        basis: Some(basis.clone()),
+                    });
+                }
+            }
+        }
+    }
+
+    fn restriction_report_fact_range(report: &RestrictionSiteScanReport) -> FactRange {
+        if report.scan_start_0based == 0
+            && report.scan_end_0based_exclusive == report.source_sequence_length_bp
+        {
+            FactRange::WholeSequence
+        } else {
+            FactRange::Span {
+                start_0based: report.scan_start_0based,
+                end_0based_exclusive: report.scan_end_0based_exclusive,
+                topology: report.scan_topology,
+            }
+        }
+    }
+
+    pub fn restriction_site_scan_report_id(report: &RestrictionSiteScanReport) -> String {
+        let mut enzymes = report.enzymes_scanned.clone();
+        enzymes.sort();
+        let raw = format!(
+            "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+            report.op_id.as_deref().unwrap_or(""),
+            report.run_id.as_deref().unwrap_or(""),
+            report.target_kind,
+            report.target_label,
+            report.scan_start_0based,
+            report.scan_end_0based_exclusive,
+            report.scan_topology.as_str(),
+            enzymes.join(",")
+        );
+        Self::short_sha1_id("rsr", &raw)
+    }
+
+    pub fn evaluate_fact_expression_against_graph(
+        expression: &FactExpression,
+        graph: &ProjectFactGraph,
+    ) -> FactEvaluationResult {
+        let mut unmet_atoms = vec![];
+        let mut unknown_atoms = vec![];
+        let truth = Self::evaluate_fact_expression_inner(
+            expression,
+            graph,
+            &mut unmet_atoms,
+            &mut unknown_atoms,
+        );
+        FactEvaluationResult {
+            schema: FACT_EVALUATION_SCHEMA.to_string(),
+            truth,
+            unmet_atoms,
+            unknown_atoms,
+        }
+    }
+
+    pub fn evaluate_fact_expression(
+        &self,
+        expression: &FactExpression,
+        restriction_reports: &[RestrictionSiteScanReport],
+    ) -> FactEvaluationResult {
+        let graph = self.project_fact_graph_with_restriction_evidence(restriction_reports);
+        Self::evaluate_fact_expression_against_graph(expression, &graph)
+    }
+
+    fn evaluate_fact_expression_inner(
+        expression: &FactExpression,
+        graph: &ProjectFactGraph,
+        unmet_atoms: &mut Vec<FactAtom>,
+        unknown_atoms: &mut Vec<FactAtom>,
+    ) -> FactTruth {
+        match expression {
+            FactExpression::Atom(atom) => {
+                let truth = Self::evaluate_fact_atom(atom, graph);
+                match truth {
+                    FactTruth::Unsatisfied => unmet_atoms.push(atom.clone()),
+                    FactTruth::Unknown => unknown_atoms.push(atom.clone()),
+                    FactTruth::Satisfied => {}
+                }
+                truth
+            }
+            FactExpression::All { all } => {
+                let mut saw_unknown = false;
+                for child in all {
+                    match Self::evaluate_fact_expression_inner(
+                        child,
+                        graph,
+                        unmet_atoms,
+                        unknown_atoms,
+                    ) {
+                        FactTruth::Unsatisfied => return FactTruth::Unsatisfied,
+                        FactTruth::Unknown => saw_unknown = true,
+                        FactTruth::Satisfied => {}
+                    }
+                }
+                if saw_unknown {
+                    FactTruth::Unknown
+                } else {
+                    FactTruth::Satisfied
+                }
+            }
+            FactExpression::Any { any } => {
+                let mut saw_unknown = false;
+                for child in any {
+                    match Self::evaluate_fact_expression_inner(
+                        child,
+                        graph,
+                        unmet_atoms,
+                        unknown_atoms,
+                    ) {
+                        FactTruth::Satisfied => return FactTruth::Satisfied,
+                        FactTruth::Unknown => saw_unknown = true,
+                        FactTruth::Unsatisfied => {}
+                    }
+                }
+                if saw_unknown {
+                    FactTruth::Unknown
+                } else {
+                    FactTruth::Unsatisfied
+                }
+            }
+            FactExpression::Not { not } => {
+                let before_unmet = unmet_atoms.len();
+                match Self::evaluate_fact_expression_inner(not, graph, unmet_atoms, unknown_atoms) {
+                    FactTruth::Satisfied => FactTruth::Unsatisfied,
+                    FactTruth::Unsatisfied => {
+                        unmet_atoms.truncate(before_unmet);
+                        FactTruth::Satisfied
+                    }
+                    FactTruth::Unknown => {
+                        unmet_atoms.truncate(before_unmet);
+                        FactTruth::Unknown
+                    }
+                }
+            }
+        }
+    }
+
+    fn evaluate_fact_atom(atom: &FactAtom, graph: &ProjectFactGraph) -> FactTruth {
+        let Some(spec) = project_fact_type_spec(atom.fact.as_str()) else {
+            return FactTruth::Unknown;
+        };
+        let has_match = graph.facts.iter().any(|fact| {
+            fact_atom_matches_fact(atom, fact) && (!spec.requires_basis || fact.basis.is_some())
+        });
+        if has_match {
+            return FactTruth::Satisfied;
+        }
+        if spec.world == ProjectFactWorld::Closed {
+            return FactTruth::Unsatisfied;
+        }
+        if let Some(contradiction) = contradiction_fact_name(atom.fact.as_str()) {
+            let mut contradiction_atom = atom.clone();
+            contradiction_atom.fact = contradiction.to_string();
+            let contradicted = graph.facts.iter().any(|fact| {
+                fact_atom_matches_fact(&contradiction_atom, fact)
+                    && (!spec.requires_basis || fact.basis.is_some())
+            });
+            if contradicted {
+                return FactTruth::Unsatisfied;
+            }
+        }
+        FactTruth::Unknown
     }
 
     pub(super) fn canonical_fasta_molecule(raw: Option<&str>) -> &'static str {

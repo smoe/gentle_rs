@@ -4409,7 +4409,8 @@ Agent execution intent semantics:
   tables. `preconditions[]` lists state requirements such as "sequence
   `demo_seq` exists"; it is advisory text, while the command parser still owns
   hard validity checks. `precondition_expr` is an optional machine-readable
-  fact-graph expression for future deterministic readiness checks.
+  fact-graph expression. The GUI evaluates it advisory-only against the current
+  project graph and displays readiness as `ready`, `blocked`, or `unknown`.
   `expected_outcomes[]` lists postcondition-like effects expected if the
   command succeeds, such as "a restriction-site report is available"; these are
   user-visible expectations to verify, not guarantees. `expected_effects[]` is
@@ -4421,16 +4422,35 @@ Agent execution intent semantics:
   basis report; it should not be inferred merely from the absence of a
   `restriction_site.present` fact.
 
-Project fact graph direction:
+Project fact graph:
 
-GENtle's current `state-summary` is a compact project snapshot for humans,
-adapters, and LLM context. The target planning substrate is an engine-owned
-`gentle.project_fact_graph.v1` projection that exposes stable typed facts for
-loaded sequences, reports, features, selected GUI objects, provider readiness,
-inventory/material states, and verification results. Agent suggestions may
-already carry optional `precondition_expr` and `expected_effects[]` values that
-refer to that future fact vocabulary. Until a deterministic evaluator lands,
-these fields are preserved and displayed but remain advisory.
+GENtle's `state-summary` remains the compact project snapshot for humans,
+adapters, and LLM context. The engine also exposes
+`gentle.project_fact_graph.v1`, a deterministic typed projection for planning
+and readiness checks. Slice 1 covers loaded sequence facts plus explicit
+restriction-site scan evidence:
+
+- `sequence.exists`, `sequence.kind`, `sequence.length`, `sequence.circular`
+  are closed-world facts over the loaded project state.
+- `report.exists`, `restriction_site.present`, and `restriction_site.absent`
+  are open-world facts and require a proof basis.
+- Unknown fact names evaluate to `unknown` rather than failing the payload.
+- Boolean expressions use three-valued Kleene logic: `not(unknown)` remains
+  `unknown`.
+- Absence is never inferred from a missing `restriction_site.present` fact.
+  Use a proof-backed `restriction_site.absent` fact from a covering
+  zero-hit restriction scan.
+
+Shared-shell routes:
+
+- `facts graph [--evidence SCAN.json ...]`
+  - Returns `gentle.project_fact_graph.v1`.
+  - `--evidence` accepts JSON emitted by `features restriction-scan ... --path`.
+- `facts eval FACT_EXPR_JSON_OR_@FILE [--evidence SCAN.json ...]`
+  - Returns `gentle.fact_evaluation.v1` with `truth`,
+    `unmet_atoms[]`, and `unknown_atoms[]`.
+  - Readiness mapping is advisory: `satisfied -> ready`,
+    `unsatisfied -> blocked`, `unknown -> unknown`.
 
 Initial fact-expression shape:
 
@@ -4448,10 +4468,14 @@ Initial absence-proof effect shape:
 ```json
 {
   "fact": "restriction_site.absent",
-  "subject": "demo_seq",
+  "subject": { "kind": "sequence", "id": "demo_seq" },
   "enzyme": "EcoRI",
-  "range": "whole_sequence",
-  "basis_report": "restriction_scan_report_id"
+  "range": { "kind": "whole_sequence" },
+  "basis": {
+    "report_id": "restriction_scan_report_id",
+    "report_kind": "restriction_scan",
+    "evidence_class": "hard_fact"
+  }
 }
 ```
 

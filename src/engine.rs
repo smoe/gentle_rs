@@ -13684,6 +13684,7 @@ impl GentleEngine {
 
         let mut report = RestrictionSiteScanReport {
             schema: RESTRICTION_SITE_SCAN_REPORT_SCHEMA.to_string(),
+            report_id: String::new(),
             target_kind,
             target_label,
             source_sequence_length_bp,
@@ -13792,6 +13793,7 @@ impl GentleEngine {
                 )
         });
         report.matched_site_count = report.rows.len();
+        report.report_id = Self::restriction_site_scan_report_id(&report);
         Ok(report)
     }
 

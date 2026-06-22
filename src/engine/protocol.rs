@@ -129,7 +129,8 @@ pub use gentle_protocol::{
     UniprotFeatureCodingDnaQueryMode, UniprotFeatureCodingDnaQueryReport,
     UniprotFeatureCodingDnaSegment,
 };
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
+use serde_json::Value;
 use std::collections::BTreeMap;
 
 use crate::enzymes::default_preferred_restriction_enzyme_names;
@@ -1639,7 +1640,9 @@ pub struct WindowCohortTfbsReport {
     pub warnings: Vec<String>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[derive(
+    Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Default,
+)]
 #[serde(rename_all = "snake_case")]
 /// Topology hint for inline sequence operands used by state-optional scans.
 pub enum InlineSequenceTopology {
@@ -1721,6 +1724,8 @@ pub struct RestrictionSiteScanHit {
 /// stored `seq_id` or inline ASCII DNA input.
 pub struct RestrictionSiteScanReport {
     pub schema: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub report_id: String,
     pub target_kind: String,
     pub target_label: String,
     pub source_sequence_length_bp: usize,
@@ -1748,6 +1753,230 @@ pub struct RestrictionSiteScanReport {
     pub path: Option<String>,
     #[serde(default)]
     pub rows: Vec<RestrictionSiteScanHit>,
+}
+
+pub const PROJECT_FACT_GRAPH_SCHEMA: &str = "gentle.project_fact_graph.v1";
+pub const FACT_EXPRESSION_SCHEMA: &str = "gentle.fact_expression.v1";
+pub const FACT_EVALUATION_SCHEMA: &str = "gentle.fact_evaluation.v1";
+
+fn project_fact_graph_schema() -> String {
+    PROJECT_FACT_GRAPH_SCHEMA.to_string()
+}
+
+fn fact_evaluation_schema() -> String {
+    FACT_EVALUATION_SCHEMA.to_string()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[serde(rename_all = "snake_case")]
+/// Top-level project object class addressed by a fact atom.
+pub enum FactSubjectKind {
+    Sequence,
+    Report,
+    Container,
+    Ui,
+    Other,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+/// Stable subject reference shared by projected facts and fact expressions.
+pub struct FactSubject {
+    pub kind: FactSubjectKind,
+    pub id: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+/// Coordinate scope covered or required by a project fact.
+///
+/// Deserialization also accepts the legacy string `"whole_sequence"` as sugar
+/// for `{"kind":"whole_sequence"}`.
+pub enum FactRange {
+    WholeSequence,
+    Span {
+        start_0based: usize,
+        end_0based_exclusive: usize,
+        #[serde(default)]
+        topology: InlineSequenceTopology,
+    },
+}
+
+impl Default for FactRange {
+    fn default() -> Self {
+        Self::WholeSequence
+    }
+}
+
+impl<'de> Deserialize<'de> for FactRange {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = Value::deserialize(deserializer)?;
+        if let Some(text) = value.as_str()
+            && text == "whole_sequence"
+        {
+            return Ok(Self::WholeSequence);
+        }
+        #[derive(Deserialize)]
+        #[serde(tag = "kind", rename_all = "snake_case")]
+        enum Helper {
+            WholeSequence,
+            Span {
+                start_0based: usize,
+                end_0based_exclusive: usize,
+                #[serde(default)]
+                topology: InlineSequenceTopology,
+            },
+        }
+        match Helper::deserialize(value).map_err(serde::de::Error::custom)? {
+            Helper::WholeSequence => Ok(Self::WholeSequence),
+            Helper::Span {
+                start_0based,
+                end_0based_exclusive,
+                topology,
+            } => Ok(Self::Span {
+                start_0based,
+                end_0based_exclusive,
+                topology,
+            }),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+/// Evidence pointer that turns an open-world observation into a proof-backed
+/// fact.
+pub struct FactBasis {
+    pub report_id: String,
+    pub report_kind: String,
+    pub evidence_class: EvidenceClass,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+}
+
+impl Default for FactBasis {
+    fn default() -> Self {
+        Self {
+            report_id: String::new(),
+            report_kind: String::new(),
+            evidence_class: EvidenceClass::HardFact,
+            op_id: None,
+            run_id: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+/// One ground fact projected from project state or explicit evidence.
+pub struct ProjectFact {
+    pub fact: String,
+    pub subject: FactSubject,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enzyme: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub range: Option<FactRange>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub basis: Option<FactBasis>,
+}
+
+impl Default for ProjectFact {
+    fn default() -> Self {
+        Self {
+            fact: String::new(),
+            subject: FactSubject {
+                kind: FactSubjectKind::Other,
+                id: String::new(),
+            },
+            enzyme: None,
+            range: None,
+            value: None,
+            basis: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(default)]
+/// Deterministic projection of current project state plus supplied proof
+/// evidence into controlled-vocabulary facts.
+pub struct ProjectFactGraph {
+    #[serde(default = "project_fact_graph_schema")]
+    pub schema: String,
+    pub facts: Vec<ProjectFact>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(default)]
+/// Atomic fact pattern used inside a fact expression.
+pub struct FactAtom {
+    pub fact: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subject: Option<FactSubject>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enzyme: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub range: Option<FactRange>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub equals: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compare: Option<FactComparison>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+/// Numeric comparison predicate for scalar fact values.
+pub struct FactComparison {
+    pub op: String,
+    pub value: Value,
+}
+
+impl Default for FactComparison {
+    fn default() -> Self {
+        Self {
+            op: "eq".to_string(),
+            value: Value::Null,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(untagged)]
+/// Boolean fact-expression tree. Evaluation uses three-valued Kleene logic.
+pub enum FactExpression {
+    All { all: Vec<FactExpression> },
+    Any { any: Vec<FactExpression> },
+    Not { not: Box<FactExpression> },
+    Atom(FactAtom),
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Three-valued fact-expression result.
+pub enum FactTruth {
+    #[default]
+    Unknown,
+    Satisfied,
+    Unsatisfied,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(default)]
+/// Deterministic result of evaluating one fact expression against a fact graph.
+pub struct FactEvaluationResult {
+    #[serde(default = "fact_evaluation_schema")]
+    pub schema: String,
+    pub truth: FactTruth,
+    pub unmet_atoms: Vec<FactAtom>,
+    pub unknown_atoms: Vec<FactAtom>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]

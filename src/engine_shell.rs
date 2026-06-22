@@ -46,7 +46,7 @@ use crate::{
         DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP, DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP,
         DOTPLOT_ANALYSIS_METADATA_KEY, DotplotMode, DotplotOverlayAnchorExonRef,
         DotplotOverlayQuerySpec, DotplotOverlayXAxisMode, EditableStatus, Engine,
-        ExonSkipReturnKind, ExonSkipSelectionCriterion, FeatureBedCoordinateMode,
+        ExonSkipReturnKind, ExonSkipSelectionCriterion, FactExpression, FeatureBedCoordinateMode,
         FeatureExpertTarget, FeatureExpertView, FlexibilityModel, GUIDE_DESIGN_METADATA_KEY,
         GeneSetCohortRelationship, GeneSetProducerFilter, GeneSetPromoterCohortReport,
         GeneSetRequest, GeneSetResolutionReport, GeneSetResolutionReviewStatus, GenomeAnchorSide,
@@ -79,12 +79,13 @@ use crate::{
         RackOccupant, RackPhysicalTemplateKind, RackProfileKind, ReadAcquisitionAnalysisFormat,
         ReadAcquisitionReadLayout, RenderSvgMode, RepeatAnnotationFilter,
         RepeatEnvironmentCohortReport, RepeatEnvironmentGeometryMode, ReporterConstraints,
-        ReporterCorpusExportFormat, RestrictionCloningPcrHandoffMode, ReverseTranslationReport,
-        ReverseTranslationReportSummary, RnaReadAlignConfig, RnaReadAlignmentDisplayBatch,
-        RnaReadAlignmentInspectionEffectFilter, RnaReadAlignmentInspectionSortKey,
-        RnaReadAlignmentInspectionSubsetSpec, RnaReadConcatemerInspectionSettings,
-        RnaReadGeneSupportAuditCohortFilter, RnaReadGeneSupportCompleteRule, RnaReadHitSelection,
-        RnaReadInputFormat, RnaReadInterpretationProfile, RnaReadOriginMode, RnaReadReportMode,
+        ReporterCorpusExportFormat, RestrictionCloningPcrHandoffMode, RestrictionSiteScanReport,
+        ReverseTranslationReport, ReverseTranslationReportSummary, RnaReadAlignConfig,
+        RnaReadAlignmentDisplayBatch, RnaReadAlignmentInspectionEffectFilter,
+        RnaReadAlignmentInspectionSortKey, RnaReadAlignmentInspectionSubsetSpec,
+        RnaReadConcatemerInspectionSettings, RnaReadGeneSupportAuditCohortFilter,
+        RnaReadGeneSupportCompleteRule, RnaReadHitSelection, RnaReadInputFormat,
+        RnaReadInterpretationProfile, RnaReadOriginMode, RnaReadReportMode,
         RnaReadScoreDensityScale, RnaReadScoreDensityVariant, RnaReadSeedFilterConfig,
         RoutinePreferenceContext, SEQUENCING_CONFIRMATION_SUPPORT_TSV_SCHEMA, SequenceAnchor,
         SequenceFeatureQualifierFilter, SequenceFeatureQuery, SequenceFeatureRangeRelation,
@@ -499,6 +500,13 @@ pub enum ShellCommand {
     },
     Capabilities,
     StateSummary,
+    FactsGraph {
+        evidence_paths: Vec<String>,
+    },
+    FactsEval {
+        expression_json: String,
+        evidence_paths: Vec<String>,
+    },
     HistoryStatus,
     HistoryUndo,
     HistoryRedo,
@@ -6299,6 +6307,18 @@ impl ShellCommand {
             }
             Self::Capabilities => "inspect engine capabilities".to_string(),
             Self::StateSummary => "show sequence/container state summary".to_string(),
+            Self::FactsGraph { evidence_paths } => format!(
+                "project typed facts graph (restriction evidence files={})",
+                evidence_paths.len()
+            ),
+            Self::FactsEval {
+                expression_json,
+                evidence_paths,
+            } => format!(
+                "evaluate project fact expression (payload_len={}, restriction evidence files={})",
+                expression_json.len(),
+                evidence_paths.len()
+            ),
             Self::HistoryStatus => "show session-local undo/redo history status".to_string(),
             Self::HistoryUndo => "undo the most recent operation-level state change".to_string(),
             Self::HistoryRedo => {
@@ -13910,6 +13930,85 @@ where
     let loaded = parse_json_payload(raw)?;
     serde_json::from_str::<T>(loaded.trim())
         .map_err(|e| format!("Invalid {context} JSON payload: {e}"))
+}
+
+fn parse_facts_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err("facts requires a subcommand: graph or eval".to_string());
+    }
+    match tokens[1].as_str() {
+        "graph" => {
+            let mut evidence_paths = vec![];
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--evidence" => {
+                        evidence_paths.push(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--evidence",
+                            "facts graph",
+                        )?);
+                    }
+                    other => return Err(format!("Unknown option '{other}' for facts graph")),
+                }
+            }
+            Ok(ShellCommand::FactsGraph { evidence_paths })
+        }
+        "eval" => {
+            if tokens.len() < 3 || tokens[2].starts_with("--") {
+                return Err(
+                    "facts eval requires FACT_EXPR_JSON_OR_@FILE [--evidence SCAN.json]"
+                        .to_string(),
+                );
+            }
+            let expression_json = tokens[2].clone();
+            let mut evidence_paths = vec![];
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--evidence" => {
+                        evidence_paths.push(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--evidence",
+                            "facts eval",
+                        )?);
+                    }
+                    other => return Err(format!("Unknown option '{other}' for facts eval")),
+                }
+            }
+            Ok(ShellCommand::FactsEval {
+                expression_json,
+                evidence_paths,
+            })
+        }
+        other => Err(format!(
+            "Unknown facts subcommand '{other}' (expected graph or eval)"
+        )),
+    }
+}
+
+fn load_restriction_site_scan_evidence(
+    evidence_paths: &[String],
+) -> Result<Vec<RestrictionSiteScanReport>, String> {
+    let mut reports = Vec::with_capacity(evidence_paths.len());
+    for raw in evidence_paths {
+        let text = parse_json_payload(raw)?;
+        let mut report = serde_json::from_str::<RestrictionSiteScanReport>(text.trim())
+            .map_err(|e| format!("Invalid restriction-site scan evidence '{}': {e}", raw))?;
+        if report.schema != "gentle.restriction_site_scan.v1" {
+            return Err(format!(
+                "Invalid restriction-site scan evidence '{}': expected schema gentle.restriction_site_scan.v1, got '{}'",
+                raw, report.schema
+            ));
+        }
+        if report.report_id.trim().is_empty() {
+            report.report_id = GentleEngine::restriction_site_scan_report_id(&report);
+        }
+        reports.push(report);
+    }
+    Ok(reports)
 }
 
 fn parse_services_route_project_rank_csv(raw: &str, flag: &str) -> Result<Vec<usize>, String> {
@@ -22014,7 +22113,9 @@ fn parse_gene_sets_command(tokens: &[String]) -> Result<ShellCommand, String> {
                                 let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
                                 condition_labels.extend(split_csv_tokens_with_empty_error(&raw)?);
                             }
-                            "--normalization" | "--normalization-method" | "--normalization_method" => {
+                            "--normalization"
+                            | "--normalization-method"
+                            | "--normalization_method" => {
                                 let flag = tokens[idx].clone();
                                 normalization_method =
                                     Some(parse_option_path(tokens, &mut idx, &flag, context)?);
@@ -22029,18 +22130,15 @@ fn parse_gene_sets_command(tokens: &[String]) -> Result<ShellCommand, String> {
                                 threshold_rule =
                                     Some(parse_option_path(tokens, &mut idx, &flag, context)?);
                             }
-                            "--direction" | "--sign-direction" | "--sign_direction" | "--direction-rule" | "--direction_rule" => {
+                            "--direction" | "--sign-direction" | "--sign_direction"
+                            | "--direction-rule" | "--direction_rule" => {
                                 let flag = tokens[idx].clone();
                                 sign_direction_rule =
                                     Some(parse_option_path(tokens, &mut idx, &flag, context)?);
                             }
                             "--relationship" => {
-                                let raw = parse_option_path(
-                                    tokens,
-                                    &mut idx,
-                                    "--relationship",
-                                    context,
-                                )?;
+                                let raw =
+                                    parse_option_path(tokens, &mut idx, "--relationship", context)?;
                                 relationship = parse_gene_set_relationship(&raw, context)?;
                             }
                             "--genome" | "--genome-id" | "--genome_id" => {
@@ -22140,12 +22238,12 @@ fn parse_gene_sets_command(tokens: &[String]) -> Result<ShellCommand, String> {
                     if contrast_labels.is_empty() {
                         return Err(format!("{context} requires --contrast LABEL"));
                     }
-                    let scoring_method =
-                        scoring_method.ok_or_else(|| format!("{context} requires --score METHOD"))?;
+                    let scoring_method = scoring_method
+                        .ok_or_else(|| format!("{context} requires --score METHOD"))?;
                     let threshold_rule = threshold_rule
                         .ok_or_else(|| format!("{context} requires --threshold RULE"))?;
-                    let sign_direction_rule =
-                        sign_direction_rule.ok_or_else(|| format!("{context} requires --direction RULE"))?;
+                    let sign_direction_rule = sign_direction_rule
+                        .ok_or_else(|| format!("{context} requires --direction RULE"))?;
                     Ok(ShellCommand::GeneSetsProduceCoRegulatedCohort {
                         cache_path,
                         dataset_ids,
@@ -24161,6 +24259,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 Err(token_error(cmd))
             }
         }
+        "facts" => parse_facts_command(tokens),
         "history" => {
             if tokens.len() != 2 {
                 return Err("history requires one subcommand: status, undo, or redo".to_string());
@@ -26043,7 +26142,8 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     while idx < tokens.len() {
                         match tokens[idx].as_str() {
                             "--input" => {
-                                input = Some(parse_option_path(tokens, &mut idx, "--input", context)?);
+                                input =
+                                    Some(parse_option_path(tokens, &mut idx, "--input", context)?);
                             }
                             "--output" | "--path" => {
                                 output =
@@ -26091,7 +26191,8 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                             }
                             "--list-id" | "--list_id" => {
                                 let flag = tokens[idx].clone();
-                                list_id = Some(parse_option_path(tokens, &mut idx, &flag, context)?);
+                                list_id =
+                                    Some(parse_option_path(tokens, &mut idx, &flag, context)?);
                             }
                             "--list-label" | "--list_label" => {
                                 let flag = tokens[idx].clone();
@@ -26151,7 +26252,8 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     while idx < tokens.len() {
                         match tokens[idx].as_str() {
                             "--input" => {
-                                input = Some(parse_option_path(tokens, &mut idx, "--input", context)?);
+                                input =
+                                    Some(parse_option_path(tokens, &mut idx, "--input", context)?);
                             }
                             "--output" | "--path" => {
                                 output =
@@ -26182,8 +26284,11 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                                 cache_version =
                                     Some(parse_option_path(tokens, &mut idx, &flag, context)?);
                             }
-                            "--ontology-namespace" | "--ontology_namespace" | "--term-namespace"
-                            | "--term_namespace" | "--namespace" => {
+                            "--ontology-namespace"
+                            | "--ontology_namespace"
+                            | "--term-namespace"
+                            | "--term_namespace"
+                            | "--namespace" => {
                                 let flag = tokens[idx].clone();
                                 ontology_namespace =
                                     Some(parse_option_path(tokens, &mut idx, &flag, context)?);
@@ -26259,7 +26364,8 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     while idx < tokens.len() {
                         match tokens[idx].as_str() {
                             "--input" => {
-                                input = Some(parse_option_path(tokens, &mut idx, "--input", context)?);
+                                input =
+                                    Some(parse_option_path(tokens, &mut idx, "--input", context)?);
                             }
                             "--output" | "--path" => {
                                 output =
@@ -26305,7 +26411,9 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                                 condition_label =
                                     Some(parse_option_path(tokens, &mut idx, &flag, context)?);
                             }
-                            "--normalization" | "--normalization-method" | "--normalization_method" => {
+                            "--normalization"
+                            | "--normalization-method"
+                            | "--normalization_method" => {
                                 let flag = tokens[idx].clone();
                                 normalization_method =
                                     Some(parse_option_path(tokens, &mut idx, &flag, context)?);
@@ -29830,6 +29938,31 @@ fn execute_agent_meta_command(
             output: serde_json::to_value(engine.summarize_state())
                 .map_err(|e| format!("Could not serialize state summary: {e}"))?,
         }),
+        ShellCommand::FactsGraph { evidence_paths } => {
+            let evidence = load_restriction_site_scan_evidence(evidence_paths)?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(
+                    engine.project_fact_graph_with_restriction_evidence(&evidence),
+                )
+                .map_err(|e| format!("Could not serialize fact graph: {e}"))?,
+            })
+        }
+        ShellCommand::FactsEval {
+            expression_json,
+            evidence_paths,
+        } => {
+            let expression =
+                parse_required_json_payload::<FactExpression>(expression_json, "fact expression")?;
+            let evidence = load_restriction_site_scan_evidence(evidence_paths)?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(
+                    engine.evaluate_fact_expression(&expression, &evidence),
+                )
+                .map_err(|e| format!("Could not serialize fact evaluation: {e}"))?,
+            })
+        }
         _ => Err("execute_agent_meta_command called with unsupported command".to_string()),
     }
 }
@@ -31364,11 +31497,8 @@ fn gene_set_import_member_value(
         header_index,
         &["symbol", "gene_symbol", "gene", "gene_name"],
     );
-    let gene_id = gene_set_import_record_value(
-        record,
-        header_index,
-        &["gene_id", "ensembl_gene_id", "id"],
-    );
+    let gene_id =
+        gene_set_import_record_value(record, header_index, &["gene_id", "ensembl_gene_id", "id"]);
     if symbol.is_none() && gene_id.is_none() {
         return None;
     }
@@ -31400,16 +31530,15 @@ fn gene_set_import_insert_optional(
     key: &str,
     value: Option<&String>,
 ) {
-    if let Some(value) = value.map(|value| value.trim()).filter(|value| !value.is_empty()) {
+    if let Some(value) = value
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+    {
         object.insert(key.to_string(), json!(value));
     }
 }
 
-fn gene_set_import_write_cache(
-    output: &str,
-    cache: &Value,
-    context: &str,
-) -> Result<(), String> {
+fn gene_set_import_write_cache(output: &str, cache: &Value, context: &str) -> Result<(), String> {
     ensure_shell_output_parent_dir(output)?;
     let mut text = serde_json::to_string_pretty(cache)
         .map_err(|e| format!("Could not serialize {context} cache: {e}"))?;
@@ -31473,9 +31602,15 @@ fn import_gene_set_direct_list_cache(
             .1
             .push(member);
     }
-    let member_count = lists.values().map(|(_, members)| members.len()).sum::<usize>();
+    let member_count = lists
+        .values()
+        .map(|(_, members)| members.len())
+        .sum::<usize>();
     let mut root = serde_json::Map::new();
-    root.insert("schema".to_string(), json!(GENE_SET_DIRECT_LIST_CACHE_SCHEMA));
+    root.insert(
+        "schema".to_string(),
+        json!(GENE_SET_DIRECT_LIST_CACHE_SCHEMA),
+    );
     root.insert("provider_id".to_string(), json!(provider_id));
     gene_set_import_insert_optional(&mut root, "provider_label", provider_label);
     root.insert("provider_version".to_string(), json!(provider_version));
@@ -31599,21 +31734,23 @@ fn import_gene_set_ontology_assignment_cache(
         Value::Array(
             assignments
                 .into_iter()
-                .map(|((term, term_label, evidence_code, assigned_by), members)| {
-                    let mut row = serde_json::Map::new();
-                    row.insert("term".to_string(), json!(term));
-                    if !term_label.is_empty() {
-                        row.insert("term_label".to_string(), json!(term_label));
-                    }
-                    if !evidence_code.is_empty() {
-                        row.insert("evidence_code".to_string(), json!(evidence_code));
-                    }
-                    if !assigned_by.is_empty() {
-                        row.insert("assigned_by".to_string(), json!(assigned_by));
-                    }
-                    row.insert("members".to_string(), Value::Array(members));
-                    Value::Object(row)
-                })
+                .map(
+                    |((term, term_label, evidence_code, assigned_by), members)| {
+                        let mut row = serde_json::Map::new();
+                        row.insert("term".to_string(), json!(term));
+                        if !term_label.is_empty() {
+                            row.insert("term_label".to_string(), json!(term_label));
+                        }
+                        if !evidence_code.is_empty() {
+                            row.insert("evidence_code".to_string(), json!(evidence_code));
+                        }
+                        if !assigned_by.is_empty() {
+                            row.insert("assigned_by".to_string(), json!(assigned_by));
+                        }
+                        row.insert("members".to_string(), Value::Array(members));
+                        Value::Object(row)
+                    },
+                )
                 .collect(),
         ),
     );
@@ -41976,6 +42113,8 @@ fn execute_shell_command_with_options_dispatch(
             | ShellCommand::AgentsDiscoverModels { .. }
             | ShellCommand::Capabilities
             | ShellCommand::StateSummary
+            | ShellCommand::FactsGraph { .. }
+            | ShellCommand::FactsEval { .. }
     ) {
         return execute_agent_meta_command(engine, command);
     }
@@ -42495,9 +42634,10 @@ fn execute_shell_command_with_options_inner(
     }
     let result = match command {
         ShellCommand::Help { .. } => execute_help_command(engine, command)?,
-        ShellCommand::Capabilities | ShellCommand::StateSummary => {
-            execute_agent_meta_command(engine, command)?
-        }
+        ShellCommand::Capabilities
+        | ShellCommand::StateSummary
+        | ShellCommand::FactsGraph { .. }
+        | ShellCommand::FactsEval { .. } => execute_agent_meta_command(engine, command)?,
         ShellCommand::HistoryStatus | ShellCommand::HistoryUndo | ShellCommand::HistoryRedo => {
             execute_history_command(engine, command)?
         }

@@ -44307,6 +44307,150 @@ fn test_find_restriction_sites_operation_supports_inline_sequence_targets() {
 }
 
 #[test]
+fn project_fact_graph_projects_loaded_sequence_facts() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "demo_seq".to_string(),
+        DNAsequence::from_sequence("ACGTACGT").expect("sequence"),
+    );
+    let engine = GentleEngine::from_state(state);
+
+    let graph = engine.project_fact_graph();
+
+    assert_eq!(graph.schema, "gentle.project_fact_graph.v1");
+    assert!(graph.facts.windows(2).all(|pair| {
+        serde_json::to_string(&pair[0]).expect("left")
+            <= serde_json::to_string(&pair[1]).expect("right")
+    }));
+    assert!(graph.facts.iter().any(|fact| {
+        fact.fact == "sequence.exists"
+            && fact.subject.kind == FactSubjectKind::Sequence
+            && fact.subject.id == "demo_seq"
+    }));
+    assert!(graph.facts.iter().any(|fact| {
+        fact.fact == "sequence.kind"
+            && fact.subject.id == "demo_seq"
+            && fact.value == Some(serde_json::json!("dna"))
+    }));
+    assert!(graph.facts.iter().any(|fact| {
+        fact.fact == "sequence.length"
+            && fact.subject.id == "demo_seq"
+            && fact.value == Some(serde_json::json!(8))
+    }));
+}
+
+#[test]
+fn project_fact_eval_requires_proof_for_absent_restriction_site() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "clean_seq".to_string(),
+        DNAsequence::from_sequence("AAGGCCCCAAGGCCCC").expect("sequence"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let expression: FactExpression = serde_json::from_value(serde_json::json!({
+        "fact": "restriction_site.absent",
+        "subject": {"kind": "sequence", "id": "clean_seq"},
+        "enzyme": "EcoRI",
+        "range": {"kind": "whole_sequence"}
+    }))
+    .expect("fact expression");
+
+    let without_evidence = engine.evaluate_fact_expression(&expression, &[]);
+    assert_eq!(without_evidence.truth, FactTruth::Unknown);
+    assert_eq!(without_evidence.unknown_atoms.len(), 1);
+
+    let report = engine
+        .apply(Operation::FindRestrictionSites {
+            target: SequenceScanTarget::SeqId {
+                seq_id: "clean_seq".to_string(),
+                span_start_0based: None,
+                span_end_0based_exclusive: None,
+            },
+            enzymes: vec!["EcoRI".to_string()],
+            max_sites_per_enzyme: None,
+            include_cut_geometry: true,
+            path: None,
+        })
+        .expect("restriction scan")
+        .restriction_site_scan
+        .expect("restriction report");
+    assert!(report.report_id.starts_with("rsr_"));
+    assert!(report.rows.is_empty());
+
+    let with_evidence = engine.evaluate_fact_expression(&expression, std::slice::from_ref(&report));
+    assert_eq!(with_evidence.truth, FactTruth::Satisfied);
+    assert!(with_evidence.unknown_atoms.is_empty());
+    assert!(with_evidence.unmet_atoms.is_empty());
+}
+
+#[test]
+fn project_fact_eval_refutes_absence_when_restriction_site_is_present() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "cut_seq".to_string(),
+        DNAsequence::from_sequence("AAGAATTCCCGG").expect("sequence"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let report = engine
+        .apply(Operation::FindRestrictionSites {
+            target: SequenceScanTarget::SeqId {
+                seq_id: "cut_seq".to_string(),
+                span_start_0based: None,
+                span_end_0based_exclusive: None,
+            },
+            enzymes: vec!["EcoRI".to_string()],
+            max_sites_per_enzyme: None,
+            include_cut_geometry: true,
+            path: None,
+        })
+        .expect("restriction scan")
+        .restriction_site_scan
+        .expect("restriction report");
+    assert_eq!(report.matched_site_count, 1);
+
+    let present: FactExpression = serde_json::from_value(serde_json::json!({
+        "fact": "restriction_site.present",
+        "subject": {"kind": "sequence", "id": "cut_seq"},
+        "enzyme": "EcoRI",
+        "range": {"kind": "whole_sequence"}
+    }))
+    .expect("present expression");
+    let absent: FactExpression = serde_json::from_value(serde_json::json!({
+        "fact": "restriction_site.absent",
+        "subject": {"kind": "sequence", "id": "cut_seq"},
+        "enzyme": "EcoRI",
+        "range": {"kind": "whole_sequence"}
+    }))
+    .expect("absent expression");
+    let not_present: FactExpression = serde_json::from_value(serde_json::json!({
+        "not": {
+            "fact": "restriction_site.present",
+            "subject": {"kind": "sequence", "id": "cut_seq"},
+            "enzyme": "EcoRI",
+            "range": {"kind": "whole_sequence"}
+        }
+    }))
+    .expect("not expression");
+
+    assert_eq!(
+        engine
+            .evaluate_fact_expression(&present, std::slice::from_ref(&report))
+            .truth,
+        FactTruth::Satisfied
+    );
+    assert_eq!(
+        engine
+            .evaluate_fact_expression(&absent, std::slice::from_ref(&report))
+            .truth,
+        FactTruth::Unsatisfied
+    );
+    assert_eq!(
+        engine.evaluate_fact_expression(&not_present, &[]).truth,
+        FactTruth::Unknown
+    );
+}
+
+#[test]
 fn test_scan_tfbs_hits_matches_inline_and_stored_sequence_targets() {
     let sequence_text = "TTTTATAAAGGGTATAAATTT";
     let mut state = ProjectState::default();

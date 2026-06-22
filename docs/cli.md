@@ -2048,6 +2048,11 @@ Shared shell command:
     - `help`
     - `capabilities`
     - `state-summary`
+    - `facts graph [--evidence SCAN.json ...]`
+    - `facts eval FACT_EXPR_JSON_OR_@FILE [--evidence SCAN.json ...]`
+      - evaluates `gentle.fact_expression.v1`-style preconditions against the
+        deterministic `gentle.project_fact_graph.v1`; restriction-site absence
+        requires explicit scan evidence rather than missing hits in state
     - `containers set-exclusive CONTAINER_ID true|false`
     - `load-project PATH`
     - `save-project PATH`
@@ -2117,6 +2122,8 @@ Shared shell command:
     - `resources inspect-jaspar MOTIF [--random-length N] [--seed N] [--fetch-remote] [--output OUTPUT.json]`
     - `agents list [--catalog PATH]`
     - `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]`
+    - `facts graph [--evidence SCAN.json ...]`
+    - `facts eval FACT_EXPR_JSON_OR_@FILE [--evidence SCAN.json ...]`
     - `ui open TARGET [--genome-id GENOME_ID] [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]`
     - `ui focus TARGET [--genome-id GENOME_ID] [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]`
     - `ui prepared-genomes [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]`
