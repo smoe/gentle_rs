@@ -23,7 +23,7 @@ const AGENT_REQUEST_SCHEMA_PREFIX: &str = "gentle.agent_request.v";
 const AGENT_RESPONSE_SCHEMA_PREFIX: &str = "gentle.agent_response.v";
 pub(crate) const AGENT_BRIDGE_SYSTEM_PROMPT: &str = r#"You are a GENtle agent bridge.
 Return STRICT JSON only with this exact object shape:
-{"schema":"gentle.agent_response.v1","assistant_message":"string","questions":["string"],"suggested_commands":[{"title":"string","rationale":"string","command":"string","execution":"chat|ask|auto"}]}
+{"schema":"gentle.agent_response.v1","assistant_message":"string","questions":["string"],"suggested_commands":[{"title":"string","preconditions":["string"],"rationale":"string","command":"string","execution":"chat|ask|auto"}]}
 The top-level field named "schema" is a literal protocol id string, not a JSON Schema object. It must be exactly "gentle.agent_response.v1".
 Do not output JSON Schema definitions, "type"/"properties" schema documents, markdown fences, or explanatory prose outside the JSON object.
 Use only keys from the schema. Extensions may use x_ prefix. Do not include markdown fences.
@@ -31,10 +31,11 @@ Suggested command contract:
 - Documentation context rule: before proposing commands, use the GENtle documentation bundle when available: docs/glossary.json for command paths, docs/cli.md for operand conventions and examples, docs/protocol.md for schemas/execution semantics, docs/ai_prompt_contract.md for agent behavior, and the biology/context docs docs/ai_cloning_primer.md, docs/ai_task_playbooks.md, docs/examples/ai_cloning_examples.md, plus docs/ai_glossary_extensions.json when present. If the relevant documentation is not available in your context, say what is missing or ask a clarifying question instead of guessing.
 - Operand rule: glossary usage words such as QUERY, ID, SEQ_ID, GENOME_ID, ENTRY_ID, PATH, START, END, CHR, and OUTPUT.svg are placeholders with route-specific meanings. Do not infer species aliases, accession formats, local output IDs, coordinate systems, or filesystem paths from the placeholder name alone.
 - Current scope declaration: GENtle does not currently implement OpenClaw-like filesystem, operating-system, or gateway commands. That may change in a future gateway layer; for now, concentrate on actions GENtle can also perform through its GUI or shared shell on the same project state.
+- Intent/precondition rule: use suggested_commands[].title for the user intent, and suggested_commands[].preconditions for requirements such as "a sequence with seq_id demo_seq exists". Do not suggest downstream analysis on a seq_id unless the current project state says that seq_id exists or an earlier suggested command in the same reply creates it.
 - suggested_commands[].command must be one exact GENtle shared-shell command parseable by GENtle.
 - GENtle-local slash aliases are deliberately small and parser-validated. Allowed aliases are: /help; /list; /open; /import; /open file PATH [--id ID]; /import file PATH [--id ID]; /paste sequence --sequence-text DNA [--id ID]; /features restriction-scan SEQ_ID [--enzyme NAME]; /fetch genbank ACCESSION [--id ID]; /fetch ncbi ACCESSION [--id ID]; /fetch uniprot QUERY [--id ID]; /fetch ensembl QUERY [--species NAME] [--id ID]; /fetch ensembl-gene QUERY [--species NAME] [--id ID]; /fetch ensembl-protein QUERY [--id ID]; /fetch ensembl-region SPECIES CHR START END [--strand +|-] [--id ID]; /fetch dbsnp RS_ID GENOME_ID [--id ID].
 - /list reports GENtle's current project state and loaded sequence/project records. It does not list operating-system files or folders.
-- For simple first replies or orientation requests, prefer safe GENtle controls such as help, /help, /list, state-summary, and capabilities. Mark runnable controls execution="ask"; use execution="chat" only when the row is explanatory and should not run.
+- For simple first replies or orientation requests, prefer safe GENtle controls such as help, /help, /list, state-summary, capabilities, /open, concrete /open file examples, or confirmation-gated /fetch examples. Do not suggest sequence-analysis commands such as features restriction-scan as first runnable actions unless the current state already contains the referenced seq_id or an earlier suggested command in the same reply creates it. Mark runnable controls execution="ask"; use execution="chat" only when the row is explanatory and should not run.
 - Describe help as GENtle command/help documentation, state-summary as current project state, capabilities as available GENtle capabilities, and /list as loaded project/sequence state. Do not describe any of these as filesystem or operating-system commands.
 - Do not suggest Ollama REPL commands such as /set, /show, /load, /save, /clear, or bare /path/to/file attachments. In GENtle, use /open file PATH or /import file PATH when the user supplies an exact sequence-file path.
 - Ensembl route rule: use species names such as homo_sapiens, not HUMAN. /fetch ensembl-protein does not accept --species; for a human gene symbol such as FUS, use /fetch ensembl FUS --species homo_sapiens --id fus_live or a prepared-genome genomes genes/extract-gene workflow.
@@ -47,12 +48,14 @@ Suggested command contract:
 GENtle Agent Control Card:
 - Local controls: help or /help show GENtle help; /help TOPIC shows topic help; /list shows loaded GENtle project/sequence state; state-summary returns current project state; capabilities lists available GENtle capabilities.
 - File inputs: never use bare /path/to/file. If the user gave an exact local sequence-file path, suggest /open file PATH or /import file PATH with execution="ask".
-- Empty project: do not refer to existing seq_id values. Suggest state-summary, capabilities, /list, /paste sequence, /open file PATH when a path is known, or a confirmation-gated /fetch route for public data.
+- Empty project: do not refer to existing seq_id values. Stage the answer as intents: inspect state, load/open/retrieve a sequence or reopen a project, then analyze only after a sequence exists. Suggest state-summary, capabilities, /list, /open, /paste sequence, /open file PATH when a path is known, or a confirmation-gated /fetch route for public data. Put "requires a loaded sequence" in preconditions[] for analysis commands.
+- Continuing work: if the user wants an earlier project, suggest the GUI paths File -> Open Project... or File -> Open Recent Project..., or tell them to launch GENtle with an exact saved project path. Do not invent a recent-project slash command.
 - Public data: ask before network retrieval. For human genes, prefer /fetch ensembl SYMBOL --species homo_sapiens --id ID or a prepared-genome genomes genes/extract-gene workflow.
 - First reply examples:
   {"title":"Show GENtle help","command":"help","execution":"ask"}
   {"title":"Show project state","command":"state-summary","execution":"ask"}
   {"title":"List loaded GENtle records","command":"/list","execution":"ask"}
+  {"title":"Open a sequence file","preconditions":["GUI host is available"],"command":"/open","execution":"ask"}
   {"title":"Retrieve human FUS from Ensembl","command":"/fetch ensembl FUS --species homo_sapiens --id fus_live","execution":"ask"}"#;
 const AGENT_SCHEMA_SUPPORTED_MAJOR: u32 = 1;
 const AGENT_INVOKE_RETRY_BASE_DELAY_MS: u64 = 250;
@@ -1239,6 +1242,7 @@ impl AgentExecutionIntent {
 #[serde(default)]
 pub struct AgentSuggestedCommand {
     pub title: Option<String>,
+    pub preconditions: Vec<String>,
     pub rationale: Option<String>,
     pub command: String,
     pub execution: AgentExecutionIntent,
@@ -1466,7 +1470,13 @@ fn parse_suggested_command_value(
     };
     ensure_known_keys(
         obj,
-        &["title", "rationale", "command", "execution"],
+        &[
+            "title",
+            "preconditions",
+            "rationale",
+            "command",
+            "execution",
+        ],
         "agent suggested command",
         AgentBridgeErrorCode::ResponseValidation,
     )?;
@@ -1544,9 +1554,38 @@ fn parse_suggested_command_value(
     } else {
         None
     };
+    let preconditions = if let Some(value) = obj.get("preconditions") {
+        let items = value.as_array().ok_or_else(|| {
+            agent_err(
+                AgentBridgeErrorCode::ResponseValidation,
+                format!(
+                    "agent response 'suggested_commands[{idx}].preconditions' must be an array"
+                ),
+            )
+        })?;
+        let mut parsed = Vec::with_capacity(items.len());
+        for (precondition_idx, item) in items.iter().enumerate() {
+            let precondition = item.as_str().ok_or_else(|| {
+                agent_err(
+                    AgentBridgeErrorCode::ResponseValidation,
+                    format!(
+                        "agent response 'suggested_commands[{idx}].preconditions[{precondition_idx}]' must be a string"
+                    ),
+                )
+            })?;
+            let trimmed = precondition.trim();
+            if !trimmed.is_empty() {
+                parsed.push(trimmed.to_string());
+            }
+        }
+        parsed
+    } else {
+        vec![]
+    };
 
     Ok(AgentSuggestedCommand {
         title,
+        preconditions,
         rationale,
         command: command.to_string(),
         execution,
@@ -2474,6 +2513,7 @@ fn builtin_echo_response(prompt: &str) -> AgentResponse {
             if !command.is_empty() {
                 suggested.push(AgentSuggestedCommand {
                     title: Some("Auto suggestion (demo)".to_string()),
+                    preconditions: vec![],
                     rationale: Some("Extracted from 'auto:' line in prompt".to_string()),
                     command: command.to_string(),
                     execution: AgentExecutionIntent::Auto,
@@ -2486,6 +2526,7 @@ fn builtin_echo_response(prompt: &str) -> AgentResponse {
             if !command.is_empty() {
                 suggested.push(AgentSuggestedCommand {
                     title: Some("Confirm suggestion (demo)".to_string()),
+                    preconditions: vec![],
                     rationale: Some("Extracted from 'ask:' line in prompt".to_string()),
                     command: command.to_string(),
                     execution: AgentExecutionIntent::Ask,
@@ -3166,6 +3207,37 @@ mod tests {
     }
 
     #[test]
+    fn parse_agent_response_accepts_suggested_command_preconditions() {
+        let response = parse_agent_response(
+            r#"{
+  "schema": "gentle.agent_response.v1",
+  "assistant_message": "Open a sequence before scanning features.",
+  "questions": [],
+  "suggested_commands": [
+    {
+      "title": "Scan restriction sites",
+      "preconditions": ["Sequence demo_seq exists in the current GENtle project."],
+      "rationale": "Restriction scans operate on a loaded sequence id.",
+      "command": "/features restriction-scan demo_seq --enzyme EcoRI",
+      "execution": "ask"
+    }
+  ]
+}"#,
+        )
+        .expect("preconditions should be accepted on suggested commands");
+
+        let command = response
+            .suggested_commands
+            .first()
+            .expect("suggested command");
+        assert_eq!(command.title.as_deref(), Some("Scan restriction sites"));
+        assert_eq!(
+            command.preconditions,
+            vec!["Sequence demo_seq exists in the current GENtle project.".to_string()]
+        );
+    }
+
+    #[test]
     fn parse_agent_response_rejects_future_schema_major() {
         let err = parse_agent_response(
             r#"{
@@ -3540,6 +3612,11 @@ mod tests {
         assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("Do not suggest Ollama REPL commands"));
         assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("bare /path/to/file attachments"));
         assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("GENtle Agent Control Card"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("preconditions"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("Intent/precondition rule"));
+        assert!(
+            AGENT_BRIDGE_SYSTEM_PROMPT.contains("Do not invent a recent-project slash command")
+        );
         assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("First reply examples"));
         assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("\"command\":\"state-summary\""));
         assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("op '{\"LoadFile\""));

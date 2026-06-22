@@ -18363,6 +18363,7 @@ fn execute_agent_suggestions_allows_blast_shell_route() {
     let mut engine = GentleEngine::from_state(ProjectState::default());
     let suggestions = vec![crate::agent_bridge::AgentSuggestedCommand {
         title: Some("BLAST".to_string()),
+        preconditions: vec![],
         rationale: Some("Check specificity".to_string()),
         command: "genomes blast __missing_genome__ ACGT".to_string(),
         execution: AgentExecutionIntent::Auto,

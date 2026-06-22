@@ -114,15 +114,29 @@ Context policy:
 Output wanted:
 - 5-8 bullets about what you can help with inside GENtle.
 - 2-4 safe suggested_commands using GENtle shared-shell commands only.
+- Each suggested command needs a clear title as the user intent and preconditions[] when it depends on state.
+- On an empty or unknown project, prefer orientation/open/retrieve commands first; do not suggest feature scans as runnable first actions.
 - Mark runnable suggestions execution="ask"; use execution="chat" only for purely explanatory rows that should not run.
 - Mention that external database/network actions require explicit confirmation.
 
-Good demo commands:
+Good first-step demo commands:
 - /help
 - /list (current GENtle project state and loaded sequences, not filesystem files)
 - state-summary
+- /open (GUI file picker for local sequence files)
+- /open file test_files/pGEX_3X.fa --id pgex
 - /paste sequence --sequence-text GAATTCGCGGCCGCTTCTAGA --id demo_seq
+- /fetch ensembl FUS --species homo_sapiens --id fus_live
+- /fetch genbank NM_001126241.3 --id tp73_cdna
+
+Follow-up demo command after a sequence exists:
 - /features restriction-scan demo_seq --enzyme EcoRI
+  preconditions[] = ["Sequence demo_seq exists in the current GENtle project."]
+
+Continuing earlier work:
+- If the user wants to continue an earlier project, suggest GUI path `File -> Open Project...` or `File -> Open Recent Project...`.
+- Do not invent a shell/slash command for recent projects until GENtle exposes one.
+- If the user supplies an exact saved project path, tell them to open it through `File -> Open Project...` or by launching GENtle with that project path.
 
 Do not describe /list as a directory listing. Do not suggest placeholder commands such as /open file PATH [--id ID] unless the user supplied a real PATH."#
         }
@@ -332,6 +346,30 @@ mod tests {
         assert!(agent_prompt_template_text("compact_intro").contains("shared-shell"));
         assert!(agent_prompt_template_text("compact_intro").contains("not filesystem files"));
         assert!(agent_prompt_template_text("compact_intro").contains("Do not describe /list"));
+        assert!(
+            agent_prompt_template_text("compact_intro")
+                .contains("/open file test_files/pGEX_3X.fa --id pgex")
+        );
+        assert!(
+            agent_prompt_template_text("compact_intro")
+                .contains("/fetch ensembl FUS --species homo_sapiens --id fus_live")
+        );
+        assert!(agent_prompt_template_text("compact_intro").contains("preconditions[]"));
+        assert!(
+            agent_prompt_template_text("compact_intro")
+                .contains("Sequence demo_seq exists in the current GENtle project.")
+        );
+        assert!(
+            agent_prompt_template_text("compact_intro")
+                .contains("do not suggest feature scans as runnable first actions")
+        );
+        assert!(
+            agent_prompt_template_text("compact_intro").contains("File -> Open Recent Project...")
+        );
+        assert!(
+            agent_prompt_template_text("compact_intro")
+                .contains("Do not invent a shell/slash command for recent projects")
+        );
         assert!(agent_prompt_template_text("compact_intro").contains("docs/glossary.json"));
         assert!(agent_prompt_template_text("candidate_anchors").contains("candidates"));
         assert!(agent_prompt_template_text("unknown").contains("Objective:"));

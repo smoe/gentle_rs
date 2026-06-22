@@ -7,6 +7,9 @@
 use super::*;
 
 impl GENtleApp {
+    const AGENT_MODEL_SELECTION_REQUIRED_MESSAGE: &'static str =
+        "Connection established, please select the model to use in the drop-down box.";
+
     pub(super) fn open_routine_assistant_dialog(&mut self) {
         if self.show_routine_assistant_dialog {
             self.mark_window_open_or_focus(Self::routine_assistant_viewport_id(), true);
@@ -167,6 +170,65 @@ impl GENtleApp {
         self.clear_agent_model_discovery_snapshot();
     }
 
+    pub(super) fn selected_agent_discovered_model(&self) -> Option<String> {
+        let mut normalized_models = Vec::new();
+        for model in &self.agent_discovered_models {
+            if let Some(model) = normalize_agent_model_name(model)
+                && !normalized_models.iter().any(|item| item == &model)
+            {
+                normalized_models.push(model);
+            }
+        }
+        if normalized_models.is_empty() {
+            return None;
+        }
+        if let Some(picked) = normalize_agent_model_name(&self.agent_discovered_model_pick)
+            && normalized_models.iter().any(|item| item == &picked)
+        {
+            return Some(picked);
+        }
+        if normalized_models.len() == 1 {
+            return normalized_models.into_iter().next();
+        }
+        None
+    }
+
+    pub(super) fn agent_model_selection_prompt(
+        &self,
+        system: &AgentSystemSpec,
+    ) -> Option<&'static str> {
+        if !matches!(
+            system.transport,
+            AgentSystemTransport::NativeOpenai
+                | AgentSystemTransport::NativeAnthropic
+                | AgentSystemTransport::NativeMistral
+                | AgentSystemTransport::NativeOpenaiCompat
+        ) {
+            return None;
+        }
+        if normalize_agent_model_name(self.agent_model_override.trim()).is_some()
+            || system
+                .model
+                .as_deref()
+                .and_then(normalize_agent_model_name)
+                .is_some()
+            || self.selected_agent_discovered_model().is_some()
+        {
+            return None;
+        }
+        let mut discovered_count = 0usize;
+        let mut normalized_models = Vec::new();
+        for model in &self.agent_discovered_models {
+            if let Some(model) = normalize_agent_model_name(model)
+                && !normalized_models.iter().any(|item| item == &model)
+            {
+                normalized_models.push(model);
+                discovered_count += 1;
+            }
+        }
+        (discovered_count > 1).then_some(Self::AGENT_MODEL_SELECTION_REQUIRED_MESSAGE)
+    }
+
     pub(super) fn selected_agent_session_env_overrides(
         &self,
         system: &AgentSystemSpec,
@@ -196,12 +258,7 @@ impl GENtleApp {
                 override_base_url.to_string(),
             );
         }
-        let selected_discovered_model =
-            normalize_agent_model_name(&self.agent_discovered_model_pick).filter(|picked| {
-                self.agent_discovered_models
-                    .iter()
-                    .any(|item| item == picked)
-            });
+        let selected_discovered_model = self.selected_agent_discovered_model();
         let override_model = normalize_agent_model_name(self.agent_model_override.trim())
             .or(selected_discovered_model);
         if let Some(override_model) = override_model
@@ -1021,10 +1078,14 @@ impl GENtleApp {
         };
         let (available, reason) = self.selected_agent_system_availability(&selected_system);
         if !available {
-            self.agent_status = format!(
-                "Selected agent system is unavailable: {}",
-                reason.unwrap_or_else(|| "unknown reason".to_string())
-            );
+            if let Some(prompt) = self.agent_model_selection_prompt(&selected_system) {
+                self.agent_status = prompt.to_string();
+            } else {
+                self.agent_status = format!(
+                    "Selected agent system is unavailable: {}",
+                    reason.unwrap_or_else(|| "unknown reason".to_string())
+                );
+            }
             return;
         }
         let prompt = self.agent_prompt.trim().to_string();
@@ -1065,9 +1126,12 @@ impl GENtleApp {
                     return;
                 }
             } else {
-                self.agent_status =
-                    "Model is unspecified. Discover models and select one, or set Model override."
-                        .to_string();
+                self.agent_status = self
+                    .agent_model_selection_prompt(&selected_system)
+                    .unwrap_or(
+                        "Model is unspecified. Discover models and select one, or set Model override.",
+                    )
+                    .to_string();
                 return;
             }
         }
@@ -1658,18 +1722,21 @@ impl GENtleApp {
                             format!("Model discovery returned no models ({:.1}s)", elapsed);
                         self.agent_discovered_model_pick.clear();
                     } else {
-                        if !self
-                            .agent_discovered_models
-                            .iter()
-                            .any(|item| item == &self.agent_discovered_model_pick)
-                        {
+                        if let Some(model) = self.selected_agent_discovered_model() {
+                            self.agent_discovered_model_pick = model;
+                        } else {
                             self.agent_discovered_model_pick.clear();
                         }
-                        self.agent_model_discovery_status = format!(
-                            "Discovered {} model(s) in {:.1}s",
-                            self.agent_discovered_models.len(),
-                            elapsed
-                        );
+                        self.agent_model_discovery_status =
+                            if self.agent_discovered_model_pick.trim().is_empty() {
+                                Self::AGENT_MODEL_SELECTION_REQUIRED_MESSAGE.to_string()
+                            } else {
+                                format!(
+                                    "Discovered {} model(s) in {:.1}s",
+                                    self.agent_discovered_models.len(),
+                                    elapsed
+                                )
+                            };
                     }
                 }
                 Err(err) => {
@@ -2665,10 +2732,10 @@ impl GENtleApp {
                 let model_override = normalize_agent_model_name(self.agent_model_override.trim());
                 if let Some(model_override) = model_override {
                     ui.small(format!("model: {model_override} (session override)"));
-                } else if normalize_agent_model_name(&self.agent_discovered_model_pick).is_some() {
+                } else if let Some(discovered_model) = self.selected_agent_discovered_model() {
                     ui.small(format!(
                         "model: {} (selected discovered model)",
-                        self.agent_discovered_model_pick.trim()
+                        discovered_model
                     ));
                 } else {
                     ui.small(format!("model: {catalog_model}"));
@@ -2677,13 +2744,17 @@ impl GENtleApp {
                 self.clear_agent_model_discovery_snapshot();
             }
             if !available {
-                ui.colored_label(
-                    egui::Color32::from_rgb(190, 70, 70),
-                    format!(
-                        "Unavailable: {}",
-                        reason.unwrap_or_else(|| "unknown reason".to_string())
-                    ),
-                );
+                if let Some(prompt) = self.agent_model_selection_prompt(&system) {
+                    ui.small(prompt);
+                } else {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(190, 70, 70),
+                        format!(
+                            "Unavailable: {}",
+                            reason.unwrap_or_else(|| "unknown reason".to_string())
+                        ),
+                    );
+                }
             }
             if system.id == "builtin_echo" {
                 ui.small(
@@ -3270,8 +3341,9 @@ impl GENtleApp {
                             .show(ui, |ui| {
                                 ui.strong("#");
                                 ui.strong("Intent");
+                                ui.strong("Mode");
                                 ui.strong("Command");
-                                ui.strong("Rationale");
+                                ui.strong("Preconditions / rationale");
                                 ui.strong("Action");
                                 ui.end_row();
                                 for (idx, suggestion) in invocation
@@ -3282,6 +3354,12 @@ impl GENtleApp {
                                 {
                                     let index_1based = idx + 1;
                                     ui.label(index_1based.to_string());
+                                    ui.label(
+                                        suggestion
+                                            .title
+                                            .as_deref()
+                                            .unwrap_or("Suggested GENtle command"),
+                                    );
                                     ui.label(suggestion.execution.as_str());
                                     let command_parse_error =
                                         parse_shell_line(&suggestion.command).err().filter(|_| {
@@ -3295,7 +3373,19 @@ impl GENtleApp {
                                     } else {
                                         ui.monospace(suggestion.command.as_str());
                                     }
-                                    ui.label(suggestion.rationale.clone().unwrap_or_default());
+                                    let mut details = Vec::new();
+                                    if !suggestion.preconditions.is_empty() {
+                                        details.push(format!(
+                                            "Preconditions: {}",
+                                            suggestion.preconditions.join("; ")
+                                        ));
+                                    }
+                                    if let Some(rationale) = suggestion.rationale.as_deref()
+                                        && !rationale.trim().is_empty()
+                                    {
+                                        details.push(rationale.trim().to_string());
+                                    }
+                                    ui.label(details.join("\n"));
                                     let can_run = !suggestion.command.trim().is_empty()
                                         && suggestion.execution != AgentExecutionIntent::Chat
                                         && command_parse_error.is_none();

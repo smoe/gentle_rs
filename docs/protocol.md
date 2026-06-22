@@ -4231,6 +4231,7 @@ Agent response payload schema (`gentle.agent_response.v1`):
   "suggested_commands": [
     {
       "title": "Optional short label",
+      "preconditions": ["Optional requirement before the command can work"],
       "rationale": "Optional reason",
       "command": "state-summary",
       "execution": "ask"
@@ -4321,6 +4322,10 @@ Agent execution intent semantics:
 - `ask`: executable suggestion requiring explicit user confirmation.
 - `auto`: executable suggestion eligible for automatic execution only when
   caller enables `--allow-auto-exec`.
+- Suggested-command `title` is the short user-facing intent shown in GUI
+  tables. `preconditions[]` lists state requirements such as "sequence
+  `demo_seq` exists"; it is advisory text, while the command parser still owns
+  hard validity checks.
 
 Agent schema/compatibility policy:
 
@@ -4332,8 +4337,8 @@ Agent schema/compatibility policy:
 - Response validation is strict for canonical fields:
   - top-level allowed: `schema`, `assistant_message`, `questions`,
     `suggested_commands` plus extension keys prefixed with `x_` or `x-`
-  - `suggested_commands[]` allowed: `title`, `rationale`, `command`,
-    `execution` plus extension keys prefixed with `x_` or `x-`
+  - `suggested_commands[]` allowed: `title`, `preconditions`, `rationale`,
+    `command`, `execution` plus extension keys prefixed with `x_` or `x-`
   - unsupported canonical fields (for example `commands`, `mode`) are rejected
 
 Execution safety rules:
