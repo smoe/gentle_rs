@@ -50,12 +50,16 @@ pub use gene_groups::{
     GeneGroupMember, GeneGroupRecord, GeneGroupResolveReport, GeneGroupShowReport,
 };
 pub use gene_sets::{
-    GENE_SET_CUTRUN_REGULATORY_SUPPORT_SCHEMA, GENE_SET_PROMOTER_COHORT_SCHEMA,
-    GENE_SET_RESOLUTION_SCHEMA, GeneSetCohortRelationship, GeneSetCohortRelationshipFlag,
+    GENE_SET_CO_REGULATED_CACHE_SCHEMA, GENE_SET_CUTRUN_REGULATORY_SUPPORT_SCHEMA,
+    GENE_SET_DIRECT_LIST_CACHE_SCHEMA, GENE_SET_ONTOLOGY_ASSIGNMENT_CACHE_SCHEMA,
+    GENE_SET_PROMOTER_COHORT_SCHEMA, GENE_SET_RESOLUTION_SCHEMA,
+    GeneSetCoRegulatedProducerMetadata, GeneSetCohortRelationship, GeneSetCohortRelationshipFlag,
     GeneSetCutRunEvaluationState, GeneSetCutRunMemberSupport, GeneSetCutRunRegulatorySupportReport,
-    GeneSetCutRunSupportAggregate, GeneSetPromoterCohortReport, GeneSetPromoterWindow,
-    GeneSetProvenanceRow, GeneSetRandomProvenance, GeneSetRequest, GeneSetResolutionReport,
-    GeneSetResolvedMember, GeneSetUnresolvedMember,
+    GeneSetCutRunSupportAggregate, GeneSetProducerFilter, GeneSetProducerKind,
+    GeneSetProducerProvenance, GeneSetProducerQueryMetadata, GeneSetPromoterCohortReport,
+    GeneSetPromoterWindow, GeneSetProvenanceRow, GeneSetRandomProvenance, GeneSetRequest,
+    GeneSetResolutionReport, GeneSetResolutionReviewStatus, GeneSetResolvedMember,
+    GeneSetUnresolvedMember,
 };
 pub use orthologs::{
     ORTHOLOG_PROMOTER_COHORT_SCHEMA, ORTHOLOG_PROMOTER_COMPARISON_SCHEMA, ORTHOLOG_RESOURCE_SCHEMA,

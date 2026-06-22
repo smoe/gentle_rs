@@ -12,6 +12,21 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-06-22
+
+- Added retrieval-producer metadata to `gentle.gene_set_resolution.v1` and the
+  offline `gene-sets produce direct-list` route for local JSON/TSV gene-list
+  caches, resolving candidates through the existing explicit-member resolver.
+- Added the offline `gene-sets produce ontology-assignment` route for local
+  ontology assignment JSON/TSV caches, keeping provider term membership distinct
+  from local gene-group `external_mapping` resolution.
+- Added the offline `gene-sets produce co-regulated` route for local
+  evidence-derived cohort caches with explicit dataset/contrast, score
+  threshold, sign-direction, and relationship-expectation metadata.
+- Made produced gene-set resolutions, promoter cohorts, and gene-set CUT&RUN
+  support reports persist as logical lineage artifacts rendered as `GeneSet`
+  nodes, linked from producer operation to downstream analysis.
+
 ## 2026-06-21
 
 - Added shared operand metavariable conventions for glossary `usage` rows and

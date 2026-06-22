@@ -2621,6 +2621,69 @@
     },
     {
       "source": "glossary_command",
+      "name": "resources import-co-regulated-cache",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes."
+    },
+    {
+      "source": "glossary_command",
+      "name": "resources import-co-regulated-cache",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes."
+    },
+    {
+      "source": "glossary_command",
+      "name": "resources import-co-regulated-cache",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes."
+    },
+    {
+      "source": "glossary_command",
+      "name": "resources import-gene-list-cache",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes."
+    },
+    {
+      "source": "glossary_command",
+      "name": "resources import-gene-list-cache",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes."
+    },
+    {
+      "source": "glossary_command",
+      "name": "resources import-gene-list-cache",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes."
+    },
+    {
+      "source": "glossary_command",
+      "name": "resources import-ontology-assignment-cache",
+      "adapter": "js",
+      "surfacing": "not_applicable",
+      "reason": "Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes."
+    },
+    {
+      "source": "glossary_command",
+      "name": "resources import-ontology-assignment-cache",
+      "adapter": "lua",
+      "surfacing": "not_applicable",
+      "reason": "Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes."
+    },
+    {
+      "source": "glossary_command",
+      "name": "resources import-ontology-assignment-cache",
+      "adapter": "mcp",
+      "surfacing": "not_applicable",
+      "reason": "Resource and cache maintenance touches local host files and stays on CLI/GUI shell routes."
+    },
+    {
+      "source": "glossary_command",
       "name": "resources install-ucsc-rmsk",
       "adapter": "js",
       "surfacing": "not_applicable",

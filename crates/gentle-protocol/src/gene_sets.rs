@@ -13,6 +13,13 @@ pub const GENE_SET_PROMOTER_COHORT_SCHEMA: &str = "gentle.gene_set_promoter_coho
 /// Report schema for CUT&RUN support summarized over a resolved gene set.
 pub const GENE_SET_CUTRUN_REGULATORY_SUPPORT_SCHEMA: &str =
     "gentle.gene_set_cutrun_regulatory_support.v1";
+/// Local offline cache schema for direct gene-list producer inputs.
+pub const GENE_SET_DIRECT_LIST_CACHE_SCHEMA: &str = "gentle.gene_set_direct_list_cache.v1";
+/// Local offline cache schema for ontology-assignment producer inputs.
+pub const GENE_SET_ONTOLOGY_ASSIGNMENT_CACHE_SCHEMA: &str =
+    "gentle.gene_set_ontology_assignment_cache.v1";
+/// Local offline cache schema for co-regulated cohort producer inputs.
+pub const GENE_SET_CO_REGULATED_CACHE_SCHEMA: &str = "gentle.gene_set_co_regulated_cache.v1";
 
 /// Request source for resolving a gene set.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -63,6 +70,28 @@ impl GeneSetRequest {
     }
 }
 
+/// Retrieval producer family that supplied candidate members before resolution.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum GeneSetProducerKind {
+    #[default]
+    DirectGeneList,
+    OntologyAssignment,
+    CoRegulatedCohort,
+}
+
+/// Review state for a resolved set that came from a retrieval producer.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum GeneSetResolutionReviewStatus {
+    #[default]
+    Unreviewed,
+    Reviewed,
+    Included,
+    Draft,
+    Deprecated,
+}
+
 /// User-declared regulatory expectation among members of a resolved cohort.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
@@ -85,6 +114,94 @@ pub struct GeneSetCohortRelationshipFlag {
     #[serde(default)]
     pub member_dedup_keys: Vec<String>,
     pub detail: String,
+}
+
+/// Report-level provenance for a retrieval producer or imported cache.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct GeneSetProducerProvenance {
+    pub producer_kind: GeneSetProducerKind,
+    pub provider_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub import_op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub imported_at_unix_ms: Option<u128>,
+}
+
+/// Structured filter used by a retrieval producer.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct GeneSetProducerFilter {
+    pub field: String,
+    pub operator: String,
+    pub value: String,
+}
+
+/// Structured query metadata for a gene-set retrieval producer.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct GeneSetProducerQueryMetadata {
+    pub query_kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub query_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub query_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub organism: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub taxon_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub symbol_namespace: Option<String>,
+    #[serde(default)]
+    pub filters: Vec<GeneSetProducerFilter>,
+}
+
+/// Retrieval metadata for an evidence-derived co-regulated cohort.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct GeneSetCoRegulatedProducerMetadata {
+    #[serde(default)]
+    pub dataset_ids: Vec<String>,
+    #[serde(default)]
+    pub contrast_labels: Vec<String>,
+    #[serde(default)]
+    pub condition_labels: Vec<String>,
+    pub normalization_method: String,
+    pub scoring_method: String,
+    pub threshold_rule: String,
+    pub sign_direction_rule: String,
+    pub relationship: GeneSetCohortRelationship,
+    pub interpretation_note: String,
+}
+
+impl Default for GeneSetCoRegulatedProducerMetadata {
+    fn default() -> Self {
+        Self {
+            dataset_ids: Vec::new(),
+            contrast_labels: Vec::new(),
+            condition_labels: Vec::new(),
+            normalization_method: String::new(),
+            scoring_method: String::new(),
+            threshold_rule: String::new(),
+            sign_direction_rule: String::new(),
+            relationship: GeneSetCohortRelationship::Unspecified,
+            interpretation_note:
+                "This evidence-derived cohort is a retrieval result and does not prove regulation."
+                    .to_string(),
+        }
+    }
 }
 
 /// One row of provenance attached to a resolved gene-set member or report.
@@ -166,12 +283,25 @@ pub struct GeneSetResolutionReport {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub run_id: Option<String>,
     pub request: GeneSetRequest,
+    pub review_status: GeneSetResolutionReviewStatus,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub genome_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub organism: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub taxon_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub symbol_namespace: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gene_group_catalog_label: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub genome_catalog_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub producer: Option<GeneSetProducerProvenance>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub query_metadata: Option<GeneSetProducerQueryMetadata>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub co_regulated_metadata: Option<GeneSetCoRegulatedProducerMetadata>,
     #[serde(default)]
     pub contributing_group_ids: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -342,6 +472,103 @@ mod tests {
         let json = serde_json::to_string(&report).expect("serialize report");
         assert!(json.contains("gentle.gene_set_resolution.v1"));
         assert!(json.contains("catalog_group"));
+    }
+
+    #[test]
+    fn old_resolution_payload_defaults_producer_metadata() {
+        let report: GeneSetResolutionReport = serde_json::from_value(serde_json::json!({
+            "schema": GENE_SET_RESOLUTION_SCHEMA,
+            "generated_at_unix_ms": 1,
+            "request": {"source_kind": "explicit_members", "members": ["TP73"]},
+            "requested_member_count": 1,
+            "resolved_member_count": 0,
+            "unresolved_member_count": 1
+        }))
+        .expect("deserialize old gene-set resolution payload");
+
+        assert_eq!(
+            report.review_status,
+            GeneSetResolutionReviewStatus::Unreviewed
+        );
+        assert!(report.organism.is_none());
+        assert!(report.taxon_id.is_none());
+        assert!(report.symbol_namespace.is_none());
+        assert!(report.producer.is_none());
+        assert!(report.query_metadata.is_none());
+        assert!(report.co_regulated_metadata.is_none());
+    }
+
+    #[test]
+    fn resolution_report_serializes_retrieval_producer_metadata() {
+        let report = GeneSetResolutionReport {
+            schema: GENE_SET_RESOLUTION_SCHEMA.to_string(),
+            request: GeneSetRequest::ExplicitMembers {
+                members: vec!["TP73".to_string(), "TP53".to_string()],
+            },
+            review_status: GeneSetResolutionReviewStatus::Reviewed,
+            organism: Some("Homo sapiens".to_string()),
+            taxon_id: Some("9606".to_string()),
+            symbol_namespace: Some("HGNC".to_string()),
+            producer: Some(GeneSetProducerProvenance {
+                producer_kind: GeneSetProducerKind::OntologyAssignment,
+                provider_id: "local_go_cache".to_string(),
+                provider_label: Some("Local GO assignment cache".to_string()),
+                provider_version: Some("2026-06".to_string()),
+                cache_id: Some("go-cache-v1".to_string()),
+                cache_path: Some("resources/go_assignments.json".to_string()),
+                cache_version: Some("1".to_string()),
+                cache_digest: Some("sha256:abc123".to_string()),
+                import_op_id: Some("op_import_go_cache".to_string()),
+                imported_at_unix_ms: Some(42),
+            }),
+            query_metadata: Some(GeneSetProducerQueryMetadata {
+                query_kind: "ontology_assignment".to_string(),
+                query_id: Some("GO:0000381".to_string()),
+                query_label: Some("regulation of alternative mRNA splicing".to_string()),
+                organism: Some("Homo sapiens".to_string()),
+                taxon_id: Some("9606".to_string()),
+                symbol_namespace: Some("HGNC".to_string()),
+                filters: vec![GeneSetProducerFilter {
+                    field: "evidence_code".to_string(),
+                    operator: "equals".to_string(),
+                    value: "IDA".to_string(),
+                }],
+            }),
+            co_regulated_metadata: Some(GeneSetCoRegulatedProducerMetadata {
+                dataset_ids: vec!["rnaseq_toy".to_string()],
+                contrast_labels: vec!["treated_vs_control".to_string()],
+                condition_labels: vec!["treated".to_string(), "control".to_string()],
+                normalization_method: "log2_tpm".to_string(),
+                scoring_method: "signed_delta".to_string(),
+                threshold_rule: "abs(delta) >= 1.0".to_string(),
+                sign_direction_rule: "same_sign".to_string(),
+                relationship: GeneSetCohortRelationship::CoRegulated,
+                ..GeneSetCoRegulatedProducerMetadata::default()
+            }),
+            ..GeneSetResolutionReport::default()
+        };
+
+        let value = serde_json::to_value(&report).expect("serialize gene-set producer metadata");
+        assert_eq!(value["review_status"], "reviewed");
+        assert_eq!(value["organism"], "Homo sapiens");
+        assert_eq!(value["producer"]["producer_kind"], "ontology_assignment");
+        assert_eq!(value["producer"]["provider_id"], "local_go_cache");
+        assert_eq!(
+            value["query_metadata"]["filters"][0]["field"],
+            "evidence_code"
+        );
+        assert_eq!(
+            value["co_regulated_metadata"]["relationship"],
+            "co_regulated"
+        );
+        assert_eq!(
+            value["co_regulated_metadata"]["interpretation_note"],
+            "This evidence-derived cohort is a retrieval result and does not prove regulation."
+        );
+
+        let round_trip: GeneSetResolutionReport =
+            serde_json::from_value(value).expect("round-trip gene-set producer metadata");
+        assert_eq!(round_trip, report);
     }
 
     #[test]

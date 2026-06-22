@@ -318,6 +318,9 @@ an agent has selected a deterministic operation.
 - `gene-groups list`
 - `gene-groups resolve`
 - `gene-groups show`
+- `gene-sets produce co-regulated`
+- `gene-sets produce direct-list`
+- `gene-sets produce ontology-assignment`
 - `gene-sets promoter-cohort`
 - `gene-sets resolve`
 - `genomes blast`
@@ -469,6 +472,9 @@ an agent has selected a deterministic operation.
 - `reporters list`
 - `reporters recommend`
 - `resources benchmark-jaspar`
+- `resources import-co-regulated-cache`
+- `resources import-gene-list-cache`
+- `resources import-ontology-assignment-cache`
 - `resources inspect-jaspar`
 - `resources install-ucsc-rmsk`
 - `resources list-jaspar`

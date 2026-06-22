@@ -765,6 +765,9 @@ Implemented baseline:
   - `gentle.gene_set_cutrun_regulatory_support.v1`
 - engine operations:
   - `ResolveGeneSet`
+  - `ProduceGeneSetDirectList`
+  - `ProduceGeneSetOntologyAssignment`
+  - `ProduceGeneSetCoRegulatedCohort`
   - `BuildGeneSetPromoterCohort`
   - `InspectCutRunGeneSetRegulatorySupport`
 - `gene-groups resolve` answers "which catalog entry matches this token";
@@ -778,11 +781,18 @@ Implemented baseline:
   Downstream CUT&RUN support reports derive non-blocking occupancy
   relationship flags over evaluated members only; unevaluated members are not
   coerced into support or absence.
+- Resolved gene-set reports, promoter cohorts, and gene-set CUT&RUN support
+  reports are persisted as logical gene-set artifacts. Shared lineage SVG
+  export renders them as `GeneSet`/analysis nodes linked from producer
+  operation to gene set to downstream analysis, not as sequence or pool nodes.
 
 Current shared-shell routes:
 
 ```bash
 gentle_cli shell 'gene-sets resolve [GROUP_ID|--group GROUP_ID|--members A,B|--go GO:NNNNNNN|--neighbors GENE --flank-genes N|--random-size N --seed N] [--genome GENOME_ID] [--catalog PATH] [--genome-catalog PATH] [--allow-draft] [--allow-deprecated] [--output OUTPUT.json]'
+gentle_cli shell 'gene-sets produce direct-list --cache CACHE.json_or_tsv [--query LIST_ID] [--genome GENOME_ID] [--provider-id ID] [--provider-version VERSION] [--cache-version VERSION] [--organism NAME|--taxon-id N|--namespace NAMESPACE] [--filter FIELD=VALUE] [--output OUTPUT.json]'
+gentle_cli shell 'gene-sets produce ontology-assignment --cache CACHE.json_or_tsv --term GO:NNNNNNN [--ontology-namespace GO] [--evidence-code CODE] [--genome GENOME_ID] [--provider-id ID] [--provider-version VERSION] [--cache-version VERSION] [--organism NAME|--taxon-id N|--namespace NAMESPACE] [--filter FIELD=VALUE] [--output OUTPUT.json]'
+gentle_cli shell 'gene-sets produce co-regulated --cache CACHE.json_or_tsv --dataset DATASET_ID --contrast LABEL --score METHOD --threshold RULE --direction both|positive|negative [--relationship co-regulated|anti-co-regulated|manual] [--genome GENOME_ID] [--provider-id ID] [--provider-version VERSION] [--organism NAME|--taxon-id N|--namespace NAMESPACE] [--filter FIELD=VALUE] [--output OUTPUT.json]'
 gentle_cli shell 'gene-sets promoter-cohort GENOME_ID [--resolution RESOLUTION.json|--group GROUP_ID|--members A,B|--go GO:NNNNNNN|--neighbors GENE --flank-genes N|--random-size N --seed N] [--relationship manual|co-regulated|anti-co-regulated] [--upstream-bp N] [--downstream-bp N] [--catalog PATH] [--genome-catalog PATH] [--output OUTPUT.json]'
 ```
 
@@ -807,6 +817,70 @@ Resolution notes:
 - existing jq recipes that approximate membership with `.status // "included"`
   may silently drop or miss draft-member warnings; the engine now reports draft
   members explicitly in gene-set resolution warnings.
+
+Retrieval producer metadata:
+
+- `gentle.gene_set_resolution.v1` carries additive, defaulted metadata for
+  retrieval-backed producers that supply candidate members before resolution.
+  Existing payloads without these fields remain valid and default to
+  `review_status="unreviewed"` with no producer metadata.
+- The resolver request remains the normalized analysis source. For example,
+  `gene-sets produce direct-list` and `gene-sets produce ontology-assignment`
+  resolve via `request.source_kind="explicit_members"` after cache lookup, while
+  `producer`, `query_metadata`, and set-level
+  `organism`/`taxon_id`/`symbol_namespace` fields record where those candidate
+  members came from.
+- Producer metadata is not a trust shortcut. Retrieved sets should carry
+  provider/cache version, query/filter metadata, and review status before
+  downstream analyses treat them as reviewed operands.
+- `gene-sets produce direct-list` is the first offline retrieval producer. It
+  reads a local JSON cache marked with
+  `gentle.gene_set_direct_list_cache.v1`, or a TSV/CSV with `symbol` or
+  `gene_id` rows and optional `list_id`, then resolves the selected members
+  through the existing `explicit_members` resolver. The route requires
+  provider provenance plus provider/cache version metadata and at least one
+  interpretation context field (`organism`, `taxon_id`, or
+  `symbol_namespace`) from the cache or CLI flags.
+- `gene-sets produce ontology-assignment` is also offline-only. It reads local
+  JSON caches marked with `gentle.gene_set_ontology_assignment_cache.v1` or
+  TSV/CSV assignment rows, selects genes assigned to `--term` under optional
+  evidence/filter constraints, and then resolves those candidate members
+  through the existing `explicit_members` resolver. A term with no matching
+  assignment rows returns a gene-set report with an unresolved term row and a
+  warning, not a silent empty success.
+- `gene-sets produce co-regulated` is the first evidence-derived retrieval
+  producer. It reads local JSON caches marked with
+  `gentle.gene_set_co_regulated_cache.v1` or TSV/CSV rows, filters rows by
+  dataset/contrast/condition, applies an explicit numeric threshold rule
+  (`score>=N`, `score>N`, `score<=N`, `score<N`, `abs>=N`, or `abs>N`) plus a
+  sign-direction rule (`both`, `positive`, or `negative`), and resolves the
+  selected members through `explicit_members`. The report carries
+  `co_regulated_metadata` with dataset, normalization, scoring, threshold,
+  direction, and declared relationship expectation. It is a retrieval result,
+  not proof of regulation.
+- Local cache import routes are explicit shell resource operations:
+  `resources import-gene-list-cache`,
+  `resources import-ontology-assignment-cache`, and
+  `resources import-co-regulated-cache`. They normalize local TSV/CSV files
+  into the corresponding offline cache schemas. They do not resolve members,
+  mutate trusted gene-group catalogs, download live GO annotations, or infer
+  regulation.
+- Current producer families represented by the protocol metadata are
+  `direct_gene_list`, `ontology_assignment`, and `co_regulated_cohort`. The
+  ontology-assignment producer is distinct from existing local
+  `external_mapping` resolution: `external_mapping` asks which local GENtle
+  catalog groups cite a term, while ontology-assignment producer metadata
+  records a provider/cache membership lookup for that term.
+- Co-regulated producer metadata records dataset, contrast, normalization,
+  scoring, threshold, sign-direction rule, and declared relationship
+  expectation. It must not be read as proof of regulation; the default
+  interpretation note says the evidence-derived cohort is a retrieval result
+  and does not prove regulation.
+- Gene-set lineage artifacts are graph-visible when reports are produced or
+  promoter/CUT&RUN analyses are built. `render-lineage-svg` shows logical
+  gene-set nodes with resolved/unresolved counts, producer kind, taxon, and
+  namespace, then links those nodes to promoter-cohort and CUT&RUN support
+  analysis nodes.
 
 ### Sequence collection subjects
 

@@ -612,7 +612,7 @@ CLI resolution order:
 
 Resource update capability status:
 
-- `gentle_cli`: supported (`resources sync-rebase`, `resources sync-jaspar`, `resources sync-ucsc-rmsk`, `resources install-ucsc-rmsk`, `resources prepare-ucsc-rmsk-index`, `resources suggest-ucsc-rmsk-index`, `resources sync-jaspar-remote-metadata`, `resources summarize-jaspar`, `resources resolve-tf-query`, `gene-groups list/show/resolve/doctor/draft`, `gene-sets resolve/promoter-cohort`, `resources benchmark-jaspar`, `resources list-jaspar`, `resources list-publication-datasets`, `resources status-publication-dataset`, `resources prepare-publication-dataset`, `resources inspect-jaspar`)
+- `gentle_cli`: supported (`resources sync-rebase`, `resources sync-jaspar`, `resources sync-ucsc-rmsk`, `resources import-gene-list-cache`, `resources import-ontology-assignment-cache`, `resources import-co-regulated-cache`, `resources install-ucsc-rmsk`, `resources prepare-ucsc-rmsk-index`, `resources suggest-ucsc-rmsk-index`, `resources sync-jaspar-remote-metadata`, `resources summarize-jaspar`, `resources resolve-tf-query`, `gene-groups list/show/resolve/doctor/draft`, `gene-sets resolve/produce direct-list/produce ontology-assignment/produce co-regulated/promoter-cohort`, `resources benchmark-jaspar`, `resources list-jaspar`, `resources list-publication-datasets`, `resources status-publication-dataset`, `resources prepare-publication-dataset`, `resources inspect-jaspar`)
 - `gentle_js`: supported (`sync_rebase`, `sync_jaspar`)
 - `gentle_lua`: supported (`sync_rebase`, `sync_jaspar`)
 
@@ -2093,6 +2093,9 @@ Shared shell command:
     - `resources sync-rebase INPUT.withrefm_or_URL [OUTPUT.rebase.json] [--commercial-only]`
     - `resources sync-jaspar INPUT.jaspar_or_URL [OUTPUT.motifs.json]`
     - `resources sync-ucsc-rmsk INPUT.rmsk.txt_or_txt.gz [OUTPUT.rmsk.json] [--assembly DB] [--limit N]`
+    - `resources import-gene-list-cache --input INPUT.tsv_or_csv --output CACHE.json --provider PROVIDER --version VERSION [--organism NAME|--taxon-id N|--namespace NAMESPACE]`
+    - `resources import-ontology-assignment-cache --input INPUT.tsv_or_csv --output CACHE.json --provider PROVIDER --version VERSION [--ontology-namespace GO] [--organism NAME|--taxon-id N|--symbol-namespace NAMESPACE]`
+    - `resources import-co-regulated-cache --input INPUT.tsv_or_csv --output CACHE.json --provider PROVIDER --version VERSION [--dataset DATASET_ID] [--contrast LABEL] [--score METHOD] [--organism NAME|--taxon-id N|--namespace NAMESPACE]`
     - `resources install-ucsc-rmsk [--assembly DB] [--input PATH_OR_URL] [--resource-output PATH] [--index-output PATH]`
     - `resources prepare-ucsc-rmsk-index RESOURCE.rmsk.json [OUTPUT.interval-index.json]`
     - `resources suggest-ucsc-rmsk-index [--assembly DB] [--output OUTPUT.json]`
@@ -2105,6 +2108,9 @@ Shared shell command:
     - `gene-groups doctor [--catalog PATH] [--output OUTPUT.json]`
     - `gene-groups draft --description TEXT [--member SYMBOL] [--candidate SYMBOL=EVIDENCE] [--go GO:NNNNNNN] [--output GROUP.json]`
     - `gene-sets resolve [GROUP_ID|--group GROUP_ID|--members A,B|--go GO:NNNNNNN|--neighbors GENE --flank-genes N|--random-size N --seed N] [--genome GENOME_ID] [--output OUTPUT.json]`
+    - `gene-sets produce direct-list --cache CACHE.json_or_tsv [--query LIST_ID] [--genome GENOME_ID] [--provider-id ID] [--provider-version VERSION] [--cache-version VERSION] [--organism NAME|--taxon-id N|--namespace NAMESPACE] [--output OUTPUT.json]`
+    - `gene-sets produce ontology-assignment --cache CACHE.json_or_tsv --term GO:NNNNNNN [--ontology-namespace GO] [--evidence-code CODE] [--genome GENOME_ID] [--provider-id ID] [--provider-version VERSION] [--cache-version VERSION] [--organism NAME|--taxon-id N|--namespace NAMESPACE] [--output OUTPUT.json]`
+    - `gene-sets produce co-regulated --cache CACHE.json_or_tsv --dataset DATASET_ID --contrast LABEL --score METHOD --threshold RULE --direction both|positive|negative [--relationship co-regulated|anti-co-regulated|manual] [--genome GENOME_ID] [--output OUTPUT.json]`
     - `gene-sets promoter-cohort GENOME_ID [--resolution RESOLUTION.json|--group GROUP_ID|--members A,B|--go GO:NNNNNNN] [--relationship manual|co-regulated|anti-co-regulated] [--output OUTPUT.json]`
     - `resources benchmark-jaspar [--random-length N] [--seed N] [--output OUTPUT.json]`
     - `resources list-jaspar [--filter TOKEN] [--limit N] [--fetch-remote] [--output OUTPUT.json]`
@@ -3850,6 +3856,30 @@ Tutorial companion:
     `repClass`, `repFamily`, etc.).
   - `--limit N` is intended for fixtures/smoke checks; a limited output is
     marked `truncated=true` and should not be used as a full assembly resource.
+- `resources import-gene-list-cache --input INPUT.tsv_or_csv --output CACHE.json --provider PROVIDER --version VERSION [--organism NAME|--taxon-id N|--namespace NAMESPACE] [--cache-id ID] [--cache-version VERSION] [--list-id ID] [--list-label LABEL]`
+  - Normalizes local TSV/CSV rows with `symbol` or `gene_id` columns into
+    `gentle.gene_set_direct_list_cache.v1`.
+  - Optional `list_id`/`list_label` columns group rows into named lists; CLI
+    `--list-id` and `--list-label` provide defaults when the input omits them.
+  - The route is local and offline-only. It does not resolve genes by itself;
+    feed the emitted cache to `gene-sets produce direct-list` for a resolved
+    `gentle.gene_set_resolution.v1` artifact.
+- `resources import-ontology-assignment-cache --input INPUT.tsv_or_csv --output CACHE.json --provider PROVIDER --version VERSION [--ontology-namespace GO] [--organism NAME|--taxon-id N|--symbol-namespace NAMESPACE] [--cache-id ID] [--cache-version VERSION]`
+  - Normalizes local TSV/CSV ontology assignment rows into
+    `gentle.gene_set_ontology_assignment_cache.v1`.
+  - Input rows should include a term column such as `term`, `term_id`, or
+    `go_id` plus `symbol` or `gene_id`; optional evidence columns such as
+    `evidence_code` and `assigned_by` are preserved for later filters.
+  - The route is local and offline-only. It does not download GO annotations;
+    feed the emitted cache to `gene-sets produce ontology-assignment`.
+- `resources import-co-regulated-cache --input INPUT.tsv_or_csv --output CACHE.json --provider PROVIDER --version VERSION [--dataset DATASET_ID] [--contrast LABEL] [--condition LABEL] [--normalization METHOD] [--score METHOD] [--organism NAME|--taxon-id N|--namespace NAMESPACE] [--cache-id ID] [--cache-version VERSION]`
+  - Normalizes local scored gene rows into
+    `gentle.gene_set_co_regulated_cache.v1`.
+  - Input rows should include `symbol` or `gene_id` plus the score column named
+    by `--score` or a generic `score`/`value`/`logfc`/`statistic` column.
+  - The route records dataset/contrast/condition metadata for later
+    thresholding but does not claim the genes are regulated. Feed the emitted
+    cache to `gene-sets produce co-regulated`.
 - `resources install-ucsc-rmsk [--assembly DB] [--input PATH_OR_URL] [--resource-output PATH] [--index-output PATH]`
   - One-step installer that normalizes the UCSC `rmsk` table and builds the
     matching interval index sidecar.
@@ -3944,6 +3974,64 @@ Tutorial companion:
   - `gene-groups resolve` identifies a catalog entry; `gene-sets resolve`
     expands genes, applies curation/member gating, deduplicates resolved
     identities, and records provenance/warnings.
+- `gene-sets produce direct-list --cache CACHE.json_or_tsv [--query LIST_ID] [--genome GENOME_ID] [--provider-id ID] [--provider-version VERSION] [--cache-version VERSION] [--organism NAME|--taxon-id N|--namespace NAMESPACE] [--filter FIELD=VALUE] [--output OUTPUT.json]`
+  - Reads a local direct gene-list cache and emits a
+    `gentle.gene_set_resolution.v1` report with
+    `producer.producer_kind="direct_gene_list"`.
+  - JSON caches can use schema `gentle.gene_set_direct_list_cache.v1` with
+    top-level `members[]` or `lists[]` entries selected by `--query`.
+    TSV/CSV caches use `symbol` or `gene_id` columns and may include
+    `list_id`/`list_label` for query selection.
+  - Candidate members are resolved through the existing `explicit_members`
+    resolver, so genome-coordinate resolution, duplicate collapse, and
+    unresolved-member reporting match `gene-sets resolve --members`.
+  - The route is offline-only. It requires provider provenance plus
+    provider/cache version metadata and at least one interpretation context
+    field (`organism`, `taxon_id`, or `symbol_namespace`) from the cache or
+    CLI flags.
+- `gene-sets produce ontology-assignment --cache CACHE.json_or_tsv --term GO:NNNNNNN [--ontology-namespace GO] [--evidence-code CODE] [--genome GENOME_ID] [--provider-id ID] [--provider-version VERSION] [--cache-version VERSION] [--organism NAME|--taxon-id N|--namespace NAMESPACE] [--filter FIELD=VALUE] [--output OUTPUT.json]`
+  - Reads a local ontology-assignment cache and emits a
+    `gentle.gene_set_resolution.v1` report with
+    `producer.producer_kind="ontology_assignment"`.
+  - JSON caches can use schema
+    `gentle.gene_set_ontology_assignment_cache.v1` with assignment arrays
+    named `assignments`, `terms`, `ontology_terms`, `entries`, or `rows`.
+    TSV/CSV caches use term columns such as `term`, `term_id`, or `go_id` plus
+    `symbol` or `gene_id`.
+  - `--evidence-code CODE` is recorded as a structured
+    `evidence_code=CODE` filter and filters assignment rows before member
+    resolution. Additional `--filter FIELD=VALUE` constraints are also stored
+    and applied to assignment rows.
+  - This route is distinct from `gene-sets resolve --go GO:NNNNNNN`, which
+    resolves local GENtle catalog groups that cite the GO term. Ontology
+    assignment retrieval resolves provider/cache membership rows through
+    `explicit_members`.
+  - The route is offline-only. A term with no matching assignment rows returns
+    an unresolved term row plus a warning rather than silently returning an
+    empty success.
+- `gene-sets produce co-regulated --cache CACHE.json_or_tsv --dataset DATASET_ID --contrast LABEL --score METHOD --threshold RULE --direction both|positive|negative [--relationship co-regulated|anti-co-regulated|manual] [--genome GENOME_ID] [--provider-id ID] [--provider-version VERSION] [--cache-version VERSION] [--organism NAME|--taxon-id N|--namespace NAMESPACE] [--filter FIELD=VALUE] [--output OUTPUT.json]`
+  - Reads a local expression/regulatory cohort cache and emits a
+    `gentle.gene_set_resolution.v1` report with
+    `producer.producer_kind="co_regulated_cohort"` and
+    `co_regulated_metadata`.
+  - JSON caches can use schema `gentle.gene_set_co_regulated_cache.v1` with
+    row arrays named `rows`, `records`, `members`, or `entries`. TSV/CSV
+    caches use `dataset_id`, `contrast`, `symbol`/`gene_id`, and a numeric
+    score column such as `score`, `value`, `logfc`, or the method named by
+    `--score`.
+  - `--threshold` accepts `score>=N`, `score>N`, `score<=N`, `score<N`,
+    `abs>=N`, or `abs>N`. `--direction` accepts `both`, `positive`, or
+    `negative`.
+  - The default relationship is `co-regulated` for this route, but callers can
+    record `manual` or `anti-co-regulated`. The relationship is preserved as an
+    expectation in metadata; it is not a computed regulatory verdict.
+  - The route is offline-only and does not run expression quantification or
+    regulatory inference. It materializes candidate members from an existing
+    local cache.
+  - Produced gene-set reports are persisted as logical lineage artifacts.
+    `render-lineage-svg` renders them as `GeneSet` nodes linked to their
+    producer operation and downstream promoter/CUT&RUN analysis reports, not as
+    sequence or pool nodes.
 - `gene-sets promoter-cohort GENOME_ID [--resolution RESOLUTION.json|--group GROUP_ID|--members A,B|--go GO:NNNNNNN|--neighbors GENE --flank-genes N|--random-size N --seed N] [--relationship manual|co-regulated|anti-co-regulated] [--upstream-bp N] [--downstream-bp N] [--catalog PATH] [--genome-catalog PATH] [--output OUTPUT.json]`
   - `--relationship` records a user-declared expectation for downstream
     evidence inspection; it does not claim the genes are co-regulated or
