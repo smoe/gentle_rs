@@ -212,12 +212,11 @@ Phase 2 direction: the existing GUI inspector should expose action rationale,
 focus range, dotplot mode, context tags, and driving evidence ids directly from
 the portable action object while keeping the button itself simple.
 
-Later phases stay intentionally separate: richer action-specific evidence panes,
-richer quantitative or objective-specific task-aware repeat severity beyond the
-first rule-based protocol layer, and broader mapping of single-sequence
-operations across sequence sets. The curated repeat-family depth item moved to
-`docs/CHANGELOG.md` after the shared Alu/SINE/LINE/LTR/satellite taxonomy and
-corroboration rules landed.
+Later phases stay intentionally separate: richer action-specific evidence panes
+and broader mapping of single-sequence operations across sequence sets. The
+curated repeat-family depth item and quantitative/objective-specific task
+severity item moved to `docs/CHANGELOG.md` after those protocol-backed layers
+landed.
 
 ## Phase D: Visualization And Workflow UX
 

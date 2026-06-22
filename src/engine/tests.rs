@@ -39872,6 +39872,17 @@ fn construct_reasoning_task_severity<'a>(
         .unwrap_or_else(|| panic!("missing {task:?} severity on {}", fact.fact_type))
 }
 
+fn construct_reasoning_fact<'a>(
+    graph: &'a ConstructReasoningGraph,
+    fact_type: &str,
+) -> &'a DesignFact {
+    graph
+        .facts
+        .iter()
+        .find(|fact| fact.fact_type == fact_type)
+        .unwrap_or_else(|| panic!("missing fact {fact_type}"))
+}
+
 fn construct_reasoning_severity_rank(severity: ConstructReasoningSeverity) -> u8 {
     match severity {
         ConstructReasoningSeverity::None => 0,
@@ -39886,6 +39897,14 @@ fn assert_task_severity_ids_are_fact_evidence(fact: &DesignFact) {
         assert!(
             !severity.supporting_evidence_ids.is_empty(),
             "task severity should name evidence: {:?}",
+            severity
+        );
+        let score = severity
+            .score
+            .expect("engine-generated task severity should carry a score");
+        assert!(
+            (0.0..=1.0).contains(&score),
+            "task severity score should be normalized: {:?}",
             severity
         );
         for evidence_id in &severity.supporting_evidence_ids {
@@ -40210,6 +40229,132 @@ fn build_construct_reasoning_graph_derives_low_complexity_repeat_and_operational
             })
         }),
         "repeat annotation candidates should be linked to protocol inspection actions"
+    );
+}
+
+#[test]
+fn construct_reasoning_task_severity_scores_follow_construct_objective() {
+    let sequence = format!(
+        "{}{}{}{}{}",
+        "ACGT".repeat(12),
+        "AAAAAAAAAAAAAA",
+        "ATATATATATATATATATAT",
+        "GATTACAGATTACCCGGGGATTACAGATTA",
+        "GCGTACGCTATTTTTAGCGTACGC"
+    );
+    let build_graph = |objective: ConstructObjective| {
+        let dna = DNAsequence::from_sequence(&sequence).expect("sequence");
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("objective_repeat_demo".to_string(), dna);
+        let mut engine = GentleEngine::from_state(state);
+        let objective = engine
+            .upsert_construct_objective(objective)
+            .expect("objective");
+        engine
+            .build_construct_reasoning_graph(
+                "objective_repeat_demo",
+                Some(&objective.objective_id),
+                None,
+            )
+            .expect("build graph")
+    };
+
+    let cloning_graph = build_graph(ConstructObjective {
+        title: "Stable plasmid cloning".to_string(),
+        goal: "Assemble and propagate a stable plasmid clone".to_string(),
+        propagation_host_profile_id: Some("ecoli_k12".to_string()),
+        host_route: vec![HostRouteStep {
+            step_id: "propagation".to_string(),
+            host_profile_id: "ecoli_k12".to_string(),
+            role: HostLifecycleRole::Propagation,
+            rationale: "recover and propagate the assembled construct".to_string(),
+            ..HostRouteStep::default()
+        }],
+        preferred_routine_families: vec!["gibson".to_string()],
+        ..ConstructObjective::default()
+    });
+    let sequencing_graph = build_graph(ConstructObjective {
+        title: "Nanopore and mapping QC".to_string(),
+        goal: "Nanopore sequencing and read mapping review for the construct".to_string(),
+        preferred_routine_families: vec!["nanopore_sequencing".to_string()],
+        notes: vec!["inspect alignment uniqueness".to_string()],
+        ..ConstructObjective::default()
+    });
+
+    let cloning_repeat = construct_reasoning_fact(&cloning_graph, "repeat_architecture_context");
+    let sequencing_repeat =
+        construct_reasoning_fact(&sequencing_graph, "repeat_architecture_context");
+    let cloning_read_mapping =
+        construct_reasoning_task_severity(cloning_repeat, ConstructReasoningRiskTask::ReadMapping);
+    let sequencing_read_mapping = construct_reasoning_task_severity(
+        sequencing_repeat,
+        ConstructReasoningRiskTask::ReadMapping,
+    );
+    let cloning_stability = construct_reasoning_task_severity(
+        cloning_repeat,
+        ConstructReasoningRiskTask::CloningStability,
+    );
+    let sequencing_cloning_stability = construct_reasoning_task_severity(
+        sequencing_repeat,
+        ConstructReasoningRiskTask::CloningStability,
+    );
+
+    assert!(
+        cloning_stability.score.unwrap() > sequencing_cloning_stability.score.unwrap(),
+        "cloning objective should make cloning-stability repeat risk score higher"
+    );
+    assert!(
+        sequencing_read_mapping.score.unwrap() > cloning_read_mapping.score.unwrap(),
+        "sequencing/mapping objective should make read-mapping repeat risk score higher"
+    );
+    assert_eq!(
+        sequencing_cloning_stability.severity,
+        ConstructReasoningSeverity::Low,
+        "unperformed cloning task should be down-weighted, not silently treated as critical"
+    );
+    assert!(
+        sequencing_cloning_stability.score.unwrap() <= 0.05,
+        "unperformed cloning task should be scored at the floor"
+    );
+    assert!(
+        sequencing_cloning_stability
+            .rationale
+            .contains("down-weighted"),
+        "objective down-weighting should be visible in rationale"
+    );
+    assert_eq!(
+        cloning_read_mapping.severity,
+        ConstructReasoningSeverity::Low,
+        "unperformed mapping task should be down-weighted"
+    );
+    assert!(cloning_read_mapping.score.unwrap() <= 0.05);
+    assert!(
+        cloning_read_mapping.rationale.contains("down-weighted"),
+        "mapping down-weighting should be visible in rationale"
+    );
+
+    let cloning_nanopore = construct_reasoning_task_severity(
+        construct_reasoning_fact(&cloning_graph, "nanopore_operational_risk_context"),
+        ConstructReasoningRiskTask::NanoporeSequencing,
+    );
+    let sequencing_nanopore = construct_reasoning_task_severity(
+        construct_reasoning_fact(&sequencing_graph, "nanopore_operational_risk_context"),
+        ConstructReasoningRiskTask::NanoporeSequencing,
+    );
+    assert!(
+        sequencing_nanopore.score.unwrap() > cloning_nanopore.score.unwrap(),
+        "nanopore objective should raise the nanopore-specific repeat score"
+    );
+    assert!(
+        cloning_nanopore.score.unwrap() <= 0.05,
+        "task absent from cloning objective should remain at the lowest score"
+    );
+    assert_eq!(
+        cloning_stability.supporting_evidence_ids,
+        sequencing_cloning_stability.supporting_evidence_ids,
+        "objective-specific scoring should preserve underlying evidence ids"
     );
 }
 

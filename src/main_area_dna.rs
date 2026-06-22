@@ -144,8 +144,7 @@ use crate::{
         TfbsScoreTrackCorrelationMetric, TfbsScoreTrackCorrelationSignalSource,
         TfbsScoreTrackReport, TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric,
         TfbsTrackSimilarityReport, TfbsTrackSimilarityRow, VariantAlleleChoice,
-        VariantPromoterContextReport, Workflow,
-        construct_reasoning_action_dotplot_request,
+        VariantPromoterContextReport, Workflow, construct_reasoning_action_dotplot_request,
         resolve_formula_roi_range_inputs_0based_on_sequence,
         resolve_selection_formula_range_0based_on_sequence,
     },
@@ -13890,19 +13889,25 @@ impl MainAreaDna {
             .iter()
             .map(|severity| {
                 let evidence_count = severity.supporting_evidence_ids.len();
+                let score = severity
+                    .score
+                    .map(|value| format!(" score={value:.2}"))
+                    .unwrap_or_default();
                 let rationale = severity.rationale.trim();
                 if rationale.is_empty() {
                     format!(
-                        "task_severity: {}={} (evidence={})",
+                        "task_severity: {}={}{} (evidence={})",
                         severity.task.as_str(),
                         severity.severity.as_str(),
+                        score,
                         evidence_count
                     )
                 } else {
                     format!(
-                        "task_severity: {}={} (evidence={}): {}",
+                        "task_severity: {}={}{} (evidence={}): {}",
                         severity.task.as_str(),
                         severity.severity.as_str(),
+                        score,
                         evidence_count,
                         rationale
                     )

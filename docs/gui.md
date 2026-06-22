@@ -2150,8 +2150,9 @@ Controls:
          - `Repeat-driven mapping review suggested`
          - `Cloning stability review suggested`
        - task-aware repeat/similarity severity is shown as compact
-         `task_severity: ...` detail lines under the same fact rows, backed by
-         protocol `task_severities[]`, and does not create extra map overlays
+         `task_severity: ...` detail lines with the rule-derived score under
+         the same fact rows, backed by protocol `task_severities[]`, and does
+         not create extra map overlays
      - repeat/similarity summaries, candidates, and repeat-driven fact rows
        can now open the shared dotplot workspace directly:
        - `Dotplot` opens a self-forward dotplot centered on the implicated

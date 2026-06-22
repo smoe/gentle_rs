@@ -20,6 +20,9 @@ Maintenance rule:
 - Added JS and Lua adapter bindings for construct-reasoning inspection actions,
   so scripts can list and run the same portable dotplot recommendations exposed
   through CLI, ClawBio, and MCP shell routes.
+- Made construct-reasoning repeat/similarity task severity quantitative and
+  objective-specific with protocol `score` fields, explicit score-to-bucket
+  thresholds, and visible objective boost/down-weight rationales.
 
 ## 2026-06-19
 

@@ -286,6 +286,12 @@ impl ConstructReasoningSeverity {
 pub struct ConstructReasoningTaskSeverity {
     pub task: ConstructReasoningRiskTask,
     pub severity: ConstructReasoningSeverity,
+    /// Optional transparent 0.0-1.0 score behind `severity`.
+    ///
+    /// Engine-generated scores use fixed rule thresholds: `0.0` is `none`,
+    /// `(0.0, 0.25)` is `low`, `[0.25, 0.60)` is `medium`, and `>= 0.60`
+    /// is `high`. Older serialized graphs may omit this field.
+    pub score: Option<f64>,
     pub rationale: String,
     pub supporting_evidence_ids: Vec<String>,
 }
@@ -295,6 +301,7 @@ impl Default for ConstructReasoningTaskSeverity {
         Self {
             task: ConstructReasoningRiskTask::Pcr,
             severity: ConstructReasoningSeverity::None,
+            score: None,
             rationale: String::new(),
             supporting_evidence_ids: vec![],
         }
@@ -1108,6 +1115,7 @@ mod tests {
             task_severities: vec![ConstructReasoningTaskSeverity {
                 task: ConstructReasoningRiskTask::CloningStability,
                 severity: ConstructReasoningSeverity::Medium,
+                score: Some(0.52),
                 rationale: "Direct-repeat architecture may matter more for cloning stability."
                     .to_string(),
                 supporting_evidence_ids: vec!["ev1".to_string()],
@@ -1153,6 +1161,15 @@ mod tests {
             round_trip.facts[0].task_severities[0].task,
             ConstructReasoningRiskTask::CloningStability
         );
+        assert_eq!(round_trip.facts[0].task_severities[0].score, Some(0.52));
+        let mut legacy_value = serde_json::to_value(&graph).expect("serialize legacy");
+        legacy_value["facts"][0]["task_severities"][0]
+            .as_object_mut()
+            .expect("task severity object")
+            .remove("score");
+        let legacy_round_trip: ConstructReasoningGraph =
+            serde_json::from_value(legacy_value).expect("deserialize legacy without score");
+        assert_eq!(legacy_round_trip.facts[0].task_severities[0].score, None);
         assert_eq!(round_trip.objective.host_route.len(), 1);
         assert_eq!(round_trip.evidence[0].scope, EvidenceScope::HostTransition);
         assert_eq!(

@@ -5857,11 +5857,15 @@ Construct reasoning graph foundation (implemented first slice):
       hypotheses without filling that provenance slot
   - fact-level `task_severities[]`:
     - compact rule-based task interpretation for repeat/similarity facts
-    - each row carries `task`, `severity`, `rationale`, and
+    - each row carries `task`, `severity`, optional numeric `score`, `rationale`, and
       `supporting_evidence_ids[]`
     - initial task vocabulary is `pcr`, `nanopore_sequencing`,
       `read_mapping`, `cloning_stability`, and `construct_maintenance`
     - initial severity vocabulary is `none`, `low`, `medium`, `high`
+    - engine-generated scores are transparent 0.0-1.0 rule-derived scalars:
+      `0.0` maps to `none`, `(0.0, 0.25)` to `low`, `[0.25, 0.60)` to
+      `medium`, and `>= 0.60` to `high`; objectives can explicitly boost or
+      down-weight a task, and the row rationale must say why
     - task severity layers on top of the generic fact and evidence rows; it
       does not create additional annotation candidates or map overlays
 - Current GUI-backed scope:
