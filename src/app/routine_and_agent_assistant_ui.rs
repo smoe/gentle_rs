@@ -3380,10 +3380,15 @@ impl GENtleApp {
                                             suggestion.preconditions.join("; ")
                                         ));
                                     }
-                                    if let Some(expr) = &suggestion.precondition_expr
-                                        && let Ok(expr_json) = serde_json::to_string(expr)
-                                    {
-                                        details.push(format!("Precondition logic: {expr_json}"));
+                                    if let Some(expr) = &suggestion.precondition_expr {
+                                        if let Some(readiness) =
+                                            self.agent_suggestion_fact_readiness(expr)
+                                        {
+                                            details.push(format!("Readiness: {readiness}"));
+                                        }
+                                        if let Ok(expr_json) = serde_json::to_string(expr) {
+                                            details.push(format!("Precondition logic: {expr_json}"));
+                                        }
                                     }
                                     if !suggestion.expected_outcomes.is_empty() {
                                         details.push(format!(
@@ -4816,6 +4821,46 @@ impl GENtleApp {
         let engine = self.engine.read().ok()?;
         let dna = engine.state().sequences.get(compact)?;
         Some((dna.is_circular(), dna.len()))
+    }
+
+    pub(super) fn agent_suggestion_fact_readiness(
+        &self,
+        expr: &serde_json::Value,
+    ) -> Option<String> {
+        let expression =
+            serde_json::from_value::<crate::engine::FactExpression>(expr.clone()).ok()?;
+        let engine = self.engine.read().ok()?;
+        let evaluation = engine.evaluate_fact_expression(&expression, &[]);
+        let label = match evaluation.truth {
+            crate::engine::FactTruth::Satisfied => "ready".to_string(),
+            crate::engine::FactTruth::Unsatisfied => {
+                let atoms = evaluation
+                    .unmet_atoms
+                    .iter()
+                    .map(|atom| atom.fact.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                if atoms.is_empty() {
+                    "blocked".to_string()
+                } else {
+                    format!("blocked ({atoms})")
+                }
+            }
+            crate::engine::FactTruth::Unknown => {
+                let atoms = evaluation
+                    .unknown_atoms
+                    .iter()
+                    .map(|atom| atom.fact.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                if atoms.is_empty() {
+                    "unknown".to_string()
+                } else {
+                    format!("unknown; needs evidence/project state for {atoms}")
+                }
+            }
+        };
+        Some(label)
     }
 
     pub(super) fn routine_assistant_is_gibson_family(routine: &CloningRoutineCatalogRow) -> bool {

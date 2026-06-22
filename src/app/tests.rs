@@ -1126,6 +1126,35 @@ fn external_agent_mcp_snippet_includes_binary_and_state_path() {
 }
 
 #[test]
+fn agent_suggestion_fact_readiness_uses_loaded_project_state() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "demo_seq".to_string(),
+        DNAsequence::from_sequence("ACGTACGT").expect("sequence"),
+    );
+    let mut app = GENtleApp::default();
+    app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+
+    let ready = app
+        .agent_suggestion_fact_readiness(&serde_json::json!({
+            "all": [
+                { "fact": "sequence.exists", "id": "demo_seq" },
+                { "fact": "sequence.kind", "id": "demo_seq", "equals": "dna" }
+            ]
+        }))
+        .expect("ready expression should parse");
+    assert_eq!(ready, "ready");
+
+    let blocked = app
+        .agent_suggestion_fact_readiness(&serde_json::json!({
+            "fact": "sequence.exists",
+            "id": "missing_seq"
+        }))
+        .expect("blocked expression should parse");
+    assert!(blocked.contains("blocked"), "unexpected readiness: {blocked}");
+}
+
+#[test]
 fn agent_response_sanity_flags_generic_placeholder_retrieval_reply() {
     let response = AgentResponse {
         schema: "gentle.agent_response.v1".to_string(),

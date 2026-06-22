@@ -613,6 +613,12 @@ Key properties:
 - suggested commands can execute shared BLAST routes (`genomes/helpers blast`,
   `genomes/helpers blast-track`) because they use the same parser/executor as
   CLI shell
+- suggested-command `precondition_expr` fields are evaluated advisory-only
+  against the current `gentle.project_fact_graph.v1`; the GUI shows readiness
+  as `ready`, `blocked`, or `unknown` while the shared shell still owns hard
+  validity checks
+- use `facts graph` and `facts eval ...` in shared shell/CLI contexts when an
+  external agent needs the same deterministic project-fact projection
 - current limitation: long-running suggested commands execute synchronously;
   dedicated async job-handle/progress/cancel flow for agent-driven BLAST (and
   future primer-pair multi-BLAST selection) is planned
