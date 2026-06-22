@@ -5799,7 +5799,7 @@ fn build_shell_alias_registry() -> Vec<ShellAliasDescriptor> {
             "Scan restriction-enzyme sites on one loaded sequence.",
             CapabilityMutation::ReadOnly,
             &["FindRestrictionSites"],
-            &["features restriction-scan"],
+            &["FindRestrictionSites"],
             local_alternatives,
             prominent,
             shell,
