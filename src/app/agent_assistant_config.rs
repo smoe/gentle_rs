@@ -122,7 +122,7 @@ Good demo commands:
 - /list (current GENtle project state and loaded sequences, not filesystem files)
 - state-summary
 - /paste sequence --sequence-text GAATTCGCGGCCGCTTCTAGA --id demo_seq
-- features restriction-scan demo_seq --enzyme EcoRI
+- /features restriction-scan demo_seq --enzyme EcoRI
 
 Do not describe /list as a directory listing. Do not suggest placeholder commands such as /open file PATH [--id ID] unless the user supplied a real PATH."#
         }

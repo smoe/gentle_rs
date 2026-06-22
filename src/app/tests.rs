@@ -55,7 +55,11 @@ use crate::{
         TranslationSpeedMark, TranslationSpeedProfile, TranslationSpeedProfileSource,
         UniprotFeatureCodingDnaQueryMode, UniprotFeatureCodingDnaQueryReport,
     },
-    engine_shell::{ShellCommand, UiIntentTarget, parse_shell_line},
+    engine_shell::{ShellCommand, ShellRunResult, UiIntentTarget, parse_shell_line},
+    ensembl_gene::{
+        EnsemblGeneEntry, EnsemblGeneExonSummary, EnsemblGeneTranscriptSummary,
+        EnsemblGeneTranslationSummary,
+    },
     ensembl_protein::{EnsemblProteinEntry, EnsemblProteinEntrySummary, EnsemblProteinFeature},
     genomes::{
         EnsemblCatalogUpdatePreview, EnsemblInstallableGenomeCatalog, EnsemblQuickInstallPreview,
@@ -907,7 +911,8 @@ fn agent_prompt_direct_shell_command_executes_without_agent_roundtrip() {
     app.execute_agent_prompt_command("/list");
 
     assert!(
-        app.agent_status.contains("Prompt command: executed"),
+        app.agent_status
+            .contains("Prompt command: success - executed"),
         "unexpected status: {}",
         app.agent_status
     );
@@ -920,6 +925,96 @@ fn agent_prompt_direct_shell_command_executes_without_agent_roundtrip() {
     assert_eq!(entry.command, "/list");
     assert!(entry.ok);
     assert!(!entry.state_changed);
+}
+
+fn synthetic_agent_fus_ensembl_gene_entry() -> EnsemblGeneEntry {
+    EnsemblGeneEntry {
+        schema: "gentle.ensembl_gene_entry.v1".to_string(),
+        entry_id: "fus_live".to_string(),
+        gene_id: "ENSG00000089280".to_string(),
+        gene_version: Some(1),
+        gene_symbol: Some("FUS".to_string()),
+        gene_display_name: Some("FUS RNA binding protein".to_string()),
+        species: Some("homo_sapiens".to_string()),
+        assembly_name: Some("GRCh38".to_string()),
+        biotype: Some("protein_coding".to_string()),
+        strand: Some(1),
+        seq_region_name: Some("16".to_string()),
+        genomic_start_1based: Some(31191442),
+        genomic_end_1based: Some(31200261),
+        sequence: "GAATTCGCGGCCGCTTCTAGA".to_string(),
+        sequence_length: 21,
+        transcripts: vec![EnsemblGeneTranscriptSummary {
+            transcript_id: "ENSTFUS1".to_string(),
+            transcript_version: Some(1),
+            display_name: Some("FUS-201".to_string()),
+            biotype: Some("protein_coding".to_string()),
+            start_1based: Some(31191442),
+            end_1based: Some(31200261),
+            strand: Some(1),
+            is_canonical: Some(true),
+            gencode_primary: Some(true),
+            translation: Some(EnsemblGeneTranslationSummary {
+                translation_id: "ENSPFUS1".to_string(),
+                translation_version: Some(1),
+                length_aa: Some(7),
+                genomic_start_1based: Some(31191442),
+                genomic_end_1based: Some(31200261),
+            }),
+            exons: vec![EnsemblGeneExonSummary {
+                exon_id: "ENSEFUS1".to_string(),
+                exon_version: Some(1),
+                start_1based: 31191442,
+                end_1based: 31200261,
+                strand: Some(1),
+                seq_region_name: Some("16".to_string()),
+            }],
+        }],
+        aliases: vec!["FUS".to_string(), "ENSG00000089280".to_string()],
+        source: "synthetic_test_fixture".to_string(),
+        source_query: Some("FUS".to_string()),
+        imported_at_unix_ms: 0,
+        lookup_source_url: "synthetic://ensembl/fus_lookup".to_string(),
+        sequence_source_url: "synthetic://ensembl/fus_sequence".to_string(),
+        raw_lookup_json: "{\"id\":\"ENSG00000089280\"}".to_string(),
+        raw_sequence_json: "{\"id\":\"ENSG00000089280\",\"seq\":\"GAATTCGCGGCCGCTTCTAGA\"}"
+            .to_string(),
+    }
+}
+
+#[test]
+fn agent_ensembl_fetch_followup_imports_gene_sequence() {
+    let mut app = GENtleApp::default();
+    app.engine
+        .write()
+        .unwrap()
+        .upsert_ensembl_gene_entry(synthetic_agent_fus_ensembl_gene_entry())
+        .expect("seed synthetic FUS Ensembl entry");
+    let fetch_run = ShellRunResult {
+        state_changed: true,
+        output: serde_json::json!({
+            "result": {
+                "messages": [
+                    "Fetched Ensembl gene 'fus_live' (gene 'ENSG00000089280', symbol 'FUS', species 'homo_sapiens')"
+                ]
+            }
+        }),
+    };
+
+    let imported = app
+        .import_agent_ensembl_gene_fetch_result(None, &fetch_run)
+        .expect("import fetched FUS gene");
+
+    assert_eq!(imported, vec!["fus_live".to_string()]);
+    assert!(
+        app.engine
+            .read()
+            .unwrap()
+            .state()
+            .sequences
+            .contains_key("fus_live")
+    );
+    assert!(!app.lineage_cache_valid);
 }
 
 #[test]

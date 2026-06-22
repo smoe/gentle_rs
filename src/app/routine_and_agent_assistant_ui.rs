@@ -1244,34 +1244,65 @@ impl GENtleApp {
                 if run.state_changed {
                     self.lineage_cache_valid = false;
                 }
-                let opened_seq_ids = if matches!(command, ShellCommand::LoadFile { .. }) {
-                    run.output
-                        .get("result")
-                        .and_then(|result| result.get("created_seq_ids"))
-                        .and_then(|ids| ids.as_array())
-                        .map(|ids| {
-                            ids.iter()
-                                .filter_map(|value| value.as_str().map(str::to_string))
-                                .collect::<Vec<_>>()
-                        })
-                        .unwrap_or_default()
+                let mut opened_seq_ids = if matches!(command, ShellCommand::LoadFile { .. }) {
+                    Self::agent_sequence_ids_from_shell_output(&run.output)
                 } else {
                     Vec::new()
                 };
-                for seq_id in &opened_seq_ids {
+                let mut extra_summary: Option<String> = None;
+                let mut effective_state_changed = run.state_changed;
+                if let ShellCommand::EnsemblGeneFetch { entry_id, .. } = &command {
+                    match self.import_agent_ensembl_gene_fetch_result(entry_id.as_deref(), &run) {
+                        Ok(imported_seq_ids) if !imported_seq_ids.is_empty() => {
+                            effective_state_changed = true;
+                            opened_seq_ids.extend(imported_seq_ids.iter().cloned());
+                            extra_summary = Some(format!(
+                                "imported Ensembl gene sequence {}",
+                                imported_seq_ids.join(", ")
+                            ));
+                        }
+                        Ok(_) => {
+                            extra_summary = Some(
+                                "stored Ensembl gene metadata; no sequence was imported"
+                                    .to_string(),
+                            );
+                        }
+                        Err(err) => {
+                            extra_summary = Some(format!(
+                                "stored Ensembl gene metadata; sequence import failed: {err}"
+                            ));
+                        }
+                    }
+                }
+                let mut opened_seq_ids_unique = Vec::new();
+                for seq_id in opened_seq_ids {
+                    if !opened_seq_ids_unique.contains(&seq_id) {
+                        opened_seq_ids_unique.push(seq_id);
+                    }
+                }
+                for seq_id in &opened_seq_ids_unique {
                     self.open_sequence_window(seq_id);
                 }
-                let summary = if run.state_changed {
-                    if opened_seq_ids.is_empty() {
-                        "executed (state changed)".to_string()
+                let summary = if let Some(extra) = extra_summary {
+                    if opened_seq_ids_unique.is_empty() {
+                        format!("success - {extra}")
                     } else {
                         format!(
-                            "executed (state changed; opened {})",
-                            opened_seq_ids.join(", ")
+                            "success - {extra}; opened {}",
+                            opened_seq_ids_unique.join(", ")
+                        )
+                    }
+                } else if effective_state_changed {
+                    if opened_seq_ids_unique.is_empty() {
+                        "success - executed (state changed)".to_string()
+                    } else {
+                        format!(
+                            "success - executed (state changed; opened {})",
+                            opened_seq_ids_unique.join(", ")
                         )
                     }
                 } else {
-                    "executed".to_string()
+                    "success - executed".to_string()
                 };
                 self.agent_status = format!("{source_label}: {summary}");
                 self.agent_execution_log.push(AgentCommandExecutionRecord {
@@ -1279,7 +1310,7 @@ impl GENtleApp {
                     command: trimmed.to_string(),
                     trigger: trigger.to_string(),
                     ok: true,
-                    state_changed: run.state_changed,
+                    state_changed: effective_state_changed,
                     summary,
                     executed_at_unix_ms: Self::now_unix_ms(),
                 });
@@ -1301,6 +1332,69 @@ impl GENtleApp {
             let drain = self.agent_execution_log.len() - 100;
             self.agent_execution_log.drain(0..drain);
         }
+    }
+
+    fn agent_sequence_ids_from_shell_output(output: &serde_json::Value) -> Vec<String> {
+        let Some(result) = output.get("result") else {
+            return Vec::new();
+        };
+        ["created_seq_ids", "changed_seq_ids"]
+            .into_iter()
+            .filter_map(|key| result.get(key).and_then(|ids| ids.as_array()))
+            .flat_map(|ids| ids.iter().filter_map(|value| value.as_str()))
+            .map(str::to_string)
+            .collect()
+    }
+
+    fn agent_ensembl_gene_entry_id_from_fetch_run(
+        explicit_entry_id: Option<&str>,
+        run: &ShellRunResult,
+    ) -> Option<String> {
+        explicit_entry_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .or_else(|| {
+                run.output
+                    .get("result")
+                    .and_then(|result| result.get("messages"))
+                    .and_then(|messages| messages.as_array())
+                    .and_then(|messages| {
+                        messages.iter().find_map(|message| {
+                            let message = message.as_str()?;
+                            message
+                                .strip_prefix("Fetched Ensembl gene '")
+                                .and_then(|rest| {
+                                    rest.split_once('\'').map(|(entry_id, _)| entry_id)
+                                })
+                                .map(str::to_string)
+                        })
+                    })
+            })
+    }
+
+    pub(super) fn import_agent_ensembl_gene_fetch_result(
+        &mut self,
+        explicit_entry_id: Option<&str>,
+        run: &ShellRunResult,
+    ) -> Result<Vec<String>, String> {
+        let Some(entry_id) =
+            Self::agent_ensembl_gene_entry_id_from_fetch_run(explicit_entry_id, run)
+        else {
+            return Ok(Vec::new());
+        };
+        let import_result = {
+            let mut guard = self.engine.write().unwrap();
+            guard
+                .apply(Operation::ImportEnsemblGeneSequence {
+                    entry_id: entry_id.clone(),
+                    output_id: Some(entry_id.clone()),
+                })
+                .map_err(|err| err.to_string())?
+        };
+        self.lineage_cache_valid = false;
+        let output = serde_json::json!({ "result": import_result });
+        Ok(Self::agent_sequence_ids_from_shell_output(&output))
     }
 
     pub(super) fn try_apply_shell_ui_intent(&mut self, command: &ShellCommand) -> Option<String> {
@@ -3168,60 +3262,66 @@ impl GENtleApp {
                 ui.separator();
                 ui.strong("Suggested commands");
                 let mut run_request: Option<(usize, String)> = None;
-                egui::Grid::new("agent_suggested_commands_grid")
-                    .striped(true)
+                egui::ScrollArea::horizontal()
+                    .id_salt("agent_suggested_commands_horizontal_scroll")
                     .show(ui, |ui| {
-                        ui.strong("#");
-                        ui.strong("Intent");
-                        ui.strong("Command");
-                        ui.strong("Rationale");
-                        ui.strong("Action");
-                        ui.end_row();
-                        for (idx, suggestion) in invocation
-                            .response
-                            .suggested_commands
-                            .iter()
-                            .enumerate()
-                        {
-                            let index_1based = idx + 1;
-                            ui.label(index_1based.to_string());
-                            ui.label(suggestion.execution.as_str());
-                            let command_parse_error = parse_shell_line(&suggestion.command)
-                                .err()
-                                .filter(|_| suggestion.execution != AgentExecutionIntent::Chat);
-                            if command_parse_error.is_some() {
-                                ui.colored_label(
-                                    egui::Color32::from_rgb(190, 70, 70),
-                                    suggestion.command.as_str(),
-                                );
-                            } else {
-                                ui.monospace(suggestion.command.as_str());
-                            }
-                            ui.label(suggestion.rationale.clone().unwrap_or_default());
-                            let can_run = !suggestion.command.trim().is_empty()
-                                && suggestion.execution != AgentExecutionIntent::Chat
-                                && command_parse_error.is_none();
-                            let mut hover_text =
-                                "Execute this suggested command using GENtle shared shell parser/executor"
-                                    .to_string();
-                            if let Some(err) = &command_parse_error {
-                                hover_text =
-                                    format!("Not a valid GENtle shared-shell command: {err}");
-                            }
-                            let run_resp = ui
-                                .add_enabled(can_run, egui::Button::new("Run"))
-                                .on_hover_text(hover_text);
-                            if let Some(err) = &command_parse_error {
-                                ui.colored_label(
-                                    egui::Color32::from_rgb(190, 70, 70),
-                                    format!("Invalid GENtle command: {err}"),
-                                );
-                            }
-                            if run_resp.clicked() {
-                                run_request = Some((index_1based, suggestion.command.clone()));
-                            }
-                            ui.end_row();
-                        }
+                        egui::Grid::new("agent_suggested_commands_grid")
+                            .striped(true)
+                            .show(ui, |ui| {
+                                ui.strong("#");
+                                ui.strong("Intent");
+                                ui.strong("Command");
+                                ui.strong("Rationale");
+                                ui.strong("Action");
+                                ui.end_row();
+                                for (idx, suggestion) in invocation
+                                    .response
+                                    .suggested_commands
+                                    .iter()
+                                    .enumerate()
+                                {
+                                    let index_1based = idx + 1;
+                                    ui.label(index_1based.to_string());
+                                    ui.label(suggestion.execution.as_str());
+                                    let command_parse_error =
+                                        parse_shell_line(&suggestion.command).err().filter(|_| {
+                                            suggestion.execution != AgentExecutionIntent::Chat
+                                        });
+                                    if command_parse_error.is_some() {
+                                        ui.colored_label(
+                                            egui::Color32::from_rgb(190, 70, 70),
+                                            suggestion.command.as_str(),
+                                        );
+                                    } else {
+                                        ui.monospace(suggestion.command.as_str());
+                                    }
+                                    ui.label(suggestion.rationale.clone().unwrap_or_default());
+                                    let can_run = !suggestion.command.trim().is_empty()
+                                        && suggestion.execution != AgentExecutionIntent::Chat
+                                        && command_parse_error.is_none();
+                                    let mut hover_text =
+                                        "Execute this suggested command using GENtle shared shell parser/executor"
+                                            .to_string();
+                                    if let Some(err) = &command_parse_error {
+                                        hover_text =
+                                            format!("Not a valid GENtle shared-shell command: {err}");
+                                    }
+                                    let run_resp = ui
+                                        .add_enabled(can_run, egui::Button::new("Run"))
+                                        .on_hover_text(hover_text);
+                                    if let Some(err) = &command_parse_error {
+                                        ui.colored_label(
+                                            egui::Color32::from_rgb(190, 70, 70),
+                                            format!("Invalid GENtle command: {err}"),
+                                        );
+                                    }
+                                    if run_resp.clicked() {
+                                        run_request =
+                                            Some((index_1based, suggestion.command.clone()));
+                                    }
+                                    ui.end_row();
+                                }
+                            });
                     });
                 if let Some((index_1based, command)) = run_request {
                     self.execute_agent_suggested_command(index_1based, &command, "manual");
@@ -3231,18 +3331,24 @@ impl GENtleApp {
                 ui.separator();
                 ui.strong("Agent stderr");
                 let mut stderr = invocation.raw_stderr.clone();
-                ui.add(
-                    egui::TextEdit::multiline(&mut stderr)
-                        .desired_rows(4)
-                        .desired_width(f32::INFINITY),
-                );
+                egui::ScrollArea::horizontal()
+                    .id_salt("agent_stderr_horizontal_scroll")
+                    .max_height(120.0)
+                    .show(ui, |ui| {
+                        ui.add(
+                            egui::TextEdit::multiline(&mut stderr)
+                                .desired_rows(4)
+                                .desired_width(1200.0),
+                        );
+                    });
             }
         }
 
         if !self.agent_execution_log.is_empty() {
             ui.separator();
             ui.strong("Execution log");
-            egui::ScrollArea::vertical()
+            egui::ScrollArea::both()
+                .id_salt("agent_execution_log_scroll")
                 .max_height(180.0)
                 .show(ui, |ui| {
                     scroll_input_policy::apply_scrollarea_keyboard_navigation(

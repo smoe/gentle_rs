@@ -1221,6 +1221,19 @@ fn parse_local_slash_aliases_cover_gui_file_import_fetch_and_paste() {
         other => panic!("unexpected /fetch ensembl command: {other:?}"),
     }
 
+    match parse_shell_line("/features restriction-scan demo_seq --enzyme EcoRI") {
+        Ok(ShellCommand::FeaturesRestrictionScan {
+            target, enzymes, ..
+        }) => {
+            assert_eq!(enzymes, vec!["EcoRI".to_string()]);
+            match target {
+                SequenceScanTarget::SeqId { seq_id, .. } => assert_eq!(seq_id, "demo_seq"),
+                other => panic!("unexpected /features target: {other:?}"),
+            }
+        }
+        other => panic!("unexpected /features restriction-scan command: {other:?}"),
+    }
+
     match parse_shell_line("/fetch ensembl FUS --species HUMAN") {
         Ok(ShellCommand::EnsemblGeneFetch {
             query,

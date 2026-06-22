@@ -22670,6 +22670,7 @@ fn shell_alias_alternatives_for(cmd: &str) -> Vec<String> {
                 || (trimmed == "/open" && descriptor.alias.starts_with("/open"))
                 || (trimmed == "/import" && descriptor.alias.starts_with("/import"))
                 || (trimmed == "/paste" && descriptor.alias.starts_with("/paste"))
+                || (trimmed == "/features" && descriptor.alias.starts_with("/features"))
         })
         .map(|descriptor| descriptor.surface_form.clone())
         .collect::<Vec<_>>();
@@ -23045,6 +23046,20 @@ fn parse_slash_fetch_alias(tokens: &[String]) -> Result<ShellCommand, String> {
     }
 }
 
+fn parse_slash_features_alias(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 || tokens[1] != "restriction-scan" {
+        return Err(slash_alias_rejection(
+            "/features",
+            "/features supports only `restriction-scan ...`",
+        ));
+    }
+    let mut normalized = tokens.to_vec();
+    normalized[0] = "features".to_string();
+    parse_features_command(&normalized).map_err(|err| {
+        slash_alias_rejection("/features", format!("Invalid /features command: {err}"))
+    })
+}
+
 fn parse_slash_alias(tokens: &[String]) -> Result<ShellCommand, String> {
     let cmd = tokens[0].as_str();
     match cmd {
@@ -23090,6 +23105,7 @@ fn parse_slash_alias(tokens: &[String]) -> Result<ShellCommand, String> {
         }
         "/paste" => parse_slash_paste_alias(tokens),
         "/fetch" => parse_slash_fetch_alias(tokens),
+        "/features" => parse_slash_features_alias(tokens),
         other => Err(slash_alias_rejection(
             other,
             format!("Unknown GENtle-local slash command '{other}'"),

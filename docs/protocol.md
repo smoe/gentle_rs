@@ -4273,6 +4273,10 @@ Agent command-scope declaration:
     user-provided sequence file through `LoadFile`.
 - Accepted explicit sequence/fetch aliases:
   - `/paste sequence --sequence-text DNA [--id ID]`
+  - `/features restriction-scan SEQ_ID [--enzyme NAME]`
+    - `SEQ_ID` is an already-loaded GENtle sequence id; optional `--enzyme`
+      narrows the restriction-site scan to one enzyme and may be repeated by
+      using the full shared-shell `features restriction-scan` form.
   - `/fetch genbank ACCESSION [--id ID]`
     - `ACCESSION` is an NCBI GenBank nucleotide accession; `--id` names the
       local GENtle sequence id.

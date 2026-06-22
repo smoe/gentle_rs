@@ -161,7 +161,7 @@ use crate::{
         UniprotProjectionAuditReport,
     },
     engine_shell::{
-        ShellCommand, ShellExecutionOptions, UiIntentAction, UiIntentTarget,
+        ShellCommand, ShellExecutionOptions, ShellRunResult, UiIntentAction, UiIntentTarget,
         execute_shell_command_with_options, normalize_pasted_iupac_sequence, parse_shell_line,
     },
     ensembl_protein::{EnsemblProteinEntry, EnsemblProteinEntrySummary},
