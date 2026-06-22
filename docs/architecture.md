@@ -140,6 +140,22 @@ Primer/oligo identity rule (target model):
   distinction. No adapter may silently equate a planned primer or persisted
   design artifact with physical stock.
 
+Project fact-graph planning rule (target model):
+
+- Agent-facing planning should converge on an engine-owned structured project
+  fact graph rather than relying on an LLM to interpret prose state summaries.
+- Human-readable preconditions and expected outcomes remain useful comments for
+  users and AI systems, but deterministic planning needs parallel typed logic:
+  `precondition_expr` for readiness checks and `expected_effects[]` for
+  post-execution verification.
+- Negative biological or design requirements must be proof-backed positive
+  facts when possible. For example, "no EcoRI site in this insert" should be a
+  `restriction_site.absent` fact with subject, enzyme, coordinate range, and
+  basis report, not an inference from a missing restriction-site feature.
+- The planner should treat unknown, present, and verified-absent as distinct
+  states. Missing state means unknown unless a complete-enough verification
+  report establishes absence for the stated scope.
+
 Rack-placement rule (target model):
 
 - An `arrangement` describes semantic sample order for one experiment

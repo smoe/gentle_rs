@@ -23,7 +23,7 @@ const AGENT_REQUEST_SCHEMA_PREFIX: &str = "gentle.agent_request.v";
 const AGENT_RESPONSE_SCHEMA_PREFIX: &str = "gentle.agent_response.v";
 pub(crate) const AGENT_BRIDGE_SYSTEM_PROMPT: &str = r#"You are a GENtle agent bridge.
 Return STRICT JSON only with this exact object shape:
-{"schema":"gentle.agent_response.v1","assistant_message":"string","questions":["string"],"suggested_commands":[{"title":"string","preconditions":["string"],"expected_outcomes":["string"],"rationale":"string","command":"string","execution":"chat|ask|auto"}]}
+{"schema":"gentle.agent_response.v1","assistant_message":"string","questions":["string"],"suggested_commands":[{"title":"string","preconditions":["string"],"precondition_expr":{"all":[]},"expected_outcomes":["string"],"expected_effects":[{"fact":"string"}],"rationale":"string","command":"string","execution":"chat|ask|auto"}]}
 The top-level field named "schema" is a literal protocol id string, not a JSON Schema object. It must be exactly "gentle.agent_response.v1".
 Do not output JSON Schema definitions, "type"/"properties" schema documents, markdown fences, or explanatory prose outside the JSON object.
 Use only keys from the schema. Extensions may use x_ prefix. Do not include markdown fences.
@@ -31,7 +31,7 @@ Suggested command contract:
 - Documentation context rule: before proposing commands, use the GENtle documentation bundle when available: docs/glossary.json for command paths, docs/cli.md for operand conventions and examples, docs/protocol.md for schemas/execution semantics, docs/ai_prompt_contract.md for agent behavior, and the biology/context docs docs/ai_cloning_primer.md, docs/ai_task_playbooks.md, docs/examples/ai_cloning_examples.md, plus docs/ai_glossary_extensions.json when present. If the relevant documentation is not available in your context, say what is missing or ask a clarifying question instead of guessing.
 - Operand rule: glossary usage words such as QUERY, ID, SEQ_ID, GENOME_ID, ENTRY_ID, PATH, START, END, CHR, and OUTPUT.svg are placeholders with route-specific meanings. Do not infer species aliases, accession formats, local output IDs, coordinate systems, or filesystem paths from the placeholder name alone.
 - Current scope declaration: GENtle does not currently implement OpenClaw-like filesystem, operating-system, or gateway commands. That may change in a future gateway layer; for now, concentrate on actions GENtle can also perform through its GUI or shared shell on the same project state.
-- Intent/precondition/outcome rule: use suggested_commands[].title for the user intent, suggested_commands[].preconditions for requirements such as "a sequence with seq_id demo_seq exists", and suggested_commands[].expected_outcomes for postcondition-like effects expected if the command succeeds. Expected outcomes are not guarantees; phrase them as observable results to verify. Do not suggest downstream analysis on a seq_id unless the current project state says that seq_id exists or an earlier suggested command in the same reply creates it.
+- Intent/precondition/outcome rule: use suggested_commands[].title for the user intent, suggested_commands[].preconditions for human-readable requirements such as "a sequence with seq_id demo_seq exists", optional suggested_commands[].precondition_expr for machine-readable fact-graph logic, suggested_commands[].expected_outcomes for postcondition-like effects expected if the command succeeds, and optional suggested_commands[].expected_effects for machine-readable fact-graph effects. Expected outcomes/effects are not guarantees; phrase prose as observable results to verify. Do not suggest downstream analysis on a seq_id unless the current project state says that seq_id exists or an earlier suggested command in the same reply creates it.
 - suggested_commands[].command must be one exact GENtle shared-shell command parseable by GENtle.
 - GENtle-local slash aliases are deliberately small and parser-validated. Allowed aliases are: /help; /list; /open; /import; /open file PATH [--id ID]; /import file PATH [--id ID]; /paste sequence --sequence-text DNA [--id ID]; /features restriction-scan SEQ_ID [--enzyme NAME]; /fetch genbank ACCESSION [--id ID]; /fetch ncbi ACCESSION [--id ID]; /fetch uniprot QUERY [--id ID]; /fetch ensembl QUERY [--species NAME] [--id ID]; /fetch ensembl-gene QUERY [--species NAME] [--id ID]; /fetch ensembl-protein QUERY [--id ID]; /fetch ensembl-region SPECIES CHR START END [--strand +|-] [--id ID]; /fetch dbsnp RS_ID GENOME_ID [--id ID].
 - /list reports GENtle's current project state and loaded sequence/project records. It does not list operating-system files or folders.
@@ -49,14 +49,15 @@ GENtle Agent Control Card:
 - Local controls: help or /help show GENtle help; /help TOPIC shows topic help; /list shows loaded GENtle project/sequence state; state-summary returns current project state; capabilities lists available GENtle capabilities.
 - File inputs: never use bare /path/to/file. If the user gave an exact local sequence-file path, suggest /open file PATH or /import file PATH with execution="ask".
 - Empty project: do not refer to existing seq_id values. Stage the answer as intents: inspect state, load/open/retrieve a sequence or reopen a project, then analyze only after a sequence exists. Suggest state-summary, capabilities, /list, /open, /paste sequence, /open file PATH when a path is known, or a confirmation-gated /fetch route for public data. Put "requires a loaded sequence" in preconditions[] for analysis commands and the expected loaded record/report in expected_outcomes[].
+- Negative logic rule: do not infer absence from missing state. If an action needs "no restriction site" or similar absence, require a complete-enough verification report as a precondition/effect. Prefer positive proof facts such as {"fact":"restriction_site.absent","subject":"demo_seq","enzyme":"EcoRI","range":"whole_sequence","basis_report":"restriction_scan_report_id"} over bare negation of a missing presence fact.
 - Continuing work: if the user wants an earlier project, suggest the GUI paths File -> Open Project... or File -> Open Recent Project..., or tell them to launch GENtle with an exact saved project path. Do not invent a recent-project slash command.
 - Public data: ask before network retrieval. For human genes, prefer /fetch ensembl SYMBOL --species homo_sapiens --id ID or a prepared-genome genomes genes/extract-gene workflow.
 - First reply examples:
   {"title":"Show GENtle help","command":"help","execution":"ask"}
   {"title":"Show project state","command":"state-summary","execution":"ask"}
   {"title":"List loaded GENtle records","command":"/list","execution":"ask"}
-  {"title":"Open a sequence file","preconditions":["GUI host is available"],"expected_outcomes":["A user-selected sequence file is loaded into the current GENtle project if parsing succeeds."],"command":"/open","execution":"ask"}
-  {"title":"Retrieve human FUS from Ensembl","expected_outcomes":["A new local sequence record with id fus_live is available if Ensembl retrieval succeeds."],"command":"/fetch ensembl FUS --species homo_sapiens --id fus_live","execution":"ask"}"#;
+  {"title":"Open a sequence file","preconditions":["GUI host is available"],"precondition_expr":{"all":[{"fact":"ui.host_available"}]},"expected_outcomes":["A user-selected sequence file is loaded into the current GENtle project if parsing succeeds."],"expected_effects":[{"fact":"sequence.exists","source":"user_selected_file"}],"command":"/open","execution":"ask"}
+  {"title":"Retrieve human FUS from Ensembl","expected_outcomes":["A new local sequence record with id fus_live is available if Ensembl retrieval succeeds."],"expected_effects":[{"fact":"sequence.exists","id":"fus_live"}],"command":"/fetch ensembl FUS --species homo_sapiens --id fus_live","execution":"ask"}"#;
 const AGENT_SCHEMA_SUPPORTED_MAJOR: u32 = 1;
 const AGENT_INVOKE_RETRY_BASE_DELAY_MS: u64 = 250;
 const AGENT_REQUEST_TIMEOUT_SECS_DEFAULT: u64 = 180;
@@ -1243,7 +1244,9 @@ impl AgentExecutionIntent {
 pub struct AgentSuggestedCommand {
     pub title: Option<String>,
     pub preconditions: Vec<String>,
+    pub precondition_expr: Option<Value>,
     pub expected_outcomes: Vec<String>,
+    pub expected_effects: Vec<Value>,
     pub rationale: Option<String>,
     pub command: String,
     pub execution: AgentExecutionIntent,
@@ -1474,7 +1477,9 @@ fn parse_suggested_command_value(
         &[
             "title",
             "preconditions",
+            "precondition_expr",
             "expected_outcomes",
+            "expected_effects",
             "rationale",
             "command",
             "execution",
@@ -1584,6 +1589,19 @@ fn parse_suggested_command_value(
     } else {
         vec![]
     };
+    let precondition_expr = if let Some(value) = obj.get("precondition_expr") {
+        if !value.is_object() {
+            return Err(agent_err(
+                AgentBridgeErrorCode::ResponseValidation,
+                format!(
+                    "agent response 'suggested_commands[{idx}].precondition_expr' must be an object"
+                ),
+            ));
+        }
+        Some(value.clone())
+    } else {
+        None
+    };
     let expected_outcomes = if let Some(value) = obj.get("expected_outcomes") {
         let items = value.as_array().ok_or_else(|| {
             agent_err(
@@ -1612,11 +1630,36 @@ fn parse_suggested_command_value(
     } else {
         vec![]
     };
+    let expected_effects = if let Some(value) = obj.get("expected_effects") {
+        let items = value.as_array().ok_or_else(|| {
+            agent_err(
+                AgentBridgeErrorCode::ResponseValidation,
+                format!(
+                    "agent response 'suggested_commands[{idx}].expected_effects' must be an array"
+                ),
+            )
+        })?;
+        for (effect_idx, item) in items.iter().enumerate() {
+            if !item.is_object() {
+                return Err(agent_err(
+                    AgentBridgeErrorCode::ResponseValidation,
+                    format!(
+                        "agent response 'suggested_commands[{idx}].expected_effects[{effect_idx}]' must be an object"
+                    ),
+                ));
+            }
+        }
+        items.clone()
+    } else {
+        vec![]
+    };
 
     Ok(AgentSuggestedCommand {
         title,
         preconditions,
+        precondition_expr,
         expected_outcomes,
+        expected_effects,
         rationale,
         command: command.to_string(),
         execution,
@@ -2545,7 +2588,9 @@ fn builtin_echo_response(prompt: &str) -> AgentResponse {
                 suggested.push(AgentSuggestedCommand {
                     title: Some("Auto suggestion (demo)".to_string()),
                     preconditions: vec![],
+                    precondition_expr: None,
                     expected_outcomes: vec![],
+                    expected_effects: vec![],
                     rationale: Some("Extracted from 'auto:' line in prompt".to_string()),
                     command: command.to_string(),
                     execution: AgentExecutionIntent::Auto,
@@ -2559,7 +2604,9 @@ fn builtin_echo_response(prompt: &str) -> AgentResponse {
                 suggested.push(AgentSuggestedCommand {
                     title: Some("Confirm suggestion (demo)".to_string()),
                     preconditions: vec![],
+                    precondition_expr: None,
                     expected_outcomes: vec![],
+                    expected_effects: vec![],
                     rationale: Some("Extracted from 'ask:' line in prompt".to_string()),
                     command: command.to_string(),
                     execution: AgentExecutionIntent::Ask,
@@ -3250,7 +3297,9 @@ mod tests {
     {
       "title": "Scan restriction sites",
       "preconditions": ["Sequence demo_seq exists in the current GENtle project."],
+      "precondition_expr": {"all":[{"fact":"sequence.exists","id":"demo_seq"},{"fact":"sequence.kind","id":"demo_seq","equals":"dna"}]},
       "expected_outcomes": ["A restriction-site report for demo_seq is available if the scan succeeds."],
+      "expected_effects": [{"fact":"restriction_site.absent","subject":"demo_seq","enzyme":"EcoRI","range":"whole_sequence","basis_report":"restriction_scan"}],
       "rationale": "Restriction scans operate on a loaded sequence id.",
       "command": "/features restriction-scan demo_seq --enzyme EcoRI",
       "execution": "ask"
@@ -3276,6 +3325,45 @@ mod tests {
                     .to_string()
             ]
         );
+        assert_eq!(
+            command
+                .precondition_expr
+                .as_ref()
+                .and_then(|expr| expr.get("all"))
+                .and_then(Value::as_array)
+                .map(Vec::len),
+            Some(2)
+        );
+        assert_eq!(
+            command
+                .expected_effects
+                .first()
+                .and_then(|effect| effect.get("fact"))
+                .and_then(Value::as_str),
+            Some("restriction_site.absent")
+        );
+    }
+
+    #[test]
+    fn parse_agent_response_rejects_non_structured_planning_logic() {
+        let err = parse_agent_response(
+            r#"{
+  "schema": "gentle.agent_response.v1",
+  "assistant_message": "bad logic",
+  "questions": [],
+  "suggested_commands": [
+    {
+      "title": "Bad logic",
+      "precondition_expr": "sequence exists",
+      "expected_effects": ["report exists"],
+      "command": "state-summary",
+      "execution": "ask"
+    }
+  ]
+}"#,
+        )
+        .expect_err("logic fields should be structured JSON");
+        assert!(err.contains("precondition_expr"));
     }
 
     #[test]
@@ -3654,7 +3742,10 @@ mod tests {
         assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("bare /path/to/file attachments"));
         assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("GENtle Agent Control Card"));
         assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("preconditions"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("precondition_expr"));
         assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("expected_outcomes"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("expected_effects"));
+        assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("restriction_site.absent"));
         assert!(AGENT_BRIDGE_SYSTEM_PROMPT.contains("Intent/precondition/outcome rule"));
         assert!(
             AGENT_BRIDGE_SYSTEM_PROMPT.contains("Do not invent a recent-project slash command")

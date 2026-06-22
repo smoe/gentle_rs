@@ -4306,7 +4306,15 @@ Agent response payload schema (`gentle.agent_response.v1`):
     {
       "title": "Optional short label",
       "preconditions": ["Optional requirement before the command can work"],
+      "precondition_expr": {
+        "all": [
+          { "fact": "sequence.exists", "id": "demo_seq" }
+        ]
+      },
       "expected_outcomes": ["Optional observable effect expected if the command succeeds"],
+      "expected_effects": [
+        { "fact": "report.exists", "kind": "restriction_scan", "subject": "demo_seq" }
+      ],
       "rationale": "Optional reason",
       "command": "state-summary",
       "execution": "ask"
@@ -4400,9 +4408,52 @@ Agent execution intent semantics:
 - Suggested-command `title` is the short user-facing intent shown in GUI
   tables. `preconditions[]` lists state requirements such as "sequence
   `demo_seq` exists"; it is advisory text, while the command parser still owns
-  hard validity checks. `expected_outcomes[]` lists postcondition-like effects
-  expected if the command succeeds, such as "a restriction-site report is
-  available"; these are user-visible expectations to verify, not guarantees.
+  hard validity checks. `precondition_expr` is an optional machine-readable
+  fact-graph expression for future deterministic readiness checks.
+  `expected_outcomes[]` lists postcondition-like effects expected if the
+  command succeeds, such as "a restriction-site report is available"; these are
+  user-visible expectations to verify, not guarantees. `expected_effects[]` is
+  an optional list of machine-readable fact-graph effects expected after
+  success.
+- Negative logic should be expressed as proof-backed positive facts when
+  possible. For example, "no EcoRI site exists in `demo_seq`" should become a
+  fact such as `restriction_site.absent` with an enzyme, subject, range, and
+  basis report; it should not be inferred merely from the absence of a
+  `restriction_site.present` fact.
+
+Project fact graph direction:
+
+GENtle's current `state-summary` is a compact project snapshot for humans,
+adapters, and LLM context. The target planning substrate is an engine-owned
+`gentle.project_fact_graph.v1` projection that exposes stable typed facts for
+loaded sequences, reports, features, selected GUI objects, provider readiness,
+inventory/material states, and verification results. Agent suggestions may
+already carry optional `precondition_expr` and `expected_effects[]` values that
+refer to that future fact vocabulary. Until a deterministic evaluator lands,
+these fields are preserved and displayed but remain advisory.
+
+Initial fact-expression shape:
+
+```json
+{
+  "all": [
+    { "fact": "sequence.exists", "id": "demo_seq" },
+    { "fact": "sequence.kind", "id": "demo_seq", "equals": "dna" }
+  ]
+}
+```
+
+Initial absence-proof effect shape:
+
+```json
+{
+  "fact": "restriction_site.absent",
+  "subject": "demo_seq",
+  "enzyme": "EcoRI",
+  "range": "whole_sequence",
+  "basis_report": "restriction_scan_report_id"
+}
+```
 
 Agent schema/compatibility policy:
 
@@ -4415,8 +4466,8 @@ Agent schema/compatibility policy:
   - top-level allowed: `schema`, `assistant_message`, `questions`,
     `suggested_commands` plus extension keys prefixed with `x_` or `x-`
   - `suggested_commands[]` allowed: `title`, `preconditions`,
-    `expected_outcomes`, `rationale`, `command`, `execution` plus extension
-    keys prefixed with `x_` or `x-`
+    `precondition_expr`, `expected_outcomes`, `expected_effects`, `rationale`,
+    `command`, `execution` plus extension keys prefixed with `x_` or `x-`
   - unsupported canonical fields (for example `commands`, `mode`) are rejected
 
 Execution safety rules:

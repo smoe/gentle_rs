@@ -116,6 +116,8 @@ Output wanted:
 - 2-4 safe suggested_commands using GENtle shared-shell commands only.
 - Each suggested command needs a clear title as the user intent and preconditions[] when it depends on state.
 - Each suggested command should include expected_outcomes[] describing what should be observable if the command succeeds; these are expected effects, not guarantees.
+- When you know the structured fact-graph logic, include precondition_expr and expected_effects alongside the prose; otherwise omit them rather than guessing.
+- For negative requirements such as "no EcoRI site", require or produce a positive proof fact such as restriction_site.absent based on a complete scan; do not infer absence from missing features.
 - On an empty or unknown project, prefer orientation/open/retrieve commands first; do not suggest feature scans as runnable first actions.
 - Mark runnable suggestions execution="ask"; use execution="chat" only for purely explanatory rows that should not run.
 - Mention that external database/network actions require explicit confirmation.
@@ -134,6 +136,7 @@ Follow-up demo command after a sequence exists:
 - /features restriction-scan demo_seq --enzyme EcoRI
   preconditions[] = ["Sequence demo_seq exists in the current GENtle project."]
   expected_outcomes[] = ["A restriction-site report for demo_seq is available if the scan succeeds."]
+  expected_effects[] may include restriction_site.absent only when the scan proves zero matching sites over the stated range.
 
 Continuing earlier work:
 - If the user wants to continue an earlier project, suggest GUI path `File -> Open Project...` or `File -> Open Recent Project...`.
@@ -358,6 +361,9 @@ mod tests {
         );
         assert!(agent_prompt_template_text("compact_intro").contains("preconditions[]"));
         assert!(agent_prompt_template_text("compact_intro").contains("expected_outcomes[]"));
+        assert!(agent_prompt_template_text("compact_intro").contains("precondition_expr"));
+        assert!(agent_prompt_template_text("compact_intro").contains("expected_effects"));
+        assert!(agent_prompt_template_text("compact_intro").contains("restriction_site.absent"));
         assert!(
             agent_prompt_template_text("compact_intro")
                 .contains("Sequence demo_seq exists in the current GENtle project.")

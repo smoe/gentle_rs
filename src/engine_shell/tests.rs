@@ -15225,7 +15225,10 @@ fn parse_gene_sets_produce_ontology_assignment_command() {
             assert_eq!(organism.as_deref(), Some("Homo sapiens"));
             assert_eq!(taxon_id.as_deref(), Some("9606"));
             assert_eq!(symbol_namespace.as_deref(), Some("HGNC"));
-            assert_eq!(review_status, Some(GeneSetResolutionReviewStatus::Unreviewed));
+            assert_eq!(
+                review_status,
+                Some(GeneSetResolutionReviewStatus::Unreviewed)
+            );
             assert_eq!(filters.len(), 2);
             assert_eq!(filters[0].field, "evidence_code");
             assert_eq!(filters[0].value, "IDA");
@@ -15236,9 +15239,8 @@ fn parse_gene_sets_produce_ontology_assignment_command() {
         other => panic!("unexpected command: {other:?}"),
     }
 
-    let missing_term =
-        parse_shell_line("gene-sets produce ontology-assignment --cache go.json")
-            .expect_err("missing term rejected");
+    let missing_term = parse_shell_line("gene-sets produce ontology-assignment --cache go.json")
+        .expect_err("missing term rejected");
     assert!(missing_term.contains("requires --term"));
 }
 
@@ -18731,7 +18733,9 @@ fn execute_agent_suggestions_allows_blast_shell_route() {
     let suggestions = vec![crate::agent_bridge::AgentSuggestedCommand {
         title: Some("BLAST".to_string()),
         preconditions: vec![],
+        precondition_expr: None,
         expected_outcomes: vec![],
+        expected_effects: vec![],
         rationale: Some("Check specificity".to_string()),
         command: "genomes blast __missing_genome__ ACGT".to_string(),
         execution: AgentExecutionIntent::Auto,

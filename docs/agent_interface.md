@@ -585,8 +585,9 @@ Agent Assistant runs configured external/internal AI systems and can return:
 - assistant text
 - follow-up questions
 - suggested shell commands with a visible intent title, optional
-  `preconditions[]`, optional postcondition-like `expected_outcomes[]`, and
-  execution mode `chat|ask|auto`
+  `preconditions[]`, optional machine-readable `precondition_expr`, optional
+  postcondition-like `expected_outcomes[]`, optional machine-readable
+  `expected_effects[]`, and execution mode `chat|ask|auto`
 
 Entry points:
 

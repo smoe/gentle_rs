@@ -3380,11 +3380,22 @@ impl GENtleApp {
                                             suggestion.preconditions.join("; ")
                                         ));
                                     }
+                                    if let Some(expr) = &suggestion.precondition_expr
+                                        && let Ok(expr_json) = serde_json::to_string(expr)
+                                    {
+                                        details.push(format!("Precondition logic: {expr_json}"));
+                                    }
                                     if !suggestion.expected_outcomes.is_empty() {
                                         details.push(format!(
                                             "Expected outcomes: {}",
                                             suggestion.expected_outcomes.join("; ")
                                         ));
+                                    }
+                                    if !suggestion.expected_effects.is_empty()
+                                        && let Ok(effects_json) =
+                                            serde_json::to_string(&suggestion.expected_effects)
+                                    {
+                                        details.push(format!("Expected effects: {effects_json}"));
                                     }
                                     if let Some(rationale) = suggestion.rationale.as_deref()
                                         && !rationale.trim().is_empty()
