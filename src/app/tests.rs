@@ -1135,6 +1135,7 @@ fn agent_response_sanity_flags_generic_placeholder_retrieval_reply() {
             AgentSuggestedCommand {
                 title: Some("Get Help".to_string()),
                 preconditions: vec![],
+                expected_outcomes: vec![],
                 rationale: Some("Learn about available commands.".to_string()),
                 command: "/help".to_string(),
                 execution: AgentExecutionIntent::Chat,
@@ -1142,6 +1143,7 @@ fn agent_response_sanity_flags_generic_placeholder_retrieval_reply() {
             AgentSuggestedCommand {
                 title: Some("List Sequences".to_string()),
                 preconditions: vec![],
+                expected_outcomes: vec![],
                 rationale: Some("View currently open sequences.".to_string()),
                 command: "/list".to_string(),
                 execution: AgentExecutionIntent::Chat,
@@ -1149,6 +1151,9 @@ fn agent_response_sanity_flags_generic_placeholder_retrieval_reply() {
             AgentSuggestedCommand {
                 title: Some("Open Sequence File".to_string()),
                 preconditions: vec!["Exact local sequence-file path is known.".to_string()],
+                expected_outcomes: vec![
+                    "The selected sequence file is loaded if parsing succeeds.".to_string(),
+                ],
                 rationale: Some("Load a sequence file into GENtle.".to_string()),
                 command: "/open file PATH [--id ID]".to_string(),
                 execution: AgentExecutionIntent::Ask,
@@ -1204,6 +1209,9 @@ fn agent_response_sanity_accepts_fus_retrieval_commands() {
             AgentSuggestedCommand {
                 title: Some("List exact FUS hits".to_string()),
                 preconditions: vec!["Prepared genome catalog/cache is available.".to_string()],
+                expected_outcomes: vec![
+                    "Candidate FUS gene records are listed for review.".to_string()
+                ],
                 rationale: Some("Confirm candidate gene annotations before import.".to_string()),
                 command: "genomes genes \"Human GRCh38 Ensembl 116\" --catalog assets/genomes.json --cache-dir data/genomes --filter \"^FUS$\" --limit 20".to_string(),
                 execution: AgentExecutionIntent::Ask,
@@ -1211,6 +1219,10 @@ fn agent_response_sanity_accepts_fus_retrieval_commands() {
             AgentSuggestedCommand {
                 title: Some("Extract FUS".to_string()),
                 preconditions: vec!["The FUS gene lookup has been reviewed.".to_string()],
+                expected_outcomes: vec![
+                    "A local grch38_fus sequence record is available if extraction succeeds."
+                        .to_string(),
+                ],
                 rationale: Some("Import FUS with full annotation.".to_string()),
                 command: "genomes extract-gene \"Human GRCh38 Ensembl 116\" FUS --occurrence 1 --output-id grch38_fus --catalog assets/genomes.json --cache-dir data/genomes --annotation-scope full".to_string(),
                 execution: AgentExecutionIntent::Ask,
@@ -1236,6 +1248,7 @@ fn agent_response_sanity_flags_list_as_filesystem_hallucination() {
         suggested_commands: vec![AgentSuggestedCommand {
             title: Some("List Files".to_string()),
             preconditions: vec![],
+            expected_outcomes: vec![],
             rationale: Some("See files available in the current directory.".to_string()),
             command: "/list".to_string(),
             execution: AgentExecutionIntent::Chat,

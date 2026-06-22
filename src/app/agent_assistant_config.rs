@@ -115,6 +115,7 @@ Output wanted:
 - 5-8 bullets about what you can help with inside GENtle.
 - 2-4 safe suggested_commands using GENtle shared-shell commands only.
 - Each suggested command needs a clear title as the user intent and preconditions[] when it depends on state.
+- Each suggested command should include expected_outcomes[] describing what should be observable if the command succeeds; these are expected effects, not guarantees.
 - On an empty or unknown project, prefer orientation/open/retrieve commands first; do not suggest feature scans as runnable first actions.
 - Mark runnable suggestions execution="ask"; use execution="chat" only for purely explanatory rows that should not run.
 - Mention that external database/network actions require explicit confirmation.
@@ -132,6 +133,7 @@ Good first-step demo commands:
 Follow-up demo command after a sequence exists:
 - /features restriction-scan demo_seq --enzyme EcoRI
   preconditions[] = ["Sequence demo_seq exists in the current GENtle project."]
+  expected_outcomes[] = ["A restriction-site report for demo_seq is available if the scan succeeds."]
 
 Continuing earlier work:
 - If the user wants to continue an earlier project, suggest GUI path `File -> Open Project...` or `File -> Open Recent Project...`.
@@ -355,9 +357,14 @@ mod tests {
                 .contains("/fetch ensembl FUS --species homo_sapiens --id fus_live")
         );
         assert!(agent_prompt_template_text("compact_intro").contains("preconditions[]"));
+        assert!(agent_prompt_template_text("compact_intro").contains("expected_outcomes[]"));
         assert!(
             agent_prompt_template_text("compact_intro")
                 .contains("Sequence demo_seq exists in the current GENtle project.")
+        );
+        assert!(
+            agent_prompt_template_text("compact_intro")
+                .contains("restriction-site report for demo_seq is available")
         );
         assert!(
             agent_prompt_template_text("compact_intro")

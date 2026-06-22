@@ -3343,7 +3343,7 @@ impl GENtleApp {
                                 ui.strong("Intent");
                                 ui.strong("Mode");
                                 ui.strong("Command");
-                                ui.strong("Preconditions / rationale");
+                                ui.strong("Preconditions / outcomes / rationale");
                                 ui.strong("Action");
                                 ui.end_row();
                                 for (idx, suggestion) in invocation
@@ -3378,6 +3378,12 @@ impl GENtleApp {
                                         details.push(format!(
                                             "Preconditions: {}",
                                             suggestion.preconditions.join("; ")
+                                        ));
+                                    }
+                                    if !suggestion.expected_outcomes.is_empty() {
+                                        details.push(format!(
+                                            "Expected outcomes: {}",
+                                            suggestion.expected_outcomes.join("; ")
                                         ));
                                     }
                                     if let Some(rationale) = suggestion.rationale.as_deref()
