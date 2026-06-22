@@ -39067,19 +39067,25 @@ fn format_construct_reasoning_fact_summary(fact: &crate::engine::DesignFact) -> 
         .iter()
         .map(|severity| {
             let evidence_count = severity.supporting_evidence_ids.len();
+            let score = severity
+                .score
+                .map(|value| format!(" score={value:.2}"))
+                .unwrap_or_default();
             let rationale = severity.rationale.trim();
             if rationale.is_empty() {
                 detail_lines.push(format!(
-                    "task_severity: {}={} (evidence={})",
+                    "task_severity: {}={}{} (evidence={})",
                     severity.task.as_str(),
                     severity.severity.as_str(),
+                    score,
                     evidence_count
                 ));
             } else {
                 detail_lines.push(format!(
-                    "task_severity: {}={} (evidence={}): {}",
+                    "task_severity: {}={}{} (evidence={}): {}",
                     severity.task.as_str(),
                     severity.severity.as_str(),
+                    score,
                     evidence_count,
                     rationale
                 ));
@@ -39087,6 +39093,7 @@ fn format_construct_reasoning_fact_summary(fact: &crate::engine::DesignFact) -> 
             json!({
                 "task": severity.task.as_str(),
                 "severity": severity.severity.as_str(),
+                "score": severity.score,
                 "rationale": &severity.rationale,
                 "supporting_evidence_ids": &severity.supporting_evidence_ids,
             })

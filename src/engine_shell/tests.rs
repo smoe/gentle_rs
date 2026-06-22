@@ -11362,6 +11362,9 @@ fn execute_construct_reasoning_show_graph_includes_similarity_predictor_summary(
                             task_rows.iter().any(|entry| {
                                 entry["task"].as_str() == Some("read_mapping")
                                     && entry["severity"].as_str() == Some("low")
+                                    && entry["score"]
+                                        .as_f64()
+                                        .is_some_and(|score| (0.0..=1.0).contains(&score))
                                     && entry["supporting_evidence_ids"]
                                         .as_array()
                                         .map(|ids| !ids.is_empty())
@@ -11374,7 +11377,7 @@ fn execute_construct_reasoning_show_graph_includes_similarity_predictor_summary(
                         .map(|detail_rows| {
                             detail_rows.iter().any(|entry| {
                                 entry.as_str().is_some_and(|text| {
-                                    text.contains("task_severity: read_mapping=low")
+                                    text.contains("task_severity: read_mapping=low score=")
                                 })
                             })
                         })
