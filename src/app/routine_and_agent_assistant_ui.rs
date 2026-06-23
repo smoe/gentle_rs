@@ -4831,36 +4831,7 @@ impl GENtleApp {
             serde_json::from_value::<crate::engine::FactExpression>(expr.clone()).ok()?;
         let engine = self.engine.read().ok()?;
         let evaluation = engine.evaluate_fact_expression(&expression, &[]);
-        let label = match evaluation.truth {
-            crate::engine::FactTruth::Satisfied => "ready".to_string(),
-            crate::engine::FactTruth::Unsatisfied => {
-                let atoms = evaluation
-                    .unmet_atoms
-                    .iter()
-                    .map(|atom| atom.fact.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                if atoms.is_empty() {
-                    "blocked".to_string()
-                } else {
-                    format!("blocked ({atoms})")
-                }
-            }
-            crate::engine::FactTruth::Unknown => {
-                let atoms = evaluation
-                    .unknown_atoms
-                    .iter()
-                    .map(|atom| atom.fact.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                if atoms.is_empty() {
-                    "unknown".to_string()
-                } else {
-                    format!("unknown; needs evidence/project state for {atoms}")
-                }
-            }
-        };
-        Some(label)
+        Some(crate::agent_bridge::agent_fact_readiness_label(&evaluation))
     }
 
     pub(super) fn routine_assistant_is_gibson_family(routine: &CloningRoutineCatalogRow) -> bool {

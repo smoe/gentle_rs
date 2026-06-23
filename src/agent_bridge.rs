@@ -32,6 +32,7 @@ Suggested command contract:
 - Operand rule: glossary usage words such as QUERY, ID, SEQ_ID, GENOME_ID, ENTRY_ID, PATH, START, END, CHR, and OUTPUT.svg are placeholders with route-specific meanings. Do not infer species aliases, accession formats, local output IDs, coordinate systems, or filesystem paths from the placeholder name alone.
 - Current scope declaration: GENtle does not currently implement OpenClaw-like filesystem, operating-system, or gateway commands. That may change in a future gateway layer; for now, concentrate on actions GENtle can also perform through its GUI or shared shell on the same project state.
 - Intent/precondition/outcome rule: use suggested_commands[].title for the user intent, suggested_commands[].preconditions for human-readable requirements such as "a sequence with seq_id demo_seq exists", optional suggested_commands[].precondition_expr for machine-readable fact-graph logic, suggested_commands[].expected_outcomes for postcondition-like effects expected if the command succeeds, and optional suggested_commands[].expected_effects for machine-readable fact-graph effects. Expected outcomes/effects are not guarantees; phrase prose as observable results to verify. Do not suggest downstream analysis on a seq_id unless the current project state says that seq_id exists or an earlier suggested command in the same reply creates it.
+- Fact vocabulary rule: when emitting precondition_expr or expected_effects, use the generated Known project fact vocabulary block appended to this system prompt. Unknown future fact names evaluate as "unknown"; avoid them unless your intent is to ask GENtle for a non-ready future capability.
 - suggested_commands[].command must be one exact GENtle shared-shell command parseable by GENtle.
 - GENtle-local slash aliases are deliberately small and parser-validated. Allowed aliases are: /help; /list; /open; /import; /open file PATH [--id ID]; /import file PATH [--id ID]; /paste sequence --sequence-text DNA [--id ID]; /features restriction-scan SEQ_ID [--enzyme NAME]; /fetch genbank ACCESSION [--id ID]; /fetch ncbi ACCESSION [--id ID]; /fetch uniprot QUERY [--id ID]; /fetch ensembl QUERY [--species NAME] [--id ID]; /fetch ensembl-gene QUERY [--species NAME] [--id ID]; /fetch ensembl-protein QUERY [--id ID]; /fetch ensembl-region SPECIES CHR START END [--strand +|-] [--id ID]; /fetch dbsnp RS_ID GENOME_ID [--id ID].
 - /list reports GENtle's current project state and loaded sequence/project records. It does not list operating-system files or folders.
@@ -78,6 +79,46 @@ const OPENAI_COMPAT_DEFAULT_MODEL: &str = OPENAI_COMPAT_UNSPECIFIED_MODEL;
 const OPENAI_COMPAT_DEFAULT_BASE_URL: &str = "http://127.0.0.1:11434/v1";
 pub const OPENAI_API_KEY_ENV: &str = "OPENAI_API_KEY";
 pub const ANTHROPIC_API_KEY_ENV: &str = "ANTHROPIC_API_KEY";
+
+pub(crate) fn agent_bridge_system_prompt() -> String {
+    format!(
+        "{}\n\n{}",
+        AGENT_BRIDGE_SYSTEM_PROMPT,
+        crate::engine::project_fact_registry_prompt_block()
+    )
+}
+
+pub fn agent_fact_readiness_label(evaluation: &crate::engine::FactEvaluationResult) -> String {
+    match evaluation.truth {
+        crate::engine::FactTruth::Satisfied => "ready".to_string(),
+        crate::engine::FactTruth::Unsatisfied => {
+            let atoms = evaluation
+                .unmet_atoms
+                .iter()
+                .map(|atom| atom.fact.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            if atoms.is_empty() {
+                "blocked".to_string()
+            } else {
+                format!("blocked ({atoms})")
+            }
+        }
+        crate::engine::FactTruth::Unknown => {
+            let atoms = evaluation
+                .unknown_atoms
+                .iter()
+                .map(|atom| atom.fact.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            if atoms.is_empty() {
+                "unknown".to_string()
+            } else {
+                format!("unknown; needs evidence/project state for {atoms}")
+            }
+        }
+    }
+}
 pub const MISTRAL_API_KEY_ENV: &str = "MISTRAL_API_KEY";
 pub(crate) const ANTHROPIC_API_KEY_AUTH_HINT: &str = "Use an Anthropic Console API key for ANTHROPIC_API_KEY; Claude Code/Claude.ai subscription or OAuth tokens are not Anthropic API keys.";
 pub(crate) const MISTRAL_API_KEY_AUTH_HINT: &str = "Use a Mistral La Plateforme API key for MISTRAL_API_KEY; Le Chat or Mistral account login tokens are not Mistral API keys.";
@@ -2231,7 +2272,7 @@ fn invoke_native_openai_once(
     let model = resolve_model(system, OPENAI_DEFAULT_MODEL);
     let base_url = resolve_base_url(system, OPENAI_DEFAULT_BASE_URL);
     let endpoint = format!("{base_url}/responses");
-    let system_prompt = AGENT_BRIDGE_SYSTEM_PROMPT;
+    let system_prompt = agent_bridge_system_prompt();
     let payload = json!({
         "model": model,
         "input": [
@@ -2317,7 +2358,7 @@ fn invoke_native_anthropic_once(
         .first()
         .cloned()
         .unwrap_or_else(|| format!("{base_url}/messages"));
-    let system_prompt = AGENT_BRIDGE_SYSTEM_PROMPT;
+    let system_prompt = agent_bridge_system_prompt();
     let payload = json!({
         "model": model,
         "max_tokens": 4096,
@@ -2391,7 +2432,7 @@ fn invoke_native_mistral_once(
         .first()
         .cloned()
         .unwrap_or_else(|| format!("{base_url}/chat/completions"));
-    let system_prompt = AGENT_BRIDGE_SYSTEM_PROMPT;
+    let system_prompt = agent_bridge_system_prompt();
     let payload = json!({
         "model": model,
         "messages": [
@@ -2476,7 +2517,7 @@ fn invoke_native_openai_compat_once(
         }
     })?;
     let endpoints = openai_compat_endpoint_candidates(&base_url);
-    let system_prompt = AGENT_BRIDGE_SYSTEM_PROMPT;
+    let system_prompt = agent_bridge_system_prompt();
     let payload = json!({
         "model": model,
         "messages": [
@@ -3766,6 +3807,17 @@ mod tests {
         assert!(
             AGENT_BRIDGE_SYSTEM_PROMPT.contains("/fetch ensembl-protein does not accept --species")
         );
+    }
+
+    #[test]
+    fn agent_bridge_system_prompt_includes_generated_fact_vocabulary() {
+        let prompt = agent_bridge_system_prompt();
+        assert!(prompt.contains("Known project fact vocabulary"));
+        assert!(prompt.contains("gentle.fact_expression.v1"));
+        assert!(prompt.contains("sequence.kind"));
+        assert!(prompt.contains("restriction_site.absent"));
+        assert!(prompt.contains("subject_kind=sequence"));
+        assert!(prompt.contains("requires_basis=true"));
     }
 
     #[test]

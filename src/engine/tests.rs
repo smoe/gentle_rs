@@ -4422,7 +4422,10 @@ fn produce_gene_set_retrieval_producers_reject_unsupported_cache_major_versions(
 
     let missing_err = engine
         .apply(Operation::ProduceGeneSetDirectList {
-            cache_path: root.join("missing_direct_cache.json").to_string_lossy().to_string(),
+            cache_path: root
+                .join("missing_direct_cache.json")
+                .to_string_lossy()
+                .to_string(),
             query: None,
             genome_id: None,
             gene_group_catalog_path: None,
@@ -41352,28 +41355,36 @@ fn construct_reasoning_curated_repeat_support_requires_family_or_class_agreement
     let unclassified_internal =
         synthetic_internal_repeat_evidence("internal_direct", &["direct_repeat"], 10, 90);
 
-    assert!(GentleEngine::construct_reasoning_curated_repeat_supports_internal_signal(
-        &internal_satellite,
-        &curated_satellite
-    ));
-    assert!(!GentleEngine::construct_reasoning_curated_repeat_supports_internal_signal(
-        &internal_satellite,
-        &curated_alu
-    ));
-    assert!(!GentleEngine::construct_reasoning_curated_repeat_supports_internal_signal(
-        &unclassified_internal,
-        &curated_satellite
-    ));
+    assert!(
+        GentleEngine::construct_reasoning_curated_repeat_supports_internal_signal(
+            &internal_satellite,
+            &curated_satellite
+        )
+    );
+    assert!(
+        !GentleEngine::construct_reasoning_curated_repeat_supports_internal_signal(
+            &internal_satellite,
+            &curated_alu
+        )
+    );
+    assert!(
+        !GentleEngine::construct_reasoning_curated_repeat_supports_internal_signal(
+            &unclassified_internal,
+            &curated_satellite
+        )
+    );
 
     let support = GentleEngine::construct_reasoning_curated_repeat_support_for_rows(
         &[&internal_satellite],
         &[&curated_satellite],
     );
     assert_eq!(support.len(), 1);
-    let provenance = GentleEngine::construct_reasoning_repeat_family_provenance_for_evidence_rows(
-        &[&internal_satellite, &curated_satellite],
-    )
-    .expect("satellite support should populate provenance");
+    let provenance =
+        GentleEngine::construct_reasoning_repeat_family_provenance_for_evidence_rows(&[
+            &internal_satellite,
+            &curated_satellite,
+        ])
+        .expect("satellite support should populate provenance");
     assert_eq!(provenance.family_name.as_deref(), Some("Satellite"));
     assert_eq!(provenance.confidence, Some(0.9));
 
@@ -41486,8 +41497,7 @@ fn construct_reasoning_repeat_family_taxonomy_accepts_same_class_and_rejects_cro
     for (internal, curated, expected, message) in cases {
         assert_eq!(
             GentleEngine::construct_reasoning_curated_repeat_supports_internal_signal(
-                &internal,
-                &curated
+                &internal, &curated
             ),
             expected,
             "{message}"
@@ -44313,6 +44323,12 @@ fn project_fact_graph_projects_loaded_sequence_facts() {
         "demo_seq".to_string(),
         DNAsequence::from_sequence("ACGTACGT").expect("sequence"),
     );
+    let mut rna = DNAsequence::from_sequence("AUGU").expect("rna sequence");
+    rna.set_molecule_type("RNA");
+    state.sequences.insert("rna_seq".to_string(), rna);
+    let mut protein = DNAsequence::from_sequence("MEEPQ").expect("protein sequence");
+    protein.set_molecule_type("protein");
+    state.sequences.insert("protein_seq".to_string(), protein);
     let engine = GentleEngine::from_state(state);
 
     let graph = engine.project_fact_graph();
@@ -44331,6 +44347,16 @@ fn project_fact_graph_projects_loaded_sequence_facts() {
         fact.fact == "sequence.kind"
             && fact.subject.id == "demo_seq"
             && fact.value == Some(serde_json::json!("dna"))
+    }));
+    assert!(graph.facts.iter().any(|fact| {
+        fact.fact == "sequence.kind"
+            && fact.subject.id == "rna_seq"
+            && fact.value == Some(serde_json::json!("rna"))
+    }));
+    assert!(graph.facts.iter().any(|fact| {
+        fact.fact == "sequence.kind"
+            && fact.subject.id == "protein_seq"
+            && fact.value == Some(serde_json::json!("protein"))
     }));
     assert!(graph.facts.iter().any(|fact| {
         fact.fact == "sequence.length"
@@ -44448,6 +44474,83 @@ fn project_fact_eval_refutes_absence_when_restriction_site_is_present() {
         engine.evaluate_fact_expression(&not_present, &[]).truth,
         FactTruth::Unknown
     );
+}
+
+#[test]
+fn project_fact_eval_does_not_overgeneralize_restriction_absence_evidence() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "clean_seq".to_string(),
+        DNAsequence::from_sequence("AAGGCCCCAAGGCCCC").expect("sequence"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let partial_report = engine
+        .apply(Operation::FindRestrictionSites {
+            target: SequenceScanTarget::SeqId {
+                seq_id: "clean_seq".to_string(),
+                span_start_0based: Some(0),
+                span_end_0based_exclusive: Some(8),
+            },
+            enzymes: vec!["EcoRI".to_string()],
+            max_sites_per_enzyme: None,
+            include_cut_geometry: true,
+            path: None,
+        })
+        .expect("partial restriction scan")
+        .restriction_site_scan
+        .expect("restriction report");
+    assert!(partial_report.rows.is_empty());
+
+    let whole_absent: FactExpression = serde_json::from_value(serde_json::json!({
+        "fact": "restriction_site.absent",
+        "subject": {"kind": "sequence", "id": "clean_seq"},
+        "enzyme": "EcoRI",
+        "range": {"kind": "whole_sequence"}
+    }))
+    .expect("whole absence expression");
+    let scanned_span_absent: FactExpression = serde_json::from_value(serde_json::json!({
+        "fact": "restriction_site.absent",
+        "subject": {"kind": "sequence", "id": "clean_seq"},
+        "enzyme": "EcoRI",
+        "range": {"kind": "span", "start_0based": 0, "end_0based_exclusive": 8}
+    }))
+    .expect("span absence expression");
+    let wrong_enzyme_absent: FactExpression = serde_json::from_value(serde_json::json!({
+        "fact": "restriction_site.absent",
+        "subject": {"kind": "sequence", "id": "clean_seq"},
+        "enzyme": "BamHI",
+        "range": {"kind": "span", "start_0based": 0, "end_0based_exclusive": 8}
+    }))
+    .expect("wrong enzyme expression");
+
+    assert_eq!(
+        engine
+            .evaluate_fact_expression(&whole_absent, std::slice::from_ref(&partial_report))
+            .truth,
+        FactTruth::Unknown
+    );
+    assert_eq!(
+        engine
+            .evaluate_fact_expression(&scanned_span_absent, std::slice::from_ref(&partial_report))
+            .truth,
+        FactTruth::Satisfied
+    );
+    assert_eq!(
+        engine
+            .evaluate_fact_expression(&wrong_enzyme_absent, std::slice::from_ref(&partial_report))
+            .truth,
+        FactTruth::Unknown
+    );
+
+    let first_graph = serde_json::to_string(
+        &engine.project_fact_graph_with_restriction_evidence(std::slice::from_ref(&partial_report)),
+    )
+    .expect("first graph json");
+    let second_graph = serde_json::to_string(
+        &engine.project_fact_graph_with_restriction_evidence(std::slice::from_ref(&partial_report)),
+    )
+    .expect("second graph json");
+    assert_eq!(first_graph, second_graph);
 }
 
 #[test]

@@ -1767,7 +1767,7 @@ fn fact_evaluation_schema() -> String {
     FACT_EVALUATION_SCHEMA.to_string()
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[serde(rename_all = "snake_case")]
 /// Top-level project object class addressed by a fact atom.
 pub enum FactSubjectKind {
@@ -1776,6 +1776,132 @@ pub enum FactSubjectKind {
     Container,
     Ui,
     Other,
+}
+
+impl FactSubjectKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Sequence => "sequence",
+            Self::Report => "report",
+            Self::Container => "container",
+            Self::Ui => "ui",
+            Self::Other => "other",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// World assumption used when evaluating a known project fact type.
+pub enum ProjectFactWorld {
+    ClosedWorld,
+    OpenWorld,
+}
+
+impl ProjectFactWorld {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::ClosedWorld => "closed_world",
+            Self::OpenWorld => "open_world",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+/// Registry entry for one controlled project-fact vocabulary item.
+pub struct ProjectFactTypeSpec {
+    pub name: &'static str,
+    pub world: ProjectFactWorld,
+    pub requires_basis: bool,
+    pub subject_kind: FactSubjectKind,
+    pub description: &'static str,
+}
+
+const PROJECT_FACT_TYPE_SPECS: &[ProjectFactTypeSpec] = &[
+    ProjectFactTypeSpec {
+        name: "sequence.exists",
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Sequence,
+        description: "A sequence with this id is loaded in the current project state.",
+    },
+    ProjectFactTypeSpec {
+        name: "sequence.kind",
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Sequence,
+        description: "Loaded sequence molecule class; use equals \"dna\", \"rna\", or \"protein\".",
+    },
+    ProjectFactTypeSpec {
+        name: "sequence.length",
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Sequence,
+        description: "Loaded sequence length in residues/bases; use compare for numeric predicates.",
+    },
+    ProjectFactTypeSpec {
+        name: "sequence.circular",
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Sequence,
+        description: "Whether the loaded sequence is circular.",
+    },
+    ProjectFactTypeSpec {
+        name: "report.exists",
+        world: ProjectFactWorld::OpenWorld,
+        requires_basis: true,
+        subject_kind: FactSubjectKind::Report,
+        description: "An explicit proof/report artifact is available as evidence.",
+    },
+    ProjectFactTypeSpec {
+        name: "restriction_site.present",
+        world: ProjectFactWorld::OpenWorld,
+        requires_basis: true,
+        subject_kind: FactSubjectKind::Sequence,
+        description: "A restriction-site scan report proves at least one matching enzyme site in the requested range.",
+    },
+    ProjectFactTypeSpec {
+        name: "restriction_site.absent",
+        world: ProjectFactWorld::OpenWorld,
+        requires_basis: true,
+        subject_kind: FactSubjectKind::Sequence,
+        description: "A covering restriction-site scan report proves zero matching enzyme sites in the requested range.",
+    },
+    ProjectFactTypeSpec {
+        name: "ui.host_available",
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Ui,
+        description: "The current adapter can ask the user to perform GUI-hosted actions such as picking a file.",
+    },
+];
+
+pub fn project_fact_type_specs() -> &'static [ProjectFactTypeSpec] {
+    PROJECT_FACT_TYPE_SPECS
+}
+
+pub fn project_fact_type_spec(name: &str) -> Option<&'static ProjectFactTypeSpec> {
+    PROJECT_FACT_TYPE_SPECS
+        .iter()
+        .find(|spec| spec.name == name)
+}
+
+pub fn project_fact_registry_prompt_block() -> String {
+    let mut lines = vec![
+        format!("Known project fact vocabulary ({FACT_EXPRESSION_SCHEMA}):"),
+        "Use only these fact names in precondition_expr/expected_effects unless you are deliberately asking GENtle to treat a future fact as unknown.".to_string(),
+    ];
+    for spec in PROJECT_FACT_TYPE_SPECS {
+        lines.push(format!(
+            "- {}: subject_kind={}; world={}; requires_basis={}; {}",
+            spec.name,
+            spec.subject_kind.as_str(),
+            spec.world.as_str(),
+            spec.requires_basis,
+            spec.description
+        ));
+    }
+    lines.join("\n")
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]

@@ -21,34 +21,6 @@ pub(crate) struct PrimerDesignProgressContext<'a> {
     pub(crate) max_output: usize,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ProjectFactWorld {
-    Closed,
-    Open,
-}
-
-struct ProjectFactTypeSpec {
-    world: ProjectFactWorld,
-    requires_basis: bool,
-}
-
-fn project_fact_type_spec(name: &str) -> Option<ProjectFactTypeSpec> {
-    let (world, requires_basis) = match name {
-        "sequence.exists" | "sequence.kind" | "sequence.length" | "sequence.circular" => {
-            (ProjectFactWorld::Closed, false)
-        }
-        "ui.host_available" => (ProjectFactWorld::Closed, false),
-        "report.exists" | "restriction_site.present" | "restriction_site.absent" => {
-            (ProjectFactWorld::Open, true)
-        }
-        _ => return None,
-    };
-    Some(ProjectFactTypeSpec {
-        world,
-        requires_basis,
-    })
-}
-
 fn fact_subject(kind: FactSubjectKind, id: impl Into<String>) -> FactSubject {
     FactSubject {
         kind,
@@ -57,14 +29,27 @@ fn fact_subject(kind: FactSubjectKind, id: impl Into<String>) -> FactSubject {
 }
 
 fn fact_subject_sort_key(subject: &FactSubject) -> (&'static str, &str) {
-    let kind = match subject.kind {
-        FactSubjectKind::Sequence => "sequence",
-        FactSubjectKind::Report => "report",
-        FactSubjectKind::Container => "container",
-        FactSubjectKind::Ui => "ui",
-        FactSubjectKind::Other => "other",
-    };
-    (kind, subject.id.as_str())
+    (subject.kind.as_str(), subject.id.as_str())
+}
+
+fn project_sequence_kind(dna: &DNAsequence) -> &'static str {
+    let normalized = dna
+        .molecule_type()
+        .unwrap_or("dsDNA")
+        .trim()
+        .to_ascii_lowercase()
+        .replace(['_', '-'], "")
+        .replace(' ', "");
+    if normalized == "protein" || normalized == "peptide" {
+        "protein"
+    } else if matches!(
+        normalized.as_str(),
+        "rna" | "ssrna" | "singlestrandedrna" | "transcript" | "mrna"
+    ) {
+        "rna"
+    } else {
+        "dna"
+    }
 }
 
 fn fact_value_key(value: &Option<serde_json::Value>) -> String {
@@ -1077,7 +1062,7 @@ impl GentleEngine {
             facts.push(ProjectFact {
                 fact: "sequence.kind".to_string(),
                 subject: subject.clone(),
-                value: Some(serde_json::json!("dna")),
+                value: Some(serde_json::json!(project_sequence_kind(dna))),
                 ..ProjectFact::default()
             });
             facts.push(ProjectFact {
@@ -1321,7 +1306,7 @@ impl GentleEngine {
         if has_match {
             return FactTruth::Satisfied;
         }
-        if spec.world == ProjectFactWorld::Closed {
+        if spec.world == ProjectFactWorld::ClosedWorld {
             return FactTruth::Unsatisfied;
         }
         if let Some(contradiction) = contradiction_fact_name(atom.fact.as_str()) {

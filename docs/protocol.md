@@ -4431,15 +4431,23 @@ and readiness checks. Slice 1 covers loaded sequence facts plus explicit
 restriction-site scan evidence:
 
 - `sequence.exists`, `sequence.kind`, `sequence.length`, `sequence.circular`
-  are closed-world facts over the loaded project state.
+  are closed-world facts over the loaded project state. `sequence.kind` uses
+  normalized values `dna`, `rna`, or `protein`.
 - `report.exists`, `restriction_site.present`, and `restriction_site.absent`
   are open-world facts and require a proof basis.
+- The known fact vocabulary is registered in engine protocol code and is also
+  appended to the Agent Assistant system prompt, so prompt grounding and
+  deterministic evaluation share one list of fact names.
 - Unknown fact names evaluate to `unknown` rather than failing the payload.
 - Boolean expressions use three-valued Kleene logic: `not(unknown)` remains
   `unknown`.
 - Absence is never inferred from a missing `restriction_site.present` fact.
   Use a proof-backed `restriction_site.absent` fact from a covering
   zero-hit restriction scan.
+- Open-world proof facts are built from explicit evidence bundles today.
+  Restriction-site scan reports are not auto-persisted into project state, and
+  a future evidence ledger such as `state.metadata["fact_evidence"]` should be
+  added deliberately rather than as an implicit side effect.
 
 Shared-shell routes:
 

@@ -617,8 +617,14 @@ Key properties:
   against the current `gentle.project_fact_graph.v1`; the GUI shows readiness
   as `ready`, `blocked`, or `unknown` while the shared shell still owns hard
   validity checks
+- the Agent Assistant system prompt receives its known project-fact vocabulary
+  from the same registry used by the evaluator, instead of a separately
+  maintained prose-only list
 - use `facts graph` and `facts eval ...` in shared shell/CLI contexts when an
   external agent needs the same deterministic project-fact projection
+- open-world facts such as restriction-site absence require explicit evidence
+  bundles today; until a persisted evidence ledger lands, GUI readiness without
+  attached evidence remains `unknown` for those facts
 - current limitation: long-running suggested commands execute synchronously;
   dedicated async job-handle/progress/cancel flow for agent-driven BLAST (and
   future primer-pair multi-BLAST selection) is planned
