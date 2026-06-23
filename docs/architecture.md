@@ -754,8 +754,8 @@ Practical rule:
   - prepared-cache cleanup (`Genome -> Clear Caches...`) is a GUI specialist
     over shared engine/cache-inspection helpers; adapters must not invent their
     own filesystem cleanup rules
-  - shared shell commands can query/prepare/extract, but cannot yet directly
-    open/focus GUI dialogs
+  - shared shell `ui ...` commands can query prepared references and
+    open/focus/close catalogued GUI dialogs without duplicating GUI-only logic
 
 ### JavaScript/Lua shells
 
@@ -959,17 +959,22 @@ Current baseline:
   - `ui intents`
   - `ui open TARGET ...`
   - `ui focus TARGET ...`
+  - `ui open sequence-window SEQ_ID`
+  - `ui focus sequence-window SEQ_ID`
+  - `ui close TARGET`
+  - `ui close sequence-window SEQ_ID`
   - `ui prepared-genomes ...`
   - `ui latest-prepared SPECIES ...`
-- GUI-side intent handlers in `src/app.rs` now map `ui open|focus` intents to
-  existing dialog openers (Prepared References, prepare/retrieve/blast, track
-  import, agent assistant, helper-genome dialogs).
+- GUI-side intent handlers in `src/app.rs` now map `ui open|focus|close`
+  intents to existing dialog openers/closers (Prepared References,
+  prepare/retrieve/blast, track import, agent assistant, helper-genome dialogs)
+  and close individual DNA sequence windows through an explicit `SEQ_ID`.
 - UI-intent capability/introspection output is available via `ui intents`.
 - Command Palette entries for UI-intent targets are generated from the shared
   `UiIntentTarget` metadata (title, detail, keywords) instead of duplicating
   those labels inside the GUI adapter; helper-genome targets participate in
   the same metadata path.
-- Query helpers are implemented and can be composed with open/focus for
+- Query helpers are implemented and can be composed with open/focus/close for
   prepared-reference selection, for example:
   - `ui open prepared-references --species human --latest`
   - explicit `--genome-id` overrides query-based selection
@@ -993,13 +998,13 @@ UI-intent tool routine (target contract for MCP/agent/voice adapters):
    - adapter returns stable action/target list and required/optional arguments
 2. Resolve:
    - caller resolves target selection deterministically (for example
-     `ui prepared-genomes` / `ui latest-prepared`) before open/focus execution
+     `ui prepared-genomes` / `ui latest-prepared`) before open/focus/close execution
    - ambiguous query results must return structured "needs disambiguation"
      payloads instead of guessing
 3. Guard:
    - mutating/destructive intents require explicit confirmation field in the
      adapter request before execution
-   - non-mutating intents (`open`, `focus`, list/query helpers) execute without
+   - non-mutating intents (`open`, `focus`, `close`, list/query helpers) execute without
      mutating confirmation
 4. Execute:
    - adapter maps request to existing shared `ui ...` command contracts
@@ -2297,7 +2302,7 @@ Deferred-scope rules:
   `RenderIsoformArchitectureSvg`): accepted and implemented
 - Add async long-running command execution contract for agent-suggested BLAST
   and primer-pair multi-BLAST workflows: accepted and planned
-- Add shared GUI intent command plane (`ui intents`, `ui open|focus`, prepared
+- Add shared GUI intent command plane (`ui intents`, `ui open|focus|close`, prepared
   query helpers) and wire it into GUI-host dialog openers with deterministic
   prepared-reference selection: accepted and implemented (baseline)
 - Add MCP server adapter that exposes shared deterministic command/operation

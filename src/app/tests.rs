@@ -906,6 +906,132 @@ fn agent_assistant_suggestions_block_nested_agent_family_commands() {
 }
 
 #[test]
+fn agent_assistant_close_sequence_window_intent_preserves_sequence_state() {
+    let mut app = GENtleApp::default();
+    let dna = DNAsequence::from_sequence("ACGTACGT").expect("sequence");
+    app.engine
+        .write()
+        .unwrap()
+        .state_mut()
+        .sequences
+        .insert("fus_live".to_string(), dna.clone());
+    let viewport_id = app.register_window(Window::new_dna(
+        dna,
+        "fus_live".to_string(),
+        app.engine.clone(),
+    ));
+
+    assert!(app.find_open_sequence_viewport_id("fus_live").is_some());
+
+    app.execute_agent_suggested_command(1, "ui close sequence-window fus_live", "manual");
+
+    assert!(
+        !app.windows.contains_key(&viewport_id),
+        "close-window intent should remove the visible DNA viewport"
+    );
+    assert!(
+        app.engine
+            .read()
+            .unwrap()
+            .state()
+            .sequences
+            .contains_key("fus_live"),
+        "close-window intent must not delete the loaded sequence record"
+    );
+    assert!(
+        app.agent_status.contains("sequence record kept loaded"),
+        "unexpected status: {}",
+        app.agent_status
+    );
+    let entry = app
+        .agent_execution_log
+        .last()
+        .expect("close intent should be logged");
+    assert!(entry.ok);
+    assert!(!entry.state_changed);
+}
+
+#[test]
+fn agent_assistant_open_sequence_window_intent_reopens_loaded_sequence_state() {
+    let mut app = GENtleApp::default();
+    let dna = DNAsequence::from_sequence("ACGTACGT").expect("sequence");
+    app.engine
+        .write()
+        .unwrap()
+        .state_mut()
+        .sequences
+        .insert("fus_live".to_string(), dna);
+
+    app.execute_agent_suggested_command(1, "ui open sequence-window fus_live", "manual");
+
+    assert!(
+        app.new_windows
+            .iter()
+            .any(|window| window.sequence_id().as_deref() == Some("fus_live")),
+        "open-window intent should queue a DNA viewport for the loaded sequence"
+    );
+    assert!(
+        app.engine
+            .read()
+            .unwrap()
+            .state()
+            .sequences
+            .contains_key("fus_live"),
+        "open-window intent must not mutate the loaded sequence record"
+    );
+    assert!(
+        app.agent_status
+            .contains("ui intent open 'sequence-window'"),
+        "unexpected status: {}",
+        app.agent_status
+    );
+    let entry = app
+        .agent_execution_log
+        .last()
+        .expect("open intent should be logged");
+    assert!(entry.ok);
+    assert!(!entry.state_changed);
+}
+
+#[test]
+fn agent_assistant_close_ui_intent_closes_catalogued_dialog_without_state_change() {
+    let mut app = GENtleApp::default();
+    app.show_pcr_design_dialog = true;
+
+    app.execute_agent_suggested_command(1, "ui close pcr-design", "manual");
+
+    assert!(!app.show_pcr_design_dialog);
+    assert!(
+        app.agent_status.contains("ui intent close 'pcr-design'"),
+        "unexpected status: {}",
+        app.agent_status
+    );
+    let entry = app
+        .agent_execution_log
+        .last()
+        .expect("close intent should be logged");
+    assert!(entry.ok);
+    assert!(!entry.state_changed);
+}
+
+#[test]
+fn agent_ensembl_fetch_no_open_flag_suppresses_auto_open_only_for_gene_fetch() {
+    let gene_command =
+        parse_shell_line("/fetch ensembl FUS --species homo_sapiens --id fus_live --no-open")
+            .expect("parse no-open fetch");
+    assert!(GENtleApp::agent_command_suppresses_auto_open(
+        "/fetch ensembl FUS --species homo_sapiens --id fus_live --no-open",
+        &gene_command
+    ));
+
+    let state_command = parse_shell_line("state-summary").expect("parse state-summary");
+    assert!(!GENtleApp::agent_command_suppresses_auto_open(
+        "state-summary --no-open",
+        &state_command
+    ));
+}
+
+#[test]
 fn agent_prompt_direct_shell_command_detects_agent_control_commands_only() {
     assert_eq!(
         GENtleApp::agent_prompt_direct_shell_command("  /list  "),
@@ -1151,7 +1277,10 @@ fn agent_suggestion_fact_readiness_uses_loaded_project_state() {
             "id": "missing_seq"
         }))
         .expect("blocked expression should parse");
-    assert!(blocked.contains("blocked"), "unexpected readiness: {blocked}");
+    assert!(
+        blocked.contains("blocked"),
+        "unexpected readiness: {blocked}"
+    );
 }
 
 #[test]

@@ -163,6 +163,7 @@ use crate::{
     engine_shell::{
         ShellCommand, ShellExecutionOptions, ShellRunResult, UiIntentAction, UiIntentTarget,
         execute_shell_command_with_options, normalize_pasted_iupac_sequence, parse_shell_line,
+        split_shell_words,
     },
     ensembl_protein::{EnsemblProteinEntry, EnsemblProteinEntrySummary},
     enzymes,

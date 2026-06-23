@@ -3512,7 +3512,7 @@ external coding agent runtime, see:
     - `construct_reasoning_graph` (shared `construct-reasoning show-graph` inspection contract)
     - `helper_interpretation` (direct helper-construct interpretation lookup)
     - `ui_intents` (shared `ui intents` catalog)
-    - `ui_intent` (shared `ui open|focus ...` resolution path)
+    - `ui_intent` (shared `ui open|focus|close ...` resolution path)
     - `ui_prepared_genomes` (shared `ui prepared-genomes ...` query path)
     - `ui_latest_prepared` (shared `ui latest-prepared ...` query path)
   - successful mutating calls (`op`, `workflow`) persist state to the resolved
@@ -3749,10 +3749,12 @@ Shell/engine quick-install contracts:
 
 - `ui_intent`
   - arguments:
-    - required: `action` (`open|focus`), `target`
-    - optional: `state_path`, `genome_id`, `helpers`, `catalog_path`,
+    - required: `action` (`open|focus|close`), `target`
+    - optional: `state_path`, `seq_id`, `genome_id`, `helpers`, `catalog_path`,
       `cache_dir`, `filter`, `species`, `latest`
   - current stable targets:
+    - `sequence-window` (requires `seq_id`; controls a loaded DNA sequence
+      viewer without mutating the sequence record)
     - `prepared-references`
     - `prepare-reference-genome`
     - `retrieve-genome-sequence`
@@ -3766,7 +3768,9 @@ Shell/engine quick-install contracts:
     - `blast-helper-sequence`
   - behavior:
     - executes shared shell command:
-      - `ui open TARGET ...` or `ui focus TARGET ...`
+      - `ui open TARGET ...`, `ui focus TARGET ...`,
+        `ui open sequence-window SEQ_ID`, `ui focus sequence-window SEQ_ID`,
+        `ui close TARGET`, or `ui close sequence-window SEQ_ID`
     - for `target = prepared-references`, optional query flags can resolve
       `selected_genome_id` deterministically through the same helper path used
       by shared shell/CLI
@@ -3843,7 +3847,7 @@ Adapter-equivalence guarantee for UI-intent tools:
   - intent catalog (`ui_intents`)
   - prepared query (`ui_prepared_genomes`)
   - latest helper (`ui_latest_prepared`)
-  - open/focus intent resolution (`ui_intent`)
+  - open/focus/close intent resolution (`ui_intent`)
 
 - `macros run/instance-list/instance-show/template-list/template-show/template-put/template-delete/template-import/template-run`
   - shared-shell macro adapter family for full operation/workflow scripting
@@ -4353,6 +4357,18 @@ Agent command-scope declaration:
   - `/open` and `/import` request the GUI sequence-file picker. In headless
     shell execution they return a structured UI-intent payload explaining that
     a GUI host is required.
+  - `ui open sequence-window SEQ_ID`,
+    `ui focus sequence-window SEQ_ID`, and
+    `ui close sequence-window SEQ_ID` control the viewer for an already-loaded
+    sequence record. These are non-mutating GUI intents and do not refetch,
+    reimport, or delete sequence data.
+  - `/open sequence-window SEQ_ID` is a GENtle-local slash alias for
+    `ui open sequence-window SEQ_ID`.
+  - `ui close TARGET` requests closing a catalogued GUI tool/dialog target
+    without mutating project data.
+  - `/close sequence-window SEQ_ID` requests closing an open DNA sequence
+    viewer for `SEQ_ID`. It is a non-mutating GUI intent and does not remove
+    the loaded sequence record from project state.
   - `/open file PATH [--id ID]` and `/import file PATH [--id ID]` load an exact
     user-provided sequence file through `LoadFile`.
 - Accepted explicit sequence/fetch aliases:
@@ -4368,12 +4384,15 @@ Agent command-scope declaration:
   - `/fetch uniprot QUERY [--id ID]`
     - `QUERY` is a UniProtKB/Swiss-Prot accession or entry name; `--id` names
       the local GENtle metadata entry.
-  - `/fetch ensembl QUERY [--species NAME] [--id ID]`
-  - `/fetch ensembl-gene QUERY [--species NAME] [--id ID]`
+  - `/fetch ensembl QUERY [--species NAME] [--id ID] [--no-open]`
+  - `/fetch ensembl-gene QUERY [--species NAME] [--id ID] [--no-open]`
     - `QUERY` is an approved gene symbol for the requested species or a stable
       Ensembl gene id; for human symbols this means HGNC-approved symbols such
       as `FUS` or `TP53`, while HGNC IDs such as `HGNC:11998` need resolution
       before database-specific fetching.
+    - In the GUI Agent Assistant, `--no-open` suppresses the automatic DNA
+      sequence viewer open after the fetched gene is imported into project
+      state; headless shell fetches are unaffected.
   - `/fetch ensembl-protein QUERY [--id ID]`
     - `QUERY` is an Ensembl protein/translation stable id or accepted Ensembl
       lookup query, not a UniProt accession.

@@ -408,8 +408,7 @@ impl GentleEngine {
         });
         let mut text = serde_json::to_string_pretty(&manifest).unwrap_or_else(|_| "{}".to_string());
         text.push('\n');
-        std::fs::write(&path, text)
-        .map_err(|e| EngineError {
+        std::fs::write(&path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write Glen manifest '{}': {e}", path.display()),
             cause_chain: vec![],
@@ -461,8 +460,7 @@ impl GentleEngine {
         let mut text =
             serde_json::to_string_pretty(&provenance).unwrap_or_else(|_| "{}".to_string());
         text.push('\n');
-        std::fs::write(&path, text)
-        .map_err(|e| EngineError {
+        std::fs::write(&path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write Glen provenance '{}': {e}", path.display()),
             cause_chain: vec![],

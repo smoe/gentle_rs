@@ -108,9 +108,9 @@ target lists.
 
 Status: active
 
-GUI `ui open|focus ...` handlers may open/focus host windows and dialogs, but
-must route target resolution through shared `ui ...` shell command contracts
-where possible.
+GUI `ui open|focus|close ...` handlers may open/focus/close host windows and
+dialogs, but must route target resolution through shared `ui ...` shell command
+contracts where possible.
 
 ## DEC-013: Mutating Agent/MCP Safety
 

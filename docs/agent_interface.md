@@ -74,6 +74,17 @@ instead of being reinterpreted as prose. Ollama REPL habits such as bare
 `/path/to/file` attachments are not used here; use `/open file PATH`, `/import
 file PATH`, or the GUI import path for local sequence files.
 
+Viewer-window requests are GUI intents, not project-data mutations. To control a
+catalogued GENtle tool/dialog, use `ui open TARGET`, `ui focus TARGET`, or
+`ui close TARGET` such as `ui close pcr-design`. To control a DNA sequence
+viewer while keeping the sequence loaded, use
+`ui open sequence-window SEQ_ID`, `ui focus sequence-window SEQ_ID`, or
+`ui close sequence-window SEQ_ID`; `/open sequence-window SEQ_ID` and
+`/close sequence-window SEQ_ID` are convenience aliases. Do not use
+delete/remove commands for window-close requests. For Ensembl gene retrievals
+from the Agent Assistant, add `--no-open` when the fetched sequence should be
+loaded into project state without automatically opening a DNA sequence viewer.
+
 After the format probe passes, ask for the real task while keeping execution
 reviewed:
 

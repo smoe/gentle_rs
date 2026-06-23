@@ -6,7 +6,7 @@ use crate::{
         Engine, EngineStateSummary, FeatureExpertTarget, GentleEngine, Operation, ProjectState,
         Workflow,
     },
-    engine_shell::{execute_shell_command, ShellCommand},
+    engine_shell::{ShellCommand, execute_shell_command},
     enzymes::active_restriction_enzymes,
     methylation_sites::MethylationMode,
     resource_sync,
@@ -1999,12 +1999,14 @@ mod tests {
 
         assert_eq!(wrapper_list, shell_list.output);
         assert_eq!(wrapper_show, shell_show.output);
-        assert!(wrapper_show["summary"]["fact_summaries"]
-            .as_array()
-            .map(|rows| rows.iter().any(|row| {
-                row["fact_type"].as_str() == Some("adapter_restriction_capture_context")
-            }))
-            .unwrap_or(false));
+        assert!(
+            wrapper_show["summary"]["fact_summaries"]
+                .as_array()
+                .map(|rows| rows.iter().any(|row| {
+                    row["fact_type"].as_str() == Some("adapter_restriction_capture_context")
+                }))
+                .unwrap_or(false)
+        );
     }
 
     #[test]
@@ -2082,11 +2084,11 @@ mod tests {
         )
         .expect("shell inspection-action list");
         assert_eq!(wrapper_list, shell_list.output);
-        assert!(wrapper_list["actions"]
-            .as_array()
-            .is_some_and(|actions| actions
+        assert!(wrapper_list["actions"].as_array().is_some_and(|actions| {
+            actions
                 .iter()
-                .any(|row| row["action_id"].as_str() == Some(protocol_action.action_id.as_str()))));
+                .any(|row| row["action_id"].as_str() == Some(protocol_action.action_id.as_str()))
+        }));
         assert!(wrapper_list["actions"].as_array().is_some_and(|actions| {
             actions.iter().any(|row| {
                 row["action_id"].as_str() == Some(direct_action.action_id.as_str())
@@ -2108,14 +2110,16 @@ mod tests {
         )
         .expect("js filtered inspection-action list");
         assert_eq!(filtered["action_count"].as_u64(), Some(0));
-        assert!(list_construct_reasoning_inspection_actions_impl(
-            state.clone(),
-            "missing_graph",
-            "",
-            "",
-            "",
-        )
-        .is_err());
+        assert!(
+            list_construct_reasoning_inspection_actions_impl(
+                state.clone(),
+                "missing_graph",
+                "",
+                "",
+                "",
+            )
+            .is_err()
+        );
 
         let wrapper_run = run_construct_reasoning_inspection_action_impl(
             state.clone(),
@@ -2152,21 +2156,25 @@ mod tests {
         );
         let stored = GentleEngine::from_state(wrapper_run.state.clone())
             .list_dotplot_views(Some("construct_reasoning_js_inspection"));
-        assert!(stored
-            .iter()
-            .any(|row| row.dotplot_id == "js_reasoning_action_plot"));
-        assert!(run_construct_reasoning_inspection_action_impl(
-            state,
-            &graph.graph_id,
-            "missing_action",
-            4,
-            1,
-            0,
-            Some(128),
-            "js_missing_action_plot",
-            "",
-        )
-        .is_err());
+        assert!(
+            stored
+                .iter()
+                .any(|row| row.dotplot_id == "js_reasoning_action_plot")
+        );
+        assert!(
+            run_construct_reasoning_inspection_action_impl(
+                state,
+                &graph.graph_id,
+                "missing_action",
+                4,
+                1,
+                0,
+                Some(128),
+                "js_missing_action_plot",
+                "",
+            )
+            .is_err()
+        );
     }
 
     #[test]

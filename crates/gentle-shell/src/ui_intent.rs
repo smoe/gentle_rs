@@ -6,11 +6,12 @@
 use serde::{Deserialize, Serialize};
 
 /// GUI-facing UI-intent verb emitted by shell commands that ask an adapter to
-/// open or focus a specific tool surface.
+/// open, focus, or close a specific tool surface.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum UiIntentAction {
     Open,
     Focus,
+    Close,
 }
 
 impl UiIntentAction {
@@ -19,6 +20,7 @@ impl UiIntentAction {
         match self {
             Self::Open => "open",
             Self::Focus => "focus",
+            Self::Close => "close",
         }
     }
 
@@ -27,6 +29,7 @@ impl UiIntentAction {
         match raw.trim().to_ascii_lowercase().as_str() {
             "open" | "show" | "launch" => Some(Self::Open),
             "focus" | "activate" | "raise" => Some(Self::Focus),
+            "close" | "hide" | "dismiss" => Some(Self::Close),
             _ => None,
         }
     }
@@ -64,7 +67,8 @@ const UI_INTENT_TARGETS: [UiIntentTarget; UiIntentTarget::COUNT] = [
     UiIntentTarget::BlastHelperSequence,
 ];
 
-const UI_INTENT_ACTION_NAMES: [&str; 2] = ["open", "focus"];
+const UI_INTENT_ACTION_NAMES: [&str; 3] = ["open", "focus", "close"];
+const UI_INTENT_FILE_PICKER_ACTION_NAMES: [&str; 2] = ["open", "focus"];
 const UI_INTENT_ARGUMENT_GENOME_ID: UiIntentArgument = UiIntentArgument {
     name: "genome_id",
     required: false,
@@ -314,8 +318,8 @@ impl UiIntentTarget {
     /// Stable action names accepted for this target.
     pub fn actions(self) -> &'static [&'static str] {
         match self {
-            Self::OpenSequence
-            | Self::PreparedReferences
+            Self::OpenSequence => &UI_INTENT_FILE_PICKER_ACTION_NAMES,
+            Self::PreparedReferences
             | Self::PrepareReferenceGenome
             | Self::RetrieveGenomeSequence
             | Self::BlastGenomeSequence
@@ -469,6 +473,9 @@ mod tests {
         ("focus", UiIntentAction::Focus),
         ("activate", UiIntentAction::Focus),
         ("raise", UiIntentAction::Focus),
+        ("close", UiIntentAction::Close),
+        ("hide", UiIntentAction::Close),
+        ("dismiss", UiIntentAction::Close),
     ];
 
     fn assert_exhaustive_target_match(target: UiIntentTarget) {
@@ -545,6 +552,10 @@ mod tests {
         assert_eq!(
             UiIntentAction::parse(UiIntentAction::Focus.as_str()),
             Some(UiIntentAction::Focus)
+        );
+        assert_eq!(
+            UiIntentAction::parse(UiIntentAction::Close.as_str()),
+            Some(UiIntentAction::Close)
         );
         let mut aliases = BTreeMap::new();
         for (alias, expected) in ACTION_ALIAS_CASES {

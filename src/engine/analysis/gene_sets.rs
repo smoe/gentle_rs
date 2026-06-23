@@ -8,9 +8,9 @@ use super::*;
 use crate::gene_groups::LoadedGeneGroupRecord;
 use gentle_protocol::{
     GENE_SET_CO_REGULATED_CACHE_SCHEMA, GENE_SET_DIRECT_LIST_CACHE_SCHEMA,
-    GENE_SET_ONTOLOGY_ASSIGNMENT_CACHE_SCHEMA, GeneGroupMember,
-    GeneSetCoRegulatedProducerMetadata, GeneSetProducerFilter, GeneSetProducerKind,
-    GeneSetProducerProvenance, GeneSetProducerQueryMetadata,
+    GENE_SET_ONTOLOGY_ASSIGNMENT_CACHE_SCHEMA, GeneGroupMember, GeneSetCoRegulatedProducerMetadata,
+    GeneSetProducerFilter, GeneSetProducerKind, GeneSetProducerProvenance,
+    GeneSetProducerQueryMetadata,
 };
 use serde_json::Value;
 use std::{collections::BTreeSet, path::Path};
@@ -1580,15 +1580,18 @@ impl GentleEngine {
                     &["term_label", "label", "name", "term_name"],
                 );
             }
-            let mut metadata = Self::gene_set_direct_list_metadata_from_value(entry, &mut selection.warnings);
+            let mut metadata =
+                Self::gene_set_direct_list_metadata_from_value(entry, &mut selection.warnings);
             metadata.merge_missing_from(&root_metadata);
             selection.metadata.merge_missing_from(&metadata);
 
             if let Some(members) = entry.get("members") {
-                selection.members.extend(Self::gene_set_direct_list_members_from_value(
-                    members,
-                    &mut selection.warnings,
-                ));
+                selection
+                    .members
+                    .extend(Self::gene_set_direct_list_members_from_value(
+                        members,
+                        &mut selection.warnings,
+                    ));
             } else if let Some(member) =
                 Self::gene_set_direct_list_member_from_value(entry, &mut selection.warnings)
             {
@@ -1918,10 +1921,7 @@ impl GentleEngine {
     ) -> Result<GeneSetCoRegulatedThreshold, EngineError> {
         let compact = raw.split_whitespace().collect::<String>();
         for (operator_token, operator) in [
-            (
-                ">=",
-                GeneSetCoRegulatedThresholdOperator::GreaterEqual,
-            ),
+            (">=", GeneSetCoRegulatedThresholdOperator::GreaterEqual),
             ("<=", GeneSetCoRegulatedThresholdOperator::LessEqual),
             (">", GeneSetCoRegulatedThresholdOperator::GreaterThan),
             ("<", GeneSetCoRegulatedThresholdOperator::LessThan),
@@ -2029,13 +2029,23 @@ impl GentleEngine {
         scoring_method: Option<&str>,
     ) -> Option<f64> {
         let mut keys = vec![];
-        if let Some(method) = scoring_method.map(str::trim).filter(|value| !value.is_empty()) {
+        if let Some(method) = scoring_method
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
             keys.push(method.to_ascii_lowercase().replace('-', "_"));
         }
         keys.extend(
-            ["score", "value", "logfc", "log2fc", "statistic", "effect_size"]
-                .iter()
-                .map(|value| value.to_string()),
+            [
+                "score",
+                "value",
+                "logfc",
+                "log2fc",
+                "statistic",
+                "effect_size",
+            ]
+            .iter()
+            .map(|value| value.to_string()),
         );
         for key in keys {
             if let Some(raw) = value.get(&key) {
@@ -2142,7 +2152,10 @@ impl GentleEngine {
         };
         Self::gene_set_co_regulated_merge_strings(&mut selection.dataset_ids, dataset_ids);
         Self::gene_set_co_regulated_merge_strings(&mut selection.contrast_labels, contrast_labels);
-        Self::gene_set_co_regulated_merge_strings(&mut selection.condition_labels, condition_labels);
+        Self::gene_set_co_regulated_merge_strings(
+            &mut selection.condition_labels,
+            condition_labels,
+        );
         let mut matched_rows = 0usize;
 
         for entry in entries {
@@ -2188,10 +2201,8 @@ impl GentleEngine {
                     .warnings
                     .push("Skipping co-regulated JSON row without symbol or gene_id".to_string());
             }
-            let mut metadata = Self::gene_set_direct_list_metadata_from_value(
-                entry,
-                &mut selection.warnings,
-            );
+            let mut metadata =
+                Self::gene_set_direct_list_metadata_from_value(entry, &mut selection.warnings);
             metadata.merge_missing_from(&root_metadata);
             selection.metadata.merge_missing_from(&metadata);
             Self::gene_set_co_regulated_merge_strings(
@@ -2276,7 +2287,16 @@ impl GentleEngine {
         let score_col = headers
             .iter()
             .position(|header| header == &scoring_method.to_ascii_lowercase().replace('-', "_"))
-            .or_else(|| find_col(&["score", "value", "logfc", "log2fc", "statistic", "effect_size"]));
+            .or_else(|| {
+                find_col(&[
+                    "score",
+                    "value",
+                    "logfc",
+                    "log2fc",
+                    "statistic",
+                    "effect_size",
+                ])
+            });
         let provider_id_col = find_col(&["provider_id", "provider"]);
         let provider_label_col = find_col(&["provider_label", "provider_name"]);
         let provider_version_col = find_col(&["provider_version"]);
@@ -2294,22 +2314,26 @@ impl GentleEngine {
                 .filter(|value| !value.is_empty())
                 .map(str::to_string)
         };
-        let requested_matches = |record: &csv::StringRecord, col: Option<usize>, requested: &[String]| {
-            if requested.is_empty() {
-                return true;
-            }
-            let Some(candidate) = get(record, col) else {
-                return false;
+        let requested_matches =
+            |record: &csv::StringRecord, col: Option<usize>, requested: &[String]| {
+                if requested.is_empty() {
+                    return true;
+                }
+                let Some(candidate) = get(record, col) else {
+                    return false;
+                };
+                requested.iter().any(|requested| {
+                    Self::gene_set_normalize_lookup(&candidate)
+                        == Self::gene_set_normalize_lookup(requested)
+                })
             };
-            requested.iter().any(|requested| {
-                Self::gene_set_normalize_lookup(&candidate)
-                    == Self::gene_set_normalize_lookup(requested)
-            })
-        };
         let mut selection = GeneSetCoRegulatedCohortSelection::default();
         Self::gene_set_co_regulated_merge_strings(&mut selection.dataset_ids, dataset_ids);
         Self::gene_set_co_regulated_merge_strings(&mut selection.contrast_labels, contrast_labels);
-        Self::gene_set_co_regulated_merge_strings(&mut selection.condition_labels, condition_labels);
+        Self::gene_set_co_regulated_merge_strings(
+            &mut selection.condition_labels,
+            condition_labels,
+        );
         let mut matched_rows = 0usize;
 
         for row in reader.records() {
@@ -2389,7 +2413,10 @@ impl GentleEngine {
                 Self::gene_set_co_regulated_merge_strings(&mut selection.contrast_labels, &[value]);
             }
             if let Some(value) = get(&record, condition_col) {
-                Self::gene_set_co_regulated_merge_strings(&mut selection.condition_labels, &[value]);
+                Self::gene_set_co_regulated_merge_strings(
+                    &mut selection.condition_labels,
+                    &[value],
+                );
             }
         }
         if matched_rows == 0 {
@@ -2718,11 +2745,10 @@ impl GentleEngine {
         report.organism = selection.metadata.organism.clone();
         report.taxon_id = selection.metadata.taxon_id.clone();
         report.symbol_namespace = selection.metadata.symbol_namespace.clone();
-        let cache_id = selection
-            .metadata
-            .cache_id
-            .clone()
-            .unwrap_or_else(|| Self::gene_set_ontology_assignment_fallback_cache_id(cache_path));
+        let cache_id =
+            selection.metadata.cache_id.clone().unwrap_or_else(|| {
+                Self::gene_set_ontology_assignment_fallback_cache_id(cache_path)
+            });
         let term_source_id = if selection.term_id == term {
             ontology_namespace
                 .map(str::trim)
@@ -3463,10 +3489,9 @@ impl GentleEngine {
         report: GeneSetCutRunRegulatorySupportReport,
     ) -> Result<(), EngineError> {
         let mut store = self.read_gene_set_artifact_store();
-        store.cutrun_support_reports.insert(
-            Self::gene_set_cutrun_support_artifact_id(&report),
-            report,
-        );
+        store
+            .cutrun_support_reports
+            .insert(Self::gene_set_cutrun_support_artifact_id(&report), report);
         self.write_gene_set_artifact_store(store)
     }
 

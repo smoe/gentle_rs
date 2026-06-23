@@ -1210,6 +1210,22 @@ fn parse_local_slash_aliases_cover_gui_file_import_fetch_and_paste() {
         other => panic!("unexpected /open command: {other:?}"),
     }
 
+    match parse_shell_line("/close sequence-window tp73").expect("parse /close sequence-window") {
+        ShellCommand::UiSequenceWindow { action, seq_id } => {
+            assert_eq!(action, UiIntentAction::Close);
+            assert_eq!(seq_id, "tp73");
+        }
+        other => panic!("unexpected /close sequence-window command: {other:?}"),
+    }
+
+    match parse_shell_line("/open sequence-window tp73").expect("parse /open sequence-window") {
+        ShellCommand::UiSequenceWindow { action, seq_id } => {
+            assert_eq!(action, UiIntentAction::Open);
+            assert_eq!(seq_id, "tp73");
+        }
+        other => panic!("unexpected /open sequence-window command: {other:?}"),
+    }
+
     match parse_shell_line("/import file test_files/tp73.ncbi.gb --id tp73") {
         Ok(ShellCommand::LoadFile { path, as_id }) => {
             assert_eq!(path, "test_files/tp73.ncbi.gb");
@@ -1237,6 +1253,19 @@ fn parse_local_slash_aliases_cover_gui_file_import_fetch_and_paste() {
             assert_eq!(entry_id.as_deref(), Some("tp73_gene"));
         }
         other => panic!("unexpected /fetch ensembl command: {other:?}"),
+    }
+
+    match parse_shell_line("/fetch ensembl FUS --species homo_sapiens --id fus_live --no-open") {
+        Ok(ShellCommand::EnsemblGeneFetch {
+            query,
+            species,
+            entry_id,
+        }) => {
+            assert_eq!(query, "FUS");
+            assert_eq!(species.as_deref(), Some("homo_sapiens"));
+            assert_eq!(entry_id.as_deref(), Some("fus_live"));
+        }
+        other => panic!("unexpected /fetch ensembl --no-open command: {other:?}"),
     }
 
     match parse_shell_line("/features restriction-scan demo_seq --enzyme EcoRI") {
@@ -24855,6 +24884,15 @@ fn parse_ui_open_and_prepared_commands() {
         other => panic!("unexpected command: {other:?}"),
     }
 
+    let close_pcr = parse_shell_line("ui close pcr-design").expect("parse ui close pcr-design");
+    match close_pcr {
+        ShellCommand::UiIntent { action, target, .. } => {
+            assert_eq!(action, UiIntentAction::Close);
+            assert_eq!(target, UiIntentTarget::PcrDesign);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
     let open_seq_confirm = parse_shell_line("ui open sequencing-confirmation")
         .expect("parse ui open sequencing-confirmation");
     match open_seq_confirm {
@@ -24871,6 +24909,36 @@ fn parse_ui_open_and_prepared_commands() {
         ShellCommand::UiIntent { action, target, .. } => {
             assert_eq!(action, UiIntentAction::Focus);
             assert_eq!(target, UiIntentTarget::SequencingConfirmation);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    match parse_shell_line("ui close sequence-window fus_live")
+        .expect("parse ui close sequence-window")
+    {
+        ShellCommand::UiSequenceWindow { action, seq_id } => {
+            assert_eq!(action, UiIntentAction::Close);
+            assert_eq!(seq_id, "fus_live");
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    match parse_shell_line("ui open sequence-window fus_live")
+        .expect("parse ui open sequence-window")
+    {
+        ShellCommand::UiSequenceWindow { action, seq_id } => {
+            assert_eq!(action, UiIntentAction::Open);
+            assert_eq!(seq_id, "fus_live");
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    match parse_shell_line("ui focus sequence-window fus_live")
+        .expect("parse ui focus sequence-window")
+    {
+        ShellCommand::UiSequenceWindow { action, seq_id } => {
+            assert_eq!(action, UiIntentAction::Focus);
+            assert_eq!(seq_id, "fus_live");
         }
         other => panic!("unexpected command: {other:?}"),
     }
@@ -24940,7 +25008,79 @@ fn execute_ui_intents_lists_shared_target_metadata() {
                 .iter()
                 .any(|value| value.as_str() == Some(UiIntentAction::Focus.as_str()))
         );
+        if row["target"].as_str() == Some(UiIntentTarget::OpenSequence.as_str()) {
+            assert!(
+                !actions
+                    .iter()
+                    .any(|value| value.as_str() == Some(UiIntentAction::Close.as_str()))
+            );
+        } else {
+            assert!(
+                actions
+                    .iter()
+                    .any(|value| value.as_str() == Some(UiIntentAction::Close.as_str()))
+            );
+        }
     }
+    assert!(
+        out.output["commands"]
+            .as_array()
+            .expect("commands array")
+            .iter()
+            .any(|value| value.as_str() == Some("ui close TARGET"))
+    );
+    assert!(
+        out.output["commands"]
+            .as_array()
+            .expect("commands array")
+            .iter()
+            .any(|value| value.as_str() == Some("ui open sequence-window SEQ_ID"))
+    );
+    assert!(
+        out.output["commands"]
+            .as_array()
+            .expect("commands array")
+            .iter()
+            .any(|value| value.as_str() == Some("ui focus sequence-window SEQ_ID"))
+    );
+    assert!(
+        out.output["commands"]
+            .as_array()
+            .expect("commands array")
+            .iter()
+            .any(|value| value.as_str() == Some("ui close sequence-window SEQ_ID"))
+    );
+}
+
+#[test]
+fn execute_ui_sequence_window_records_non_mutating_intent() {
+    let mut engine = GentleEngine::new();
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::UiSequenceWindow {
+            action: UiIntentAction::Close,
+            seq_id: "fus_live".to_string(),
+        },
+    )
+    .expect("execute ui close sequence-window");
+
+    assert!(!out.state_changed);
+    assert_eq!(
+        out.output["schema"].as_str(),
+        Some("gentle.ui_sequence_window_intent.v1")
+    );
+    assert_eq!(out.output["ui_intent"]["action"].as_str(), Some("close"));
+    assert_eq!(
+        out.output["ui_intent"]["target"].as_str(),
+        Some("sequence-window")
+    );
+    assert_eq!(out.output["ui_intent"]["seq_id"].as_str(), Some("fus_live"));
+    assert!(
+        out.output["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("does not delete")
+    );
 }
 
 #[test]

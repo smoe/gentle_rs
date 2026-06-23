@@ -1410,6 +1410,10 @@ pub enum ShellCommand {
         species: Option<String>,
         latest: bool,
     },
+    UiSequenceWindow {
+        action: UiIntentAction,
+        seq_id: String,
+    },
     UiPreparedGenomes {
         helper_mode: bool,
         catalog_path: Option<String>,
@@ -8116,6 +8120,12 @@ impl ShellCommand {
                     "request GUI {} for '{}' (genome_id={genome}, scope={scope}, catalog='{catalog}', cache='{cache}', filter='{filter}', species='{species}', latest={latest})",
                     action.as_str(),
                     target.as_str()
+                )
+            }
+            Self::UiSequenceWindow { action, seq_id } => {
+                format!(
+                    "request GUI {} for sequence window '{seq_id}'",
+                    action.as_str()
                 )
             }
             Self::UiPreparedGenomes {
@@ -20561,7 +20571,7 @@ fn parse_ensembl_gene_command(tokens: &[String]) -> Result<ShellCommand, String>
         "fetch" => {
             if tokens.len() < 3 {
                 return Err(
-                    "ensembl-gene fetch requires QUERY [--species NAME] [--entry-id ID]"
+                    "ensembl-gene fetch requires QUERY [--species NAME] [--entry-id ID] [--no-open]"
                         .to_string(),
                 );
             }
@@ -20589,6 +20599,9 @@ fn parse_ensembl_gene_command(tokens: &[String]) -> Result<ShellCommand, String>
                             "--entry-id",
                             "ensembl-gene fetch",
                         )?);
+                    }
+                    "--no-open" => {
+                        idx += 1;
                     }
                     other => {
                         return Err(format!("Unknown option '{other}' for ensembl-gene fetch"));
@@ -21402,7 +21415,7 @@ fn parse_agents_command(tokens: &[String]) -> Result<ShellCommand, String> {
 fn parse_ui_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "ui requires a subcommand: intents, open, focus, prepared-genomes, latest-prepared"
+            "ui requires a subcommand: intents, open, focus, close, prepared-genomes, latest-prepared"
                 .to_string(),
         );
     }
@@ -21413,10 +21426,31 @@ fn parse_ui_command(tokens: &[String]) -> Result<ShellCommand, String> {
             }
             Ok(ShellCommand::UiListIntents)
         }
+        action_raw
+            if tokens.len() >= 3
+                && UiIntentAction::parse(action_raw).is_some()
+                && matches!(
+                    tokens[2].as_str(),
+                    "sequence-window" | "sequence_window" | "dna-window" | "dna_window"
+                ) =>
+        {
+            if tokens.len() != 4 {
+                return Err(format!("ui {action_raw} sequence-window requires SEQ_ID"));
+            }
+            let action = UiIntentAction::parse(action_raw)
+                .expect("checked ui intent action before parsing sequence-window intent");
+            let seq_id = tokens[3].trim().to_string();
+            if seq_id.is_empty() {
+                return Err(format!(
+                    "ui {action_raw} sequence-window SEQ_ID must not be empty"
+                ));
+            }
+            Ok(ShellCommand::UiSequenceWindow { action, seq_id })
+        }
         action_raw if UiIntentAction::parse(action_raw).is_some() => {
             if tokens.len() < 3 {
                 return Err(
-                    "ui open|focus requires TARGET [--genome-id GENOME_ID] [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]"
+                    "ui open|focus|close requires TARGET [--genome-id GENOME_ID] [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]"
                         .to_string(),
                 );
             }
@@ -21456,7 +21490,7 @@ fn parse_ui_command(tokens: &[String]) -> Result<ShellCommand, String> {
                             tokens,
                             &mut idx,
                             "--genome-id",
-                            "ui open|focus",
+                            "ui open|focus|close",
                         )?);
                     }
                     "--helpers" => {
@@ -21468,7 +21502,7 @@ fn parse_ui_command(tokens: &[String]) -> Result<ShellCommand, String> {
                             tokens,
                             &mut idx,
                             "--catalog",
-                            "ui open|focus",
+                            "ui open|focus|close",
                         )?);
                     }
                     "--cache-dir" => {
@@ -21476,7 +21510,7 @@ fn parse_ui_command(tokens: &[String]) -> Result<ShellCommand, String> {
                             tokens,
                             &mut idx,
                             "--cache-dir",
-                            "ui open|focus",
+                            "ui open|focus|close",
                         )?);
                     }
                     "--filter" => {
@@ -21484,7 +21518,7 @@ fn parse_ui_command(tokens: &[String]) -> Result<ShellCommand, String> {
                             tokens,
                             &mut idx,
                             "--filter",
-                            "ui open|focus",
+                            "ui open|focus|close",
                         )?);
                     }
                     "--species" => {
@@ -21492,7 +21526,7 @@ fn parse_ui_command(tokens: &[String]) -> Result<ShellCommand, String> {
                             tokens,
                             &mut idx,
                             "--species",
-                            "ui open|focus",
+                            "ui open|focus|close",
                         )?);
                     }
                     "--latest" => {
@@ -21522,7 +21556,7 @@ fn parse_ui_command(tokens: &[String]) -> Result<ShellCommand, String> {
                     || latest)
             {
                 return Err(
-                    "ui open|focus TARGET only supports --helpers/--catalog/--cache-dir/--filter/--species/--latest when TARGET is prepared-references"
+                    "ui open|focus|close TARGET only supports --helpers/--catalog/--cache-dir/--filter/--species/--latest when TARGET is prepared-references"
                         .to_string(),
                 );
             }
@@ -21661,7 +21695,7 @@ fn parse_ui_command(tokens: &[String]) -> Result<ShellCommand, String> {
             })
         }
         other => Err(format!(
-            "Unknown ui subcommand '{other}' (expected intents, open, focus, prepared-genomes, latest-prepared)"
+            "Unknown ui subcommand '{other}' (expected intents, open, focus, close, prepared-genomes, latest-prepared)"
         )),
     }
 }
@@ -23840,7 +23874,7 @@ fn parse_slash_fetch_alias(tokens: &[String]) -> Result<ShellCommand, String> {
             if tokens.len() < 3 {
                 return Err(slash_alias_rejection(
                     "/fetch",
-                    "/fetch ensembl requires QUERY",
+                    "/fetch ensembl requires QUERY [--species NAME] [--id ID] [--no-open]",
                 ));
             }
             let query = tokens[2].trim().to_string();
@@ -23869,6 +23903,9 @@ fn parse_slash_fetch_alias(tokens: &[String]) -> Result<ShellCommand, String> {
                             &mut idx,
                             "/fetch ensembl",
                         )?);
+                    }
+                    "--no-open" => {
+                        idx += 1;
                     }
                     other => {
                         return Err(slash_alias_rejection(
@@ -23999,21 +24036,77 @@ fn parse_slash_alias(tokens: &[String]) -> Result<ShellCommand, String> {
                     species: None,
                     latest: false,
                 })
+            } else if tokens[0] == "/open"
+                && matches!(
+                    tokens.get(1).map(String::as_str),
+                    Some(
+                        "sequence-window"
+                            | "sequence_window"
+                            | "dna-window"
+                            | "dna_window"
+                            | "sequence"
+                    )
+                )
+            {
+                if tokens.len() != 3 {
+                    return Err(slash_alias_rejection(
+                        "/open",
+                        "/open sequence-window requires SEQ_ID",
+                    ));
+                }
+                let seq_id = tokens[2].trim().to_string();
+                if seq_id.is_empty() {
+                    return Err(slash_alias_rejection(
+                        "/open",
+                        "/open sequence-window SEQ_ID must not be empty",
+                    ));
+                }
+                Ok(ShellCommand::UiSequenceWindow {
+                    action: UiIntentAction::Open,
+                    seq_id,
+                })
             } else if tokens[1] == "file" {
                 parse_slash_file_alias(tokens, &format!("{} file", tokens[0]))
             } else {
-                Err(slash_alias_rejection(
-                    cmd,
-                    format!(
-                        "{} supports either no arguments or `file PATH [--id ID]`",
-                        tokens[0]
-                    ),
-                ))
+                let supported = if cmd == "/open" {
+                    "/open supports no arguments, `file PATH [--id ID]`, or `sequence-window SEQ_ID`"
+                } else {
+                    "/import supports either no arguments or `file PATH [--id ID]`"
+                };
+                Err(slash_alias_rejection(cmd, supported))
             }
         }
         "/paste" => parse_slash_paste_alias(tokens),
         "/fetch" => parse_slash_fetch_alias(tokens),
         "/features" => parse_slash_features_alias(tokens),
+        "/close" => {
+            if tokens.len() != 3 {
+                return Err(slash_alias_rejection(
+                    "/close",
+                    "/close requires sequence-window SEQ_ID",
+                ));
+            }
+            if !matches!(
+                tokens[1].as_str(),
+                "sequence-window" | "sequence_window" | "dna-window" | "dna_window" | "sequence"
+            ) {
+                return Err(slash_alias_rejection(
+                    "/close",
+                    "/close supports only sequence-window SEQ_ID",
+                ));
+            }
+            let seq_id = tokens[2].trim().to_string();
+            if seq_id.is_empty() {
+                return Err(slash_alias_rejection(
+                    "/close",
+                    "/close sequence-window SEQ_ID must not be empty",
+                ));
+            }
+            Ok(ShellCommand::UiSequenceWindow {
+                action: UiIntentAction::Close,
+                seq_id,
+            })
+        }
         other => Err(slash_alias_rejection(
             other,
             format!("Unknown GENtle-local slash command '{other}'"),
@@ -41818,6 +41911,10 @@ fn execute_ui_command(
                         "ui intents",
                         "ui open TARGET [--genome-id GENOME_ID] [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]",
                         "ui focus TARGET [--genome-id GENOME_ID] [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]",
+                        "ui close TARGET",
+                        "ui open sequence-window SEQ_ID",
+                        "ui focus sequence-window SEQ_ID",
+                        "ui close sequence-window SEQ_ID",
                         "ui prepared-genomes [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]",
                         "ui latest-prepared SPECIES [--helpers] [--catalog PATH] [--cache-dir PATH]"
                     ],
@@ -41854,6 +41951,22 @@ fn execute_ui_command(
             *latest,
             options,
         ),
+        ShellCommand::UiSequenceWindow { action, seq_id } => Ok(ShellRunResult {
+            state_changed: false,
+            output: json!({
+                "schema": "gentle.ui_sequence_window_intent.v1",
+                "ui_intent": {
+                    "action": action.as_str(),
+                    "target": "sequence-window",
+                    "seq_id": seq_id
+                },
+                "applied": false,
+                "message": format!(
+                    "UI intent recorded; {} a sequence window requires GUI host integration and does not delete the sequence record.",
+                    action.as_str()
+                )
+            }),
+        }),
         ShellCommand::UiPreparedGenomes {
             helper_mode,
             catalog_path,
@@ -41921,7 +42034,9 @@ fn execute_ui_intent_command(
             .map(|v| v.to_string());
         prepared_query = Some(prepared.output);
     }
-    let message = if matches!(target, UiIntentTarget::OpenSequence) {
+    let message = if matches!(action, UiIntentAction::Close) {
+        "UI close intent recorded; requires GUI host integration to apply and does not delete project data."
+    } else if matches!(target, UiIntentTarget::OpenSequence) {
         "UI intent recorded; opening a sequence file requires GUI host file-picker integration."
     } else if matches!(target, UiIntentTarget::PreparedReferences) {
         if selected_genome_id.is_some() {
@@ -42607,6 +42722,7 @@ fn execute_shell_command_with_options_dispatch(
         command,
         ShellCommand::UiListIntents
             | ShellCommand::UiIntent { .. }
+            | ShellCommand::UiSequenceWindow { .. }
             | ShellCommand::UiPreparedGenomes { .. }
             | ShellCommand::UiLatestPrepared { .. }
     ) {
@@ -43219,6 +43335,7 @@ fn execute_shell_command_with_options_inner(
         )?,
         ShellCommand::UiListIntents
         | ShellCommand::UiIntent { .. }
+        | ShellCommand::UiSequenceWindow { .. }
         | ShellCommand::UiPreparedGenomes { .. }
         | ShellCommand::UiLatestPrepared { .. } => execute_ui_command(engine, command, options)?,
         ShellCommand::CutRunList { .. }

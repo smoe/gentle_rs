@@ -12,7 +12,7 @@ use crate::{
         DEFAULT_HOST_PROFILE_CATALOG_PATH, Engine, GentleEngine, Operation, ProjectState, Workflow,
     },
     engine_shell::{
-        ShellExecutionOptions, UiIntentTarget, execute_shell_command_with_options,
+        ShellExecutionOptions, UiIntentAction, UiIntentTarget, execute_shell_command_with_options,
         parse_shell_tokens,
     },
     genomes::{
@@ -174,10 +174,16 @@ fn write_framed_json<W: Write>(writer: &mut W, payload: &Value) -> Result<(), St
 }
 
 fn tool_list() -> Value {
-    let ui_intent_target_enum: Vec<&str> = UiIntentTarget::all()
+    let mut ui_intent_target_enum: Vec<&str> = UiIntentTarget::all()
         .iter()
         .map(|target| target.as_str())
         .collect();
+    ui_intent_target_enum.push("sequence-window");
+    let ui_intent_action_enum = vec![
+        UiIntentAction::Open.as_str(),
+        UiIntentAction::Focus.as_str(),
+        UiIntentAction::Close.as_str(),
+    ];
     let mut tools = json!([
         {
             "name": "capabilities",
@@ -614,7 +620,7 @@ fn tool_list() -> Value {
         {
             "name": "ui_intent",
             "title": "UI Intent",
-            "description": "Resolve/record one UI intent through shared `ui open|focus` parser/executor path.",
+            "description": "Resolve/record one UI intent through shared `ui open|focus|close` parser/executor path.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -624,11 +630,15 @@ fn tool_list() -> Value {
                     },
                     "action": {
                         "type": "string",
-                        "enum": ["open", "focus"]
+                        "enum": ui_intent_action_enum
                     },
                     "target": {
                         "type": "string",
                         "enum": ui_intent_target_enum
+                    },
+                    "seq_id": {
+                        "type": "string",
+                        "description": "Loaded sequence id, required when target is sequence-window."
                     },
                     "genome_id": {
                         "type": "string"
@@ -1214,7 +1224,7 @@ fn tool_command_paths(name: &str) -> &'static [&'static str] {
         }
         "construct_reasoning_write_annotation" => &["construct-reasoning write-annotation"],
         "ui_intents" => &["ui intents"],
-        "ui_intent" => &["ui open", "ui focus"],
+        "ui_intent" => &["ui open", "ui focus", "ui close"],
         "ui_prepared_genomes" => &["ui prepared-genomes"],
         "ui_latest_prepared" => &["ui latest-prepared"],
         "blast_async_start" => &["genomes blast-start", "helpers blast-start"],
@@ -2908,17 +2918,33 @@ fn ui_intent_tool_result(default_state_path: &str, arguments: &Value) -> Value {
         Ok(value) => value.to_ascii_lowercase(),
         Err(err) => return tool_result_text(err, "text", true),
     };
-    if action != "open" && action != "focus" {
-        return tool_result_text(
-            format!("MCP argument 'action' must be 'open' or 'focus' (got '{action}')"),
-            "text",
-            true,
-        );
-    }
+    let action = match UiIntentAction::parse(&action) {
+        Some(action) => action.as_str().to_string(),
+        None => {
+            return tool_result_text(
+                format!(
+                    "MCP argument 'action' must be 'open', 'focus', or 'close' (got '{action}')"
+                ),
+                "text",
+                true,
+            );
+        }
+    };
     let target = match required_string_arg(&args, "target") {
         Ok(value) => value,
         Err(err) => return tool_result_text(err, "text", true),
     };
+    if target == "sequence-window" {
+        let seq_id = match required_string_arg(&args, "seq_id") {
+            Ok(value) => value,
+            Err(err) => return tool_result_text(err, "text", true),
+        };
+        let tokens = vec!["ui".to_string(), action, target, seq_id];
+        return match run_non_mutating_shell_tool(default_state_path, &args, tokens, "ui_intent") {
+            Ok(output) => tool_result_json(output, false),
+            Err(err) => tool_result_text(err, "text", true),
+        };
+    }
     let helper_mode = match optional_bool_arg(&args, "helpers") {
         Ok(value) => value.unwrap_or(false),
         Err(err) => return tool_result_text(err, "text", true),
@@ -3631,11 +3657,19 @@ mod tests {
             .iter()
             .map(|value| value.as_str().expect("enum string").to_string())
             .collect::<Vec<_>>();
-        let expected = UiIntentTarget::all()
+        let mut expected = UiIntentTarget::all()
             .iter()
             .map(|target| target.as_str().to_string())
             .collect::<Vec<_>>();
+        expected.push("sequence-window".to_string());
         assert_eq!(actual, expected);
+        let actual_actions = ui_intent["inputSchema"]["properties"]["action"]["enum"]
+            .as_array()
+            .expect("ui_intent action enum")
+            .iter()
+            .map(|value| value.as_str().expect("enum string").to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(actual_actions, vec!["open", "focus", "close"]);
     }
 
     #[test]
@@ -4360,6 +4394,56 @@ mod tests {
             "--latest".to_string(),
         ]);
         assert_eq!(mcp_intent["result"]["structuredContent"], expected_intent);
+
+        let mcp_close_intent = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "ui_intent",
+            json!({
+                "action": "close",
+                "target": "pcr-design"
+            }),
+        );
+        assert_eq!(
+            mcp_close_intent
+                .pointer("/result/isError")
+                .and_then(Value::as_bool),
+            Some(false)
+        );
+        let expected_close_intent = run_shared_ui_command(vec![
+            "ui".to_string(),
+            "close".to_string(),
+            "pcr-design".to_string(),
+        ]);
+        assert_eq!(
+            mcp_close_intent["result"]["structuredContent"],
+            expected_close_intent
+        );
+
+        let mcp_sequence_intent = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "ui_intent",
+            json!({
+                "action": "close",
+                "target": "sequence-window",
+                "seq_id": "fus_live"
+            }),
+        );
+        assert_eq!(
+            mcp_sequence_intent
+                .pointer("/result/isError")
+                .and_then(Value::as_bool),
+            Some(false)
+        );
+        let expected_sequence_intent = run_shared_ui_command(vec![
+            "ui".to_string(),
+            "close".to_string(),
+            "sequence-window".to_string(),
+            "fus_live".to_string(),
+        ]);
+        assert_eq!(
+            mcp_sequence_intent["result"]["structuredContent"],
+            expected_sequence_intent
+        );
     }
 
     #[test]

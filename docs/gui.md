@@ -2678,11 +2678,20 @@ Behavior:
     `File -> Open Sequence...`
   - `/open file PATH [--id ID]` and `/import file PATH [--id ID]` import an
     exact user-provided sequence file and open the resulting sequence window
+  - `ui open TARGET`, `ui focus TARGET`, and `ui close TARGET` control
+    catalogued GENtle tool/dialog windows without changing project data
+  - `ui open sequence-window SEQ_ID`, `ui focus sequence-window SEQ_ID`, and
+    `ui close sequence-window SEQ_ID` control the DNA sequence viewer for a
+    loaded sequence without deleting that sequence from project state;
+    `/open sequence-window SEQ_ID` and `/close sequence-window SEQ_ID` are
+    convenience aliases
   - `/paste sequence --sequence-text DNA [--id ID]` creates a sequence from
     explicit pasted IUPAC DNA text
   - `/fetch genbank`, `/fetch ncbi`, `/fetch uniprot`, `/fetch ensembl*`, and
     `/fetch dbsnp` normalize to existing external fetch routes and should be
     confirmation-gated
+  - `/fetch ensembl ... --no-open` imports the fetched Ensembl gene record
+    without automatically opening a DNA sequence viewer
   - `/grep`, `/find`, `/ls`, `/new`, `/example`, and vague file-discovery
     requests are rejected rather than treated as ClawBio/OpenClaw commands
 - response panel can include:

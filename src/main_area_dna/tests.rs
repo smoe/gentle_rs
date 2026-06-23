@@ -1,18 +1,17 @@
 use super::{
-    DnaPresentationMode, FeatureCopyPayloadKind, MainAreaDna, PcrDesignerMode, PcrPaintRole,
-    PrimaryMapMode, QpcrTranscriptIntentUiMode, RnaReadConcatemerSubsetMode,
-    RnaReadInterpretOpsUiState, RnaReadTask, RnaReadTaskMessage, RnaReadTaskOutcome,
+    DnaPresentationMode, FeatureCopyPayloadKind, LINEAR_TOPOLOGY_SWITCH_MAX_INITIAL_SPAN_BP,
+    MainAreaDna, PcrDesignerMode, PcrPaintRole, PrimaryMapMode, QpcrTranscriptIntentUiMode,
+    RnaReadConcatemerSubsetMode, RnaReadInterpretOpsUiState, RnaReadTask, RnaReadTaskMessage,
+    RnaReadTaskOutcome, SPLICING_ATTRACT_EAGER_BOUNDARY_THRESHOLD,
     SequencingConfirmationOverviewSelection, SequencingConfirmationReviewFocusKind,
     SplicingIntronSignalKey, SplicingIntronSignalRow, ViewSvgExportProfile,
-    LINEAR_TOPOLOGY_SWITCH_MAX_INITIAL_SPAN_BP, SPLICING_ATTRACT_EAGER_BOUNDARY_THRESHOLD,
 };
 use crate::{
     dna_display::{ConstructReasoningOverlay, ConstructReasoningOverlaySpan, Selection},
     dna_sequence::DNAsequence,
     engine::{
-        parse_required_usize_or_formula_text_on_sequence, AlternativePromoterComparisonRow,
-        AnnotationCandidateSummary, AttractRegionClass, AttractSpeciesMatchMode,
-        AttractSplicingEvidenceHitRow, AttractSplicingEvidenceSettings,
+        AlternativePromoterComparisonRow, AnnotationCandidateSummary, AttractRegionClass,
+        AttractSpeciesMatchMode, AttractSplicingEvidenceHitRow, AttractSplicingEvidenceSettings,
         AttractSplicingEvidenceView, ConstructRole, CutRunAlignConfig, CutRunInputFormat,
         CutRunReadLayout, CutRunRegulatoryTfbsConfirmationStatus, CutRunSeedFilterConfig,
         DotplotMode, DotplotOverlayAnchorExonRef, DotplotOverlayXAxisMode, DotplotView,
@@ -21,24 +20,25 @@ use crate::{
         PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignProgress,
         PrimerDesignSideConstraint, ProbeRegionEvidenceInterpretationReport,
         ProbeRegionEvidenceMappingRow, ProjectState, PromoterExpressionEvidenceInput,
-        PromoterReporterCandidateSet,
-        ProtocolCartoonPreviewTelemetry, QpcrTranscriptSpecificityEvidence,
-        QpcrTranscriptTargeting, QpcrTranscriptTargetingMode, RestrictionCloningPcrHandoffMode,
-        RestrictionEnzymeDisplayMode, RnaReadAlignmentEffect, RnaReadAlignmentInspection,
-        RnaReadAlignmentInspectionRow, RnaReadHitSelection, RnaReadInputFormat,
-        RnaReadInterpretProgress, RnaReadInterpretationHit, RnaReadInterpretationProfile,
-        RnaReadInterpretationReport, RnaReadInterpretationReportSummary, RnaReadIsoformSupportRow,
-        RnaReadIsoformTriageBin, RnaReadMappingHit, RnaReadOriginMode, RnaReadReportMode,
-        RnaReadScoreDensityVariant, RnaReadSeedFilterConfig, SequenceAlignmentReport,
-        SequenceGenomeAnchorSummary, SequencingConfirmationReadResult,
-        SequencingConfirmationReport, SequencingConfirmationStatus,
-        SequencingConfirmationTargetKind, SequencingConfirmationTargetResult,
-        SequencingConfirmationVariantRow, SequencingPrimerOrientation,
-        SequencingPrimerOverlayReport, SequencingPrimerOverlaySuggestion,
-        SequencingPrimerProblemKind, SequencingPrimerProposalRow, SequencingTraceChannelData,
-        SequencingTraceFormat, SequencingTraceImportReport, SequencingTraceRecord,
-        SplicingScopePreset, TfbsScoreTrackReport, TfbsScoreTrackValueKind,
-        TfbsTrackSimilarityRankingMetric, TfbsTrackSimilarityReport, VariantPromoterContextReport,
+        PromoterReporterCandidateSet, ProtocolCartoonPreviewTelemetry,
+        QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting, QpcrTranscriptTargetingMode,
+        RestrictionCloningPcrHandoffMode, RestrictionEnzymeDisplayMode, RnaReadAlignmentEffect,
+        RnaReadAlignmentInspection, RnaReadAlignmentInspectionRow, RnaReadHitSelection,
+        RnaReadInputFormat, RnaReadInterpretProgress, RnaReadInterpretationHit,
+        RnaReadInterpretationProfile, RnaReadInterpretationReport,
+        RnaReadInterpretationReportSummary, RnaReadIsoformSupportRow, RnaReadIsoformTriageBin,
+        RnaReadMappingHit, RnaReadOriginMode, RnaReadReportMode, RnaReadScoreDensityVariant,
+        RnaReadSeedFilterConfig, SequenceAlignmentReport, SequenceGenomeAnchorSummary,
+        SequencingConfirmationReadResult, SequencingConfirmationReport,
+        SequencingConfirmationStatus, SequencingConfirmationTargetKind,
+        SequencingConfirmationTargetResult, SequencingConfirmationVariantRow,
+        SequencingPrimerOrientation, SequencingPrimerOverlayReport,
+        SequencingPrimerOverlaySuggestion, SequencingPrimerProblemKind,
+        SequencingPrimerProposalRow, SequencingTraceChannelData, SequencingTraceFormat,
+        SequencingTraceImportReport, SequencingTraceRecord, SplicingScopePreset,
+        TfbsScoreTrackReport, TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric,
+        TfbsTrackSimilarityReport, VariantPromoterContextReport,
+        parse_required_usize_or_formula_text_on_sequence,
     },
     engine_shell::ShellCommand,
     enzymes::active_restriction_enzymes,
@@ -57,10 +57,10 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
     path::Path,
-    sync::{atomic::AtomicBool, mpsc, Arc, Mutex, RwLock},
+    sync::{Arc, Mutex, RwLock, atomic::AtomicBool, mpsc},
     time::{Duration, Instant},
 };
-use tempfile::{tempdir, TempDir};
+use tempfile::{TempDir, tempdir};
 
 #[test]
 fn cutrun_tfbs_confirmation_label_covers_occupancy_support_statuses() {
@@ -219,8 +219,7 @@ fn make_tp73_probe_region_validation_area() -> MainAreaDna {
     area
 }
 
-fn make_tp73_probe_region_validation_area_with_splicing_view_and_report(
-) -> (
+fn make_tp73_probe_region_validation_area_with_splicing_view_and_report() -> (
     MainAreaDna,
     SplicingExpertView,
     ProbeRegionEvidenceInterpretationReport,
@@ -341,8 +340,11 @@ fn sequence_description_panel_text_unwraps_prose_but_keeps_metadata_rows() {
     let text = MainAreaDna::sequence_description_panel_text(&lines);
 
     assert!(text.contains("identical to CM000663.2."));
-    assert!(text
-        .contains("The DNA sequence is composed of genomic sequence, primarily finished clones"));
+    assert!(
+        text.contains(
+            "The DNA sequence is composed of genomic sequence, primarily finished clones"
+        )
+    );
     assert!(
         text.contains("Annotation Pipeline         :: NCBI eukaryotic genome annotation pipeline")
     );
@@ -1948,10 +1950,11 @@ fn sequencing_confirmation_apply_overview_selection_coverage_gap_without_target_
     );
 
     assert!(applied);
-    assert!(area
-        .sequencing_confirmation_ui
-        .selected_target_id
-        .is_empty());
+    assert!(
+        area.sequencing_confirmation_ui
+            .selected_target_id
+            .is_empty()
+    );
     assert_eq!(
         area.sequencing_confirmation_ui.selected_gap_start_0based,
         Some(4)
@@ -2394,10 +2397,12 @@ fn whole_sequence_tfbs_scan_uses_shared_engine_report_path() {
     assert_eq!(report.scan_end_0based_exclusive, 21);
     assert_eq!(report.motifs_requested, vec!["TATAAA".to_string()]);
     assert!(!report.rows.is_empty());
-    assert!(report
-        .rows
-        .iter()
-        .any(|row| row.source_match_start_0based == 3 && row.forward_strand));
+    assert!(
+        report
+            .rows
+            .iter()
+            .any(|row| row.source_match_start_0based == 3 && row.forward_strand)
+    );
 }
 
 #[test]
@@ -2410,9 +2415,10 @@ fn whole_sequence_restriction_site_scan_caches_shared_engine_report() {
 
     area.scan_whole_sequence_for_restriction_sites();
 
-    assert!(area
-        .op_status
-        .contains("Restriction-site scan for whole sequence"));
+    assert!(
+        area.op_status
+            .contains("Restriction-site scan for whole sequence")
+    );
     let report = area
         .cached_restriction_site_scan
         .as_ref()
@@ -2454,9 +2460,10 @@ fn whole_sequence_tfbs_score_tracks_use_shared_engine_report_path() {
         area.tfbs_task.is_none(),
         "tfbs score-track task should finish"
     );
-    assert!(area
-        .op_status
-        .contains("TFBS score tracks for whole sequence"));
+    assert!(
+        area.op_status
+            .contains("TFBS score tracks for whole sequence")
+    );
     assert!(area.op_status.contains("0..21"));
     let report = area
         .cached_tfbs_score_tracks
@@ -2494,9 +2501,10 @@ fn whole_sequence_tfbs_track_similarity_uses_shared_engine_report_path() {
         area.tfbs_task.is_none(),
         "tfbs similarity task should finish"
     );
-    assert!(area
-        .op_status
-        .contains("TFBS similarity for whole sequence"));
+    assert!(
+        area.op_status
+            .contains("TFBS similarity for whole sequence")
+    );
     let report = area
         .cached_tfbs_track_similarity
         .as_ref()
@@ -3365,9 +3373,10 @@ fn completed_rna_read_task_routes_final_status_to_mapping_workspace() {
     area.poll_rna_read_task(&egui::Context::default());
 
     assert_eq!(area.op_status, "keep this status in the DNA window");
-    assert!(area
-        .rna_read_mapping_status
-        .contains("RNA-read report 'rna_report'"));
+    assert!(
+        area.rna_read_mapping_status
+            .contains("RNA-read report 'rna_report'")
+    );
 }
 
 #[test]
@@ -3387,10 +3396,12 @@ fn commit_completed_rna_read_task_outcome_persists_report_on_ui_thread() {
     let result = area
         .commit_completed_rna_read_task_outcome(RnaReadTaskOutcome::Interpret(report.clone()))
         .expect("commit outcome");
-    assert!(result
-        .messages
-        .iter()
-        .any(|msg| msg.contains("rna_ui_commit")));
+    assert!(
+        result
+            .messages
+            .iter()
+            .any(|msg| msg.contains("rna_ui_commit"))
+    );
     let stored = engine
         .read()
         .expect("engine")
@@ -3560,9 +3571,10 @@ fn seed_primer_design_roi_from_current_selection_updates_forms_without_engine_op
     assert_eq!(area.qpcr_design_ui.roi_start_0based, "25");
     assert_eq!(area.qpcr_design_ui.roi_end_0based, "145");
     assert!(!area.show_engine_ops);
-    assert!(area
-        .op_status
-        .contains("Seeded primer/qPCR ROI from current sequence selection"));
+    assert!(
+        area.op_status
+            .contains("Seeded primer/qPCR ROI from current sequence selection")
+    );
     assert!(area.op_status.contains("open PCR Designer"));
 }
 
@@ -3580,9 +3592,10 @@ fn seed_primer_design_roi_from_painted_roi_interval_updates_forms_without_engine
     assert_eq!(area.qpcr_design_ui.roi_start_0based, "41");
     assert_eq!(area.qpcr_design_ui.roi_end_0based, "92");
     assert!(!area.show_engine_ops);
-    assert!(area
-        .op_status
-        .contains("Seeded primer/qPCR ROI from painted ROI interval"));
+    assert!(
+        area.op_status
+            .contains("Seeded primer/qPCR ROI from painted ROI interval")
+    );
     assert!(area.op_status.contains("open PCR Designer"));
 }
 
@@ -3613,14 +3626,16 @@ fn apply_restriction_cloning_single_site_recommendation_sets_mode_and_clears_sav
         area.primer_design_ui.restriction_cloning.reverse_enzyme,
         "EcoRI"
     );
-    assert!(area
-        .primer_design_ui
-        .restriction_cloning
-        .selected_saved_report_id
-        .is_empty());
-    assert!(area
-        .op_status
-        .contains("single-site recommendation 'EcoRI'"));
+    assert!(
+        area.primer_design_ui
+            .restriction_cloning
+            .selected_saved_report_id
+            .is_empty()
+    );
+    assert!(
+        area.op_status
+            .contains("single-site recommendation 'EcoRI'")
+    );
     assert!(area.op_status.contains("vec1"));
 }
 
@@ -3653,11 +3668,12 @@ fn apply_restriction_cloning_directed_pair_recommendation_sets_mode_and_order() 
         area.primer_design_ui.restriction_cloning.reverse_enzyme,
         "HindIII"
     );
-    assert!(area
-        .primer_design_ui
-        .restriction_cloning
-        .selected_saved_report_id
-        .is_empty());
+    assert!(
+        area.primer_design_ui
+            .restriction_cloning
+            .selected_saved_report_id
+            .is_empty()
+    );
     assert!(area.op_status.contains("EcoRI -> HindIII"));
     assert!(area.op_status.contains("mcs_expected_sites"));
     assert!(area.op_status.contains("vec1"));
@@ -4551,9 +4567,10 @@ fn main_area_dna_projects_probe_region_output_through_shared_shell_capability() 
     assert_eq!(report.parsed_rows, 14);
     assert_eq!(report.imported_features, 14);
     assert!(area.cached_probe_region_interpretation.is_none());
-    assert!(area
-        .op_status
-        .contains("Probe-region projection imported 14 feature(s)"));
+    assert!(
+        area.op_status
+            .contains("Probe-region projection imported 14 feature(s)")
+    );
     assert!(area.op_status.contains("contrasts=AdTAp73alpha-AdGFP"));
 }
 
@@ -4641,9 +4658,10 @@ fn main_area_dna_interprets_probe_region_evidence_through_shared_shell_capabilit
                 .any(|tag| tag == "isoform_support_not_inferred")
     }));
     assert!(area.op_status.contains("Probe-region evidence interpreted"));
-    assert!(area
-        .op_status
-        .contains("14 array feature(s), 2 transcript model(s), 14 evidence row(s)"));
+    assert!(
+        area.op_status
+            .contains("14 array feature(s), 2 transcript model(s), 14 evidence row(s)")
+    );
 }
 
 #[test]
@@ -4695,13 +4713,15 @@ fn main_area_dna_exports_probe_region_evidence_svg_through_shared_shell_capabili
     assert!(svg.contains("gentle.probe_region_evidence_svg_export.v1"));
     assert!(svg.contains("class=\"junction-span\""));
     assert!(svg.contains("class=\"transcript\""));
-    assert!(area
-        .op_status
-        .contains("Probe-region evidence SVG exported"));
+    assert!(
+        area.op_status
+            .contains("Probe-region evidence SVG exported")
+    );
     assert!(area.op_status.contains("14 evidence row(s)"));
-    assert!(area
-        .op_status
-        .contains(&format!("{expected_junction_span_count} junction span(s)")));
+    assert!(
+        area.op_status
+            .contains(&format!("{expected_junction_span_count} junction span(s)"))
+    );
 }
 
 #[test]
@@ -4742,9 +4762,10 @@ fn main_area_dna_exports_probe_region_evidence_svg_after_cache_only_interpretati
     assert!(svg.contains("gentle.probe_region_evidence_svg_export.v1"));
     assert!(svg.contains("class=\"junction-span\""));
     assert!(svg.contains("class=\"transcript\""));
-    assert!(area
-        .op_status
-        .contains("Probe-region evidence SVG exported"));
+    assert!(
+        area.op_status
+            .contains("Probe-region evidence SVG exported")
+    );
 
     let default_report_path = temp.path().join("defaulted/report.json");
     let mut default_area = make_tp73_probe_region_validation_area();
@@ -4798,13 +4819,17 @@ fn splicing_expert_array_probe_geometry_rows_include_junction_probe_labels() {
                 .any(|label| label.contains("exon 1-exon 2 junction"))
         })
         .expect("junction-spanning PM probe row");
-    assert!(junction_row
-        .tooltip
-        .contains("probe spans exon 1-exon 2 junction"));
+    assert!(
+        junction_row
+            .tooltip
+            .contains("probe spans exon 1-exon 2 junction")
+    );
     assert!(junction_row.parent_mixes_transcript_features);
-    assert!(junction_row
-        .tooltip
-        .contains("parent probeset contains probes across multiple transcript features"));
+    assert!(
+        junction_row
+            .tooltip
+            .contains("parent probeset contains probes across multiple transcript features")
+    );
 }
 
 #[test]
@@ -4830,21 +4855,27 @@ fn splicing_expert_array_probe_geometry_rows_surface_ambiguity_and_unresolved_ma
 
     let rows = MainAreaDna::array_probe_geometry_rows_for_splicing_view(&report, &view);
 
-    assert!(rows.iter().any(|row| row.ambiguity_tags.iter().any(|tag| {
-        tag == "multi_hit_not_assessed" || tag == "shared_transcript_mapping"
-    })));
+    assert!(rows.iter().any(|row| {
+        row.ambiguity_tags
+            .iter()
+            .any(|tag| tag == "multi_hit_not_assessed" || tag == "shared_transcript_mapping")
+    }));
     let unresolved = rows
         .iter()
         .find(|row| row.feature_id == "unresolved-probe")
         .expect("unresolved probe row");
-    assert!(unresolved
-        .unresolved_tags
-        .iter()
-        .any(|tag| tag == "ambiguous transcript mapping"));
-    assert!(unresolved
-        .unresolved_tags
-        .iter()
-        .any(|tag| tag == "unresolved feature mapping"));
+    assert!(
+        unresolved
+            .unresolved_tags
+            .iter()
+            .any(|tag| tag == "ambiguous transcript mapping")
+    );
+    assert!(
+        unresolved
+            .unresolved_tags
+            .iter()
+            .any(|tag| tag == "unresolved feature mapping")
+    );
     assert!(unresolved.tooltip.contains("ambiguous transcript mapping"));
     assert!(unresolved.tooltip.contains("unresolved feature mapping"));
 }
@@ -4859,11 +4890,14 @@ fn splicing_expert_array_probe_geometry_has_quiet_no_evidence_state() {
         other => panic!("expected splicing view, got {other:?}"),
     };
 
-    assert!(area
-        .cached_array_probe_geometry_report_for_splicing_view(&view)
-        .is_none());
-    assert!(MainAreaDna::array_probe_geometry_empty_state_text()
-        .contains("No array probe geometry evidence"));
+    assert!(
+        area.cached_array_probe_geometry_report_for_splicing_view(&view)
+            .is_none()
+    );
+    assert!(
+        MainAreaDna::array_probe_geometry_empty_state_text()
+            .contains("No array probe geometry evidence")
+    );
 }
 
 #[test]
@@ -4902,9 +4936,10 @@ fn queued_primer_batch_async_worker_completes_and_populates_results() {
         "queued primer batch task should finish"
     );
     assert_eq!(area.pcr_batch_results_ui.len(), 2);
-    assert!(area
-        .op_status
-        .contains("2 queued region(s), 0 succeeded, 2 failed"));
+    assert!(
+        area.op_status
+            .contains("2 queued region(s), 0 succeeded, 2 failed")
+    );
     let engine = area.engine.as_ref().expect("engine");
     let reports = engine
         .read()
@@ -5028,9 +5063,10 @@ fn queued_primer_batch_creates_one_report_per_region_with_deterministic_suffixes
         .map(|row| row.report_id)
         .collect::<Vec<_>>();
     assert_eq!(reports, vec!["batch_gui_r01", "batch_gui_r02"]);
-    assert!(area
-        .op_status
-        .contains("2 queued region(s), 2 succeeded, 0 failed"));
+    assert!(
+        area.op_status
+            .contains("2 queued region(s), 2 succeeded, 0 failed")
+    );
 }
 
 #[test]
@@ -5058,9 +5094,10 @@ fn queued_primer_batch_copy_mode_emits_extract_region_artifacts() {
             .collect::<Vec<_>>(),
         vec!["batch_copy_r01".to_string()]
     );
-    assert!(area
-        .op_status
-        .contains("Extracted region copies: 1 succeeded, 0 failed"));
+    assert!(
+        area.op_status
+            .contains("Extracted region copies: 1 succeeded, 0 failed")
+    );
     assert_eq!(area.pcr_batch_results_ui.len(), 1);
     assert_eq!(area.pcr_batch_results_ui[0].report_id, "batch_copy_r01");
     assert_eq!(
@@ -5124,14 +5161,16 @@ fn queued_primer_batch_marks_zero_pair_reports_as_empty() {
     assert_eq!(row.report_status_label(), "report:empty");
     assert_eq!(row.report_pair_count, Some(0));
     assert!(row.report_error.is_none());
-    assert!(row
-        .report_note
-        .as_deref()
-        .unwrap_or_default()
-        .contains("no accepted primer pairs"));
-    assert!(area
-        .op_status
-        .contains("Reports with no accepted primer pairs: 1"));
+    assert!(
+        row.report_note
+            .as_deref()
+            .unwrap_or_default()
+            .contains("no accepted primer pairs")
+    );
+    assert!(
+        area.op_status
+            .contains("Reports with no accepted primer pairs: 1")
+    );
 }
 
 #[test]
@@ -5181,9 +5220,10 @@ fn queued_primer_batch_reports_partial_failures_deterministically() {
         .map(|row| row.report_id)
         .collect::<Vec<_>>();
     assert_eq!(reports, vec!["batch_partial_r01"]);
-    assert!(area
-        .op_status
-        .contains("2 queued region(s), 1 succeeded, 1 failed"));
+    assert!(
+        area.op_status
+            .contains("2 queued region(s), 1 succeeded, 1 failed")
+    );
     assert!(area.op_status.contains("r02 missing_template"));
 }
 
@@ -5234,16 +5274,20 @@ fn transcript_derivation_compact_feedback_summarizes_multi_transcript_results() 
     assert_eq!(result.created_seq_ids.len(), 2);
     assert_eq!(area.last_created_seq_ids.len(), 2);
     assert!(area.op_status.contains("Derived 2 transcript sequence(s)"));
-    assert!(area
-        .op_status
-        .contains("Engine Ops pool/export targets now point to this set"));
-    assert!(area
-        .op_status
-        .contains("created: seq1__mrna__f1__nm_test_1"));
+    assert!(
+        area.op_status
+            .contains("Engine Ops pool/export targets now point to this set")
+    );
+    assert!(
+        area.op_status
+            .contains("created: seq1__mrna__f1__nm_test_1")
+    );
     assert!(!area.op_status.contains("messages:"));
-    assert!(!area
-        .op_status
-        .contains("Derived transcript 'seq1__mrna__f1__nm_test_1' from mRNA feature"));
+    assert!(
+        !area
+            .op_status
+            .contains("Derived transcript 'seq1__mrna__f1__nm_test_1' from mRNA feature")
+    );
 }
 
 #[test]
@@ -5269,12 +5313,14 @@ fn transcript_derivation_compact_feedback_preserves_single_result_window_switch(
         .cloned()
         .expect("created sequence");
     assert_eq!(area.seq_id.as_deref(), Some(derived_seq_id.as_str()));
-    assert!(area
-        .op_status
-        .contains(&format!("Derived transcript '{derived_seq_id}'")));
-    assert!(area
-        .op_status
-        .contains("switched this window to the new cDNA sequence"));
+    assert!(
+        area.op_status
+            .contains(&format!("Derived transcript '{derived_seq_id}'"))
+    );
+    assert!(
+        area.op_status
+            .contains("switched this window to the new cDNA sequence")
+    );
     assert!(!area.op_status.contains("messages:"));
 }
 
@@ -5947,9 +5993,11 @@ fn qpcr_splicing_context_summary_flags_junction_crossing_probe() {
         .expect("splicing-aware qPCR summary");
 
     assert_eq!(summary.assay_class_label, "junction-crossing probe");
-    assert!(summary
-        .explanation
-        .contains("probe overlaps a modeled exon junction"));
+    assert!(
+        summary
+            .explanation
+            .contains("probe overlaps a modeled exon junction")
+    );
     assert_eq!(summary.covered_junction_labels, vec!["20→31".to_string()]);
 }
 
@@ -5991,24 +6039,36 @@ fn qpcr_persisted_context_summary_preserves_transcript_aware_details() {
         .expect("persisted transcript-aware summary");
 
     assert_eq!(summary.assay_class_label, "distinguishing junction primer");
-    assert!(summary
-        .explanation
-        .contains("Forward primer spans a transcript-specific exon junction."));
-    assert!(summary
-        .explanation
-        .contains("Genomic-DNA carryover risk: low."));
-    assert!(summary
-        .explanation
-        .contains("Supported transcripts: 1 (33% of considered set)."));
-    assert!(summary
-        .explanation
-        .contains("Design transcript: NR_187362.1."));
-    assert!(summary
-        .explanation
-        .contains("Distinguishing primer(s): forward."));
-    assert!(summary
-        .explanation
-        .contains("Realized specificity evidence: Junction only."));
+    assert!(
+        summary
+            .explanation
+            .contains("Forward primer spans a transcript-specific exon junction.")
+    );
+    assert!(
+        summary
+            .explanation
+            .contains("Genomic-DNA carryover risk: low.")
+    );
+    assert!(
+        summary
+            .explanation
+            .contains("Supported transcripts: 1 (33% of considered set).")
+    );
+    assert!(
+        summary
+            .explanation
+            .contains("Design transcript: NR_187362.1.")
+    );
+    assert!(
+        summary
+            .explanation
+            .contains("Distinguishing primer(s): forward.")
+    );
+    assert!(
+        summary
+            .explanation
+            .contains("Realized specificity evidence: Junction only.")
+    );
     assert_eq!(summary.covered_junction_labels, vec!["120→241".to_string()]);
 }
 
@@ -7083,10 +7143,12 @@ fn derive_regulatory_feature_grouping_groups_enhancers_by_marker_and_strips_pref
     .expect("expected regulatory grouping");
     assert_eq!(grouped.primary_key, "enhancer");
     assert_eq!(grouped.secondary_label.as_deref(), Some("H3K4me1"));
-    assert!(!grouped
-        .display_label
-        .to_ascii_lowercase()
-        .starts_with("enhancer"));
+    assert!(
+        !grouped
+            .display_label
+            .to_ascii_lowercase()
+            .starts_with("enhancer")
+    );
     assert!(grouped.display_label.contains("chr1:"));
 }
 
@@ -7105,10 +7167,12 @@ fn derive_regulatory_feature_grouping_uses_active_region_secondary_group() {
     assert_eq!(grouped.primary_key, "silencer");
     assert_eq!(grouped.secondary_key.as_deref(), Some("active_region"));
     assert_eq!(grouped.secondary_label.as_deref(), Some("active region"));
-    assert!(!grouped
-        .display_label
-        .to_ascii_lowercase()
-        .starts_with("active region"));
+    assert!(
+        !grouped
+            .display_label
+            .to_ascii_lowercase()
+            .starts_with("active region")
+    );
 }
 
 #[test]
@@ -7149,10 +7213,12 @@ fn derive_regulatory_feature_grouping_groups_enhancers_by_non_histone_marker() {
     assert_eq!(grouped.primary_key, "enhancer");
     assert_eq!(grouped.secondary_label.as_deref(), Some("CTCF"));
     assert_eq!(grouped.secondary_key.as_deref(), Some("marker:ctcf"));
-    assert!(grouped
-        .display_label
-        .to_ascii_lowercase()
-        .starts_with("bound enhancer chr1:"));
+    assert!(
+        grouped
+            .display_label
+            .to_ascii_lowercase()
+            .starts_with("bound enhancer chr1:")
+    );
 }
 
 #[test]
@@ -7171,10 +7237,12 @@ fn derive_regulatory_feature_grouping_falls_back_to_label_prefix_when_class_miss
     .expect("expected fallback grouping");
     assert_eq!(grouped.primary_key, "silencer");
     assert!(grouped.secondary_key.is_none());
-    assert!(!grouped
-        .display_label
-        .to_ascii_lowercase()
-        .starts_with("silencer"));
+    assert!(
+        !grouped
+            .display_label
+            .to_ascii_lowercase()
+            .starts_with("silencer")
+    );
 }
 
 #[test]
@@ -7194,10 +7262,12 @@ fn derive_regulatory_feature_grouping_routes_non_enhancer_silencer_classes_to_ot
     assert_eq!(grouped.primary_key, "other");
     assert_eq!(grouped.primary_label, "other");
     assert!(grouped.secondary_key.is_none());
-    assert!(grouped
-        .display_label
-        .to_ascii_lowercase()
-        .starts_with("promoter"));
+    assert!(
+        grouped
+            .display_label
+            .to_ascii_lowercase()
+            .starts_with("promoter")
+    );
 }
 
 #[test]
@@ -7792,12 +7862,16 @@ fn collect_open_auxiliary_window_entries_includes_splicing_and_isoform_windows()
 
     let entries = area.collect_open_auxiliary_window_entries();
     assert_eq!(entries.len(), 2);
-    assert!(entries
-        .iter()
-        .any(|(_, title, _)| title.contains("Splicing Expert - TP73 (seq1)")));
-    assert!(entries
-        .iter()
-        .any(|(_, title, _)| title.contains("Isoform Expert - TA (seq1)")));
+    assert!(
+        entries
+            .iter()
+            .any(|(_, title, _)| title.contains("Splicing Expert - TP73 (seq1)"))
+    );
+    assert!(
+        entries
+            .iter()
+            .any(|(_, title, _)| title.contains("Isoform Expert - TA (seq1)"))
+    );
 }
 
 #[test]
@@ -7955,9 +8029,11 @@ fn collect_open_auxiliary_window_entries_includes_rna_read_mapping_window() {
 
     let entries = area.collect_open_auxiliary_window_entries();
     assert_eq!(entries.len(), 1);
-    assert!(entries
-        .iter()
-        .any(|(_, title, _)| title.contains("RNA-read Mapping - TP73 (seq1)")));
+    assert!(
+        entries
+            .iter()
+            .any(|(_, title, _)| title.contains("RNA-read Mapping - TP73 (seq1)"))
+    );
 }
 
 #[test]
@@ -8491,28 +8567,32 @@ fn sync_contextual_transcript_visibility_filter_is_mode_aware() {
     area.dna_presentation_mode = DnaPresentationMode::Region;
     area.show_all_contextual_transcripts = false;
     area.sync_contextual_transcript_visibility_filter();
-    assert!(area
-        .dna_display
-        .read()
-        .expect("DNA display lock poisoned")
-        .show_contextual_transcript_features());
+    assert!(
+        area.dna_display
+            .read()
+            .expect("DNA display lock poisoned")
+            .show_contextual_transcript_features()
+    );
 
     area.dna_presentation_mode = DnaPresentationMode::Cdna;
     area.show_all_contextual_transcripts = false;
     area.sync_contextual_transcript_visibility_filter();
-    assert!(!area
-        .dna_display
-        .read()
-        .expect("DNA display lock poisoned")
-        .show_contextual_transcript_features());
+    assert!(
+        !area
+            .dna_display
+            .read()
+            .expect("DNA display lock poisoned")
+            .show_contextual_transcript_features()
+    );
 
     area.show_all_contextual_transcripts = true;
     area.sync_contextual_transcript_visibility_filter();
-    assert!(area
-        .dna_display
-        .read()
-        .expect("DNA display lock poisoned")
-        .show_contextual_transcript_features());
+    assert!(
+        area.dna_display
+            .read()
+            .expect("DNA display lock poisoned")
+            .show_contextual_transcript_features()
+    );
 }
 
 #[test]
@@ -8817,8 +8897,10 @@ fn rna_read_gene_scope_summary_mentions_explicit_sparse_gene_list() {
         RnaReadOriginMode::MultiGeneSparse,
         "TP73, TP53",
     );
-    assert!(summary
-        .contains("all genes overlapping seq1:10..50 on the selected target gene/group strand"));
+    assert!(
+        summary
+            .contains("all genes overlapping seq1:10..50 on the selected target gene/group strand")
+    );
     assert!(summary.contains("TP73, TP53"));
 }
 
@@ -9153,14 +9235,16 @@ fn open_variant_followup_for_feature_seeds_window_from_variation_feature() {
             .variant_followup_ui
             .tfbs_track_similarity_include_remote_metadata
     );
-    assert!(area
-        .variant_followup_ui
-        .cached_tfbs_track_similarity
-        .is_none());
-    assert!(area
-        .variant_followup_ui
-        .cached_alternative_promoter_comparison
-        .is_none());
+    assert!(
+        area.variant_followup_ui
+            .cached_tfbs_track_similarity
+            .is_none()
+    );
+    assert!(
+        area.variant_followup_ui
+            .cached_alternative_promoter_comparison
+            .is_none()
+    );
 }
 
 #[test]
@@ -9312,10 +9396,11 @@ fn use_variant_followup_alternative_promoter_row_retargets_promoter_design_span(
         "1400"
     );
     assert!(area.variant_followup_ui.cached_score_tracks.is_none());
-    assert!(area
-        .variant_followup_ui
-        .cached_tfbs_track_similarity
-        .is_none());
+    assert!(
+        area.variant_followup_ui
+            .cached_tfbs_track_similarity
+            .is_none()
+    );
     assert!(area.variant_followup_ui.cached_report.is_none());
     assert!(area.variant_followup_ui.cached_candidates.is_none());
     assert!(
@@ -9364,20 +9449,23 @@ fn use_variant_followup_isoform_promoter_group_retargets_promoter_design_span() 
         "1700"
     );
     assert!(area.variant_followup_ui.cached_score_tracks.is_none());
-    assert!(area
-        .variant_followup_ui
-        .cached_tfbs_track_similarity
-        .is_none());
+    assert!(
+        area.variant_followup_ui
+            .cached_tfbs_track_similarity
+            .is_none()
+    );
     assert!(area.variant_followup_ui.cached_report.is_none());
     assert!(area.variant_followup_ui.cached_candidates.is_none());
-    assert!(area
-        .variant_followup_ui
-        .cached_promoter_evidence_matrix
-        .is_none());
-    assert!(area
-        .variant_followup_ui
-        .cached_isoform_promoter_comparison
-        .is_some());
+    assert!(
+        area.variant_followup_ui
+            .cached_promoter_evidence_matrix
+            .is_none()
+    );
+    assert!(
+        area.variant_followup_ui
+            .cached_isoform_promoter_comparison
+            .is_some()
+    );
     assert!(
         area.op_status.contains("TP73 promoter group 1"),
         "status was: {}",
@@ -10593,9 +10681,10 @@ fn mapping_workspace_ignores_saved_report_progress_for_other_splicing_view() {
         events: vec![],
     };
 
-    assert!(area
-        .current_rna_read_mapping_progress_for_view(&view)
-        .is_none());
+    assert!(
+        area.current_rna_read_mapping_progress_for_view(&view)
+            .is_none()
+    );
     let align_error = area
         .build_splicing_rna_read_align_operation(&view, None)
         .expect_err("stale report id should not align from this workspace");
@@ -11836,14 +11925,16 @@ fn primer_backend_help_summary_explains_auto_fallback_and_primer3_requirement() 
     assert!(area.primer_backend_help_summary().contains("falls back"));
 
     area.primer_backend = PrimerDesignBackend::Internal;
-    assert!(area
-        .primer_backend_help_summary()
-        .contains("does not require Primer3"));
+    assert!(
+        area.primer_backend_help_summary()
+            .contains("does not require Primer3")
+    );
 
     area.primer_backend = PrimerDesignBackend::Primer3;
-    assert!(area
-        .primer_backend_help_summary()
-        .contains("design requests fail"));
+    assert!(
+        area.primer_backend_help_summary()
+            .contains("design requests fail")
+    );
 }
 
 #[test]
@@ -12360,26 +12451,31 @@ fn refresh_description_cache_uses_construct_reasoning_selection_details() {
         area.description_cache_range.as_deref(),
         Some("4..12 (9 bp, strand +)")
     );
-    assert!(area
-        .description_cache_details
-        .iter()
-        .any(|line| line.contains("role: Promoter")));
-    assert!(area
-        .description_cache_details
-        .iter()
-        .any(|line| line.contains("why: Annotation and restriction context agree")));
-    assert!(area
-        .description_cache_details
-        .iter()
-        .any(|line| line.contains("supports_facts: Variant effect candidates derived")));
-    assert!(area
-        .description_cache_details
-        .iter()
-        .any(|line| line.contains("transcript_context: multi_transcript_ambiguous")));
-    assert!(area
-        .description_cache_details
-        .iter()
-        .any(|line| line.contains("summary: Transcript interpretations disagree")));
+    assert!(
+        area.description_cache_details
+            .iter()
+            .any(|line| line.contains("role: Promoter"))
+    );
+    assert!(
+        area.description_cache_details
+            .iter()
+            .any(|line| line.contains("why: Annotation and restriction context agree"))
+    );
+    assert!(
+        area.description_cache_details
+            .iter()
+            .any(|line| line.contains("supports_facts: Variant effect candidates derived"))
+    );
+    assert!(
+        area.description_cache_details
+            .iter()
+            .any(|line| line.contains("transcript_context: multi_transcript_ambiguous"))
+    );
+    assert!(
+        area.description_cache_details
+            .iter()
+            .any(|line| line.contains("summary: Transcript interpretations disagree"))
+    );
     assert!(area.description_cache_expert_view.is_none());
 }
 
@@ -12419,20 +12515,24 @@ fn refresh_description_cache_includes_non_sequence_construct_reasoning_context()
         .as_ref()
         .expect("construct reasoning cache");
     assert_eq!(reasoning.objective_title, "GUI reasoning");
-    assert!(reasoning
-        .fact_entries
-        .iter()
-        .any(|entry| entry.title == "Selection/complementation context supported"));
+    assert!(
+        reasoning
+            .fact_entries
+            .iter()
+            .any(|entry| entry.title == "Selection/complementation context supported")
+    );
     assert!(reasoning.fact_entries.iter().any(|entry| {
         entry
             .detail_lines
             .iter()
             .any(|line| line.contains("ampicillin_selection"))
     }));
-    assert!(reasoning
-        .decision_entries
-        .iter()
-        .any(|entry| entry.title == "Evaluate Selection/Complementation Fit"));
+    assert!(
+        reasoning
+            .decision_entries
+            .iter()
+            .any(|entry| entry.title == "Evaluate Selection/Complementation Fit")
+    );
 }
 
 #[test]
@@ -12562,26 +12662,36 @@ fn refresh_description_cache_includes_similarity_reasoning_facts() {
         entry.title == "Low-complexity / tandem-repeat context detected"
             || entry.title == "Low-complexity context detected"
     }));
-    assert!(reasoning
-        .fact_entries
-        .iter()
-        .any(|entry| entry.title == "Similarity/low-complexity operational risks detected"));
-    assert!(reasoning
-        .fact_entries
-        .iter()
-        .any(|entry| entry.title == "PCR/amplification review suggested"));
-    assert!(reasoning
-        .fact_entries
-        .iter()
-        .any(|entry| entry.title == "Nanopore/direct-sequencing review suggested"));
-    assert!(reasoning
-        .fact_entries
-        .iter()
-        .any(|entry| entry.title == "Repeat-driven mapping review suggested"));
-    assert!(reasoning
-        .fact_entries
-        .iter()
-        .any(|entry| entry.title == "Cloning stability review suggested"));
+    assert!(
+        reasoning
+            .fact_entries
+            .iter()
+            .any(|entry| entry.title == "Similarity/low-complexity operational risks detected")
+    );
+    assert!(
+        reasoning
+            .fact_entries
+            .iter()
+            .any(|entry| entry.title == "PCR/amplification review suggested")
+    );
+    assert!(
+        reasoning
+            .fact_entries
+            .iter()
+            .any(|entry| entry.title == "Nanopore/direct-sequencing review suggested")
+    );
+    assert!(
+        reasoning
+            .fact_entries
+            .iter()
+            .any(|entry| entry.title == "Repeat-driven mapping review suggested")
+    );
+    assert!(
+        reasoning
+            .fact_entries
+            .iter()
+            .any(|entry| entry.title == "Cloning stability review suggested")
+    );
 }
 
 #[test]
@@ -12878,10 +12988,11 @@ fn set_construct_reasoning_annotation_candidate_status_refreshes_overlay_and_det
         .find_construct_reasoning_span(&candidate.evidence_id)
         .expect("updated reasoning span");
     assert_eq!(span.editable_status, EditableStatus::Accepted);
-    assert!(area
-        .description_cache_details
-        .iter()
-        .any(|line| line.contains("editable_status: accepted")));
+    assert!(
+        area.description_cache_details
+            .iter()
+            .any(|line| line.contains("editable_status: accepted"))
+    );
     let reasoning = area
         .description_cache_construct_reasoning
         .as_ref()

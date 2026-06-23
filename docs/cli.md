@@ -637,8 +637,10 @@ Agent-assistant capability status:
 - GENtle-local slash aliases are available through the shared shell parser for
   agent convenience, not as OpenClaw/OS commands. They include `/help`, `/list`,
   GUI file-picker intents (`/open`, `/import`), exact file import
-  (`/open file PATH [--id ID]`, `/import file PATH [--id ID]`), pasted
-  sequence creation (`/paste sequence --sequence-text DNA [--id ID]`), and
+  (`/open file PATH [--id ID]`, `/import file PATH [--id ID]`), non-mutating
+  viewer control (`/open sequence-window SEQ_ID`,
+  `/close sequence-window SEQ_ID`), pasted sequence creation
+  (`/paste sequence --sequence-text DNA [--id ID]`), and
   explicit external fetch aliases (`/fetch genbank|ncbi|uniprot|ensembl*|dbsnp
   ...`). Unknown slash commands return a typed
   `gentle.shell_alias_rejection.v1` diagnostic with supported alternatives.
@@ -1449,7 +1451,7 @@ Current tools:
 - `ensembl_installable_genomes` (shared Ensembl discovery report for currently installable candidates)
 - `helper_interpretation` (direct helper-construct interpretation lookup by id or alias)
 - `ui_intents` (discover deterministic UI-intent contracts)
-- `ui_intent` (run deterministic `ui open|focus` intent resolution path)
+- `ui_intent` (run deterministic `ui open|focus|close` intent resolution path)
 - `ui_prepared_genomes` (run deterministic prepared-genome query path)
 - `ui_latest_prepared` (resolve latest prepared genome for one species)
 - `blast_async_start` (start async BLAST job through shared shell route)
@@ -1529,8 +1531,10 @@ Minimum MCP JSON-RPC flow:
 `ui_intent` arguments:
 
 - required:
-  - `action`: `open|focus`
+  - `action`: `open|focus|close`
   - `target`: one of:
+    - `sequence-window` (requires `seq_id`; controls a loaded DNA sequence
+      viewer without mutating the sequence record)
     - `prepared-references`
     - `prepare-reference-genome`
     - `retrieve-genome-sequence`
@@ -1544,6 +1548,7 @@ Minimum MCP JSON-RPC flow:
     - `blast-helper-sequence`
 - optional:
   - `state_path`
+  - `seq_id`
   - `genome_id`
   - `helpers`
   - `catalog_path`
@@ -2126,6 +2131,10 @@ Shared shell command:
     - `facts eval FACT_EXPR_JSON_OR_@FILE [--evidence SCAN.json ...]`
     - `ui open TARGET [--genome-id GENOME_ID] [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]`
     - `ui focus TARGET [--genome-id GENOME_ID] [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]`
+    - `ui open sequence-window SEQ_ID`
+    - `ui focus sequence-window SEQ_ID`
+    - `ui close TARGET`
+    - `ui close sequence-window SEQ_ID`
     - `ui prepared-genomes [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]`
     - `ui latest-prepared SPECIES [--helpers] [--catalog PATH] [--cache-dir PATH]`
     - `genomes list [--catalog PATH] [--filter TEXT]`

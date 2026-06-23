@@ -1277,6 +1277,7 @@ impl GENtleApp {
             });
             return;
         }
+        let suppress_auto_open = Self::agent_command_suppresses_auto_open(trimmed, &command);
         if let Some(summary) = self.try_apply_shell_ui_intent(&command) {
             self.agent_status = format!("{source_label}: {summary}");
             self.agent_execution_log.push(AgentCommandExecutionRecord {
@@ -1344,12 +1345,19 @@ impl GENtleApp {
                         opened_seq_ids_unique.push(seq_id);
                     }
                 }
-                for seq_id in &opened_seq_ids_unique {
-                    self.open_sequence_window(seq_id);
+                if !suppress_auto_open {
+                    for seq_id in &opened_seq_ids_unique {
+                        self.open_sequence_window(seq_id);
+                    }
                 }
                 let summary = if let Some(extra) = extra_summary {
                     if opened_seq_ids_unique.is_empty() {
                         format!("success - {extra}")
+                    } else if suppress_auto_open {
+                        format!(
+                            "success - {extra}; did not open {}",
+                            opened_seq_ids_unique.join(", ")
+                        )
                     } else {
                         format!(
                             "success - {extra}; opened {}",
@@ -1359,6 +1367,11 @@ impl GENtleApp {
                 } else if effective_state_changed {
                     if opened_seq_ids_unique.is_empty() {
                         "success - executed (state changed)".to_string()
+                    } else if suppress_auto_open {
+                        format!(
+                            "success - executed (state changed; did not open {})",
+                            opened_seq_ids_unique.join(", ")
+                        )
                     } else {
                         format!(
                             "success - executed (state changed; opened {})",
@@ -1396,6 +1409,18 @@ impl GENtleApp {
             let drain = self.agent_execution_log.len() - 100;
             self.agent_execution_log.drain(0..drain);
         }
+    }
+
+    pub(super) fn agent_command_suppresses_auto_open(
+        command_text: &str,
+        command: &ShellCommand,
+    ) -> bool {
+        if !matches!(command, ShellCommand::EnsemblGeneFetch { .. }) {
+            return false;
+        }
+        split_shell_words(command_text)
+            .map(|tokens| tokens.iter().any(|token| token == "--no-open"))
+            .unwrap_or(false)
     }
 
     fn agent_sequence_ids_from_shell_output(output: &serde_json::Value) -> Vec<String> {
@@ -1462,6 +1487,9 @@ impl GENtleApp {
     }
 
     pub(super) fn try_apply_shell_ui_intent(&mut self, command: &ShellCommand) -> Option<String> {
+        if let ShellCommand::UiSequenceWindow { action, seq_id } = command {
+            return Some(self.apply_sequence_window_intent(*action, seq_id));
+        }
         let ShellCommand::UiIntent {
             action,
             target,
@@ -1476,6 +1504,9 @@ impl GENtleApp {
         else {
             return None;
         };
+        if matches!(action, UiIntentAction::Close) {
+            return Some(self.apply_close_ui_intent_target(*target));
+        }
         let mut selected_genome_id = genome_id
             .as_deref()
             .map(str::trim)
@@ -1531,6 +1562,142 @@ impl GENtleApp {
             summary.push_str(&format!(" (selected_genome_id={genome_id})"));
         }
         Some(summary)
+    }
+
+    fn apply_close_ui_intent_target(&mut self, target: UiIntentTarget) -> String {
+        let was_open = match target {
+            UiIntentTarget::OpenSequence => {
+                return "ui intent close 'open-sequence' is not applicable; use ui close sequence-window SEQ_ID for DNA viewers".to_string();
+            }
+            UiIntentTarget::PreparedReferences => {
+                let was_open = self.show_reference_genome_inspector_dialog;
+                self.show_reference_genome_inspector_dialog = false;
+                was_open
+            }
+            UiIntentTarget::PrepareReferenceGenome | UiIntentTarget::PrepareHelperGenome => {
+                let was_open = self.show_reference_genome_prepare_dialog;
+                self.show_reference_genome_prepare_dialog = false;
+                was_open
+            }
+            UiIntentTarget::RetrieveGenomeSequence | UiIntentTarget::RetrieveHelperSequence => {
+                let was_open = self.show_reference_genome_retrieve_dialog;
+                self.show_reference_genome_retrieve_dialog = false;
+                was_open
+            }
+            UiIntentTarget::BlastGenomeSequence | UiIntentTarget::BlastHelperSequence => {
+                let was_open = self.show_reference_genome_blast_dialog;
+                self.show_reference_genome_blast_dialog = false;
+                was_open
+            }
+            UiIntentTarget::ImportGenomeTrack => {
+                let was_open = self.show_genome_bed_track_dialog;
+                self.show_genome_bed_track_dialog = false;
+                was_open
+            }
+            UiIntentTarget::PcrDesign => {
+                let was_open = self.show_pcr_design_dialog;
+                self.show_pcr_design_dialog = false;
+                was_open
+            }
+            UiIntentTarget::SequencingConfirmation => {
+                let was_open = self.show_sequencing_confirmation_dialog;
+                self.show_sequencing_confirmation_dialog = false;
+                was_open
+            }
+            UiIntentTarget::AgentAssistant => {
+                let was_open = self.show_agent_assistant_dialog;
+                self.show_agent_assistant_dialog = false;
+                was_open
+            }
+        };
+        if was_open {
+            format!("ui intent close '{}'", target.as_str())
+        } else {
+            format!(
+                "ui intent close '{}' requested; target was already closed",
+                target.as_str()
+            )
+        }
+    }
+
+    fn apply_sequence_window_intent(&mut self, action: UiIntentAction, seq_id: &str) -> String {
+        match action {
+            UiIntentAction::Open | UiIntentAction::Focus => {
+                self.apply_open_or_focus_sequence_window_intent(action, seq_id)
+            }
+            UiIntentAction::Close => self.apply_close_sequence_window_intent(seq_id),
+        }
+    }
+
+    fn apply_open_or_focus_sequence_window_intent(
+        &mut self,
+        action: UiIntentAction,
+        seq_id: &str,
+    ) -> String {
+        let seq_id = seq_id.trim();
+        if seq_id.is_empty() {
+            return format!(
+                "ui intent {} 'sequence-window' requires seq_id",
+                action.as_str()
+            );
+        }
+        let sequence_loaded = self
+            .engine
+            .read()
+            .unwrap()
+            .state()
+            .sequences
+            .contains_key(seq_id);
+        if !sequence_loaded {
+            return format!(
+                "ui intent {} 'sequence-window' found no loaded sequence {seq_id}",
+                action.as_str()
+            );
+        }
+        self.open_sequence_window(seq_id);
+        format!(
+            "ui intent {} 'sequence-window' (seq_id={seq_id}; sequence record kept loaded)",
+            action.as_str()
+        )
+    }
+
+    fn apply_close_sequence_window_intent(&mut self, seq_id: &str) -> String {
+        let seq_id = seq_id.trim();
+        let mut close_requested = false;
+        if let Some(viewport_id) = self.find_open_sequence_viewport_id(seq_id) {
+            if let Ok(mut to_close) = self.windows_to_close.write() {
+                if !to_close.contains(&viewport_id) {
+                    to_close.push(viewport_id);
+                }
+                close_requested = true;
+            }
+            self.pending_focus_viewports.retain(|id| *id != viewport_id);
+            if close_requested {
+                self.process_window_close_queue();
+            }
+        }
+        let pending_before = self.new_windows.len();
+        self.new_windows
+            .retain(|window| window.sequence_id().as_deref() != Some(seq_id));
+        let removed_pending = self.new_windows.len() != pending_before;
+        let sequence_loaded = self
+            .engine
+            .read()
+            .unwrap()
+            .state()
+            .sequences
+            .contains_key(seq_id);
+        if close_requested || removed_pending {
+            format!(
+                "ui intent close 'sequence-window' (seq_id={seq_id}; sequence record kept loaded)"
+            )
+        } else if sequence_loaded {
+            format!(
+                "ui intent close 'sequence-window' found no open window for seq_id={seq_id}; sequence record kept loaded"
+            )
+        } else {
+            format!("ui intent close 'sequence-window' found no open or loaded sequence {seq_id}")
+        }
     }
 
     pub(super) fn apply_prepared_reference_intent_scope(

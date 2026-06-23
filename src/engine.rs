@@ -204,7 +204,8 @@ impl RepeatFamilyClassMapping {
     }
 
     fn primary_class(self) -> Option<RepeatFamilyClassKind> {
-        self.class.or_else(|| self.family.map(RepeatFamilyClassKind::parent_class))
+        self.class
+            .or_else(|| self.family.map(RepeatFamilyClassKind::parent_class))
     }
 }
 
@@ -17562,9 +17563,7 @@ impl GentleEngine {
         modes
     }
 
-    fn construct_reasoning_repeat_family_class_from_token(
-        raw: &str,
-    ) -> RepeatFamilyClassMapping {
+    fn construct_reasoning_repeat_family_class_from_token(raw: &str) -> RepeatFamilyClassMapping {
         let token = Self::normalize_id_token(raw);
         let token = ["repeat_name_", "repeat_class_", "repeat_family_"]
             .iter()
@@ -17618,16 +17617,16 @@ impl GentleEngine {
         }
     }
 
-    fn construct_reasoning_repeat_family_class_from_value(
-        raw: &str,
-    ) -> RepeatFamilyClassMapping {
+    fn construct_reasoning_repeat_family_class_from_value(raw: &str) -> RepeatFamilyClassMapping {
         let mut mapping = Self::construct_reasoning_repeat_family_class_from_token(raw);
         for part in raw
             .split(|c: char| !c.is_ascii_alphanumeric())
             .map(str::trim)
             .filter(|part| !part.is_empty())
         {
-            mapping.merge(Self::construct_reasoning_repeat_family_class_from_token(part));
+            mapping.merge(Self::construct_reasoning_repeat_family_class_from_token(
+                part,
+            ));
         }
         mapping
     }
@@ -17638,8 +17637,13 @@ impl GentleEngine {
         repeat_family: Option<&str>,
     ) -> RepeatFamilyClassMapping {
         let mut mapping = RepeatFamilyClassMapping::default();
-        for value in [repeat_class, repeat_family, repeat_name].into_iter().flatten() {
-            mapping.merge(Self::construct_reasoning_repeat_family_class_from_value(value));
+        for value in [repeat_class, repeat_family, repeat_name]
+            .into_iter()
+            .flatten()
+        {
+            mapping.merge(Self::construct_reasoning_repeat_family_class_from_value(
+                value,
+            ));
         }
         mapping
     }
@@ -17677,7 +17681,9 @@ impl GentleEngine {
             repeat_family.as_deref(),
         );
         for tag in &row.context_tags {
-            mapping.merge(Self::construct_reasoning_repeat_family_class_from_token(tag));
+            mapping.merge(Self::construct_reasoning_repeat_family_class_from_token(
+                tag,
+            ));
         }
         mapping
     }
@@ -17734,10 +17740,7 @@ impl GentleEngine {
             .max()
     }
 
-    fn construct_reasoning_evidence_note_value(
-        row: &DesignEvidence,
-        key: &str,
-    ) -> Option<String> {
+    fn construct_reasoning_evidence_note_value(row: &DesignEvidence, key: &str) -> Option<String> {
         let prefix = format!("{key}=");
         row.notes
             .iter()
@@ -17835,16 +17838,19 @@ impl GentleEngine {
                 ) {
                     continue;
                 }
-                let Some(mut support) =
-                    Self::construct_reasoning_evidence_repeat_support(curated)
+                let Some(mut support) = Self::construct_reasoning_evidence_repeat_support(curated)
                 else {
                     continue;
                 };
-                support.internal_evidence_ids.push(internal.evidence_id.clone());
+                support
+                    .internal_evidence_ids
+                    .push(internal.evidence_id.clone());
                 let key = Self::normalize_id_token(&support.label);
                 let entry = by_label.entry(key).or_insert_with(|| support.clone());
                 entry.evidence_ids.extend(support.evidence_ids);
-                entry.internal_evidence_ids.extend(support.internal_evidence_ids);
+                entry
+                    .internal_evidence_ids
+                    .extend(support.internal_evidence_ids);
                 entry.source_refs.extend(support.source_refs);
                 entry.evidence_ids.sort();
                 entry.evidence_ids.dedup();
