@@ -10,8 +10,8 @@ use crate::feature_location::{feature_is_reverse, feature_ranges_sorted_i64};
 impl GentleEngine {
     const TFBS_BACKGROUND_TAIL_SHOW_QUANTILE: f64 = 0.95;
     const TFBS_TRACK_CORRELATION_SMOOTHING_WINDOW_BP: usize = 25;
-    const PROMOTER_COHORT_DIVERGENCE_SIMILARITY_THRESHOLD: f64 = 0.25;
-    const PROMOTER_COHORT_CONCORDANCE_SIMILARITY_THRESHOLD: f64 = 0.75;
+    pub(crate) const PROMOTER_COHORT_DIVERGENCE_SIMILARITY_THRESHOLD: f64 = 0.25;
+    pub(crate) const PROMOTER_COHORT_CONCORDANCE_SIMILARITY_THRESHOLD: f64 = 0.75;
 
     fn emit_tfbs_score_track_progress(
         on_progress: &mut dyn FnMut(OperationProgress) -> bool,

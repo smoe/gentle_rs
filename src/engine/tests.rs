@@ -4122,6 +4122,133 @@ fn gene_set_cutrun_relationship_flags_manual_unspecified_are_empty() {
 }
 
 #[test]
+fn ortholog_tfbs_relationship_flags_are_expectation_specific() {
+    let rows = vec![
+        gentle_protocol::OrthologPairwiseTfbsSimilarity {
+            left_species: "Homo sapiens".to_string(),
+            right_species: "Mus musculus".to_string(),
+            left_gene_label: "TP73".to_string(),
+            right_gene_label: "Trp73".to_string(),
+            mean_smoothed_spearman: 0.10,
+            ..gentle_protocol::OrthologPairwiseTfbsSimilarity::default()
+        },
+        gentle_protocol::OrthologPairwiseTfbsSimilarity {
+            left_species: "Homo sapiens".to_string(),
+            right_species: "Rattus norvegicus".to_string(),
+            left_gene_label: "TP73".to_string(),
+            right_gene_label: "Tp73".to_string(),
+            mean_smoothed_spearman: 0.90,
+            ..gentle_protocol::OrthologPairwiseTfbsSimilarity::default()
+        },
+    ];
+
+    let co_regulated = GentleEngine::ortholog_tfbs_relationship_flags(
+        GeneSetCohortRelationship::CoRegulated,
+        &rows,
+    );
+    assert_eq!(co_regulated.len(), 1);
+    assert_eq!(co_regulated[0].flag_kind, "unexpected_divergence");
+    assert_eq!(
+        co_regulated[0].member_symbols,
+        vec![
+            "Homo sapiens: TP73".to_string(),
+            "Mus musculus: Trp73".to_string()
+        ]
+    );
+
+    let anti_co_regulated = GentleEngine::ortholog_tfbs_relationship_flags(
+        GeneSetCohortRelationship::AntiCoRegulated,
+        &rows,
+    );
+    assert_eq!(anti_co_regulated.len(), 1);
+    assert_eq!(anti_co_regulated[0].flag_kind, "unexpected_concordance");
+    assert_eq!(
+        anti_co_regulated[0].member_symbols,
+        vec![
+            "Homo sapiens: TP73".to_string(),
+            "Rattus norvegicus: Tp73".to_string()
+        ]
+    );
+
+    assert!(
+        GentleEngine::ortholog_tfbs_relationship_flags(
+            GeneSetCohortRelationship::Unspecified,
+            &rows,
+        )
+        .is_empty()
+    );
+}
+
+#[test]
+fn ortholog_cutrun_relationship_flags_ignore_not_comparable_rows() {
+    let rows = vec![
+        gentle_protocol::OrthologCutRunSupportRow {
+            species: "Homo sapiens".to_string(),
+            gene_label: "TP73".to_string(),
+            status: gentle_protocol::OrthologCutRunSupportStatus::Confirmed,
+            ..gentle_protocol::OrthologCutRunSupportRow::default()
+        },
+        gentle_protocol::OrthologCutRunSupportRow {
+            species: "Mus musculus".to_string(),
+            gene_label: "Trp73".to_string(),
+            status: gentle_protocol::OrthologCutRunSupportStatus::NoData,
+            ..gentle_protocol::OrthologCutRunSupportRow::default()
+        },
+        gentle_protocol::OrthologCutRunSupportRow {
+            species: "Danio rerio".to_string(),
+            gene_label: "tp73".to_string(),
+            status: gentle_protocol::OrthologCutRunSupportStatus::NotComparable,
+            ..gentle_protocol::OrthologCutRunSupportRow::default()
+        },
+    ];
+
+    let co_regulated = GentleEngine::ortholog_cutrun_relationship_flags(
+        GeneSetCohortRelationship::CoRegulated,
+        &rows,
+    );
+    assert_eq!(co_regulated.len(), 2);
+    assert!(
+        co_regulated
+            .iter()
+            .all(|flag| flag.flag_kind == "unexpected_divergence")
+    );
+    assert!(
+        co_regulated
+            .iter()
+            .flat_map(|flag| flag.member_symbols.iter())
+            .all(|symbol| !symbol.contains("Danio rerio"))
+    );
+
+    let anti_rows = vec![
+        gentle_protocol::OrthologCutRunSupportRow {
+            species: "Homo sapiens".to_string(),
+            gene_label: "TP73".to_string(),
+            status: gentle_protocol::OrthologCutRunSupportStatus::MotifOnly,
+            ..gentle_protocol::OrthologCutRunSupportRow::default()
+        },
+        gentle_protocol::OrthologCutRunSupportRow {
+            species: "Mus musculus".to_string(),
+            gene_label: "Trp73".to_string(),
+            status: gentle_protocol::OrthologCutRunSupportStatus::MotifOnly,
+            ..gentle_protocol::OrthologCutRunSupportRow::default()
+        },
+    ];
+    let anti_co_regulated = GentleEngine::ortholog_cutrun_relationship_flags(
+        GeneSetCohortRelationship::AntiCoRegulated,
+        &anti_rows,
+    );
+    assert_eq!(anti_co_regulated.len(), 1);
+    assert_eq!(anti_co_regulated[0].flag_kind, "unexpected_concordance");
+    assert!(
+        GentleEngine::ortholog_cutrun_relationship_flags(
+            GeneSetCohortRelationship::Unspecified,
+            &anti_rows,
+        )
+        .is_empty()
+    );
+}
+
+#[test]
 fn resolve_gene_set_external_mapping_unions_local_groups_and_gates_status() {
     let td = tempdir().expect("tempdir");
     let root = td.path();
@@ -5076,6 +5203,7 @@ fn resolve_ortholog_promoter_cohort_uses_aliases_and_strand_geometry() {
             100,
             20,
             OrthologAmbiguityPolicy::Reject,
+            GeneSetCohortRelationship::Unspecified,
             Some(&catalog_path),
             None,
         )
@@ -5139,6 +5267,7 @@ fn resolve_ortholog_promoter_cohort_reports_ambiguity_unless_policy_allows_first
             100,
             20,
             OrthologAmbiguityPolicy::Reject,
+            GeneSetCohortRelationship::Unspecified,
             Some(&catalog_path),
             None,
         )
@@ -5164,6 +5293,7 @@ fn resolve_ortholog_promoter_cohort_reports_ambiguity_unless_policy_allows_first
             100,
             20,
             OrthologAmbiguityPolicy::First,
+            GeneSetCohortRelationship::Unspecified,
             Some(&catalog_path),
             None,
         )
@@ -5201,6 +5331,7 @@ fn summarize_ortholog_promoter_comparison_separates_sequence_tfbs_expression_and
             100,
             20,
             OrthologAmbiguityPolicy::Reject,
+            GeneSetCohortRelationship::Unspecified,
             Some(&catalog_path),
             None,
         )
@@ -5212,6 +5343,7 @@ fn summarize_ortholog_promoter_comparison_separates_sequence_tfbs_expression_and
             &["SP1".to_string()],
             TfbsScoreTrackValueKind::LlrBackgroundTailLog10,
             true,
+            GeneSetCohortRelationship::Unspecified,
             &[PromoterExpressionEvidenceInput {
                 gene_label: Some("TP73".to_string()),
                 condition: Some("case".to_string()),
@@ -5323,6 +5455,7 @@ fn summarize_ortholog_promoter_comparison_separates_sequence_tfbs_expression_and
             &["SP1".to_string()],
             TfbsScoreTrackValueKind::LlrBackgroundTailLog10,
             true,
+            GeneSetCohortRelationship::Unspecified,
             &[],
             None,
             &["ortholog_human_sp1".to_string()],

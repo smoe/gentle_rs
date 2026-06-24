@@ -6,11 +6,13 @@
 
 use super::*;
 use gentle_protocol::{
-    ORTHOLOG_PROMOTER_COHORT_SCHEMA, ORTHOLOG_PROMOTER_COMPARISON_SCHEMA, ORTHOLOG_RESOURCE_SCHEMA,
-    OrthologExpressionAssignment, OrthologMappingRow, OrthologPairwiseTfbsSimilarity,
-    OrthologPromoterCohortReport, OrthologPromoterCohortRequest, OrthologPromoterComparisonReport,
-    OrthologPromoterRole, OrthologPromoterRow, OrthologResource, OrthologSequenceSimilarityRow,
-    OrthologTfbsPeakSummary, OrthologTfbsSummaryRow, OrthologUnresolvedRow,
+    GeneSetCohortRelationship, GeneSetCohortRelationshipFlag, ORTHOLOG_PROMOTER_COHORT_SCHEMA,
+    ORTHOLOG_PROMOTER_COMPARISON_SCHEMA, ORTHOLOG_RESOURCE_SCHEMA, OrthologCutRunSupportRow,
+    OrthologCutRunSupportStatus, OrthologExpressionAssignment, OrthologMappingRow,
+    OrthologPairwiseTfbsSimilarity, OrthologPromoterCohortReport, OrthologPromoterCohortRequest,
+    OrthologPromoterComparisonReport, OrthologPromoterRole, OrthologPromoterRow, OrthologResource,
+    OrthologSequenceSimilarityRow, OrthologTfbsPeakSummary, OrthologTfbsSummaryRow,
+    OrthologUnresolvedRow,
 };
 
 #[derive(Debug, Clone)]
@@ -340,6 +342,7 @@ impl GentleEngine {
         upstream_bp: usize,
         downstream_bp: usize,
         ambiguity_policy: OrthologAmbiguityPolicy,
+        relationship: GeneSetCohortRelationship,
         genome_catalog_path: Option<&str>,
         cache_dir: Option<&str>,
     ) -> Result<OrthologPromoterCohortReport, EngineError> {
@@ -565,6 +568,7 @@ impl GentleEngine {
             upstream_bp,
             downstream_bp,
             ambiguity_policy,
+            relationship,
         };
         Ok(OrthologPromoterCohortReport {
             schema: ORTHOLOG_PROMOTER_COHORT_SCHEMA.to_string(),
@@ -575,6 +579,8 @@ impl GentleEngine {
             unresolved_count: unresolved_rows.len(),
             rows,
             unresolved_rows,
+            relationship,
+            relationship_flags: vec![],
             warnings,
             ..OrthologPromoterCohortReport::default()
         })
@@ -743,12 +749,208 @@ impl GentleEngine {
         assignments
     }
 
+    fn ortholog_member_symbol(species: &str, gene_label: &str) -> String {
+        format!("{species}: {gene_label}")
+    }
+
+    fn ortholog_member_key(species: &str, gene_label: &str) -> String {
+        format!(
+            "ortholog:{}:{}",
+            Self::normalize_id_token(species),
+            Self::normalize_id_token(gene_label)
+        )
+    }
+
+    pub(crate) fn ortholog_tfbs_relationship_flags(
+        relationship: GeneSetCohortRelationship,
+        pairwise_similarity: &[OrthologPairwiseTfbsSimilarity],
+    ) -> Vec<GeneSetCohortRelationshipFlag> {
+        match relationship {
+            GeneSetCohortRelationship::Unspecified | GeneSetCohortRelationship::Manual => vec![],
+            GeneSetCohortRelationship::CoRegulated => pairwise_similarity
+                .iter()
+                .filter(|row| {
+                    row.mean_smoothed_spearman
+                        < Self::PROMOTER_COHORT_DIVERGENCE_SIMILARITY_THRESHOLD
+                })
+                .map(|row| GeneSetCohortRelationshipFlag {
+                    flag_kind: "unexpected_divergence".to_string(),
+                    evidence_kind: "tfbs_score_track_similarity".to_string(),
+                    member_symbols: vec![
+                        Self::ortholog_member_symbol(&row.left_species, &row.left_gene_label),
+                        Self::ortholog_member_symbol(&row.right_species, &row.right_gene_label),
+                    ],
+                    member_dedup_keys: vec![
+                        Self::ortholog_member_key(&row.left_species, &row.left_gene_label),
+                        Self::ortholog_member_key(&row.right_species, &row.right_gene_label),
+                    ],
+                    detail: format!(
+                        "Declared co-regulated ortholog promoter cohort, but '{}' ({}) and '{}' ({}) have low mean smoothed TFBS-track Spearman similarity ({:+.3}; threshold < {:+.2}). This is an evidence-triage flag, not a regulatory verdict.",
+                        row.left_gene_label,
+                        row.left_species,
+                        row.right_gene_label,
+                        row.right_species,
+                        row.mean_smoothed_spearman,
+                        Self::PROMOTER_COHORT_DIVERGENCE_SIMILARITY_THRESHOLD,
+                    ),
+                })
+                .collect(),
+            GeneSetCohortRelationship::AntiCoRegulated => pairwise_similarity
+                .iter()
+                .filter(|row| {
+                    row.mean_smoothed_spearman
+                        >= Self::PROMOTER_COHORT_CONCORDANCE_SIMILARITY_THRESHOLD
+                })
+                .map(|row| GeneSetCohortRelationshipFlag {
+                    flag_kind: "unexpected_concordance".to_string(),
+                    evidence_kind: "tfbs_score_track_similarity".to_string(),
+                    member_symbols: vec![
+                        Self::ortholog_member_symbol(&row.left_species, &row.left_gene_label),
+                        Self::ortholog_member_symbol(&row.right_species, &row.right_gene_label),
+                    ],
+                    member_dedup_keys: vec![
+                        Self::ortholog_member_key(&row.left_species, &row.left_gene_label),
+                        Self::ortholog_member_key(&row.right_species, &row.right_gene_label),
+                    ],
+                    detail: format!(
+                        "Declared anti-co-regulated ortholog promoter cohort, but '{}' ({}) and '{}' ({}) have high mean smoothed TFBS-track Spearman similarity ({:+.3}; threshold >= {:+.2}). This is an evidence-triage flag, not a regulatory verdict.",
+                        row.left_gene_label,
+                        row.left_species,
+                        row.right_gene_label,
+                        row.right_species,
+                        row.mean_smoothed_spearman,
+                        Self::PROMOTER_COHORT_CONCORDANCE_SIMILARITY_THRESHOLD,
+                    ),
+                })
+                .collect(),
+        }
+    }
+
+    fn ortholog_cutrun_relationship_evidence_class(
+        row: &OrthologCutRunSupportRow,
+    ) -> Option<&'static str> {
+        match row.status {
+            OrthologCutRunSupportStatus::NotComparable => None,
+            OrthologCutRunSupportStatus::Confirmed | OrthologCutRunSupportStatus::Nearby => {
+                Some("motif_supported")
+            }
+            OrthologCutRunSupportStatus::OccupancyOnly => Some("occupancy_only"),
+            OrthologCutRunSupportStatus::MotifOnly => Some("motif_only"),
+            OrthologCutRunSupportStatus::NoData => Some("no_support_detected"),
+        }
+    }
+
+    pub(crate) fn ortholog_cutrun_relationship_flags(
+        relationship: GeneSetCohortRelationship,
+        cutrun_support: &[OrthologCutRunSupportRow],
+    ) -> Vec<GeneSetCohortRelationshipFlag> {
+        if matches!(
+            relationship,
+            GeneSetCohortRelationship::Unspecified | GeneSetCohortRelationship::Manual
+        ) {
+            return vec![];
+        }
+
+        let mut groups = Vec::<(&'static str, Vec<&OrthologCutRunSupportRow>)>::new();
+        for row in cutrun_support {
+            let Some(class) = Self::ortholog_cutrun_relationship_evidence_class(row) else {
+                continue;
+            };
+            if let Some((_, rows)) = groups.iter_mut().find(|(candidate, _)| *candidate == class) {
+                rows.push(row);
+            } else {
+                groups.push((class, vec![row]));
+            }
+        }
+        if groups.is_empty() {
+            return vec![];
+        }
+
+        fn relationship_flag(
+            flag_kind: &str,
+            evidence_class: &str,
+            rows: &[&OrthologCutRunSupportRow],
+            detail: String,
+        ) -> GeneSetCohortRelationshipFlag {
+            GeneSetCohortRelationshipFlag {
+                flag_kind: flag_kind.to_string(),
+                evidence_kind: format!("ortholog_cutrun_{evidence_class}"),
+                member_symbols: rows
+                    .iter()
+                    .map(|row| GentleEngine::ortholog_member_symbol(&row.species, &row.gene_label))
+                    .collect(),
+                member_dedup_keys: rows
+                    .iter()
+                    .map(|row| GentleEngine::ortholog_member_key(&row.species, &row.gene_label))
+                    .collect(),
+                detail,
+            }
+        }
+
+        match relationship {
+            GeneSetCohortRelationship::CoRegulated => {
+                if groups.len() < 2 {
+                    return vec![];
+                }
+                let max_group_size = groups
+                    .iter()
+                    .map(|(_, rows)| rows.len())
+                    .max()
+                    .unwrap_or_default();
+                let max_group_count = groups
+                    .iter()
+                    .filter(|(_, rows)| rows.len() == max_group_size)
+                    .count();
+                groups
+                    .into_iter()
+                    .filter(|(_, rows)| max_group_count > 1 || rows.len() < max_group_size)
+                    .map(|(class, rows)| {
+                        let symbols = rows
+                            .iter()
+                            .map(|row| Self::ortholog_member_symbol(&row.species, &row.gene_label))
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        relationship_flag(
+                            "unexpected_divergence",
+                            class,
+                            &rows,
+                            format!(
+                                "Declared co_regulated ortholog expectation found divergent CUT&RUN support class '{class}' for: {symbols}"
+                            ),
+                        )
+                    })
+                    .collect()
+            }
+            GeneSetCohortRelationship::AntiCoRegulated => groups
+                .into_iter()
+                .filter(|(_, rows)| rows.len() > 1)
+                .map(|(class, rows)| {
+                    let symbols = rows
+                        .iter()
+                        .map(|row| Self::ortholog_member_symbol(&row.species, &row.gene_label))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    relationship_flag(
+                        "unexpected_concordance",
+                        class,
+                        &rows,
+                        format!(
+                            "Declared anti_co_regulated ortholog expectation found concordant CUT&RUN support class '{class}' for: {symbols}"
+                        ),
+                    )
+                })
+                .collect(),
+            GeneSetCohortRelationship::Unspecified | GeneSetCohortRelationship::Manual => vec![],
+        }
+    }
+
     pub(crate) fn summarize_ortholog_promoter_comparison(
         &self,
-        cohort: OrthologPromoterCohortReport,
+        mut cohort: OrthologPromoterCohortReport,
         motifs: &[String],
         score_kind: TfbsScoreTrackValueKind,
         clip_negative: bool,
+        relationship: GeneSetCohortRelationship,
         expression_rows: &[PromoterExpressionEvidenceInput],
         expression_source_label: Option<&str>,
         cutrun_dataset_ids: &[String],
@@ -769,6 +971,14 @@ impl GentleEngine {
                 cause_chain: vec![],
             });
         }
+
+        let effective_relationship = if relationship == GeneSetCohortRelationship::Unspecified {
+            cohort.relationship
+        } else {
+            relationship
+        };
+        cohort.relationship = effective_relationship;
+        cohort.request.relationship = effective_relationship;
 
         let mut warnings = cohort.warnings.clone();
         let mut gene_reports = vec![];
@@ -900,6 +1110,16 @@ impl GentleEngine {
             cutrun_read_report_ids,
             &mut warnings,
         )?;
+        let mut relationship_flags = Self::ortholog_tfbs_relationship_flags(
+            effective_relationship,
+            &pairwise_tfbs_similarity,
+        );
+        relationship_flags.extend(Self::ortholog_cutrun_relationship_flags(
+            effective_relationship,
+            &cutrun_support,
+        ));
+        warnings.extend(relationship_flags.iter().map(|flag| flag.detail.clone()));
+        cohort.relationship_flags = relationship_flags.clone();
 
         Ok(OrthologPromoterComparisonReport {
             schema: ORTHOLOG_PROMOTER_COMPARISON_SCHEMA.to_string(),
@@ -915,6 +1135,8 @@ impl GentleEngine {
             sequence_similarity,
             cutrun_support,
             expression_assignments,
+            relationship: effective_relationship,
+            relationship_flags,
             warnings,
             ..OrthologPromoterComparisonReport::default()
         })

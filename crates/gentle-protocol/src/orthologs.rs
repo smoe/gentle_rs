@@ -5,6 +5,7 @@
 //! evidence-separated comparison reports for sequence, TFBS, expression, and
 //! CUT&RUN/occupancy signals.
 
+use crate::{GeneSetCohortRelationship, GeneSetCohortRelationshipFlag};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -134,6 +135,8 @@ pub struct OrthologPromoterCohortRequest {
     pub upstream_bp: usize,
     pub downstream_bp: usize,
     pub ambiguity_policy: OrthologAmbiguityPolicy,
+    #[serde(default)]
+    pub relationship: GeneSetCohortRelationship,
 }
 
 /// One unresolved species/gene row from ortholog promoter resolution.
@@ -207,6 +210,10 @@ pub struct OrthologPromoterCohortReport {
     pub rows: Vec<OrthologPromoterRow>,
     #[serde(default)]
     pub unresolved_rows: Vec<OrthologUnresolvedRow>,
+    #[serde(default)]
+    pub relationship: GeneSetCohortRelationship,
+    #[serde(default)]
+    pub relationship_flags: Vec<GeneSetCohortRelationshipFlag>,
     #[serde(default)]
     pub warnings: Vec<String>,
 }
@@ -340,6 +347,10 @@ pub struct OrthologPromoterComparisonReport {
     #[serde(default)]
     pub expression_assignments: Vec<OrthologExpressionAssignment>,
     #[serde(default)]
+    pub relationship: GeneSetCohortRelationship,
+    #[serde(default)]
+    pub relationship_flags: Vec<GeneSetCohortRelationshipFlag>,
+    #[serde(default)]
     pub warnings: Vec<String>,
 }
 
@@ -383,6 +394,12 @@ mod tests {
             report.request.ambiguity_policy,
             OrthologAmbiguityPolicy::Reject
         );
+        assert_eq!(
+            report.request.relationship,
+            GeneSetCohortRelationship::Unspecified
+        );
+        assert_eq!(report.relationship, GeneSetCohortRelationship::Unspecified);
+        assert!(report.relationship_flags.is_empty());
         assert!(report.rows.is_empty());
         assert!(report.warnings.is_empty());
     }

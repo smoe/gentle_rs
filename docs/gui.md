@@ -4915,6 +4915,14 @@ Tutorial projects:
     - warnings and unassigned expression records remain visible
     - `Export expression JSON...` reruns the same shared operation with an
       output path, keeping GUI and shell artifacts identical in shape
+  - the same window now also exposes local ortholog promoter cohorts through
+    the shared `ResolveOrthologPromoterCohort` and
+    `SummarizeOrthologPromoterComparison` operations:
+    - rows show per-species promoter windows, strand/TSS placement, pairwise
+      TFBS similarity, relationship expectation flags, and CUT&RUN support
+      states
+    - wording frames the result as cross-species association evidence, not
+      proof of conserved regulation
   - the same window now also exposes `Inspect TFBS occupancy support`, which
     calls `InspectCutRunRegulatorySupport` for the active promoter span:
     - dataset ids and saved read-report ids are passed through the engine

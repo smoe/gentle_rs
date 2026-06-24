@@ -4078,7 +4078,7 @@ Tutorial companion:
     and live Ensembl ortholog/paralog retrieval is not implemented.
   - Draft members are included with explicit warnings; recipes that used
     `.status // "included"` may miss those warnings.
-- `orthologs resolve-promoter-cohort --anchor-species SPECIES --anchor-genome GENOME_ID --anchor-gene QUERY --target-species SPECIES [--target-species SPECIES ...] [--target-genome SPECIES=GENOME_ID] [--transcript SPECIES=TRANSCRIPT_ID] --orthologs ORTHOLOG_RESOURCE.json [--upstream-bp N] [--downstream-bp N] [--ambiguity-policy reject|first] [--catalog GENOMES.json] [--cache-dir PATH] [--path OUTPUT.json]`
+- `orthologs resolve-promoter-cohort --anchor-species SPECIES --anchor-genome GENOME_ID --anchor-gene QUERY --target-species SPECIES [--target-species SPECIES ...] [--target-genome SPECIES=GENOME_ID] [--transcript SPECIES=TRANSCRIPT_ID] --orthologs ORTHOLOG_RESOURCE.json [--relationship manual|co-regulated|anti-co-regulated] [--upstream-bp N] [--downstream-bp N] [--ambiguity-policy reject|first] [--catalog GENOMES.json] [--cache-dir PATH] [--path OUTPUT.json]`
   - Runs engine `ResolveOrthologPromoterCohort`.
   - Uses a local `gentle.ortholog_resource.v1` mapping table only; no live
     Ensembl or orthology API call is made.
@@ -4087,8 +4087,10 @@ Tutorial companion:
     honored for matching.
   - Ambiguous target mappings are unresolved by default. `--ambiguity-policy
     first` chooses the stable first candidate and records a warning.
+  - Optional `--relationship` records an expected cross-species association
+    without deriving evidence flags until a comparison is run.
   - Returns portable schema `gentle.ortholog_promoter_cohort.v1`.
-- `orthologs promoter-comparison --cohort COHORT.json --motif TOKEN [--motif TOKEN ...|--motifs CSV] [--score-kind KIND] [--allow-negative] [--expression-json JSON] [--expression-source-label LABEL] [--cutrun-dataset-id ID] [--cutrun-read-report-id ID] [--path OUTPUT.json]`
+- `orthologs promoter-comparison --cohort COHORT.json --motif TOKEN [--motif TOKEN ...|--motifs CSV] [--score-kind KIND] [--allow-negative] [--relationship manual|co-regulated|anti-co-regulated] [--expression-json JSON] [--expression-source-label LABEL] [--cutrun-dataset-id ID] [--cutrun-read-report-id ID] [--path OUTPUT.json]`
   - Runs engine `SummarizeOrthologPromoterComparison`.
   - Compares a resolved ortholog promoter cohort across separate evidence
     channels: promoter-sequence identity, TFBS score-track similarity, motif
@@ -4099,6 +4101,9 @@ Tutorial companion:
     Rows without matching provenance are `not_comparable`; raw cross-species
     peak intensity is not compared unless future normalized/provenanced
     evidence is supplied.
+  - Optional `--relationship` emits non-blocking expectation flags:
+    co-regulated flags unexpected TFBS/CUT&RUN divergence, while
+    anti-co-regulated flags unexpected concordance.
   - Returns portable schema `gentle.ortholog_promoter_comparison.v1`.
 - `resources benchmark-jaspar [--random-length N] [--seed N] [--output OUTPUT.json]`
   - Benchmarks the full active local JASPAR registry through one deterministic

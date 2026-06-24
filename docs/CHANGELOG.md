@@ -18,6 +18,9 @@ Maintenance rule:
   (`ui selection sequence-window ...`) and project display-layer visibility
   (`display show|hide|visibility`), keeping window/selection actions separate
   from sequence deletion.
+- Added Promoter design GUI parity for offline ortholog promoter cohorts and
+  comparisons, plus ortholog relationship expectations that emit non-blocking
+  TFBS/CUT&RUN divergence or concordance flags.
 
 ## 2026-06-22
 

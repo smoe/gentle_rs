@@ -1201,6 +1201,7 @@ pub enum ShellCommand {
         upstream_bp: usize,
         downstream_bp: usize,
         ambiguity_policy: OrthologAmbiguityPolicy,
+        relationship: GeneSetCohortRelationship,
         genome_catalog_path: Option<String>,
         cache_dir: Option<String>,
         output: Option<String>,
@@ -1211,6 +1212,7 @@ pub enum ShellCommand {
         motifs: Vec<String>,
         score_kind: TfbsScoreTrackValueKind,
         clip_negative: bool,
+        relationship: GeneSetCohortRelationship,
         expression_rows: Vec<PromoterExpressionEvidenceInput>,
         expression_source_label: Option<String>,
         cutrun_dataset_ids: Vec<String>,
@@ -7564,10 +7566,11 @@ impl ShellCommand {
                 upstream_bp,
                 downstream_bp,
                 ambiguity_policy,
+                relationship,
                 output,
                 ..
             } => format!(
-                "resolve ortholog promoter cohort for '{}' '{}' in genome '{}' to {} target species (orthologs='{}', upstream_bp={}, downstream_bp={}, ambiguity_policy={}, output='{}')",
+                "resolve ortholog promoter cohort for '{}' '{}' in genome '{}' to {} target species (orthologs='{}', upstream_bp={}, downstream_bp={}, ambiguity_policy={}, relationship={:?}, output='{}')",
                 anchor_species,
                 anchor_gene_query,
                 anchor_genome_id,
@@ -7576,6 +7579,7 @@ impl ShellCommand {
                 upstream_bp,
                 downstream_bp,
                 ambiguity_policy.as_str(),
+                relationship,
                 output.as_deref().unwrap_or("-"),
             ),
             Self::OrthologsPromoterComparison {
@@ -7584,10 +7588,11 @@ impl ShellCommand {
                 motifs,
                 score_kind,
                 clip_negative,
+                relationship,
                 output,
                 ..
             } => format!(
-                "compare ortholog promoters from {} with {} motif(s) (score_kind={}, clip_negative={}, output='{}')",
+                "compare ortholog promoters from {} with {} motif(s) (score_kind={}, clip_negative={}, relationship={:?}, output='{}')",
                 cohort_path
                     .as_deref()
                     .or_else(|| cohort.as_ref().map(|_| "inline cohort"))
@@ -7595,6 +7600,7 @@ impl ShellCommand {
                 motifs.len(),
                 score_kind.as_str(),
                 clip_negative,
+                relationship,
                 output.as_deref().unwrap_or("-"),
             ),
             Self::ReportersList {
@@ -22666,6 +22672,7 @@ fn parse_orthologs_command(tokens: &[String]) -> Result<ShellCommand, String> {
             let mut upstream_bp = DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP;
             let mut downstream_bp = DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP;
             let mut ambiguity_policy = OrthologAmbiguityPolicy::Reject;
+            let mut relationship = GeneSetCohortRelationship::Unspecified;
             let mut genome_catalog_path: Option<String> = None;
             let mut cache_dir: Option<String> = None;
             let mut output: Option<String> = None;
@@ -22739,6 +22746,11 @@ fn parse_orthologs_command(tokens: &[String]) -> Result<ShellCommand, String> {
                         let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
                         ambiguity_policy = parse_ortholog_ambiguity_policy(&raw, context)?;
                     }
+                    "--relationship" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(tokens, &mut idx, &flag, context)?;
+                        relationship = parse_gene_set_relationship(&raw, context)?;
+                    }
                     "--allow-ambiguous-first" => {
                         ambiguity_policy = OrthologAmbiguityPolicy::First;
                         idx += 1;
@@ -22784,6 +22796,7 @@ fn parse_orthologs_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 upstream_bp,
                 downstream_bp,
                 ambiguity_policy,
+                relationship,
                 genome_catalog_path,
                 cache_dir,
                 output,
@@ -22796,6 +22809,7 @@ fn parse_orthologs_command(tokens: &[String]) -> Result<ShellCommand, String> {
             let mut motifs: Vec<String> = vec![];
             let mut score_kind = TfbsScoreTrackValueKind::default();
             let mut clip_negative = true;
+            let mut relationship = GeneSetCohortRelationship::Unspecified;
             let mut expression_rows: Vec<PromoterExpressionEvidenceInput> = vec![];
             let mut expression_source_label: Option<String> = None;
             let mut cutrun_dataset_ids: Vec<String> = vec![];
@@ -22833,6 +22847,10 @@ fn parse_orthologs_command(tokens: &[String]) -> Result<ShellCommand, String> {
                     "--allow-negative" => {
                         clip_negative = false;
                         idx += 1;
+                    }
+                    "--relationship" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--relationship", context)?;
+                        relationship = parse_gene_set_relationship(&raw, context)?;
                     }
                     "--expression-json" | "--expression-row-json" => {
                         let flag = tokens[idx].clone();
@@ -22902,6 +22920,7 @@ fn parse_orthologs_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 motifs,
                 score_kind,
                 clip_negative,
+                relationship,
                 expression_rows,
                 expression_source_label,
                 cutrun_dataset_ids,
@@ -33055,6 +33074,7 @@ fn execute_export_import_and_resource_command(
             upstream_bp,
             downstream_bp,
             ambiguity_policy,
+            relationship,
             genome_catalog_path,
             cache_dir,
             output,
@@ -33071,6 +33091,7 @@ fn execute_export_import_and_resource_command(
                     upstream_bp: *upstream_bp,
                     downstream_bp: *downstream_bp,
                     ambiguity_policy: *ambiguity_policy,
+                    relationship: *relationship,
                     genome_catalog_path: genome_catalog_path.clone(),
                     cache_dir: cache_dir.clone(),
                     path: output.clone(),
@@ -33087,6 +33108,7 @@ fn execute_export_import_and_resource_command(
             motifs,
             score_kind,
             clip_negative,
+            relationship,
             expression_rows,
             expression_source_label,
             cutrun_dataset_ids,
@@ -33100,6 +33122,7 @@ fn execute_export_import_and_resource_command(
                     motifs: motifs.clone(),
                     score_kind: *score_kind,
                     clip_negative: *clip_negative,
+                    relationship: *relationship,
                     expression_rows: expression_rows.clone(),
                     expression_source_label: expression_source_label.clone(),
                     cutrun_dataset_ids: cutrun_dataset_ids.clone(),
