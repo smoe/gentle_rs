@@ -147,6 +147,16 @@ impl Window {
         }
     }
 
+    pub fn set_selection_range_0based(
+        &mut self,
+        start: usize,
+        end_exclusive: usize,
+    ) -> Result<(), String> {
+        match self {
+            Self::Dna(window) => window.set_selection_range_0based(start, end_exclusive),
+        }
+    }
+
     pub fn collect_open_auxiliary_window_entries(&self) -> Vec<(egui::ViewportId, String, String)> {
         match self {
             Self::Dna(window) => window.collect_open_auxiliary_window_entries(),

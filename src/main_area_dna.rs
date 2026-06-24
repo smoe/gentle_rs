@@ -10319,7 +10319,7 @@ impl MainAreaDna {
         Some((from, to))
     }
 
-    fn set_selection_range_0based(
+    pub fn set_selection_range_0based(
         &mut self,
         start: usize,
         end_exclusive: usize,

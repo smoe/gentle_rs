@@ -4369,6 +4369,19 @@ Agent command-scope declaration:
   - `/close sequence-window SEQ_ID` requests closing an open DNA sequence
     viewer for `SEQ_ID`. It is a non-mutating GUI intent and does not remove
     the loaded sequence record from project state.
+  - `ui selection sequence-window SEQ_ID --range START..END` requests setting
+    the DNA sequence-window selection in 0-based, end-exclusive coordinates.
+    Headless shell execution returns `gentle.ui_sequence_selection_intent.v1`;
+    the GUI Agent Assistant applies the selection when the loaded sequence is
+    available.
+  - `ui selection sequence-window SEQ_ID` requests inspecting the current GUI
+    selection for that sequence window.
+  - `display show TARGET`, `display hide TARGET`, and
+    `display visibility TARGET on|off` update shared engine display state for
+    feature/display targets such as `features`, `gene-features`,
+    `cds-features`, `mrna-features`, `repeat-features`, `array-features`,
+    `tfbs`, `restriction-enzymes`, `gc-contents`, `open-reading-frames`, and
+    `methylation-sites`.
   - `/open file PATH [--id ID]` and `/import file PATH [--id ID]` load an exact
     user-provided sequence file through `LoadFile`.
 - Accepted explicit sequence/fetch aliases:
@@ -4470,6 +4483,13 @@ restriction-site scan evidence:
 
 Shared-shell routes:
 
+- `ui selection sequence-window SEQ_ID [--range START..END|--start N --end N]`
+  - Returns `gentle.ui_sequence_selection_intent.v1` in headless shell
+    contexts; GUI hosts may apply it to open or pending DNA sequence windows.
+- `display show TARGET`, `display hide TARGET`,
+  `display visibility TARGET on|off`
+  - Apply `SetDisplayVisibility` and return
+    `gentle.display_visibility_result.v1`.
 - `facts graph [--evidence SCAN.json ...]`
   - Returns `gentle.project_fact_graph.v1`.
   - `--evidence` accepts JSON emitted by `features restriction-scan ... --path`.

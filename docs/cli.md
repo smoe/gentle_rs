@@ -75,6 +75,22 @@ Session-local operation history:
 - Undo/redo history is intentionally session-local and is not persisted into
   `.gentle.json` project files.
 
+Shared GUI/display control routes:
+
+- `gentle_cli shell 'ui open sequence-window SEQ_ID'`
+  - records a non-mutating request to open/focus a DNA sequence viewer for an
+    already-loaded sequence record when a GUI host applies the intent.
+- `gentle_cli shell 'ui selection sequence-window SEQ_ID --range START..END'`
+  - records a non-mutating request to set the DNA-window selection in 0-based,
+    end-exclusive coordinates.
+- `gentle_cli shell 'ui selection sequence-window SEQ_ID'`
+  - records a non-mutating request to inspect the current GUI selection for
+    that sequence window.
+- `gentle_cli shell 'display show tfbs'` and
+  `gentle_cli shell 'display hide restriction-enzymes'`
+  - update shared engine display state for sequence-window feature/display
+    layers.
+
 microRNA target-site scan:
 
 - `gentle_cli mirna explain-seed hsa-miR-96-5p`

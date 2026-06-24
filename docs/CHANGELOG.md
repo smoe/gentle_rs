@@ -12,6 +12,13 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-06-24
+
+- Added shared Agent Assistant/shell controls for DNA sequence-window selection
+  (`ui selection sequence-window ...`) and project display-layer visibility
+  (`display show|hide|visibility`), keeping window/selection actions separate
+  from sequence deletion.
+
 ## 2026-06-22
 
 - Added retrieval-producer metadata to `gentle.gene_set_resolution.v1` and the

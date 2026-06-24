@@ -963,12 +963,17 @@ Current baseline:
   - `ui focus sequence-window SEQ_ID`
   - `ui close TARGET`
   - `ui close sequence-window SEQ_ID`
+  - `ui selection sequence-window SEQ_ID [--range START..END]`
   - `ui prepared-genomes ...`
   - `ui latest-prepared SPECIES ...`
 - GUI-side intent handlers in `src/app.rs` now map `ui open|focus|close`
   intents to existing dialog openers/closers (Prepared References,
   prepare/retrieve/blast, track import, agent assistant, helper-genome dialogs)
   and close individual DNA sequence windows through an explicit `SEQ_ID`.
+- GUI-side selection handlers set or report an active DNA sequence-window
+  selection through the same shared command plane; feature-layer display
+  visibility stays an engine-owned `SetDisplayVisibility` operation exposed by
+  shared shell `display show|hide|visibility` commands.
 - UI-intent capability/introspection output is available via `ui intents`.
 - Command Palette entries for UI-intent targets are generated from the shared
   `UiIntentTarget` metadata (title, detail, keywords) instead of duplicating

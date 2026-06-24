@@ -84,6 +84,11 @@ viewer while keeping the sequence loaded, use
 delete/remove commands for window-close requests. For Ensembl gene retrievals
 from the Agent Assistant, add `--no-open` when the fetched sequence should be
 loaded into project state without automatically opening a DNA sequence viewer.
+To work with the active DNA-window selection, use
+`ui selection sequence-window SEQ_ID --range START..END` (0-based,
+end-exclusive) or `ui selection sequence-window SEQ_ID` to inspect it. To
+toggle display layers, use `display show TARGET` or `display hide TARGET`, for
+example `display show tfbs` or `display hide restriction-enzymes`.
 
 After the format probe passes, ask for the real task while keeping execution
 reviewed:
@@ -731,6 +736,8 @@ Example command suggestions (valid through Agent Assistant execution path):
 
 - `genomes blast "Human GRCh38 Ensembl 116" ACGTACGT --task blastn-short --max-hits 20`
 - `helpers blast-track "Plasmid pUC19 (online)" ACGTACGT seq1 --track-name primer_offtarget --clear-existing`
+- `ui selection sequence-window fus_live --range 100..250`
+- `display show tfbs`
 
 ## Safety and governance notes
 

@@ -959,6 +959,30 @@
             "gui-shell",
             "cli-direct"
          ],
+         "path": "ui close",
+         "summary": "Request closing a GUI target or DNA sequence window without deleting project data.",
+         "usage": "ui close TARGET"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "ui selection",
+         "summary": "Inspect or set a DNA sequence-window selection in 0-based, end-exclusive coordinates.",
+         "usage": "ui selection sequence-window SEQ_ID [--range START..END|--start N --end N]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
          "path": "ui prepared-genomes",
          "summary": "List prepared genomes/helpers for GUI intent disambiguation.",
          "usage": "ui prepared-genomes [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]"
@@ -5008,6 +5032,19 @@
          "path": "set-param",
          "summary": "Set engine/UI parameter via JSON value.",
          "usage": "set-param NAME JSON_VALUE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "SetDisplayVisibility"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "display",
+         "summary": "Toggle shared display visibility targets for sequence-window feature layers and panels.",
+         "usage": "display show TARGET | display hide TARGET | display visibility TARGET on|off"
       },
       {
          "aliases": [],

@@ -44,7 +44,7 @@ use crate::{
         DEFAULT_HOST_PROFILE_CATALOG_PATH, DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED,
         DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP,
         DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP, DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP,
-        DOTPLOT_ANALYSIS_METADATA_KEY, DotplotMode, DotplotOverlayAnchorExonRef,
+        DOTPLOT_ANALYSIS_METADATA_KEY, DisplayTarget, DotplotMode, DotplotOverlayAnchorExonRef,
         DotplotOverlayQuerySpec, DotplotOverlayXAxisMode, EditableStatus, Engine,
         ExonSkipReturnKind, ExonSkipSelectionCriterion, FactExpression, FeatureBedCoordinateMode,
         FeatureExpertTarget, FeatureExpertView, FlexibilityModel, GUIDE_DESIGN_METADATA_KEY,
@@ -1413,6 +1413,11 @@ pub enum ShellCommand {
     UiSequenceWindow {
         action: UiIntentAction,
         seq_id: String,
+    },
+    UiSequenceSelection {
+        seq_id: String,
+        start_0based: Option<usize>,
+        end_0based_exclusive: Option<usize>,
     },
     UiPreparedGenomes {
         helper_mode: bool,
@@ -2886,6 +2891,10 @@ pub enum ShellCommand {
         name: String,
         value_json: String,
     },
+    DisplayVisibility {
+        target: DisplayTarget,
+        visible: bool,
+    },
     Op {
         payload: String,
     },
@@ -4124,8 +4133,72 @@ fn resolve_workflow_template_bindings_for_preflight(
 
 fn parse_bool_binding(raw: &str) -> Option<bool> {
     match raw.trim().to_ascii_lowercase().as_str() {
-        "true" | "1" | "yes" | "y" => Some(true),
-        "false" | "0" | "no" | "n" => Some(false),
+        "true" | "1" | "yes" | "y" | "on" => Some(true),
+        "false" | "0" | "no" | "n" | "off" => Some(false),
+        _ => None,
+    }
+}
+
+fn display_target_shell_name(target: &DisplayTarget) -> &'static str {
+    match target {
+        DisplayTarget::SequencePanel => "sequence-panel",
+        DisplayTarget::MapPanel => "map-panel",
+        DisplayTarget::Features => "features",
+        DisplayTarget::CdsFeatures => "cds-features",
+        DisplayTarget::GeneFeatures => "gene-features",
+        DisplayTarget::MrnaFeatures => "mrna-features",
+        DisplayTarget::RepeatFeatures => "repeat-features",
+        DisplayTarget::ArrayFeatures => "array-features",
+        DisplayTarget::ConstructReasoningOverlay => "construct-reasoning-overlay",
+        DisplayTarget::Tfbs => "tfbs",
+        DisplayTarget::RestrictionEnzymes => "restriction-enzymes",
+        DisplayTarget::GcContents => "gc-contents",
+        DisplayTarget::OpenReadingFrames => "open-reading-frames",
+        DisplayTarget::MethylationSites => "methylation-sites",
+    }
+}
+
+fn parse_display_target(raw: &str) -> Option<DisplayTarget> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "sequence-panel" | "sequence_panel" | "sequence" | "sequence-text" => {
+            Some(DisplayTarget::SequencePanel)
+        }
+        "map-panel" | "map_panel" | "map" => Some(DisplayTarget::MapPanel),
+        "features" | "all-features" | "all_features" => Some(DisplayTarget::Features),
+        "cds" | "cds-features" | "cds_features" => Some(DisplayTarget::CdsFeatures),
+        "gene" | "genes" | "gene-features" | "gene_features" => Some(DisplayTarget::GeneFeatures),
+        "mrna" | "m-rna" | "mrna-features" | "mrna_features" => Some(DisplayTarget::MrnaFeatures),
+        "repeat" | "repeats" | "repeat-features" | "repeat_features" => {
+            Some(DisplayTarget::RepeatFeatures)
+        }
+        "array" | "arrays" | "array-features" | "array_features" => {
+            Some(DisplayTarget::ArrayFeatures)
+        }
+        "construct-reasoning"
+        | "construct_reasoning"
+        | "construct-reasoning-overlay"
+        | "construct_reasoning_overlay"
+        | "reasoning-overlay"
+        | "reasoning_overlay" => Some(DisplayTarget::ConstructReasoningOverlay),
+        "tfbs" | "transcription-factor-binding-sites" | "transcription_factor_binding_sites" => {
+            Some(DisplayTarget::Tfbs)
+        }
+        "restriction"
+        | "restriction-sites"
+        | "restriction_sites"
+        | "restriction-enzymes"
+        | "restriction_enzymes"
+        | "restriction-enzyme-sites"
+        | "restriction_enzyme_sites" => Some(DisplayTarget::RestrictionEnzymes),
+        "gc" | "gc-content" | "gc_content" | "gc-contents" | "gc_contents" => {
+            Some(DisplayTarget::GcContents)
+        }
+        "orf" | "orfs" | "open-reading-frames" | "open_reading_frames" => {
+            Some(DisplayTarget::OpenReadingFrames)
+        }
+        "methylation" | "methylation-sites" | "methylation_sites" => {
+            Some(DisplayTarget::MethylationSites)
+        }
         _ => None,
     }
 }
@@ -8128,6 +8201,17 @@ impl ShellCommand {
                     action.as_str()
                 )
             }
+            Self::UiSequenceSelection {
+                seq_id,
+                start_0based,
+                end_0based_exclusive,
+            } => {
+                if let (Some(start), Some(end)) = (start_0based, end_0based_exclusive) {
+                    format!("set GUI selection for sequence window '{seq_id}' to {start}..{end}")
+                } else {
+                    format!("inspect GUI selection for sequence window '{seq_id}'")
+                }
+            }
             Self::UiPreparedGenomes {
                 helper_mode,
                 catalog_path,
@@ -12042,6 +12126,14 @@ impl ShellCommand {
                 ),
                 _ => format!("set parameter '{}' to {}", name, value_json),
             },
+            Self::DisplayVisibility { target, visible } => {
+                let action = if *visible { "show" } else { "hide" };
+                format!(
+                    "{} display target {}",
+                    action,
+                    display_target_shell_name(target)
+                )
+            }
             Self::Op { .. } => "apply one engine operation from JSON".to_string(),
             Self::Workflow { .. } => "apply engine workflow from JSON".to_string(),
         }
@@ -12144,6 +12236,7 @@ impl ShellCommand {
                 | Self::RnaReadsAlignReport { .. }
                 | Self::BatchRun { .. }
                 | Self::SetParameter { .. }
+                | Self::DisplayVisibility { .. }
                 | Self::AgentsExecutePlan { .. }
                 | Self::Op { .. }
                 | Self::Workflow { .. }
@@ -21415,7 +21508,7 @@ fn parse_agents_command(tokens: &[String]) -> Result<ShellCommand, String> {
 fn parse_ui_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "ui requires a subcommand: intents, open, focus, close, prepared-genomes, latest-prepared"
+            "ui requires a subcommand: intents, open, focus, close, selection, prepared-genomes, latest-prepared"
                 .to_string(),
         );
     }
@@ -21426,6 +21519,7 @@ fn parse_ui_command(tokens: &[String]) -> Result<ShellCommand, String> {
             }
             Ok(ShellCommand::UiListIntents)
         }
+        "selection" | "select" => parse_ui_sequence_selection_command(tokens),
         action_raw
             if tokens.len() >= 3
                 && UiIntentAction::parse(action_raw).is_some()
@@ -21695,9 +21789,137 @@ fn parse_ui_command(tokens: &[String]) -> Result<ShellCommand, String> {
             })
         }
         other => Err(format!(
-            "Unknown ui subcommand '{other}' (expected intents, open, focus, close, prepared-genomes, latest-prepared)"
+            "Unknown ui subcommand '{other}' (expected intents, open, focus, close, selection, prepared-genomes, latest-prepared)"
         )),
     }
+}
+
+fn parse_ui_selection_range(raw: &str) -> Result<(usize, usize), String> {
+    let (start_raw, end_raw) = raw
+        .split_once("..")
+        .or_else(|| raw.split_once('-'))
+        .ok_or_else(|| "ui selection --range expects START..END".to_string())?;
+    let start = start_raw
+        .trim()
+        .parse::<usize>()
+        .map_err(|err| format!("Invalid ui selection range start '{start_raw}': {err}"))?;
+    let end = end_raw
+        .trim()
+        .parse::<usize>()
+        .map_err(|err| format!("Invalid ui selection range end '{end_raw}': {err}"))?;
+    if end <= start {
+        return Err("ui selection range end must be greater than start".to_string());
+    }
+    Ok((start, end))
+}
+
+fn parse_ui_sequence_selection_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 4 {
+        return Err(
+            "ui selection requires sequence-window SEQ_ID [--range START..END|--start N --end N]"
+                .to_string(),
+        );
+    }
+    if !matches!(
+        tokens[2].as_str(),
+        "sequence-window" | "sequence_window" | "dna-window" | "dna_window" | "sequence"
+    ) {
+        return Err("ui selection supports only sequence-window SEQ_ID".to_string());
+    }
+    let seq_id = tokens[3].trim().to_string();
+    if seq_id.is_empty() {
+        return Err("ui selection sequence-window SEQ_ID must not be empty".to_string());
+    }
+    let mut start_0based: Option<usize> = None;
+    let mut end_0based_exclusive: Option<usize> = None;
+    let mut idx = 4usize;
+    while idx < tokens.len() {
+        match tokens[idx].as_str() {
+            "--range" => {
+                if start_0based.is_some() || end_0based_exclusive.is_some() {
+                    return Err(
+                        "ui selection accepts either --range or --start/--end, not both"
+                            .to_string(),
+                    );
+                }
+                let raw = parse_option_path(tokens, &mut idx, "--range", "ui selection")?;
+                let (start, end) = parse_ui_selection_range(&raw)?;
+                start_0based = Some(start);
+                end_0based_exclusive = Some(end);
+            }
+            "--start" => {
+                if start_0based.is_some() {
+                    return Err("ui selection --start was provided more than once".to_string());
+                }
+                let raw = parse_option_path(tokens, &mut idx, "--start", "ui selection")?;
+                start_0based =
+                    Some(raw.parse::<usize>().map_err(|err| {
+                        format!("Invalid ui selection --start value '{raw}': {err}")
+                    })?);
+            }
+            "--end" | "--end-exclusive" => {
+                if end_0based_exclusive.is_some() {
+                    return Err("ui selection --end was provided more than once".to_string());
+                }
+                let raw = parse_option_path(tokens, &mut idx, "--end", "ui selection")?;
+                end_0based_exclusive =
+                    Some(raw.parse::<usize>().map_err(|err| {
+                        format!("Invalid ui selection --end value '{raw}': {err}")
+                    })?);
+            }
+            other => return Err(format!("Unknown option '{other}' for ui selection")),
+        }
+    }
+    match (start_0based, end_0based_exclusive) {
+        (Some(start), Some(end)) if end <= start => {
+            Err("ui selection --end must be greater than --start".to_string())
+        }
+        (Some(_), Some(_)) | (None, None) => Ok(ShellCommand::UiSequenceSelection {
+            seq_id,
+            start_0based,
+            end_0based_exclusive,
+        }),
+        _ => Err("ui selection requires both --start and --end when setting a range".to_string()),
+    }
+}
+
+fn parse_display_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 3 {
+        return Err("display requires show|hide TARGET or visibility TARGET on|off".to_string());
+    }
+    let (target_raw, visible) = match tokens[1].as_str() {
+        "show" | "enable" => {
+            if tokens.len() != 3 {
+                return Err("display show requires exactly TARGET".to_string());
+            }
+            (tokens[2].as_str(), true)
+        }
+        "hide" | "disable" => {
+            if tokens.len() != 3 {
+                return Err("display hide requires exactly TARGET".to_string());
+            }
+            (tokens[2].as_str(), false)
+        }
+        "visibility" | "set" => {
+            if tokens.len() != 4 {
+                return Err("display visibility requires TARGET on|off".to_string());
+            }
+            let visible = parse_bool_binding(&tokens[3])
+                .ok_or_else(|| "display visibility value must be on|off|true|false".to_string())?;
+            (tokens[2].as_str(), visible)
+        }
+        other => {
+            return Err(format!(
+                "Unknown display subcommand '{other}' (expected show, hide, or visibility)"
+            ));
+        }
+    };
+    let target = parse_display_target(target_raw).ok_or_else(|| {
+        format!(
+            "Unknown display target '{target_raw}' (try features, cds-features, gene-features, mrna-features, repeat-features, array-features, tfbs, restriction-enzymes, gc-contents, open-reading-frames, methylation-sites)"
+        )
+    })?;
+    Ok(ShellCommand::DisplayVisibility { target, visible })
 }
 
 fn parse_gene_sets_command(tokens: &[String]) -> Result<ShellCommand, String> {
@@ -28602,6 +28824,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "guides" => parse_guides_command(tokens),
         "features" => parse_features_command(tokens),
         "primers" => parse_primers_command(tokens),
+        "display" => parse_display_command(tokens),
         "set-param" => {
             if tokens.len() < 3 {
                 return Err("set-param requires NAME JSON_VALUE".to_string());
@@ -41541,6 +41764,23 @@ fn execute_configuration_command(
                 output: json!({ "result": op_result }),
             })
         }
+        ShellCommand::DisplayVisibility { target, visible } => {
+            let op_result = engine
+                .apply(Operation::SetDisplayVisibility {
+                    target: target.clone(),
+                    visible: *visible,
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "schema": "gentle.display_visibility_result.v1",
+                    "target": display_target_shell_name(target),
+                    "visible": visible,
+                    "result": op_result
+                }),
+            })
+        }
         _ => unreachable!("non-configuration command passed to configuration helper"),
     }
 }
@@ -41915,6 +42155,7 @@ fn execute_ui_command(
                         "ui open sequence-window SEQ_ID",
                         "ui focus sequence-window SEQ_ID",
                         "ui close sequence-window SEQ_ID",
+                        "ui selection sequence-window SEQ_ID [--range START..END]",
                         "ui prepared-genomes [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]",
                         "ui latest-prepared SPECIES [--helpers] [--catalog PATH] [--cache-dir PATH]"
                     ],
@@ -41967,6 +42208,40 @@ fn execute_ui_command(
                 )
             }),
         }),
+        ShellCommand::UiSequenceSelection {
+            seq_id,
+            start_0based,
+            end_0based_exclusive,
+        } => {
+            let mut ui_intent = json!({
+                "action": if start_0based.is_some() { "set_selection" } else { "get_selection" },
+                "target": "sequence-window",
+                "seq_id": seq_id
+            });
+            if let (Some(start), Some(end)) = (start_0based, end_0based_exclusive)
+                && let Some(obj) = ui_intent.as_object_mut()
+            {
+                let start = *start;
+                let end = *end;
+                obj.insert(
+                    "range".to_string(),
+                    json!({
+                        "start_0based": start,
+                        "end_0based_exclusive": end,
+                        "length_bp": end.saturating_sub(start)
+                    }),
+                );
+            }
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.ui_sequence_selection_intent.v1",
+                    "ui_intent": ui_intent,
+                    "applied": false,
+                    "message": "UI selection intent recorded; inspecting or setting a sequence-window selection requires GUI host integration and does not mutate project data."
+                }),
+            })
+        }
         ShellCommand::UiPreparedGenomes {
             helper_mode,
             catalog_path,
@@ -42703,7 +42978,10 @@ fn execute_shell_command_with_options_dispatch(
     ) {
         return execute_rna_reads_command(engine, command, options);
     }
-    if matches!(command, ShellCommand::SetParameter { .. }) {
+    if matches!(
+        command,
+        ShellCommand::SetParameter { .. } | ShellCommand::DisplayVisibility { .. }
+    ) {
         return execute_configuration_command(engine, command);
     }
     if matches!(
@@ -42723,6 +43001,7 @@ fn execute_shell_command_with_options_dispatch(
         ShellCommand::UiListIntents
             | ShellCommand::UiIntent { .. }
             | ShellCommand::UiSequenceWindow { .. }
+            | ShellCommand::UiSequenceSelection { .. }
             | ShellCommand::UiPreparedGenomes { .. }
             | ShellCommand::UiLatestPrepared { .. }
     ) {
@@ -43336,6 +43615,7 @@ fn execute_shell_command_with_options_inner(
         ShellCommand::UiListIntents
         | ShellCommand::UiIntent { .. }
         | ShellCommand::UiSequenceWindow { .. }
+        | ShellCommand::UiSequenceSelection { .. }
         | ShellCommand::UiPreparedGenomes { .. }
         | ShellCommand::UiLatestPrepared { .. } => execute_ui_command(engine, command, options)?,
         ShellCommand::CutRunList { .. }
@@ -44288,7 +44568,9 @@ fn execute_shell_command_with_options_inner(
         ShellCommand::BatchPlan { .. } | ShellCommand::BatchRun { .. } => {
             execute_batch_command(engine, command)?
         }
-        ShellCommand::SetParameter { .. } => execute_configuration_command(engine, command)?,
+        ShellCommand::SetParameter { .. } | ShellCommand::DisplayVisibility { .. } => {
+            execute_configuration_command(engine, command)?
+        }
         ShellCommand::Op { payload } => execute_op_command(engine, payload)?,
         ShellCommand::Workflow { payload } => execute_workflow_command(engine, payload)?,
     };

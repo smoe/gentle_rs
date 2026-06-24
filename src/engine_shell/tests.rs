@@ -460,6 +460,7 @@ fn smoke_command_override(path: &str) -> Option<&'static str> {
         "macros template-put" => Some("macros template-put template --script script_body"),
         "candidates macro" => Some("candidates macro script_body"),
         "candidates template-put" => Some("candidates template-put template --script script_body"),
+        "display" => Some("display show tfbs"),
         _ => None,
     }
 }
@@ -516,6 +517,7 @@ fn skip_glossary_flag_parse(path: &str, flag: &str) -> bool {
                     "candidates generate-between-anchors",
                     "--anchor-a-json" | "--anchor-b-json"
                 )
+                | ("ui selection", "--start" | "--end")
         )
 }
 
@@ -24943,6 +24945,35 @@ fn parse_ui_open_and_prepared_commands() {
         other => panic!("unexpected command: {other:?}"),
     }
 
+    match parse_shell_line("ui selection sequence-window fus_live --range 10..24")
+        .expect("parse ui selection sequence-window")
+    {
+        ShellCommand::UiSequenceSelection {
+            seq_id,
+            start_0based,
+            end_0based_exclusive,
+        } => {
+            assert_eq!(seq_id, "fus_live");
+            assert_eq!(start_0based, Some(10));
+            assert_eq!(end_0based_exclusive, Some(24));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    match parse_shell_line("ui selection sequence-window fus_live").expect("parse ui selection get")
+    {
+        ShellCommand::UiSequenceSelection {
+            seq_id,
+            start_0based,
+            end_0based_exclusive,
+        } => {
+            assert_eq!(seq_id, "fus_live");
+            assert_eq!(start_0based, None);
+            assert_eq!(end_0based_exclusive, None);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
     let prepared = parse_shell_line("ui prepared-genomes --species human --latest")
         .expect("parse ui prepared-genomes");
     match prepared {
@@ -25050,6 +25081,15 @@ fn execute_ui_intents_lists_shared_target_metadata() {
             .iter()
             .any(|value| value.as_str() == Some("ui close sequence-window SEQ_ID"))
     );
+    assert!(
+        out.output["commands"]
+            .as_array()
+            .expect("commands array")
+            .iter()
+            .any(|value| {
+                value.as_str() == Some("ui selection sequence-window SEQ_ID [--range START..END]")
+            })
+    );
 }
 
 #[test]
@@ -25080,6 +25120,43 @@ fn execute_ui_sequence_window_records_non_mutating_intent() {
             .as_str()
             .unwrap_or_default()
             .contains("does not delete")
+    );
+}
+
+#[test]
+fn execute_ui_sequence_selection_records_non_mutating_intent() {
+    let mut engine = GentleEngine::new();
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::UiSequenceSelection {
+            seq_id: "fus_live".to_string(),
+            start_0based: Some(10),
+            end_0based_exclusive: Some(24),
+        },
+    )
+    .expect("execute ui selection sequence-window");
+
+    assert!(!out.state_changed);
+    assert_eq!(
+        out.output["schema"].as_str(),
+        Some("gentle.ui_sequence_selection_intent.v1")
+    );
+    assert_eq!(
+        out.output["ui_intent"]["action"].as_str(),
+        Some("set_selection")
+    );
+    assert_eq!(
+        out.output["ui_intent"]["target"].as_str(),
+        Some("sequence-window")
+    );
+    assert_eq!(out.output["ui_intent"]["seq_id"].as_str(), Some("fus_live"));
+    assert_eq!(
+        out.output["ui_intent"]["range"]["start_0based"].as_u64(),
+        Some(10)
+    );
+    assert_eq!(
+        out.output["ui_intent"]["range"]["end_0based_exclusive"].as_u64(),
+        Some(24)
     );
 }
 
@@ -25301,6 +25378,33 @@ fn parse_set_param_command() {
         ShellCommand::SetParameter { name, value_json } => {
             assert_eq!(name, "vcf_display_pass_only");
             assert_eq!(value_json, "true");
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_display_visibility_commands() {
+    match parse_shell_line("display show tfbs").expect("parse display show") {
+        ShellCommand::DisplayVisibility { target, visible } => {
+            assert!(matches!(target, DisplayTarget::Tfbs));
+            assert!(visible);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+    match parse_shell_line("display hide restriction-enzymes").expect("parse display hide") {
+        ShellCommand::DisplayVisibility { target, visible } => {
+            assert!(matches!(target, DisplayTarget::RestrictionEnzymes));
+            assert!(!visible);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+    match parse_shell_line("display visibility repeat-features on")
+        .expect("parse display visibility")
+    {
+        ShellCommand::DisplayVisibility { target, visible } => {
+            assert!(matches!(target, DisplayTarget::RepeatFeatures));
+            assert!(visible);
         }
         other => panic!("unexpected command: {other:?}"),
     }
@@ -30613,6 +30717,28 @@ fn execute_set_param_updates_restriction_display_state() {
         vec!["BamHI".to_string(), "EcoRI".to_string()],
         "preferred_restriction_enzymes should be updated by set-param"
     );
+}
+
+#[test]
+fn execute_display_visibility_updates_display_state() {
+    let mut engine = GentleEngine::new();
+    assert!(!engine.state().display.show_tfbs);
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::DisplayVisibility {
+            target: DisplayTarget::Tfbs,
+            visible: true,
+        },
+    )
+    .expect("execute display visibility");
+    assert!(out.state_changed);
+    assert_eq!(
+        out.output["schema"].as_str(),
+        Some("gentle.display_visibility_result.v1")
+    );
+    assert_eq!(out.output["target"].as_str(), Some("tfbs"));
+    assert_eq!(out.output["visible"].as_bool(), Some(true));
+    assert!(engine.state().display.show_tfbs);
 }
 
 #[test]

@@ -2513,6 +2513,10 @@ Common examples:
 - `help` — show help catalog or command-specific help.
 - `state-summary` — summarize loaded sequences/containers/metadata.
 - `render-svg SEQ_ID linear|circular OUTPUT.svg` — export map SVG.
+- `ui selection sequence-window SEQ_ID --range START..END` — set the active
+  DNA-window selection in 0-based, end-exclusive coordinates.
+- `display show tfbs` / `display hide restriction-enzymes` — toggle shared
+  display layers used by sequence-window rendering.
 - `genomes prepare GENOME_ID ...` — prepare reference genome cache/index.
 - `tracks import-bed SEQ_ID PATH ...` — project BED track onto anchored sequence.
 - `arrays inspect-microarray-track MANIFEST` — inspect a prepared Clariom D
@@ -2685,6 +2689,14 @@ Behavior:
     loaded sequence without deleting that sequence from project state;
     `/open sequence-window SEQ_ID` and `/close sequence-window SEQ_ID` are
     convenience aliases
+  - `ui selection sequence-window SEQ_ID --range START..END` sets the
+    DNA-window selection for a loaded sequence without changing sequence data;
+    `ui selection sequence-window SEQ_ID` reports the current selection
+  - `display show TARGET`, `display hide TARGET`, and
+    `display visibility TARGET on|off` update shared project display state for
+    feature/display targets such as `tfbs`, `restriction-enzymes`,
+    `gene-features`, `cds-features`, `repeat-features`, and
+    `methylation-sites`
   - `/paste sequence --sequence-text DNA [--id ID]` creates a sequence from
     explicit pasted IUPAC DNA text
   - `/fetch genbank`, `/fetch ncbi`, `/fetch uniprot`, `/fetch ensembl*`, and

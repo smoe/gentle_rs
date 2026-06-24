@@ -994,6 +994,49 @@ fn agent_assistant_open_sequence_window_intent_reopens_loaded_sequence_state() {
 }
 
 #[test]
+fn agent_assistant_selection_intent_sets_loaded_sequence_window_selection() {
+    let mut app = GENtleApp::default();
+    let dna = DNAsequence::from_sequence("ACGTACGT").expect("sequence");
+    app.engine
+        .write()
+        .unwrap()
+        .state_mut()
+        .sequences
+        .insert("fus_live".to_string(), dna);
+
+    app.execute_agent_suggested_command(
+        1,
+        "ui selection sequence-window fus_live --range 2..6",
+        "manual",
+    );
+
+    assert_eq!(app.new_windows.len(), 1);
+    assert_eq!(
+        app.new_windows[0].sequence_id().as_deref(),
+        Some("fus_live")
+    );
+    assert_eq!(app.new_windows[0].selection_range_0based(), Some((2, 6)));
+    assert!(
+        app.agent_status.contains("range=2..6"),
+        "unexpected status: {}",
+        app.agent_status
+    );
+    let entry = app
+        .agent_execution_log
+        .last()
+        .expect("selection intent should be logged");
+    assert!(entry.ok);
+    assert!(!entry.state_changed);
+
+    app.execute_agent_suggested_command(2, "ui selection sequence-window fus_live", "manual");
+    assert!(
+        app.agent_status.contains("range=2..6"),
+        "unexpected status: {}",
+        app.agent_status
+    );
+}
+
+#[test]
 fn agent_assistant_close_ui_intent_closes_catalogued_dialog_without_state_change() {
     let mut app = GENtleApp::default();
     app.show_pcr_design_dialog = true;

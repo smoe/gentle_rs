@@ -443,6 +443,15 @@ impl WindowDna {
         self.main_area.selection_range_0based()
     }
 
+    pub fn set_selection_range_0based(
+        &mut self,
+        start: usize,
+        end_exclusive: usize,
+    ) -> Result<(), String> {
+        self.main_area
+            .set_selection_range_0based(start, end_exclusive)
+    }
+
     pub fn collect_open_auxiliary_window_entries(&self) -> Vec<(egui::ViewportId, String, String)> {
         self.main_area.collect_open_auxiliary_window_entries()
     }

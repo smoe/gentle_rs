@@ -1490,6 +1490,18 @@ impl GENtleApp {
         if let ShellCommand::UiSequenceWindow { action, seq_id } = command {
             return Some(self.apply_sequence_window_intent(*action, seq_id));
         }
+        if let ShellCommand::UiSequenceSelection {
+            seq_id,
+            start_0based,
+            end_0based_exclusive,
+        } = command
+        {
+            return Some(self.apply_sequence_selection_intent(
+                seq_id,
+                *start_0based,
+                *end_0based_exclusive,
+            ));
+        }
         let ShellCommand::UiIntent {
             action,
             target,
@@ -1697,6 +1709,103 @@ impl GENtleApp {
             )
         } else {
             format!("ui intent close 'sequence-window' found no open or loaded sequence {seq_id}")
+        }
+    }
+
+    fn current_sequence_window_selection_range(&self, seq_id: &str) -> Option<(usize, usize)> {
+        if let Some(viewport_id) = self.find_open_sequence_viewport_id(seq_id)
+            && let Some(window) = self.windows.get(&viewport_id)
+            && let Ok(window) = window.read()
+        {
+            return window.selection_range_0based();
+        }
+        self.new_windows
+            .iter()
+            .find(|window| window.sequence_id().as_deref() == Some(seq_id))
+            .and_then(|window| window.selection_range_0based())
+    }
+
+    fn set_sequence_window_selection_range(
+        &mut self,
+        seq_id: &str,
+        start_0based: usize,
+        end_0based_exclusive: usize,
+    ) -> Result<(usize, usize), String> {
+        if let Some(viewport_id) = self.find_open_sequence_viewport_id(seq_id) {
+            let Some(window) = self.windows.get(&viewport_id).cloned() else {
+                return Err(format!("Open sequence window for {seq_id} disappeared"));
+            };
+            window
+                .write()
+                .map_err(|_| "Sequence window lock poisoned while setting selection".to_string())?
+                .set_selection_range_0based(start_0based, end_0based_exclusive)?;
+            self.queue_focus_viewport(viewport_id);
+            return Ok((start_0based, end_0based_exclusive));
+        }
+        if let Some(window) = self.find_pending_sequence_window_mut(seq_id) {
+            window.set_selection_range_0based(start_0based, end_0based_exclusive)?;
+            return Ok((start_0based, end_0based_exclusive));
+        }
+        let dna = self
+            .engine
+            .read()
+            .map_err(|_| "Engine lock poisoned while opening sequence window".to_string())?
+            .state()
+            .sequences
+            .get(seq_id)
+            .cloned()
+            .ok_or_else(|| format!("No loaded sequence {seq_id}"))?;
+        let mut window = Window::new_dna(dna, seq_id.to_string(), self.engine.clone());
+        window.set_selection_range_0based(start_0based, end_0based_exclusive)?;
+        self.new_windows.push(window);
+        Ok((start_0based, end_0based_exclusive))
+    }
+
+    fn apply_sequence_selection_intent(
+        &mut self,
+        seq_id: &str,
+        start_0based: Option<usize>,
+        end_0based_exclusive: Option<usize>,
+    ) -> String {
+        let seq_id = seq_id.trim();
+        if seq_id.is_empty() {
+            return "ui selection 'sequence-window' requires seq_id".to_string();
+        }
+        match (start_0based, end_0based_exclusive) {
+            (Some(start), Some(end)) => {
+                match self.set_sequence_window_selection_range(seq_id, start, end) {
+                    Ok((start, end)) => format!(
+                        "ui selection 'sequence-window' set seq_id={seq_id} range={start}..{end} (0-based, end-exclusive; sequence record kept loaded)"
+                    ),
+                    Err(err) => {
+                        format!("ui selection 'sequence-window' failed for seq_id={seq_id}: {err}")
+                    }
+                }
+            }
+            (None, None) => {
+                if let Some((start, end)) = self.current_sequence_window_selection_range(seq_id) {
+                    format!(
+                        "ui selection 'sequence-window' seq_id={seq_id} range={start}..{end} (0-based, end-exclusive)"
+                    )
+                } else {
+                    let sequence_loaded = self
+                        .engine
+                        .read()
+                        .map(|engine| engine.state().sequences.contains_key(seq_id))
+                        .unwrap_or(false);
+                    if sequence_loaded {
+                        format!(
+                            "ui selection 'sequence-window' found no current selection for loaded seq_id={seq_id}"
+                        )
+                    } else {
+                        format!("ui selection 'sequence-window' found no loaded sequence {seq_id}")
+                    }
+                }
+            }
+            _ => {
+                "ui selection 'sequence-window' requires both start_0based and end_0based_exclusive"
+                    .to_string()
+            }
         }
     }
 
