@@ -187,6 +187,10 @@ use crate::{
 };
 use eframe::egui::{self, Frame, PointerState, Vec2};
 use gentle_gui::theme;
+use gentle_protocol::{
+    GeneSetCohortRelationship, OrthologAmbiguityPolicy, OrthologCutRunSupportStatus,
+    OrthologPromoterCohortReport, OrthologPromoterComparisonReport,
+};
 use serde::{Deserialize, Serialize};
 use std::{
     cmp::Ordering,
@@ -1700,6 +1704,16 @@ struct VariantFollowupUiState {
     promoter_downstream_bp: String,
     promoter_expression_rows_json: String,
     promoter_expression_source_label: String,
+    ortholog_anchor_species: String,
+    ortholog_anchor_genome_id: String,
+    ortholog_target_species: String,
+    ortholog_target_genome_ids: String,
+    ortholog_resource_path: String,
+    ortholog_genome_catalog_path: String,
+    ortholog_cache_dir: String,
+    ortholog_cutrun_dataset_ids: String,
+    ortholog_cutrun_read_report_ids: String,
+    ortholog_relationship: GeneSetCohortRelationship,
     tfbs_focus_half_window_bp: String,
     retain_downstream_from_tss_bp: String,
     retain_upstream_beyond_variant_bp: String,
@@ -1717,6 +1731,8 @@ struct VariantFollowupUiState {
     cached_promoter_evidence_matrix: Option<PromoterEvidenceMatrixReport>,
     cached_isoform_promoter_comparison: Option<IsoformPromoterComparisonReport>,
     cached_promoter_expression_evidence: Option<PromoterExpressionEvidenceReport>,
+    cached_ortholog_promoter_cohort: Option<OrthologPromoterCohortReport>,
+    cached_ortholog_promoter_comparison: Option<OrthologPromoterComparisonReport>,
     cached_candidates: Option<PromoterReporterCandidateSet>,
 }
 
@@ -1766,6 +1782,18 @@ impl Default for VariantFollowupUiState {
             promoter_expression_rows_json: "[]".to_string(),
             promoter_expression_source_label: "GUI pasted expression evidence".to_string(),
             cached_promoter_expression_evidence: None,
+            ortholog_anchor_species: String::new(),
+            ortholog_anchor_genome_id: String::new(),
+            ortholog_target_species: String::new(),
+            ortholog_target_genome_ids: String::new(),
+            ortholog_resource_path: String::new(),
+            ortholog_genome_catalog_path: String::new(),
+            ortholog_cache_dir: String::new(),
+            ortholog_cutrun_dataset_ids: String::new(),
+            ortholog_cutrun_read_report_ids: String::new(),
+            ortholog_relationship: GeneSetCohortRelationship::Unspecified,
+            cached_ortholog_promoter_cohort: None,
+            cached_ortholog_promoter_comparison: None,
             cached_candidates: None,
         }
     }

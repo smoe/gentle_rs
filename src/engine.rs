@@ -3602,6 +3602,8 @@ pub enum Operation {
         downstream_bp: usize,
         #[serde(default)]
         ambiguity_policy: OrthologAmbiguityPolicy,
+        #[serde(default)]
+        relationship: GeneSetCohortRelationship,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         genome_catalog_path: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -3620,6 +3622,8 @@ pub enum Operation {
         score_kind: TfbsScoreTrackValueKind,
         #[serde(default = "default_tfbs_score_track_clip_negative")]
         clip_negative: bool,
+        #[serde(default)]
+        relationship: GeneSetCohortRelationship,
         #[serde(default)]
         expression_rows: Vec<PromoterExpressionEvidenceInput>,
         #[serde(default, skip_serializing_if = "Option::is_none")]

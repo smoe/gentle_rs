@@ -21913,7 +21913,7 @@ fn parse_genomes_promoter_cohort_comparison_with_expression_and_cutrun_sources()
 #[test]
 fn parse_orthologs_resolve_promoter_cohort_and_comparison() {
     let resolve = parse_shell_line(
-        r#"orthologs resolve-promoter-cohort --anchor-species "Homo sapiens" --anchor-genome HumanToy --anchor-gene TP73 --target-species "Mus musculus" --target-genome "Mus musculus=MouseToy" --transcript "Mus musculus=TX_MOUSE_TRP73" --orthologs orthologs.json --upstream-bp 2000 --downstream-bp 200 --ambiguity-policy first --catalog genomes.json --cache-dir cache --path cohort.json"#,
+        r#"orthologs resolve-promoter-cohort --anchor-species "Homo sapiens" --anchor-genome HumanToy --anchor-gene TP73 --target-species "Mus musculus" --target-genome "Mus musculus=MouseToy" --transcript "Mus musculus=TX_MOUSE_TRP73" --orthologs orthologs.json --upstream-bp 2000 --downstream-bp 200 --ambiguity-policy first --relationship co-regulated --catalog genomes.json --cache-dir cache --path cohort.json"#,
     )
     .expect("parse ortholog promoter cohort");
     match resolve {
@@ -21928,6 +21928,7 @@ fn parse_orthologs_resolve_promoter_cohort_and_comparison() {
             upstream_bp,
             downstream_bp,
             ambiguity_policy,
+            relationship,
             genome_catalog_path,
             cache_dir,
             output,
@@ -21948,6 +21949,7 @@ fn parse_orthologs_resolve_promoter_cohort_and_comparison() {
             assert_eq!(upstream_bp, 2000);
             assert_eq!(downstream_bp, 200);
             assert_eq!(ambiguity_policy, OrthologAmbiguityPolicy::First);
+            assert_eq!(relationship, GeneSetCohortRelationship::CoRegulated);
             assert_eq!(genome_catalog_path.as_deref(), Some("genomes.json"));
             assert_eq!(cache_dir.as_deref(), Some("cache"));
             assert_eq!(output.as_deref(), Some("cohort.json"));
@@ -21956,7 +21958,7 @@ fn parse_orthologs_resolve_promoter_cohort_and_comparison() {
     }
 
     let compare = parse_shell_line(
-        r#"orthologs promoter-comparison --cohort cohort.json --motif TP73 --motifs SP1,BACH2 --score-kind llr_background_tail_log10 --allow-negative --expression-json '{"gene_label":"TP73","condition":"case","value":7.5,"unit":"TPM"}' --source-label rna_demo --cutrun-dataset-id cutrun_demo --path comparison.json"#,
+        r#"orthologs promoter-comparison --cohort cohort.json --motif TP73 --motifs SP1,BACH2 --score-kind llr_background_tail_log10 --allow-negative --relationship anti-co-regulated --expression-json '{"gene_label":"TP73","condition":"case","value":7.5,"unit":"TPM"}' --source-label rna_demo --cutrun-dataset-id cutrun_demo --path comparison.json"#,
     )
     .expect("parse ortholog promoter comparison");
     match compare {
@@ -21966,6 +21968,7 @@ fn parse_orthologs_resolve_promoter_cohort_and_comparison() {
             motifs,
             score_kind,
             clip_negative,
+            relationship,
             expression_rows,
             expression_source_label,
             cutrun_dataset_ids,
@@ -21980,6 +21983,7 @@ fn parse_orthologs_resolve_promoter_cohort_and_comparison() {
             );
             assert_eq!(score_kind, TfbsScoreTrackValueKind::LlrBackgroundTailLog10);
             assert!(!clip_negative);
+            assert_eq!(relationship, GeneSetCohortRelationship::AntiCoRegulated);
             assert_eq!(expression_rows.len(), 1);
             assert_eq!(expression_rows[0].condition.as_deref(), Some("case"));
             assert_eq!(expression_source_label.as_deref(), Some("rna_demo"));

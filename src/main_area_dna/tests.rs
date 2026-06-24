@@ -9554,6 +9554,95 @@ fn variant_followup_promoter_expression_evidence_runs_shared_op_and_caches_repor
 }
 
 #[test]
+fn variant_followup_ortholog_promoter_comparison_runs_shared_op_and_caches_report() {
+    let dna = DNAsequence::from_sequence(&"A".repeat(120)).expect("sequence");
+    let engine = Arc::new(RwLock::new(GentleEngine::from_state(
+        ProjectState::default(),
+    )));
+    let mut area = MainAreaDna::new(dna, Some("ortholog_gui".to_string()), Some(engine));
+    area.variant_followup_ui.score_track_motifs = "SP1".to_string();
+    area.variant_followup_ui.score_track_value_kind = TfbsScoreTrackValueKind::LlrBits;
+    area.variant_followup_ui.score_track_clip_negative = true;
+    area.variant_followup_ui.ortholog_relationship =
+        gentle_protocol::GeneSetCohortRelationship::CoRegulated;
+    let promoter_sequence = format!("{}GGGCGGGGCGGGG{}", "A".repeat(48), "C".repeat(48));
+    area.variant_followup_ui.cached_ortholog_promoter_cohort =
+        Some(gentle_protocol::OrthologPromoterCohortReport {
+            schema: gentle_protocol::ORTHOLOG_PROMOTER_COHORT_SCHEMA.to_string(),
+            request: gentle_protocol::OrthologPromoterCohortRequest {
+                anchor_species: "Homo sapiens".to_string(),
+                anchor_genome_id: "HumanToy".to_string(),
+                anchor_gene_query: "TP73".to_string(),
+                target_species: vec!["Mus musculus".to_string()],
+                relationship: gentle_protocol::GeneSetCohortRelationship::CoRegulated,
+                ..gentle_protocol::OrthologPromoterCohortRequest::default()
+            },
+            resolved_promoter_count: 2,
+            rows: vec![
+                gentle_protocol::OrthologPromoterRow {
+                    species: "Homo sapiens".to_string(),
+                    genome_id: "HumanToy".to_string(),
+                    role: gentle_protocol::OrthologPromoterRole::Anchor,
+                    gene_query: "TP73".to_string(),
+                    gene_symbol: Some("TP73".to_string()),
+                    transcript_id: "TX_HUMAN_TP73".to_string(),
+                    display_label: "TP73".to_string(),
+                    chromosome: "chr1".to_string(),
+                    strand: "+".to_string(),
+                    promoter_start_1based: 1000,
+                    promoter_end_1based: 1109,
+                    promoter_length_bp: promoter_sequence.len(),
+                    tss_1based: 1050,
+                    tss_position_0based: 50,
+                    sequence_orientation: "transcription_aligned".to_string(),
+                    promoter_sequence: Some(promoter_sequence.clone()),
+                    ..gentle_protocol::OrthologPromoterRow::default()
+                },
+                gentle_protocol::OrthologPromoterRow {
+                    species: "Mus musculus".to_string(),
+                    genome_id: "MouseToy".to_string(),
+                    role: gentle_protocol::OrthologPromoterRole::Target,
+                    gene_query: "Trp73".to_string(),
+                    gene_symbol: Some("Trp73".to_string()),
+                    transcript_id: "TX_MOUSE_TRP73".to_string(),
+                    display_label: "Trp73".to_string(),
+                    chromosome: "chr1".to_string(),
+                    strand: "-".to_string(),
+                    promoter_start_1based: 2000,
+                    promoter_end_1based: 2109,
+                    promoter_length_bp: promoter_sequence.len(),
+                    tss_1based: 2059,
+                    tss_position_0based: 50,
+                    sequence_orientation: "transcription_aligned".to_string(),
+                    promoter_sequence: Some(promoter_sequence),
+                    ..gentle_protocol::OrthologPromoterRow::default()
+                },
+            ],
+            relationship: gentle_protocol::GeneSetCohortRelationship::CoRegulated,
+            ..gentle_protocol::OrthologPromoterCohortReport::default()
+        });
+
+    area.summarize_variant_followup_ortholog_promoter_comparison();
+
+    let report = area
+        .variant_followup_ui
+        .cached_ortholog_promoter_comparison
+        .as_ref()
+        .expect("cached ortholog promoter comparison");
+    assert_eq!(
+        report.schema,
+        gentle_protocol::ORTHOLOG_PROMOTER_COMPARISON_SCHEMA
+    );
+    assert_eq!(report.motifs_requested, vec!["SP1".to_string()]);
+    assert_eq!(report.cohort.resolved_promoter_count, 2);
+    assert_eq!(
+        report.relationship,
+        gentle_protocol::GeneSetCohortRelationship::CoRegulated
+    );
+    assert!(!report.promoter_summaries.is_empty());
+}
+
+#[test]
 fn splicing_intron_regulatory_rows_merge_cached_attract_hits_with_intron_signals() {
     let view = SplicingExpertView {
         seq_id: "tp73".to_string(),

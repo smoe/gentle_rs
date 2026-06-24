@@ -506,6 +506,12 @@ Behavior notes:
   strand, TSS, promoter span, transcription-aligned promoter sequence, and
   orthology evidence/provenance. Unresolved rows make missing or ambiguous
   mappings explicit.
+- Ortholog promoter cohort and comparison reports may carry an additive
+  `relationship` expectation (`manual`, `co_regulated`,
+  `anti_co_regulated`, or `unspecified`) plus non-blocking
+  `relationship_flags[]`. Co-regulated expectations flag unexpected TFBS or
+  CUT&RUN divergence; anti-co-regulated expectations flag unexpected
+  concordance. These rows are evidence triage only, not regulatory proof.
 - `SummarizeOrthologPromoterComparison` keeps evidence channels separate:
   promoter-sequence identity, TFBS score-track similarity, motif peak
   presence, optional expression assignment, and CUT&RUN/occupancy status are

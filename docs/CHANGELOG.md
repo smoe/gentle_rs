@@ -12,6 +12,12 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-06-24
+
+- Added Promoter design GUI parity for offline ortholog promoter cohorts and
+  comparisons, plus ortholog relationship expectations that emit non-blocking
+  TFBS/CUT&RUN divergence or concordance flags.
+
 ## 2026-06-22
 
 - Added retrieval-producer metadata to `gentle.gene_set_resolution.v1` and the
