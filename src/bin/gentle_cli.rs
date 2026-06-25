@@ -3046,6 +3046,33 @@ mod tests {
     fn assert_forwarded_services_dispatch_matches_shared_shell_execution(
         forwarded_args: Vec<String>,
     ) {
+        fn normalize_macos_dyld_pid(text: &str) -> Option<String> {
+            let mut rest = text;
+            let mut normalized = String::new();
+            let mut changed = false;
+            while let Some(start) = rest.find("dyld[") {
+                let after_prefix = &rest[start + "dyld[".len()..];
+                let Some(end) = after_prefix.find(']') else {
+                    break;
+                };
+                let pid = &after_prefix[..end];
+                if pid.is_empty() || !pid.chars().all(|ch| ch.is_ascii_digit()) {
+                    normalized.push_str(&rest[..start + "dyld[".len() + end + 1]);
+                    rest = &after_prefix[end + 1..];
+                    continue;
+                }
+                normalized.push_str(&rest[..start]);
+                normalized.push_str("dyld[pid]");
+                rest = &after_prefix[end + 1..];
+                changed = true;
+            }
+            if !changed {
+                return None;
+            }
+            normalized.push_str(rest);
+            Some(normalized)
+        }
+
         fn strip_nondeterministic_service_fields(value: &mut serde_json::Value) {
             match value {
                 serde_json::Value::Object(map) => {
@@ -3060,6 +3087,11 @@ mod tests {
                 serde_json::Value::Array(values) => {
                     for value in values {
                         strip_nondeterministic_service_fields(value);
+                    }
+                }
+                serde_json::Value::String(text) => {
+                    if let Some(normalized) = normalize_macos_dyld_pid(text) {
+                        *text = normalized;
                     }
                 }
                 _ => {}
