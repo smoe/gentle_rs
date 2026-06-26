@@ -965,6 +965,29 @@
       "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+    },
+    {
+      "id": "promoter_gene_set_ortholog_cohort_offline",
+      "title": "Promoter Cohorts With Gene-Set and Ortholog Relationship Flags",
+      "path": "docs/tutorial/generated/chapters/08-07_promoter_gene_set_ortholog_cohort_offline.md",
+      "group": "08",
+      "group_label": "Regulatory, TFBS & Reporter Design",
+      "group_order": 8,
+      "group_position": 7,
+      "decimal_id": "08.07",
+      "type": "executable_chapter",
+      "status": "generated+checked/human-pending",
+      "source": "generated_from_tutorial_sources",
+      "audiences": [
+        "gui_first",
+        "cli_first",
+        "regulatory_analysis",
+        "contributors"
+      ],
+      "notes": "Machine-checked offline chapter for declared promoter-cohort relationships, unexpected-divergence flags, and local ortholog promoter cohorts.",
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     }
   ]
 }

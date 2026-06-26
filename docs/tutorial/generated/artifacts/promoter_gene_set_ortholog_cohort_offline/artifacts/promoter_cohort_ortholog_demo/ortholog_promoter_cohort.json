@@ -1,0 +1,116 @@
+{
+  "schema": "gentle.ortholog_promoter_cohort.v1",
+  "generated_at_unix_ms": 0,
+  "op_id": "op-6",
+  "run_id": "example_promoter_gene_set_ortholog_cohort_offline",
+  "request": {
+    "anchor_species": "Homo sapiens",
+    "anchor_genome_id": "HumanPromoterToy",
+    "anchor_gene_query": "TP73",
+    "target_species": [
+      "Mus musculus",
+      "Rattus norvegicus"
+    ],
+    "target_genome_ids": {
+      "Mus musculus": "MousePromoterToy",
+      "Rattus norvegicus": "RatPromoterToy"
+    },
+    "transcript_ids": {
+      "Homo sapiens": "TX_TP73_HUMAN",
+      "Mus musculus": "TX_TRP73_MOUSE",
+      "Rattus norvegicus": "TX_TP73_RAT"
+    },
+    "ortholog_resource_path": "./docs/examples/assets/promoter_cohort_ortholog_demo/ortholog_resource.json",
+    "upstream_bp": 40,
+    "downstream_bp": 10,
+    "ambiguity_policy": "reject",
+    "relationship": "co_regulated"
+  },
+  "ortholog_resource_label": "Synthetic TP73 promoter ortholog tutorial resource",
+  "resolved_promoter_count": 3,
+  "unresolved_count": 0,
+  "rows": [
+    {
+      "species": "Homo sapiens",
+      "genome_id": "HumanPromoterToy",
+      "role": "anchor",
+      "gene_query": "TP73",
+      "gene_symbol": "TP73",
+      "gene_id": "GENE_TP73",
+      "transcript_id_requested": "TX_TP73_HUMAN",
+      "transcript_id": "TX_TP73_HUMAN",
+      "display_label": "TP73",
+      "chromosome": "chrToyHuman",
+      "strand": "+",
+      "promoter_start_1based": 111,
+      "promoter_end_1based": 161,
+      "promoter_length_bp": 51,
+      "tss_1based": 151,
+      "tss_position_0based": 40,
+      "sequence_orientation": "transcription_aligned",
+      "promoter_sequence": "GGGGCGGGGTTTGGGGCGGGGTTTGGGGCGGGGTTTGGGGCGGGGAAAAAA",
+      "orthology_evidence": [],
+      "warnings": []
+    },
+    {
+      "species": "Mus musculus",
+      "genome_id": "MousePromoterToy",
+      "role": "target",
+      "gene_query": "Trp73",
+      "gene_symbol": "Trp73",
+      "gene_id": "GENE_TRP73",
+      "transcript_id_requested": "TX_TRP73_MOUSE",
+      "transcript_id": "TX_TRP73_MOUSE",
+      "display_label": "Trp73",
+      "chromosome": "chrToyMouse",
+      "strand": "+",
+      "promoter_start_1based": 111,
+      "promoter_end_1based": 161,
+      "promoter_length_bp": 51,
+      "tss_1based": 151,
+      "tss_position_0based": 40,
+      "sequence_orientation": "transcription_aligned",
+      "promoter_sequence": "ATATATATATATATATATATATATATATATATATATATATATATATATATA",
+      "orthology_type": "synthetic_ortholog",
+      "confidence": "tutorial",
+      "orthology_source": "hand-crafted offline tutorial fixture",
+      "orthology_evidence": [
+        "synthetic mapping for deterministic promoter comparison"
+      ],
+      "warnings": []
+    },
+    {
+      "species": "Rattus norvegicus",
+      "genome_id": "RatPromoterToy",
+      "role": "target",
+      "gene_query": "Tp73",
+      "gene_symbol": "Tp73",
+      "gene_id": "GENE_TP73_RAT",
+      "transcript_id_requested": "TX_TP73_RAT",
+      "transcript_id": "TX_TP73_RAT",
+      "display_label": "Tp73",
+      "chromosome": "chrToyRat",
+      "strand": "+",
+      "promoter_start_1based": 111,
+      "promoter_end_1based": 161,
+      "promoter_length_bp": 51,
+      "tss_1based": 151,
+      "tss_position_0based": 40,
+      "sequence_orientation": "transcription_aligned",
+      "promoter_sequence": "GGGGCGGGGTTTGGGGCGGGGTTTGGGGCGGGGTTTGGGGCGGGGAAAAAA",
+      "orthology_type": "synthetic_ortholog",
+      "confidence": "tutorial",
+      "orthology_source": "hand-crafted offline tutorial fixture",
+      "orthology_evidence": [
+        "synthetic mapping for deterministic promoter comparison"
+      ],
+      "warnings": []
+    }
+  ],
+  "unresolved_rows": [],
+  "relationship": "co_regulated",
+  "relationship_flags": [],
+  "warnings": [
+    "Synthetic tutorial-only ortholog mappings; use reviewed ortholog resources for biological analysis."
+  ]
+}

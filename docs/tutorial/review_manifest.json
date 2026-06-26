@@ -345,6 +345,15 @@
       "human_reviewer": "smoe"
     },
     {
+      "tutorial_id": "promoter_gene_set_ortholog_cohort_offline",
+      "tutorial_kind": "generated_chapter",
+      "tutorial_status": "active",
+      "replaced_by": null,
+      "codex_reviewed_at": null,
+      "human_reviewed_at": null,
+      "human_reviewer": null
+    },
+    {
       "tutorial_id": "reporter_construct_handoff_cli",
       "tutorial_kind": "guided_walkthrough",
       "tutorial_status": "active",

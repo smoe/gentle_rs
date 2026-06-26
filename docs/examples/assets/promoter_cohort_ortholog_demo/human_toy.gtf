@@ -1,0 +1,10 @@
+chrToyHuman	src	gene	151	220	.	+	.	gene_id "GENE_TP73"; gene_name "TP73";
+chrToyHuman	src	transcript	151	220	.	+	.	gene_id "GENE_TP73"; gene_name "TP73"; transcript_id "TX_TP73_HUMAN";
+chrToyHuman	src	exon	151	220	.	+	.	gene_id "GENE_TP73"; gene_name "TP73"; transcript_id "TX_TP73_HUMAN"; exon_number "1";
+chrToyHuman	src	gene	351	420	.	+	.	gene_id "GENE_E2F1"; gene_name "E2F1";
+chrToyHuman	src	transcript	351	420	.	+	.	gene_id "GENE_E2F1"; gene_name "E2F1"; transcript_id "TX_E2F1_HUMAN";
+chrToyHuman	src	exon	351	420	.	+	.	gene_id "GENE_E2F1"; gene_name "E2F1"; transcript_id "TX_E2F1_HUMAN"; exon_number "1";
+chrToyHuman	src	gene	551	620	.	+	.	gene_id "GENE_PATZ1"; gene_name "PATZ1";
+chrToyHuman	src	transcript	551	620	.	+	.	gene_id "GENE_PATZ1"; gene_name "PATZ1"; transcript_id "TX_PATZ1_HUMAN";
+chrToyHuman	src	exon	551	620	.	+	.	gene_id "GENE_PATZ1"; gene_name "PATZ1"; transcript_id "TX_PATZ1_HUMAN"; exon_number "1";
+
