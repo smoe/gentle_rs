@@ -34,3 +34,32 @@
 - Used by: offline promoter-design artifact slice workflow for
   alternative-promoter grouping, promoter evidence matrix review, TFBS
   score-track SVG export, and TFBS similarity JSON export.
+
+## Promoter cohort tutorial fixtures
+
+Files:
+
+- `promoter_cohort_tutorial_human.fa`
+- `promoter_cohort_tutorial_human.gtf`
+- `promoter_cohort_tutorial_mouse.fa`
+- `promoter_cohort_tutorial_mouse.gtf`
+- `promoter_cohort_tutorial_genomes.json`
+- `promoter_cohort_tutorial_gene_groups.json`
+- `promoter_cohort_tutorial_orthologs.json`
+
+Origin: synthetic, hand-crafted offline tutorial fixtures.
+
+Recreation: create one 300 bp human `chr1` sequence carrying a single
+GC-rich `GGGGCGGGGCGGGG` patch inside the 40 bp upstream / 10 bp downstream
+TP73 promoter window, one 300 bp human `chr2` sequence with a deliberately
+T-rich divergent promoter for `TP73D`, and one 300 bp mouse `chr1` sequence
+with a T-rich `Trp73` promoter. Add one-exon GTF gene/transcript rows at
+`101..260` with TSS `151`, then point `promoter_cohort_tutorial_genomes.json`
+at those local FASTA/GTF files. The gene-group catalog defines the reviewed
+`tutorial_p73_promoter_cohort` set (`TP73`, `TP73D`). The ortholog resource
+maps synthetic human `TP73` to mouse `Trp73` as a local one-to-one row.
+
+Used by: offline gene-set promoter cohort and ortholog promoter cohort tutorial
+generation. The fixtures are intentionally artificial and demonstrate
+relationship-flag mechanics only; they do not make claims about real TP73
+regulation or orthology evidence.

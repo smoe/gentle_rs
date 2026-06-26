@@ -2,10 +2,14 @@
   "schema": "gentle.tutorial_generation_report.v1",
   "manifest": "docs/tutorial/manifest.json",
   "source_examples": "docs/examples/workflows",
-  "chapter_count": 21,
+  "chapter_count": 22,
   "online_enabled": false,
   "generated_files": [
     "README.md",
+    "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_cohort.json",
+    "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_comparison.json",
+    "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.ortholog_promoter_cohort.json",
+    "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.ortholog_promoter_comparison.json",
     "artifacts/gibson_arrangements_baseline/artifacts/gibson_lab_assistant_handoff.md",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.csv",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt",
@@ -41,10 +45,15 @@
     "chapters/07-02_tp53_multi_gene_sparse_mapping_online.md",
     "chapters/08-03_promoter_design_artifact_slice_offline.md",
     "chapters/08-07_promoter_gene_set_ortholog_cohort_offline.md",
+    "chapters/08-08_gene_set_ortholog_promoter_cohorts_offline.md",
     "report.json"
   ],
   "file_checksums": {
-    "README.md": "162596588a44bcd7b55596ba57bb535544e47d43",
+    "README.md": "bc788203360914a9afff482516376d82ae405c5d",
+    "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_cohort.json": "3cafec727acc78d2d25f99eb6677a95f521ed815",
+    "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_comparison.json": "408ab85d4045e3518793d69bbc571843012e1ef5",
+    "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.ortholog_promoter_cohort.json": "70076d2552ca0abdad3bf50f874dc15a4f7828aa",
+    "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.ortholog_promoter_comparison.json": "0d088cb42f8c21e29204a6bfe275ca9cb1e6a52b",
     "artifacts/gibson_arrangements_baseline/artifacts/gibson_lab_assistant_handoff.md": "ea49d90a537300148ada050060e1b12a48b8b57c",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.csv": "2fd8b22187bb90dcdc0388ed65df4f6c33240893",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt": "ddfcc1b983151b4a7fa444b171065c4d90a6ecfb",
@@ -79,7 +88,8 @@
     "chapters/06-05_tp73_uniprot_projection_audit_cli.md": "0487f1a7940dc711f32930e87de868ab99d6a363",
     "chapters/07-02_tp53_multi_gene_sparse_mapping_online.md": "6014e363084dca60f5732f0e2ff8b7629976a7d2",
     "chapters/08-03_promoter_design_artifact_slice_offline.md": "8749657d6ad49f455f478aac6898cd81a0eb31a1",
-    "chapters/08-07_promoter_gene_set_ortholog_cohort_offline.md": "a9d2a132ef5fdb3bcc0d71b15fb112bc4b9ff166"
+    "chapters/08-07_promoter_gene_set_ortholog_cohort_offline.md": "a9d2a132ef5fdb3bcc0d71b15fb112bc4b9ff166",
+    "chapters/08-08_gene_set_ortholog_promoter_cohorts_offline.md": "7a4478d1d96eec51be707b31076a6d1df9237b63"
   },
   "warnings": [
     "Tutorial 'load_branch_reverse_complement_pgex_fasta' review is stale because source JSON 'docs/tutorial/sources/02-01_load_branch_reverse_complement_pgex_fasta.json' changed after human review date 2026-05-18",
@@ -615,6 +625,35 @@
         "artifacts/promoter_gene_set_ortholog_cohort_offline/artifacts/promoter_cohort_ortholog_demo/gene_set_promoter_cohort_comparison.json",
         "artifacts/promoter_gene_set_ortholog_cohort_offline/artifacts/promoter_cohort_ortholog_demo/ortholog_promoter_cohort.json",
         "artifacts/promoter_gene_set_ortholog_cohort_offline/artifacts/promoter_cohort_ortholog_demo/ortholog_promoter_comparison.json"
+      ]
+    },
+    {
+      "id": "gene_set_ortholog_promoter_cohorts_offline",
+      "order": 26,
+      "title": "Gene-Set and Ortholog Promoter Cohorts (Offline Synthetic TP73 Demo)",
+      "group": "08",
+      "group_label": "Regulatory, TFBS & Reporter Design",
+      "group_order": 8,
+      "group_position": 8,
+      "decimal_id": "08.08",
+      "tier": "core",
+      "example_id": "gene_set_ortholog_promoter_cohorts_offline",
+      "example_source": "docs/examples/workflows/gene_set_ortholog_promoter_cohorts_offline.json",
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows",
+        "genome_catalog_targeting",
+        "promoter_motif_controls",
+        "tutorial_drift_checks"
+      ],
+      "executed": true,
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-06-25",
+      "retained_artifacts": [
+        "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_cohort.json",
+        "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_comparison.json",
+        "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.ortholog_promoter_cohort.json",
+        "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.ortholog_promoter_comparison.json"
       ]
     }
   ]

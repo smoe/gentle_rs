@@ -1,0 +1,6 @@
+chr1	tutorial	gene	101	260	.	+	.	gene_id "ENSG_TUTORIAL_TP73"; gene_name "TP73";
+chr1	tutorial	transcript	151	250	.	+	.	gene_id "ENSG_TUTORIAL_TP73"; gene_name "TP73"; transcript_id "TX_HUMAN_TP73";
+chr1	tutorial	exon	151	250	.	+	.	gene_id "ENSG_TUTORIAL_TP73"; gene_name "TP73"; transcript_id "TX_HUMAN_TP73"; exon_number "1";
+chr2	tutorial	gene	101	260	.	+	.	gene_id "ENSG_TUTORIAL_TP73D"; gene_name "TP73D";
+chr2	tutorial	transcript	151	250	.	+	.	gene_id "ENSG_TUTORIAL_TP73D"; gene_name "TP73D"; transcript_id "TX_HUMAN_TP73D";
+chr2	tutorial	exon	151	250	.	+	.	gene_id "ENSG_TUTORIAL_TP73D"; gene_name "TP73D"; transcript_id "TX_HUMAN_TP73D"; exon_number "1";
