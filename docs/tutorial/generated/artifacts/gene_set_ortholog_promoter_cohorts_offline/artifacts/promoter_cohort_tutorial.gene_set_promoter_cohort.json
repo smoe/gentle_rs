@@ -1,0 +1,123 @@
+{
+  "schema": "gentle.gene_set_promoter_cohort.v1",
+  "generated_at_unix_ms": 0,
+  "op_id": "op-3",
+  "run_id": "example_gene_set_ortholog_promoter_cohorts_offline",
+  "genome_id": "TutorialHumanPromoterToy",
+  "upstream_bp": 40,
+  "downstream_bp": 10,
+  "relationship": "co_regulated",
+  "gene_set_resolution": {
+    "schema": "gentle.gene_set_resolution.v1",
+    "generated_at_unix_ms": 0,
+    "request": {
+      "source_kind": "catalog_group",
+      "query": "tutorial_p73_promoter_cohort"
+    },
+    "review_status": "unreviewed",
+    "genome_id": "TutorialHumanPromoterToy",
+    "gene_group_catalog_label": "./docs/examples/assets/promoter_cohort_tutorial_gene_groups.json",
+    "genome_catalog_label": "./docs/examples/assets/promoter_cohort_tutorial_genomes.json",
+    "contributing_group_ids": [
+      "tutorial_p73_promoter_cohort"
+    ],
+    "requested_member_count": 2,
+    "resolved_member_count": 2,
+    "unresolved_member_count": 0,
+    "resolved_members": [
+      {
+        "dedup_key": "gene_id:ensg_tutorial_tp73",
+        "symbol": "TP73",
+        "gene_id": "ENSG_TUTORIAL_TP73",
+        "aliases": [],
+        "chromosome": "chr1",
+        "start_1based": 101,
+        "end_1based": 260,
+        "strand": "+",
+        "contributing_group_ids": [
+          "tutorial_p73_promoter_cohort"
+        ],
+        "provenance": [
+          {
+            "source_kind": "catalog_group",
+            "source_id": "tutorial_p73_promoter_cohort",
+            "source_path": "./docs/examples/assets/promoter_cohort_tutorial_gene_groups.json",
+            "note": "synthetic tutorial member with a GC-rich promoter patch"
+          }
+        ]
+      },
+      {
+        "dedup_key": "gene_id:ensg_tutorial_tp73d",
+        "symbol": "TP73D",
+        "gene_id": "ENSG_TUTORIAL_TP73D",
+        "aliases": [],
+        "chromosome": "chr2",
+        "start_1based": 101,
+        "end_1based": 260,
+        "strand": "+",
+        "contributing_group_ids": [
+          "tutorial_p73_promoter_cohort"
+        ],
+        "provenance": [
+          {
+            "source_kind": "catalog_group",
+            "source_id": "tutorial_p73_promoter_cohort",
+            "source_path": "./docs/examples/assets/promoter_cohort_tutorial_gene_groups.json",
+            "note": "synthetic tutorial member with a deliberately divergent promoter"
+          }
+        ]
+      }
+    ],
+    "unresolved_members": [],
+    "warnings": [],
+    "provenance": [
+      {
+        "source_kind": "catalog_group",
+        "source_id": "tutorial_p73_promoter_cohort",
+        "source_label": "Tutorial p73 promoter cohort",
+        "source_path": "./docs/examples/assets/promoter_cohort_tutorial_gene_groups.json"
+      }
+    ]
+  },
+  "requested_member_count": 2,
+  "returned_window_count": 2,
+  "windows": [
+    {
+      "member_dedup_key": "gene_id:ensg_tutorial_tp73",
+      "symbol": "TP73",
+      "gene_id": "ENSG_TUTORIAL_TP73",
+      "gene_query": "ENSG_TUTORIAL_TP73",
+      "occurrence": 1,
+      "transcript_id": "TX_HUMAN_TP73",
+      "display_label": "TP73",
+      "chromosome": "chr1",
+      "strand": "+",
+      "promoter_start_1based": 111,
+      "promoter_end_1based": 161,
+      "promoter_length_bp": 51,
+      "tss_1based": 151,
+      "sequence_orientation": "transcription_aligned",
+      "used_fuzzy_gene_match": false
+    },
+    {
+      "member_dedup_key": "gene_id:ensg_tutorial_tp73d",
+      "symbol": "TP73D",
+      "gene_id": "ENSG_TUTORIAL_TP73D",
+      "gene_query": "ENSG_TUTORIAL_TP73D",
+      "occurrence": 1,
+      "transcript_id": "TX_HUMAN_TP73D",
+      "display_label": "TP73D",
+      "chromosome": "chr2",
+      "strand": "+",
+      "promoter_start_1based": 111,
+      "promoter_end_1based": 161,
+      "promoter_length_bp": 51,
+      "tss_1based": 151,
+      "sequence_orientation": "transcription_aligned",
+      "used_fuzzy_gene_match": false
+    }
+  ],
+  "relationship_flags": [],
+  "unresolved_members": [],
+  "warnings": []
+}

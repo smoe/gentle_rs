@@ -2498,6 +2498,24 @@ fn rewrite_example_paths_for_execution(
             }
             continue;
         }
+        if let Operation::SummarizePromoterCohortComparison {
+            catalog_path,
+            cache_dir,
+            path,
+            ..
+        } = op
+        {
+            rewrite_optional_input_path(catalog_path, repo_root);
+            rewrite_optional_output_path(cache_dir, run_dir);
+            rewrite_optional_output_path(path, run_dir);
+            if let Some(dir) = cache_dir {
+                ensure_directory_exists(dir)?;
+            }
+            if let Some(path) = path.as_deref() {
+                ensure_parent_exists(path)?;
+            }
+            continue;
+        }
         if let Operation::RenderTfbsScoreTracksSvg { path, .. } = op {
             *path = resolve_output_path(path, run_dir);
             ensure_parent_exists(path)?;
@@ -2631,6 +2649,57 @@ fn rewrite_example_paths_for_execution(
             rewrite_optional_output_path(cache_dir, run_dir);
             if let Some(dir) = cache_dir {
                 ensure_directory_exists(dir)?;
+            }
+            continue;
+        }
+        if let Operation::BuildGeneSetPromoterCohort {
+            gene_group_catalog_path,
+            genome_catalog_path,
+            cache_dir,
+            path,
+            ..
+        } = op
+        {
+            rewrite_optional_input_path(gene_group_catalog_path, repo_root);
+            rewrite_optional_input_path(genome_catalog_path, repo_root);
+            rewrite_optional_output_path(cache_dir, run_dir);
+            rewrite_optional_output_path(path, run_dir);
+            if let Some(dir) = cache_dir {
+                ensure_directory_exists(dir)?;
+            }
+            if let Some(path) = path.as_deref() {
+                ensure_parent_exists(path)?;
+            }
+            continue;
+        }
+        if let Operation::ResolveOrthologPromoterCohort {
+            ortholog_resource_path,
+            genome_catalog_path,
+            cache_dir,
+            path,
+            ..
+        } = op
+        {
+            *ortholog_resource_path = resolve_input_path(ortholog_resource_path, repo_root);
+            rewrite_optional_input_path(genome_catalog_path, repo_root);
+            rewrite_optional_output_path(cache_dir, run_dir);
+            rewrite_optional_output_path(path, run_dir);
+            if let Some(dir) = cache_dir {
+                ensure_directory_exists(dir)?;
+            }
+            if let Some(path) = path.as_deref() {
+                ensure_parent_exists(path)?;
+            }
+            continue;
+        }
+        if let Operation::SummarizeOrthologPromoterComparison {
+            cohort_path, path, ..
+        } = op
+        {
+            rewrite_optional_output_path(cohort_path, run_dir);
+            rewrite_optional_output_path(path, run_dir);
+            if let Some(path) = path.as_deref() {
+                ensure_parent_exists(path)?;
             }
             continue;
         }

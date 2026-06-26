@@ -1,0 +1,214 @@
+{
+  "schema": "gentle.ortholog_promoter_comparison.v1",
+  "generated_at_unix_ms": 0,
+  "op_id": "op-6",
+  "run_id": "example_gene_set_ortholog_promoter_cohorts_offline",
+  "cohort": {
+    "schema": "gentle.ortholog_promoter_cohort.v1",
+    "generated_at_unix_ms": 0,
+    "op_id": "op-5",
+    "run_id": "example_gene_set_ortholog_promoter_cohorts_offline",
+    "request": {
+      "anchor_species": "Homo sapiens",
+      "anchor_genome_id": "TutorialHumanPromoterToy",
+      "anchor_gene_query": "TP73",
+      "target_species": [
+        "Mus musculus"
+      ],
+      "target_genome_ids": {
+        "mouse": "TutorialMousePromoterToy"
+      },
+      "transcript_ids": {
+        "human": "TX_HUMAN_TP73",
+        "mouse": "TX_MOUSE_TRP73"
+      },
+      "ortholog_resource_path": "./docs/examples/assets/promoter_cohort_tutorial_orthologs.json",
+      "upstream_bp": 40,
+      "downstream_bp": 10,
+      "ambiguity_policy": "reject",
+      "relationship": "co_regulated"
+    },
+    "ortholog_resource_label": "Tutorial TP73 orthologs",
+    "resolved_promoter_count": 2,
+    "unresolved_count": 0,
+    "rows": [
+      {
+        "species": "Homo sapiens",
+        "genome_id": "TutorialHumanPromoterToy",
+        "role": "anchor",
+        "gene_query": "TP73",
+        "gene_symbol": "TP73",
+        "gene_id": "ENSG_TUTORIAL_TP73",
+        "transcript_id_requested": "TX_HUMAN_TP73",
+        "transcript_id": "TX_HUMAN_TP73",
+        "display_label": "TP73",
+        "chromosome": "chr1",
+        "strand": "+",
+        "promoter_start_1based": 111,
+        "promoter_end_1based": 161,
+        "promoter_length_bp": 51,
+        "tss_1based": 151,
+        "tss_position_0based": 40,
+        "sequence_orientation": "transcription_aligned",
+        "promoter_sequence": "AAAAAAAAAAAGGGGCGGGGCGGGGAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "orthology_evidence": [],
+        "warnings": []
+      },
+      {
+        "species": "Mus musculus",
+        "genome_id": "TutorialMousePromoterToy",
+        "role": "target",
+        "gene_query": "ENSMUSG_TUTORIAL_TRP73",
+        "gene_symbol": "Trp73",
+        "gene_id": "ENSMUSG_TUTORIAL_TRP73",
+        "transcript_id_requested": "TX_MOUSE_TRP73",
+        "transcript_id": "TX_MOUSE_TRP73",
+        "display_label": "Trp73",
+        "chromosome": "chr1",
+        "strand": "+",
+        "promoter_start_1based": 111,
+        "promoter_end_1based": 161,
+        "promoter_length_bp": 51,
+        "tss_1based": 151,
+        "tss_position_0based": 40,
+        "sequence_orientation": "transcription_aligned",
+        "promoter_sequence": "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
+        "orthology_type": "one_to_one",
+        "confidence": "synthetic_high",
+        "orthology_source": "hand-crafted offline tutorial fixture",
+        "orthology_evidence": [
+          "synthetic_one_to_one_mapping"
+        ],
+        "warnings": []
+      }
+    ],
+    "unresolved_rows": [],
+    "relationship": "co_regulated",
+    "relationship_flags": [
+      {
+        "flag_kind": "unexpected_divergence",
+        "evidence_kind": "tfbs_score_track_similarity",
+        "member_symbols": [
+          "Homo sapiens: TP73",
+          "Mus musculus: Trp73"
+        ],
+        "member_dedup_keys": [
+          "ortholog:homosapiens:tp73",
+          "ortholog:musmusculus:trp73"
+        ],
+        "detail": "Declared co-regulated ortholog promoter cohort, but 'TP73' (Homo sapiens) and 'Trp73' (Mus musculus) have low mean smoothed TFBS-track Spearman similarity (+0.000; threshold < +0.25). This is an evidence-triage flag, not a regulatory verdict."
+      }
+    ],
+    "warnings": []
+  },
+  "motifs_requested": [
+    "SP1"
+  ],
+  "score_kind": "llr_background_tail_log10",
+  "clip_negative": true,
+  "promoter_summaries": [
+    {
+      "species": "Homo sapiens",
+      "gene_label": "TP73",
+      "transcript_id": "TX_HUMAN_TP73",
+      "tf_id": "MA0079.5",
+      "tf_name": "SP1",
+      "max_score": 5.418539921951662,
+      "peak_position_0based": 11,
+      "peak_position_promoter_relative_bp": -29,
+      "peak_genomic_position_1based": 122,
+      "positive_fraction": 0.27906976744186046
+    },
+    {
+      "species": "Mus musculus",
+      "gene_label": "Trp73",
+      "transcript_id": "TX_MOUSE_TRP73",
+      "tf_id": "MA0079.5",
+      "tf_name": "SP1",
+      "max_score": 0.0,
+      "positive_fraction": 0.0
+    }
+  ],
+  "pairwise_tfbs_similarity": [
+    {
+      "left_species": "Homo sapiens",
+      "right_species": "Mus musculus",
+      "left_gene_label": "TP73",
+      "right_gene_label": "Trp73",
+      "shared_motif_count": 1,
+      "mean_raw_pearson": 0.0,
+      "mean_smoothed_spearman": 0.0,
+      "motif_ids": [
+        "MA0079.5"
+      ]
+    }
+  ],
+  "conserved_tfbs_peaks": [],
+  "species_specific_tfbs_peaks": [
+    {
+      "tf_id": "MA0079.5",
+      "tf_name": "SP1",
+      "promoter_count": 1,
+      "species": [
+        "Homo sapiens"
+      ],
+      "gene_labels": [
+        "TP73"
+      ],
+      "max_score": 5.418539921951662,
+      "peak_positions_promoter_relative_bp": [
+        -29
+      ]
+    }
+  ],
+  "sequence_similarity": [
+    {
+      "left_species": "Homo sapiens",
+      "right_species": "Mus musculus",
+      "left_gene_label": "TP73",
+      "right_gene_label": "Trp73",
+      "alignment_mode": "direct_promoter_aligned_prefix",
+      "compared_length_bp": 51,
+      "identical_bp": 0,
+      "identity_fraction": 0.0
+    }
+  ],
+  "cutrun_support": [
+    {
+      "species": "Homo sapiens",
+      "gene_label": "TP73",
+      "status": "no_data",
+      "contributing_dataset_ids": [],
+      "contributing_read_report_ids": [],
+      "detail": "No CUT&RUN/occupancy source was supplied for this species promoter."
+    },
+    {
+      "species": "Mus musculus",
+      "gene_label": "Trp73",
+      "status": "no_data",
+      "contributing_dataset_ids": [],
+      "contributing_read_report_ids": [],
+      "detail": "No CUT&RUN/occupancy source was supplied for this species promoter."
+    }
+  ],
+  "expression_assignments": [],
+  "relationship": "co_regulated",
+  "relationship_flags": [
+    {
+      "flag_kind": "unexpected_divergence",
+      "evidence_kind": "tfbs_score_track_similarity",
+      "member_symbols": [
+        "Homo sapiens: TP73",
+        "Mus musculus: Trp73"
+      ],
+      "member_dedup_keys": [
+        "ortholog:homosapiens:tp73",
+        "ortholog:musmusculus:trp73"
+      ],
+      "detail": "Declared co-regulated ortholog promoter cohort, but 'TP73' (Homo sapiens) and 'Trp73' (Mus musculus) have low mean smoothed TFBS-track Spearman similarity (+0.000; threshold < +0.25). This is an evidence-triage flag, not a regulatory verdict."
+    }
+  ],
+  "warnings": [
+    "Declared co-regulated ortholog promoter cohort, but 'TP73' (Homo sapiens) and 'Trp73' (Mus musculus) have low mean smoothed TFBS-track Spearman similarity (+0.000; threshold < +0.25). This is an evidence-triage flag, not a regulatory verdict."
+  ]
+}

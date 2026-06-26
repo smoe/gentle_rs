@@ -354,6 +354,15 @@
       "human_reviewer": null
     },
     {
+      "tutorial_id": "gene_set_ortholog_promoter_cohorts_offline",
+      "tutorial_kind": "generated_chapter",
+      "tutorial_status": "active",
+      "replaced_by": null,
+      "codex_reviewed_at": "2026-06-25",
+      "human_reviewed_at": null,
+      "human_reviewer": null
+    },
+    {
       "tutorial_id": "reporter_construct_handoff_cli",
       "tutorial_kind": "guided_walkthrough",
       "tutorial_status": "active",

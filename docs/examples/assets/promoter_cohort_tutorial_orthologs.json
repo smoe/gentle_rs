@@ -1,0 +1,37 @@
+{
+  "schema": "gentle.ortholog_resource.v1",
+  "id": "tutorial_tp73_orthologs",
+  "label": "Tutorial TP73 orthologs",
+  "species_aliases": [
+    {
+      "species": "Homo sapiens",
+      "aliases": [
+        "human",
+        "hsap"
+      ]
+    },
+    {
+      "species": "Mus musculus",
+      "aliases": [
+        "mouse",
+        "mmus"
+      ]
+    }
+  ],
+  "rows": [
+    {
+      "source_species": "Homo sapiens",
+      "source_gene_id": "ENSG_TUTORIAL_TP73",
+      "source_gene_symbol": "TP73",
+      "target_species": "Mus musculus",
+      "target_gene_id": "ENSMUSG_TUTORIAL_TRP73",
+      "target_gene_symbol": "Trp73",
+      "orthology_type": "one_to_one",
+      "confidence": "synthetic_high",
+      "source": "hand-crafted offline tutorial fixture",
+      "evidence": [
+        "synthetic_one_to_one_mapping"
+      ]
+    }
+  ]
+}
