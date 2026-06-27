@@ -15480,6 +15480,73 @@ fn protein_derivation_report_svg_descriptor(id: &str, description: &str) -> Valu
     })
 }
 
+fn sequencing_confirmation_run_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": false,
+        "args": [
+            {"name": "EXPECTED_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded expected construct sequence id"},
+            {"name": "BASELINE_SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "optional loaded baseline/reference sequence id for intended-edit classification"},
+            {"name": "READ_SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "one loaded read sequence id from read_seq_ids; repeat readiness checks for multiple read sequence ids"},
+            {"name": "TRACE_ID", "required": false, "subject_kind": "other", "detail": "one imported sequencing trace id from trace_ids; repeat readiness checks for multiple trace ids"},
+            {"name": "REPORT_ID", "required": false, "subject_kind": "report", "detail": "explicit sequencing-confirmation report id; required for deterministic effect verification"}
+        ],
+        "reads": [
+            {"fact": "sequence.exists", "subject": {"arg": "EXPECTED_SEQ_ID"}},
+            {"fact": "sequence.exists", "subject": {"arg": "BASELINE_SEQ_ID"}},
+            {"fact": "sequence.exists", "subject": {"arg": "READ_SEQ_ID"}},
+            {"fact": "sequencing_trace.exists", "subject": {"arg": "TRACE_ID"}}
+        ],
+        "effects": [
+            {
+                "fact": "report.exists",
+                "subject": {"arg": "REPORT_ID"},
+                "report_kind": "sequencing_confirmation",
+                "equals": "sequencing_confirmation",
+                "effect_kind": "must_on_success"
+            }
+        ],
+        "precondition_expr": {
+            "all": [
+                {"fact": "sequence.exists", "subject": {"arg": "EXPECTED_SEQ_ID"}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn sequencing_primer_suggest_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "false",
+        "requires_confirmation": false,
+        "args": [
+            {"name": "EXPECTED_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded expected construct sequence id"},
+            {"name": "PRIMER_SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "one loaded primer sequence id from primer_seq_ids; repeat readiness checks for multiple primer sequence ids"},
+            {"name": "REPORT_ID", "required": false, "subject_kind": "report", "detail": "optional sequencing-confirmation report id used to prioritize problem targets"}
+        ],
+        "reads": [
+            {"fact": "sequence.exists", "subject": {"arg": "EXPECTED_SEQ_ID"}},
+            {"fact": "sequence.exists", "subject": {"arg": "PRIMER_SEQ_ID"}},
+            {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "sequencing_confirmation"}
+        ],
+        "effects": [],
+        "precondition_expr": {
+            "all": [
+                {"fact": "sequence.exists", "subject": {"arg": "EXPECTED_SEQ_ID"}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
 fn primer_design_operation_descriptor(id: &str, report_kind: &str, description: &str) -> Value {
     json!({
         "id": id,
@@ -19158,6 +19225,10 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("seq-confirm list-reports")
         }),
+        sequencing_confirmation_run_descriptor(
+            "seq-confirm run",
+            "Compare loaded read sequences and imported sequencing traces against one expected construct and persist a sequencing-confirmation report.",
+        ),
         json!({
             "id": "seq-confirm show-report",
             "kind": "operation",
@@ -19235,6 +19306,10 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("seq-confirm export-support-tsv")
         }),
+        sequencing_primer_suggest_descriptor(
+            "seq-primer suggest",
+            "Suggest sequencing-primer overlays for one expected construct, optionally using a sequencing-confirmation report to prioritize problem targets.",
+        ),
         json!({
             "id": "cutrun list-read-reports",
             "kind": "operation",
@@ -19456,6 +19531,10 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "List persisted sequencing-confirmation reports through the shared engine operation.",
             "EXPECTED_SEQ_ID",
         ),
+        sequencing_confirmation_run_descriptor(
+            "ConfirmConstructReads",
+            "Compare construct read evidence against one expected construct through the shared engine operation and persist a sequencing-confirmation report.",
+        ),
         report_show_operation_descriptor(
             "ShowSequencingConfirmationReport",
             "sequencing_confirmation",
@@ -19472,6 +19551,10 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "sequencing_confirmation",
             "external TSV output path carried by the operation payload",
             "Export sequencing-confirmation target support rows to an external TSV file through the shared engine operation.",
+        ),
+        sequencing_primer_suggest_descriptor(
+            "SuggestSequencingPrimers",
+            "Suggest sequencing-primer overlays through the shared engine operation.",
         ),
         report_list_operation_descriptor(
             "ListCutRunReadReports",
@@ -21424,6 +21507,9 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         "seq-trace show" | "ShowSequencingTrace" => Some(vec![
             json!({"fact": "sequencing_trace.exists", "subject": {"arg": "TRACE_ID"}}),
         ]),
+        "seq-confirm run" | "ConfirmConstructReads" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "EXPECTED_SEQ_ID"}}),
+        ]),
         "seq-confirm list-reports" => Some(vec![]),
         "seq-confirm show-report" => Some(vec![
             json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "sequencing_confirmation"}),
@@ -21439,6 +21525,9 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "ExportSequencingConfirmationReport"
         | "ExportSequencingConfirmationSupportTsv" => Some(vec![
             json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "sequencing_confirmation"}),
+        ]),
+        "seq-primer suggest" | "SuggestSequencingPrimers" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "EXPECTED_SEQ_ID"}}),
         ]),
         "cutrun list-read-reports" => Some(vec![]),
         "cutrun show-read-report" => Some(vec![
@@ -21672,6 +21761,10 @@ fn subject_kind_for_arg(arg_name: &str) -> FactSubjectKind {
         | "TARGET_SEQ_ID"
         | "OWNER_SEQ_ID"
         | "REFERENCE_SEQ_ID"
+        | "EXPECTED_SEQ_ID"
+        | "BASELINE_SEQ_ID"
+        | "READ_SEQ_ID"
+        | "PRIMER_SEQ_ID"
         | "PROTEIN_SEQ_ID"
         | "TEMPLATE_SEQ_ID"
         | "DESTINATION_VECTOR_SEQ_ID" => FactSubjectKind::Sequence,

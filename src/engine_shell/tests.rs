@@ -21653,6 +21653,36 @@ fn execute_introspect_readiness_checks_sequencing_confirmation_reports() {
         Some("report.exists")
     );
 
+    for capability_id in ["seq-confirm run", "ConfirmConstructReads"] {
+        let missing_expected = parse_shell_line(&format!(
+            "introspect readiness {capability_id} --arg EXPECTED_SEQ_ID=missing_construct"
+        ))
+        .expect("parse missing seq-confirm run readiness");
+        let missing_expected = execute_shell_command(&mut engine, &missing_expected)
+            .expect("execute missing seq-confirm run readiness");
+        assert_eq!(
+            missing_expected.output["readiness"][0]["readiness"].as_str(),
+            Some("blocked"),
+            "{capability_id} should be blocked until the expected construct sequence exists"
+        );
+        assert_eq!(
+            missing_expected.output["readiness"][0]["unmet_atoms"][0]["fact"].as_str(),
+            Some("sequence.exists")
+        );
+
+        let ready_expected = parse_shell_line(&format!(
+            "introspect readiness {capability_id} --arg EXPECTED_SEQ_ID=construct"
+        ))
+        .expect("parse ready seq-confirm run readiness");
+        let ready_expected = execute_shell_command(&mut engine, &ready_expected)
+            .expect("execute ready seq-confirm run readiness");
+        assert_eq!(
+            ready_expected.output["readiness"][0]["readiness"].as_str(),
+            Some("ready"),
+            "{capability_id} should be ready once the expected construct sequence exists"
+        );
+    }
+
     execute_shell_command(
         &mut engine,
         &ShellCommand::SeqConfirmRun {
@@ -21683,6 +21713,34 @@ fn execute_introspect_readiness_checks_sequencing_confirmation_reports() {
         },
     )
     .expect("execute seq-confirm run");
+
+    for capability_id in ["seq-confirm run", "ConfirmConstructReads"] {
+        let verify = parse_shell_line(&format!(
+            "introspect verify-effects {capability_id} --arg REPORT_ID=construct_check"
+        ))
+        .expect("parse seq-confirm run verify-effects");
+        let verify =
+            execute_shell_command(&mut engine, &verify).expect("execute seq-confirm verify");
+        assert_eq!(
+            verify.output["verified"].as_bool(),
+            Some(true),
+            "{capability_id} should verify the persisted sequencing-confirmation report effect"
+        );
+    }
+
+    for capability_id in ["seq-primer suggest", "SuggestSequencingPrimers"] {
+        let ready = parse_shell_line(&format!(
+            "introspect readiness {capability_id} --arg EXPECTED_SEQ_ID=construct"
+        ))
+        .expect("parse seq-primer suggest readiness");
+        let ready =
+            execute_shell_command(&mut engine, &ready).expect("execute seq-primer readiness");
+        assert_eq!(
+            ready.output["readiness"][0]["readiness"].as_str(),
+            Some("ready"),
+            "{capability_id} should be ready once the expected construct sequence exists"
+        );
+    }
 
     let facts = parse_shell_line("introspect facts --domain project").expect("parse facts");
     let facts = execute_shell_command(&mut engine, &facts).expect("execute facts");
@@ -23877,6 +23935,22 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
             && descriptor["reads"].as_array().map(Vec::len) == Some(0)
             && descriptor["effects"].as_array().map(Vec::len) == Some(0)
     }));
+    for id in ["seq-confirm run", "ConfirmConstructReads"] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"][0]["fact"].as_str() == Some("sequence.exists")
+                    && descriptor["reads"][0]["subject"]["arg"].as_str() == Some("EXPECTED_SEQ_ID")
+                    && descriptor["reads"][3]["fact"].as_str() == Some("sequencing_trace.exists")
+                    && descriptor["effects"][0]["fact"].as_str() == Some("report.exists")
+                    && descriptor["effects"][0]["equals"].as_str()
+                        == Some("sequencing_confirmation")
+                    && descriptor["effects"][0]["effect_kind"].as_str() == Some("must_on_success")
+            }),
+            "{id} should have a fact-annotated sequencing-confirmation run descriptor"
+        );
+    }
     assert!(capabilities.iter().any(|descriptor| {
         descriptor["id"].as_str() == Some("seq-confirm show-report")
             && descriptor["annotation_status"].as_str() == Some("fact_annotated")
@@ -23900,6 +23974,20 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
             && descriptor["effects"][0]["fact"].as_str() == Some("artifact.written")
             && descriptor["effects"][0]["effect_kind"].as_str() == Some("external_handoff")
     }));
+    for id in ["seq-primer suggest", "SuggestSequencingPrimers"] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"][0]["fact"].as_str() == Some("sequence.exists")
+                    && descriptor["reads"][0]["subject"]["arg"].as_str() == Some("EXPECTED_SEQ_ID")
+                    && descriptor["reads"][2]["fact"].as_str() == Some("report.exists")
+                    && descriptor["reads"][2]["equals"].as_str() == Some("sequencing_confirmation")
+                    && descriptor["effects"].as_array().map(Vec::len) == Some(0)
+            }),
+            "{id} should have a fact-annotated sequencing-primer suggestion descriptor"
+        );
+    }
     for id in [
         "ListSequencingConfirmationReports",
         "ListCutRunReadReports",

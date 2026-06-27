@@ -317,6 +317,11 @@ Maintenance rule:
 - Added closed-world `sequencing_trace.exists` introspection for imported
   sequencing-trace evidence records, including readiness/effect descriptors for
   trace import/list/show shell routes and raw operation rows.
+- Added fact-aware introspection for sequencing-confirmation execution and
+  primer overlay suggestion rows: `seq-confirm run`, `ConfirmConstructReads`,
+  `seq-primer suggest`, and `SuggestSequencingPrimers` now model expected
+  construct sequence readiness plus deterministic confirmation-report effect
+  verification when explicit report ids are supplied.
 - Added fact-aware introspection for protease catalog/digest and protein-gel
   rendering routes. Protease digest readiness now requires an existing
   protein-kind sequence, persisted protein-derivation reports project as

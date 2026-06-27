@@ -2115,6 +2115,18 @@ Shared shell command:
         `seq-trace show` / `ShowSequencingTrace` require the trace fact, and
         `seq-trace import` / `ImportSequencingTrace` can verify the same fact
         when the caller supplied an explicit `TRACE_ID`
+      - sequencing-confirmation run rows `seq-confirm run` and
+        `ConfirmConstructReads` require the expected construct sequence
+        (`sequence.exists(EXPECTED_SEQ_ID)`) and can verify
+        `report.exists(REPORT_ID) == sequencing_confirmation` when the caller
+        supplied a deterministic report id. Optional repeated read sequences
+        and trace ids are declared as readable evidence inputs; callers should
+        repeat readiness checks for each concrete id until list-valued
+        introspection binding is promoted.
+      - sequencing-primer overlay rows `seq-primer suggest` and
+        `SuggestSequencingPrimers` require the expected construct sequence.
+        Optional primer sequence ids and sequencing-confirmation reports are
+        declared as readable inputs so bound clients can check them explicitly.
       - persisted-report export commands such as
         `reverse-translate export-report`, `primers export-report`, and
         `primers export-qpcr-report`, and

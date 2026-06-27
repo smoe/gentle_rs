@@ -4773,7 +4773,16 @@ Shared-shell routes:
     model the output path as an `artifact.written` `external_handoff` effect.
   - Sequencing-confirmation report commands project
     `report.exists == sequencing_confirmation`; `seq-confirm list-reports` is
-    catalog-ready with no project preconditions.
+    catalog-ready with no project preconditions. `seq-confirm run` and the raw
+    `ConfirmConstructReads` row require `sequence.exists(EXPECTED_SEQ_ID)` and
+    verify `report.exists(REPORT_ID) == sequencing_confirmation` when an
+    explicit report id was supplied. Optional repeated read sequences and trace
+    ids are exposed as readable evidence inputs; list-valued readiness binding
+    remains a later introspection refinement.
+  - Sequencing-primer overlay commands `seq-primer suggest` and
+    `SuggestSequencingPrimers` require `sequence.exists(EXPECTED_SEQ_ID)`;
+    optional primer sequence ids and confirmation reports are readable inputs
+    rather than hard preconditions.
   - Sequencing-trace evidence commands project
     `sequencing_trace.exists(TRACE_ID)`; trace listing is catalog-ready, trace
     show requires the trace fact, and explicit-id trace import can verify the
