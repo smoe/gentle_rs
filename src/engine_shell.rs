@@ -15445,6 +15445,53 @@ fn rna_read_report_mutation_descriptor(id: &str, description: &str, effects: Vec
     })
 }
 
+fn rna_read_report_inspection_descriptor(
+    id: &str,
+    description: &str,
+    output_detail: Option<&str>,
+) -> Value {
+    let mut args = vec![json!({
+        "name": "REPORT_ID",
+        "required": true,
+        "subject_kind": "report",
+        "detail": "persisted RNA-read interpretation report id"
+    })];
+    let effects = if let Some(output_detail) = output_detail {
+        args.push(json!({
+            "name": "OUTPUT_PATH",
+            "required": false,
+            "subject_kind": "other",
+            "detail": output_detail
+        }));
+        vec![json!({
+            "fact": "artifact.written",
+            "subject": {"arg": "OUTPUT_PATH"},
+            "effect_kind": "external_handoff"
+        })]
+    } else {
+        vec![]
+    };
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "false",
+        "requires_confirmation": false,
+        "args": args,
+        "reads": [
+            {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "rna_read"}
+        ],
+        "effects": effects,
+        "precondition_expr": {
+            "all": [
+                {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "rna_read"}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
 fn optional_artifact_operation_descriptor(
     id: &str,
     output_detail: &str,
@@ -20012,6 +20059,36 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("rna-reads show-report")
         }),
+        rna_read_report_inspection_descriptor(
+            "rna-reads show-alignment",
+            "Show one retained RNA-read alignment record from a persisted interpretation report.",
+            None,
+        ),
+        rna_read_report_inspection_descriptor(
+            "rna-reads show-alignments",
+            "Show a selected batch of RNA-read alignment records from a persisted interpretation report.",
+            Some("optional external alignment-batch JSON output path"),
+        ),
+        rna_read_report_inspection_descriptor(
+            "rna-reads summarize-gene-support",
+            "Summarize target-gene support from one persisted RNA-read interpretation report.",
+            Some("optional external gene-support summary JSON output path"),
+        ),
+        rna_read_report_inspection_descriptor(
+            "rna-reads inspect-gene-support",
+            "Inspect target-gene support cohorts from one persisted RNA-read interpretation report.",
+            Some("optional external gene-support audit JSON output path"),
+        ),
+        rna_read_report_inspection_descriptor(
+            "rna-reads inspect-alignments",
+            "Inspect ranked aligned RNA-read rows from one persisted interpretation report.",
+            None,
+        ),
+        rna_read_report_inspection_descriptor(
+            "rna-reads inspect-concatemers",
+            "Inspect concatemer evidence from one persisted RNA-read interpretation report.",
+            None,
+        ),
         json!({
             "id": "rna-reads export-report",
             "kind": "operation",
@@ -22797,11 +22874,17 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
             json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "cutrun_read"}),
         ]),
         "rna-reads list-reports" => Some(vec![]),
-        "rna-reads show-report" | "rna-reads align-report" | "rna-reads materialize-hits" => {
-            Some(vec![
-                json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "rna_read"}),
-            ])
-        }
+        "rna-reads show-report"
+        | "rna-reads show-alignment"
+        | "rna-reads show-alignments"
+        | "rna-reads summarize-gene-support"
+        | "rna-reads inspect-gene-support"
+        | "rna-reads inspect-alignments"
+        | "rna-reads inspect-concatemers"
+        | "rna-reads align-report"
+        | "rna-reads materialize-hits" => Some(vec![
+            json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "rna_read"}),
+        ]),
         "rna-reads preflight-isoforms" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
         ]),

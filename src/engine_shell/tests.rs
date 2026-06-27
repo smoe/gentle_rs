@@ -21984,6 +21984,12 @@ fn execute_introspect_readiness_checks_rna_read_artifact_exports() {
         "rna-reads export-alignments-tsv",
         "rna-reads export-isoform-triage-tsv",
         "rna-reads export-alignment-dotplot-svg",
+        "rna-reads show-alignment",
+        "rna-reads show-alignments",
+        "rna-reads summarize-gene-support",
+        "rna-reads inspect-gene-support",
+        "rna-reads inspect-alignments",
+        "rna-reads inspect-concatemers",
         "ExportRnaReadHitsFasta",
         "ExportRnaReadTargetQuality",
         "ExportRnaReadExonPathsTsv",
@@ -25179,6 +25185,24 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
                     && descriptor["effects"][0]["effect_kind"].as_str() == Some("must_on_success")
             }),
             "{id} should have a fact-annotated RNA-read report mutation descriptor"
+        );
+    }
+    for id in [
+        "rna-reads show-alignment",
+        "rna-reads show-alignments",
+        "rna-reads summarize-gene-support",
+        "rna-reads inspect-gene-support",
+        "rna-reads inspect-alignments",
+        "rna-reads inspect-concatemers",
+    ] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"][0]["fact"].as_str() == Some("report.exists")
+                    && descriptor["reads"][0]["equals"].as_str() == Some("rna_read")
+            }),
+            "{id} should have a fact-annotated RNA-read report inspection descriptor"
         );
     }
     for id in [
@@ -36028,6 +36052,12 @@ fn execute_rna_reads_commands_store_and_export_reports() {
     for capability in [
         "rna-reads show-report",
         "rna-reads export-report",
+        "rna-reads show-alignment",
+        "rna-reads show-alignments",
+        "rna-reads summarize-gene-support",
+        "rna-reads inspect-gene-support",
+        "rna-reads inspect-alignments",
+        "rna-reads inspect-concatemers",
         "ShowRnaReadReport",
         "ExportRnaReadReport",
         "SummarizeRnaReadGeneSupport",

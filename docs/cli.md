@@ -2370,6 +2370,12 @@ Shared shell command:
         in catalog mode. The raw engine operation rows
         `ListSequencingConfirmationReports`, `ListCutRunReadReports`, and
         `ListRnaReadReports` follow the same catalog-ready convention.
+      - RNA-read report inspection routes (`rna-reads show-alignment`,
+        `rna-reads show-alignments`, `rna-reads summarize-gene-support`,
+        `rna-reads inspect-gene-support`, `rna-reads inspect-alignments`, and
+        `rna-reads inspect-concatemers`) require a persisted `rna_read`
+        `report.exists(REPORT_ID)`. Routes with an optional `--output` path
+        model it as an `artifact.written` external handoff.
       - self-description/status commands such as `help`, `capabilities`,
         `state-summary`, and `history status` also have no project
         preconditions and are ready in catalog mode

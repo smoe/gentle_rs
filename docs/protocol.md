@@ -4830,6 +4830,11 @@ Shared-shell routes:
     the selected hits. `rna-reads preflight-isoforms` /
     `PreflightRnaReadIsoforms` use `sequence.exists(SEQ_ID)` readiness and do
     not mutate project state.
+    `rna-reads show-alignment`, `rna-reads show-alignments`,
+    `rna-reads summarize-gene-support`, `rna-reads inspect-gene-support`,
+    `rna-reads inspect-alignments`, and `rna-reads inspect-concatemers` use the
+    same `rna_read` report fact for bound readiness; the shell routes with an
+    optional output path model it as an `artifact.written` external handoff.
     `SummarizeRnaReadGeneSupport` and `InspectRnaReadGeneSupport` use the same
     `rna_read` report fact and model their optional JSON path as an external
     artifact handoff.

@@ -26,6 +26,10 @@ Maintenance rule:
   `FilterContainerByMolecularWeight`. These rows require
   `container.exists(CONTAINER_ID)` and model product creation as
   `may_on_success` because product ids are execution-derived.
+- Added fact-aware introspection for RNA-read report inspection shell routes:
+  `rna-reads show-alignment`, `rna-reads show-alignments`,
+  `rna-reads summarize-gene-support`, `rna-reads inspect-gene-support`,
+  `rna-reads inspect-alignments`, and `rna-reads inspect-concatemers`.
 
 ## 2026-06-27
 
