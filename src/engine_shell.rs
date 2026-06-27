@@ -14868,6 +14868,57 @@ fn optional_artifact_operation_descriptor(
     })
 }
 
+fn sequence_optional_artifact_operation_descriptor(
+    id: &str,
+    mutating: &str,
+    requires_confirmation: bool,
+    seq_arg_name: &str,
+    seq_detail: &str,
+    output_detail: &str,
+    description: &str,
+    mut extra_args: Vec<Value>,
+) -> Value {
+    let seq_arg = json!({
+        "name": seq_arg_name,
+        "required": true,
+        "subject_kind": "sequence",
+        "detail": seq_detail
+    });
+    let mut args = vec![seq_arg.clone()];
+    args.append(&mut extra_args);
+    args.push(json!({
+        "name": "OUTPUT_PATH",
+        "required": false,
+        "subject_kind": "other",
+        "detail": output_detail
+    }));
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": mutating,
+        "requires_confirmation": requires_confirmation,
+        "args": args,
+        "reads": [
+            {"fact": "sequence.exists", "subject": {"arg": seq_arg_name}}
+        ],
+        "effects": [
+            {
+                "fact": "artifact.written",
+                "subject": {"arg": "OUTPUT_PATH"},
+                "effect_kind": "external_handoff"
+            }
+        ],
+        "precondition_expr": {
+            "all": [
+                {"fact": "sequence.exists", "subject": {"arg": seq_arg_name}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
 fn catalog_read_operation_descriptor(id: &str, description: &str) -> Value {
     json!({
         "id": id,
@@ -15006,6 +15057,709 @@ fn primer_design_operation_descriptor(id: &str, report_kind: &str, description: 
     })
 }
 
+fn candidate_set_arg(name: &str, detail: &str) -> Value {
+    json!({
+        "name": name,
+        "required": true,
+        "subject_kind": "other",
+        "detail": detail
+    })
+}
+
+fn candidate_set_generate_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": false,
+        "args": [
+            candidate_set_arg("SET_NAME", "candidate-set name to create or replace"),
+            {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded source sequence id"}
+        ],
+        "reads": [
+            {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+        ],
+        "effects": [
+            {
+                "fact": "candidate_set.exists",
+                "subject": {"arg": "SET_NAME"},
+                "effect_kind": "must_on_success"
+            }
+        ],
+        "precondition_expr": {
+            "all": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn candidate_set_read_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "false",
+        "requires_confirmation": false,
+        "args": [
+            candidate_set_arg("SET_NAME", "persisted candidate-set name")
+        ],
+        "reads": [
+            {"fact": "candidate_set.exists", "subject": {"arg": "SET_NAME"}}
+        ],
+        "effects": [],
+        "precondition_expr": {
+            "all": [
+                {"fact": "candidate_set.exists", "subject": {"arg": "SET_NAME"}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn candidate_set_mutate_in_place_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": false,
+        "args": [
+            candidate_set_arg("SET_NAME", "persisted candidate-set name")
+        ],
+        "reads": [
+            {"fact": "candidate_set.exists", "subject": {"arg": "SET_NAME"}}
+        ],
+        "effects": [
+            {
+                "fact": "candidate_set.exists",
+                "subject": {"arg": "SET_NAME"},
+                "effect_kind": "must_on_success"
+            }
+        ],
+        "precondition_expr": {
+            "all": [
+                {"fact": "candidate_set.exists", "subject": {"arg": "SET_NAME"}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn candidate_set_derive_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": false,
+        "args": [
+            candidate_set_arg("INPUT_SET", "persisted input candidate-set name"),
+            candidate_set_arg("OUTPUT_SET", "candidate-set name to create or replace")
+        ],
+        "reads": [
+            {"fact": "candidate_set.exists", "subject": {"arg": "INPUT_SET"}}
+        ],
+        "effects": [
+            {
+                "fact": "candidate_set.exists",
+                "subject": {"arg": "OUTPUT_SET"},
+                "effect_kind": "must_on_success"
+            }
+        ],
+        "precondition_expr": {
+            "all": [
+                {"fact": "candidate_set.exists", "subject": {"arg": "INPUT_SET"}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn candidate_set_binary_derive_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": false,
+        "args": [
+            candidate_set_arg("LEFT_SET", "persisted left candidate-set name"),
+            candidate_set_arg("RIGHT_SET", "persisted right candidate-set name"),
+            candidate_set_arg("OUTPUT_SET", "candidate-set name to create or replace")
+        ],
+        "reads": [
+            {"fact": "candidate_set.exists", "subject": {"arg": "LEFT_SET"}},
+            {"fact": "candidate_set.exists", "subject": {"arg": "RIGHT_SET"}}
+        ],
+        "effects": [
+            {
+                "fact": "candidate_set.exists",
+                "subject": {"arg": "OUTPUT_SET"},
+                "effect_kind": "must_on_success"
+            }
+        ],
+        "precondition_expr": {
+            "all": [
+                {"fact": "candidate_set.exists", "subject": {"arg": "LEFT_SET"}},
+                {"fact": "candidate_set.exists", "subject": {"arg": "RIGHT_SET"}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn candidate_set_delete_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": false,
+        "args": [
+            candidate_set_arg("SET_NAME", "persisted candidate-set name to delete")
+        ],
+        "reads": [
+            {"fact": "candidate_set.exists", "subject": {"arg": "SET_NAME"}}
+        ],
+        "effects": [],
+        "precondition_expr": {
+            "all": [
+                {"fact": "candidate_set.exists", "subject": {"arg": "SET_NAME"}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn guide_set_arg(name: &str, detail: &str) -> Value {
+    json!({
+        "name": name,
+        "required": true,
+        "subject_kind": "other",
+        "detail": detail
+    })
+}
+
+fn guide_oligo_set_arg(name: &str, required: bool, detail: &str) -> Value {
+    json!({
+        "name": name,
+        "required": required,
+        "subject_kind": "other",
+        "detail": detail
+    })
+}
+
+fn guide_set_upsert_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": false,
+        "args": [
+            guide_set_arg("GUIDE_SET_ID", "guide-set id to create or replace")
+        ],
+        "reads": [],
+        "effects": [
+            {
+                "fact": "guide_set.exists",
+                "subject": {"arg": "GUIDE_SET_ID"},
+                "effect_kind": "must_on_success"
+            }
+        ],
+        "precondition_expr": {"all": []},
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn guide_set_read_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "false",
+        "requires_confirmation": false,
+        "args": [
+            guide_set_arg("GUIDE_SET_ID", "persisted guide-set id")
+        ],
+        "reads": [
+            {"fact": "guide_set.exists", "subject": {"arg": "GUIDE_SET_ID"}}
+        ],
+        "effects": [],
+        "precondition_expr": {
+            "all": [
+                {"fact": "guide_set.exists", "subject": {"arg": "GUIDE_SET_ID"}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn guide_set_delete_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": false,
+        "args": [
+            guide_set_arg("GUIDE_SET_ID", "persisted guide-set id to delete")
+        ],
+        "reads": [
+            {"fact": "guide_set.exists", "subject": {"arg": "GUIDE_SET_ID"}}
+        ],
+        "effects": [],
+        "precondition_expr": {
+            "all": [
+                {"fact": "guide_set.exists", "subject": {"arg": "GUIDE_SET_ID"}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn guide_set_filter_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": false,
+        "args": [
+            guide_set_arg("GUIDE_SET_ID", "persisted input guide-set id"),
+            guide_set_arg("OUTPUT_GUIDE_SET_ID", "optional filtered output guide-set id; required for deterministic output-set effect verification")
+        ],
+        "reads": [
+            {"fact": "guide_set.exists", "subject": {"arg": "GUIDE_SET_ID"}}
+        ],
+        "effects": [
+            {
+                "fact": "guide_filter_report.exists",
+                "subject": {"arg": "GUIDE_SET_ID"},
+                "effect_kind": "must_on_success"
+            },
+            {
+                "fact": "guide_set.exists",
+                "subject": {"arg": "OUTPUT_GUIDE_SET_ID"},
+                "effect_kind": "must_on_success"
+            }
+        ],
+        "precondition_expr": {
+            "all": [
+                {"fact": "guide_set.exists", "subject": {"arg": "GUIDE_SET_ID"}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn guide_filter_report_read_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "false",
+        "requires_confirmation": false,
+        "args": [
+            guide_set_arg("GUIDE_SET_ID", "guide-set id with a persisted practical-filter report")
+        ],
+        "reads": [
+            {"fact": "guide_filter_report.exists", "subject": {"arg": "GUIDE_SET_ID"}}
+        ],
+        "effects": [],
+        "precondition_expr": {
+            "all": [
+                {"fact": "guide_filter_report.exists", "subject": {"arg": "GUIDE_SET_ID"}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn guide_oligo_generate_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": false,
+        "args": [
+            guide_set_arg("GUIDE_SET_ID", "persisted input guide-set id"),
+            guide_oligo_set_arg("OLIGO_SET_ID", false, "optional output oligo-set id; required for deterministic effect verification")
+        ],
+        "reads": [
+            {"fact": "guide_set.exists", "subject": {"arg": "GUIDE_SET_ID"}}
+        ],
+        "effects": [
+            {
+                "fact": "guide_oligo_set.exists",
+                "subject": {"arg": "OLIGO_SET_ID"},
+                "effect_kind": "must_on_success"
+            }
+        ],
+        "precondition_expr": {
+            "all": [
+                {"fact": "guide_set.exists", "subject": {"arg": "GUIDE_SET_ID"}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn guide_oligo_read_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "false",
+        "requires_confirmation": false,
+        "args": [
+            guide_oligo_set_arg("OLIGO_SET_ID", true, "persisted guide-oligo-set id")
+        ],
+        "reads": [
+            {"fact": "guide_oligo_set.exists", "subject": {"arg": "OLIGO_SET_ID"}}
+        ],
+        "effects": [],
+        "precondition_expr": {
+            "all": [
+                {"fact": "guide_oligo_set.exists", "subject": {"arg": "OLIGO_SET_ID"}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn guide_oligo_export_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "false",
+        "requires_confirmation": false,
+        "args": [
+            guide_set_arg("GUIDE_SET_ID", "persisted input guide-set id"),
+            guide_oligo_set_arg("OLIGO_SET_ID", false, "optional guide-oligo-set id; omitted means the latest oligo set for the guide set"),
+            {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external output path"}
+        ],
+        "reads": [
+            {"fact": "guide_set.exists", "subject": {"arg": "GUIDE_SET_ID"}}
+        ],
+        "effects": [
+            {
+                "fact": "artifact.written",
+                "subject": {"arg": "OUTPUT_PATH"},
+                "effect_kind": "external_handoff"
+            }
+        ],
+        "precondition_expr": {
+            "all": [
+                {"fact": "guide_set.exists", "subject": {"arg": "GUIDE_SET_ID"}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn container_arg(name: &str, detail: &str) -> Value {
+    json!({
+        "name": name,
+        "required": true,
+        "subject_kind": "other",
+        "detail": detail
+    })
+}
+
+fn arrangement_arg(name: &str, required: bool, detail: &str) -> Value {
+    json!({
+        "name": name,
+        "required": required,
+        "subject_kind": "other",
+        "detail": detail
+    })
+}
+
+fn rack_arg(name: &str, required: bool, detail: &str) -> Value {
+    json!({
+        "name": name,
+        "required": required,
+        "subject_kind": "other",
+        "detail": detail
+    })
+}
+
+fn external_output_arg() -> Value {
+    json!({
+        "name": "OUTPUT_PATH",
+        "required": true,
+        "subject_kind": "other",
+        "detail": "external output path"
+    })
+}
+
+fn container_update_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": false,
+        "args": [
+            container_arg("CONTAINER_ID", "persisted container id")
+        ],
+        "reads": [
+            {"fact": "container.exists", "subject": {"arg": "CONTAINER_ID"}}
+        ],
+        "effects": [
+            {
+                "fact": "container.exists",
+                "subject": {"arg": "CONTAINER_ID"},
+                "effect_kind": "must_on_success"
+            }
+        ],
+        "precondition_expr": {
+            "all": [
+                {"fact": "container.exists", "subject": {"arg": "CONTAINER_ID"}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn arrangement_create_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": false,
+        "args": [
+            {
+                "name": "CONTAINER_IDS",
+                "required": true,
+                "subject_kind": "other",
+                "detail": "one or more persisted container ids; each id must satisfy container.exists"
+            },
+            arrangement_arg(
+                "ARRANGEMENT_ID",
+                false,
+                "explicit arrangement id; required for deterministic effect verification"
+            )
+        ],
+        "reads": [],
+        "effects": [
+            {
+                "fact": "arrangement.exists",
+                "subject": {"arg": "ARRANGEMENT_ID"},
+                "effect_kind": "must_on_success"
+            }
+        ],
+        "precondition_expr": {"all": []},
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn arrangement_update_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": false,
+        "args": [
+            arrangement_arg("ARRANGEMENT_ID", true, "persisted arrangement id")
+        ],
+        "reads": [
+            {"fact": "arrangement.exists", "subject": {"arg": "ARRANGEMENT_ID"}}
+        ],
+        "effects": [
+            {
+                "fact": "arrangement.exists",
+                "subject": {"arg": "ARRANGEMENT_ID"},
+                "effect_kind": "must_on_success"
+            }
+        ],
+        "precondition_expr": {
+            "all": [
+                {"fact": "arrangement.exists", "subject": {"arg": "ARRANGEMENT_ID"}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn rack_create_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": false,
+        "args": [
+            arrangement_arg("ARRANGEMENT_ID", true, "persisted arrangement id"),
+            rack_arg(
+                "RACK_ID",
+                false,
+                "explicit rack id; required for deterministic effect verification"
+            )
+        ],
+        "reads": [
+            {"fact": "arrangement.exists", "subject": {"arg": "ARRANGEMENT_ID"}}
+        ],
+        "effects": [
+            {
+                "fact": "rack.exists",
+                "subject": {"arg": "RACK_ID"},
+                "effect_kind": "must_on_success"
+            }
+        ],
+        "precondition_expr": {
+            "all": [
+                {"fact": "arrangement.exists", "subject": {"arg": "ARRANGEMENT_ID"}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn rack_place_arrangement_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": false,
+        "args": [
+            arrangement_arg("ARRANGEMENT_ID", true, "persisted arrangement id"),
+            rack_arg("RACK_ID", true, "persisted rack id")
+        ],
+        "reads": [
+            {"fact": "arrangement.exists", "subject": {"arg": "ARRANGEMENT_ID"}},
+            {"fact": "rack.exists", "subject": {"arg": "RACK_ID"}}
+        ],
+        "effects": [
+            {
+                "fact": "rack.exists",
+                "subject": {"arg": "RACK_ID"},
+                "effect_kind": "must_on_success"
+            }
+        ],
+        "precondition_expr": {
+            "all": [
+                {"fact": "arrangement.exists", "subject": {"arg": "ARRANGEMENT_ID"}},
+                {"fact": "rack.exists", "subject": {"arg": "RACK_ID"}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn rack_update_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": false,
+        "args": [
+            rack_arg("RACK_ID", true, "persisted rack id")
+        ],
+        "reads": [
+            {"fact": "rack.exists", "subject": {"arg": "RACK_ID"}}
+        ],
+        "effects": [
+            {
+                "fact": "rack.exists",
+                "subject": {"arg": "RACK_ID"},
+                "effect_kind": "must_on_success"
+            }
+        ],
+        "precondition_expr": {
+            "all": [
+                {"fact": "rack.exists", "subject": {"arg": "RACK_ID"}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn rack_read_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "false",
+        "requires_confirmation": false,
+        "args": [
+            rack_arg("RACK_ID", true, "persisted rack id")
+        ],
+        "reads": [
+            {"fact": "rack.exists", "subject": {"arg": "RACK_ID"}}
+        ],
+        "effects": [],
+        "precondition_expr": {
+            "all": [
+                {"fact": "rack.exists", "subject": {"arg": "RACK_ID"}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn rack_export_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "false",
+        "requires_confirmation": false,
+        "args": [
+            rack_arg("RACK_ID", true, "persisted rack id"),
+            external_output_arg()
+        ],
+        "reads": [
+            {"fact": "rack.exists", "subject": {"arg": "RACK_ID"}}
+        ],
+        "effects": [
+            {
+                "fact": "artifact.written",
+                "subject": {"arg": "OUTPUT_PATH"},
+                "effect_kind": "external_handoff"
+            }
+        ],
+        "precondition_expr": {
+            "all": [
+                {"fact": "rack.exists", "subject": {"arg": "RACK_ID"}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
 fn annotated_introspection_capability_descriptors() -> Vec<Value> {
     vec![
         json!({
@@ -15064,6 +15818,170 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("state_summary")
         }),
+        container_update_descriptor(
+            "containers set-exclusive",
+            "Update the declared exclusive/non-exclusive contents mode for one persisted container.",
+        ),
+        container_update_descriptor(
+            "SetContainerDeclaredContentsExclusive",
+            "Update container contents exclusivity through the shared engine operation.",
+        ),
+        arrangement_create_descriptor(
+            "arrange-serial",
+            "Create a persisted serial arrangement from one or more existing containers.",
+        ),
+        arrangement_create_descriptor(
+            "CreateArrangementSerial",
+            "Create a persisted serial arrangement through the shared engine operation.",
+        ),
+        arrangement_update_descriptor(
+            "arrange-set-ladders",
+            "Update ladder labels for one persisted serial arrangement.",
+        ),
+        arrangement_update_descriptor(
+            "SetArrangementLadders",
+            "Update arrangement ladder labels through the shared engine operation.",
+        ),
+        rack_create_descriptor(
+            "racks create-from-arrangement",
+            "Create a persisted physical rack layout from one persisted arrangement.",
+        ),
+        rack_create_descriptor(
+            "CreateRackFromArrangement",
+            "Create a persisted physical rack layout through the shared engine operation.",
+        ),
+        rack_place_arrangement_descriptor(
+            "racks place-arrangement",
+            "Place one persisted arrangement onto an existing persisted rack.",
+        ),
+        rack_place_arrangement_descriptor(
+            "PlaceArrangementOnRack",
+            "Place an arrangement onto a rack through the shared engine operation.",
+        ),
+        rack_update_descriptor(
+            "racks move",
+            "Move one sample or arrangement block within a persisted rack layout.",
+        ),
+        rack_update_descriptor(
+            "MoveRackPlacement",
+            "Move one rack placement through the shared engine operation.",
+        ),
+        rack_update_descriptor(
+            "racks move-samples",
+            "Move selected samples within a persisted rack layout.",
+        ),
+        rack_update_descriptor(
+            "MoveRackSamples",
+            "Move rack samples through the shared engine operation.",
+        ),
+        rack_update_descriptor(
+            "racks move-blocks",
+            "Move selected arrangement blocks within a persisted rack layout.",
+        ),
+        rack_update_descriptor(
+            "MoveRackArrangementBlocks",
+            "Move rack arrangement blocks through the shared engine operation.",
+        ),
+        rack_update_descriptor(
+            "racks set-profile",
+            "Replace the profile of one persisted rack layout.",
+        ),
+        rack_update_descriptor(
+            "SetRackProfile",
+            "Replace a rack profile through the shared engine operation.",
+        ),
+        rack_update_descriptor(
+            "racks apply-template",
+            "Apply an authoring template to one persisted rack layout.",
+        ),
+        rack_update_descriptor(
+            "ApplyRackTemplate",
+            "Apply a rack authoring template through the shared engine operation.",
+        ),
+        rack_update_descriptor(
+            "racks set-fill-direction",
+            "Set the fill direction of one persisted rack layout.",
+        ),
+        rack_update_descriptor(
+            "SetRackFillDirection",
+            "Set rack fill direction through the shared engine operation.",
+        ),
+        rack_update_descriptor(
+            "racks set-custom-profile",
+            "Set a custom row/column profile for one persisted rack layout.",
+        ),
+        rack_update_descriptor(
+            "SetRackProfileCustom",
+            "Set a custom rack profile through the shared engine operation.",
+        ),
+        rack_update_descriptor(
+            "racks set-blocked",
+            "Set blocked coordinates for one persisted rack layout.",
+        ),
+        rack_update_descriptor(
+            "SetRackBlockedCoordinates",
+            "Set rack blocked coordinates through the shared engine operation.",
+        ),
+        rack_read_descriptor(
+            "racks show",
+            "Inspect one persisted rack layout as structured JSON.",
+        ),
+        rack_export_descriptor(
+            "racks labels-svg",
+            "Export printable labels for one persisted rack layout as SVG.",
+        ),
+        rack_export_descriptor(
+            "ExportRackLabelsSvg",
+            "Export rack labels SVG through the shared engine operation.",
+        ),
+        rack_export_descriptor(
+            "racks fabrication-svg",
+            "Export a fabrication sketch for one persisted rack layout as SVG.",
+        ),
+        rack_export_descriptor(
+            "ExportRackFabricationSvg",
+            "Export rack fabrication SVG through the shared engine operation.",
+        ),
+        rack_export_descriptor(
+            "racks isometric-svg",
+            "Export an isometric sketch for one persisted rack layout as SVG.",
+        ),
+        rack_export_descriptor(
+            "ExportRackIsometricSvg",
+            "Export rack isometric SVG through the shared engine operation.",
+        ),
+        rack_export_descriptor(
+            "racks hero-svg",
+            "Export a hero illustration for one persisted rack layout as SVG.",
+        ),
+        rack_export_descriptor(
+            "ExportRackHeroSvg",
+            "Export rack hero SVG through the shared engine operation.",
+        ),
+        rack_export_descriptor(
+            "racks openscad",
+            "Export an OpenSCAD sketch for one persisted rack layout.",
+        ),
+        rack_export_descriptor(
+            "ExportRackOpenScad",
+            "Export rack OpenSCAD through the shared engine operation.",
+        ),
+        rack_export_descriptor(
+            "racks carrier-labels-svg",
+            "Export physical carrier labels for one persisted rack layout as SVG.",
+        ),
+        rack_export_descriptor(
+            "ExportRackCarrierLabelsSvg",
+            "Export rack carrier-label SVG through the shared engine operation.",
+        ),
+        rack_export_descriptor(
+            "racks simulation-json",
+            "Export machine-readable rack simulation geometry as JSON.",
+        ),
+        rack_export_descriptor(
+            "ExportRackSimulationJson",
+            "Export rack simulation JSON through the shared engine operation.",
+        ),
         json!({
             "id": "history status",
             "kind": "operation",
@@ -15550,6 +16468,32 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "registry": registry_metadata_for_introspection("SummarizeTfbsRegion")
         }),
         json!({
+            "id": "AnnotateTfbs",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id carried by seq_id"},
+                {"name": "MOTIFS", "required": false, "detail": "optional motif ids carried by motifs"},
+                {"name": "MIN_LLR_BITS", "required": false, "detail": "optional minimum log-likelihood-ratio threshold in bits"},
+                {"name": "MIN_LLR_QUANTILE", "required": false, "detail": "optional quantile threshold"},
+                {"name": "CLEAR_EXISTING", "required": false, "detail": "whether existing TFBS annotations are cleared first"},
+                {"name": "MAX_HITS", "required": false, "detail": "optional maximum number of hits to annotate"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Annotate TFBS hits on one loaded sequence through the shared engine operation.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("AnnotateTfbs")
+        }),
+        json!({
             "id": "QueryProteinResidueGenomicCoordinates",
             "kind": "operation",
             "mutating": "false",
@@ -15573,6 +16517,126 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("QueryProteinResidueGenomicCoordinates")
         }),
+        json!({
+            "id": "variant annotate-promoters",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded annotated sequence id"},
+                {"name": "--gene-label", "required": false, "detail": "optional gene-label filter"},
+                {"name": "--transcript-id", "required": false, "detail": "optional transcript-id filter"},
+                {"name": "--upstream-bp", "required": false, "detail": "promoter window upstream length"},
+                {"name": "--downstream-bp", "required": false, "detail": "promoter window downstream length"},
+                {"name": "--collapse", "required": false, "detail": "transcript or gene promoter-window collapse mode"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Derive transcript-TSS-centered promoter windows and write them back as generated promoter features.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("variant annotate-promoters")
+        }),
+        json!({
+            "id": "AnnotatePromoterWindows",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded annotated sequence id carried by input"},
+                {"name": "GENE_LABEL", "required": false, "detail": "optional gene-label filter carried by gene_label"},
+                {"name": "TRANSCRIPT_ID", "required": false, "detail": "optional transcript-id filter carried by transcript_id"},
+                {"name": "UPSTREAM_BP", "required": false, "detail": "promoter window upstream length carried by upstream_bp"},
+                {"name": "DOWNSTREAM_BP", "required": false, "detail": "promoter window downstream length carried by downstream_bp"},
+                {"name": "COLLAPSE_MODE", "required": false, "detail": "transcript or gene promoter-window collapse mode carried by collapse_mode"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Derive transcript-TSS-centered promoter windows through the shared engine operation.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("AnnotatePromoterWindows")
+        }),
+        sequence_optional_artifact_operation_descriptor(
+            "variant promoter-context",
+            "false",
+            false,
+            "SEQ_ID",
+            "loaded sequence carrying a variant and transcript/promoter annotations",
+            "optional external variant-promoter-context JSON output path",
+            "Summarize whether one variant lies in promoter context, including chosen gene/transcript, signed TSS distance, and suggested assay family.",
+            vec![
+                json!({"name": "--variant", "required": false, "detail": "optional variant label or id"}),
+                json!({"name": "--gene-label", "required": false, "detail": "optional gene-label filter"}),
+                json!({"name": "--transcript-id", "required": false, "detail": "optional transcript-id filter"}),
+                json!({"name": "--promoter-upstream-bp", "required": false, "detail": "promoter window upstream length"}),
+                json!({"name": "--promoter-downstream-bp", "required": false, "detail": "promoter window downstream length"}),
+                json!({"name": "--tfbs-focus-half-window-bp", "required": false, "detail": "half-window around the variant for nearby TFBS summarization"}),
+            ],
+        ),
+        sequence_optional_artifact_operation_descriptor(
+            "SummarizeVariantPromoterContext",
+            "false",
+            false,
+            "SEQ_ID",
+            "loaded sequence carrying a variant and transcript/promoter annotations, carried by input",
+            "optional external variant-promoter-context JSON output path carried by path",
+            "Summarize variant promoter context through the shared engine operation.",
+            vec![
+                json!({"name": "VARIANT_LABEL_OR_ID", "required": false, "detail": "optional variant label or id carried by variant_label_or_id"}),
+                json!({"name": "GENE_LABEL", "required": false, "detail": "optional gene-label filter carried by gene_label"}),
+                json!({"name": "TRANSCRIPT_ID", "required": false, "detail": "optional transcript-id filter carried by transcript_id"}),
+                json!({"name": "PROMOTER_UPSTREAM_BP", "required": false, "detail": "promoter window upstream length carried by promoter_upstream_bp"}),
+                json!({"name": "PROMOTER_DOWNSTREAM_BP", "required": false, "detail": "promoter window downstream length carried by promoter_downstream_bp"}),
+                json!({"name": "TFBS_FOCUS_HALF_WINDOW_BP", "required": false, "detail": "half-window around the variant carried by tfbs_focus_half_window_bp"}),
+            ],
+        ),
+        sequence_optional_artifact_operation_descriptor(
+            "variant reporter-fragments",
+            "false",
+            false,
+            "SEQ_ID",
+            "loaded sequence carrying a promoter-proximal variant and transcript annotations",
+            "optional external promoter-reporter candidate JSON output path",
+            "Rank deterministic promoter-reporter fragment candidates around one promoter-proximal variant.",
+            vec![
+                json!({"name": "--variant", "required": false, "detail": "optional variant label or id"}),
+                json!({"name": "--gene-label", "required": false, "detail": "optional gene-label filter"}),
+                json!({"name": "--transcript-id", "required": false, "detail": "optional transcript-id filter"}),
+                json!({"name": "--retain-downstream-from-tss-bp", "required": false, "detail": "minimum downstream sequence retained from TSS"}),
+                json!({"name": "--retain-upstream-beyond-variant-bp", "required": false, "detail": "upstream sequence retained beyond the variant"}),
+                json!({"name": "--max-candidates", "required": false, "detail": "maximum number of ranked candidate fragments"}),
+            ],
+        ),
+        sequence_optional_artifact_operation_descriptor(
+            "SuggestPromoterReporterFragments",
+            "false",
+            false,
+            "SEQ_ID",
+            "loaded sequence carrying a promoter-proximal variant and transcript annotations, carried by input",
+            "optional external promoter-reporter candidate JSON output path carried by path",
+            "Rank promoter-reporter fragment candidates through the shared engine operation.",
+            vec![
+                json!({"name": "VARIANT_LABEL_OR_ID", "required": false, "detail": "optional variant label or id carried by variant_label_or_id"}),
+                json!({"name": "GENE_LABEL", "required": false, "detail": "optional gene-label filter carried by gene_label"}),
+                json!({"name": "TRANSCRIPT_ID", "required": false, "detail": "optional transcript-id filter carried by transcript_id"}),
+                json!({"name": "RETAIN_DOWNSTREAM_FROM_TSS_BP", "required": false, "detail": "minimum downstream sequence retained from TSS"}),
+                json!({"name": "RETAIN_UPSTREAM_BEYOND_VARIANT_BP", "required": false, "detail": "upstream sequence retained beyond the variant"}),
+                json!({"name": "MAX_CANDIDATES", "required": false, "detail": "maximum number of ranked candidate fragments"}),
+            ],
+        ),
         json!({
             "id": "variant materialize-allele",
             "kind": "operation",
@@ -15679,6 +16743,415 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("AlignSequences")
         }),
+        json!({
+            "id": "dotplot compute",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded query/owner sequence id"},
+                {"name": "REFERENCE_SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "optional reference sequence id"},
+                {"name": "DOTPLOT_ID", "required": false, "subject_kind": "other", "detail": "explicit dotplot id supplied with --id; required for deterministic effect verification"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "dotplot.exists",
+                    "subject": {"arg": "DOTPLOT_ID"},
+                    "effect_kind": "must_on_success"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Compute and persist one dotplot payload for a loaded query sequence span.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("dotplot compute")
+        }),
+        json!({
+            "id": "ComputeDotplot",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded query/owner sequence id carried by seq_id"},
+                {"name": "REFERENCE_SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "optional reference sequence id carried by reference_seq_id"},
+                {"name": "DOTPLOT_ID", "required": false, "subject_kind": "other", "detail": "explicit dotplot id carried by store_as; required for deterministic effect verification"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "dotplot.exists",
+                    "subject": {"arg": "DOTPLOT_ID"},
+                    "effect_kind": "must_on_success"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Compute and persist one dotplot payload through the shared engine operation.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("ComputeDotplot")
+        }),
+        json!({
+            "id": "dotplot overlay-compute",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "OWNER_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded owner sequence id"},
+                {"name": "REFERENCE_SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "optional reference sequence id; defaults to owner"},
+                {"name": "DOTPLOT_ID", "required": false, "subject_kind": "other", "detail": "explicit dotplot id supplied with --id; required for deterministic effect verification"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "OWNER_SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "dotplot.exists",
+                    "subject": {"arg": "DOTPLOT_ID"},
+                    "effect_kind": "must_on_success"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "OWNER_SEQ_ID"}}
+                ]
+            },
+            "description": "Compute and persist one shared-reference multi-query dotplot overlay payload.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("dotplot overlay-compute")
+        }),
+        json!({
+            "id": "ComputeDotplotOverlay",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "OWNER_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded owner sequence id carried by owner_seq_id"},
+                {"name": "REFERENCE_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded reference sequence id carried by reference_seq_id"},
+                {"name": "DOTPLOT_ID", "required": false, "subject_kind": "other", "detail": "explicit dotplot id carried by store_as; required for deterministic effect verification"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "OWNER_SEQ_ID"}},
+                {"fact": "sequence.exists", "subject": {"arg": "REFERENCE_SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "dotplot.exists",
+                    "subject": {"arg": "DOTPLOT_ID"},
+                    "effect_kind": "must_on_success"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "OWNER_SEQ_ID"}},
+                    {"fact": "sequence.exists", "subject": {"arg": "REFERENCE_SEQ_ID"}}
+                ]
+            },
+            "description": "Compute and persist one shared-reference multi-query dotplot overlay through the shared engine operation.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("ComputeDotplotOverlay")
+        }),
+        json!({
+            "id": "dotplot show",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "DOTPLOT_ID", "required": true, "subject_kind": "other", "detail": "persisted dotplot payload id"}
+            ],
+            "reads": [
+                {"fact": "dotplot.exists", "subject": {"arg": "DOTPLOT_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "dotplot.exists", "subject": {"arg": "DOTPLOT_ID"}}
+                ]
+            },
+            "description": "Inspect one persisted dotplot payload by id.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("dotplot show")
+        }),
+        json!({
+            "id": "RenderDotplotSvg",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id carried by seq_id"},
+                {"name": "DOTPLOT_ID", "required": true, "subject_kind": "other", "detail": "persisted dotplot payload id carried by dotplot_id"},
+                {"name": "FLEX_TRACK_ID", "required": false, "subject_kind": "other", "detail": "optional persisted flexibility-track id carried by flex_track_id"},
+                {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external SVG output path carried by path"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}},
+                {"fact": "dotplot.exists", "subject": {"arg": "DOTPLOT_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_PATH"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}},
+                    {"fact": "dotplot.exists", "subject": {"arg": "DOTPLOT_ID"}}
+                ]
+            },
+            "description": "Render one persisted dotplot payload as an external SVG artifact.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("RenderDotplotSvg")
+        }),
+        json!({
+            "id": "flex compute",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id"},
+                {"name": "TRACK_ID", "required": false, "subject_kind": "other", "detail": "explicit flexibility track id supplied with --id; required for deterministic effect verification"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "flexibility_track.exists",
+                    "subject": {"arg": "TRACK_ID"},
+                    "effect_kind": "must_on_success"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Compute and persist one sequence-flexibility track.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("flex compute")
+        }),
+        json!({
+            "id": "ComputeFlexibilityTrack",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id carried by seq_id"},
+                {"name": "TRACK_ID", "required": false, "subject_kind": "other", "detail": "explicit flexibility track id carried by store_as; required for deterministic effect verification"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "flexibility_track.exists",
+                    "subject": {"arg": "TRACK_ID"},
+                    "effect_kind": "must_on_success"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Compute and persist one sequence-flexibility track through the shared engine operation.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("ComputeFlexibilityTrack")
+        }),
+        json!({
+            "id": "flex show",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "TRACK_ID", "required": true, "subject_kind": "other", "detail": "persisted flexibility track id"}
+            ],
+            "reads": [
+                {"fact": "flexibility_track.exists", "subject": {"arg": "TRACK_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "flexibility_track.exists", "subject": {"arg": "TRACK_ID"}}
+                ]
+            },
+            "description": "Inspect one persisted flexibility track payload by id.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("flex show")
+        }),
+        candidate_set_generate_descriptor(
+            "candidates generate",
+            "Generate and persist a named candidate-window set over one loaded sequence.",
+        ),
+        candidate_set_generate_descriptor(
+            "GenerateCandidateSet",
+            "Generate and persist a named candidate-window set through the shared engine operation.",
+        ),
+        candidate_set_generate_descriptor(
+            "candidates generate-between-anchors",
+            "Generate and persist candidate windows constrained between two local anchors on one loaded sequence.",
+        ),
+        candidate_set_generate_descriptor(
+            "GenerateCandidateSetBetweenAnchors",
+            "Generate and persist candidate windows between two local anchors through the shared engine operation.",
+        ),
+        candidate_set_read_descriptor(
+            "candidates show",
+            "Inspect paged rows from one persisted candidate set.",
+        ),
+        candidate_set_read_descriptor(
+            "candidates metrics",
+            "List metric coverage for one persisted candidate set.",
+        ),
+        candidate_set_delete_descriptor(
+            "candidates delete",
+            "Delete one persisted candidate set; deletion has no positive hard effect until absence effects are modeled.",
+        ),
+        candidate_set_delete_descriptor(
+            "DeleteCandidateSet",
+            "Delete one persisted candidate set through the shared engine operation.",
+        ),
+        candidate_set_mutate_in_place_descriptor(
+            "candidates score",
+            "Compute a derived metric expression on one persisted candidate set.",
+        ),
+        candidate_set_mutate_in_place_descriptor(
+            "ScoreCandidateSetExpression",
+            "Compute a derived metric expression on one persisted candidate set through the shared engine operation.",
+        ),
+        candidate_set_mutate_in_place_descriptor(
+            "candidates score-distance",
+            "Compute nearest-feature distance metrics on one persisted candidate set.",
+        ),
+        candidate_set_mutate_in_place_descriptor(
+            "ScoreCandidateSetDistance",
+            "Compute nearest-feature distance metrics on one persisted candidate set through the shared engine operation.",
+        ),
+        candidate_set_mutate_in_place_descriptor(
+            "candidates score-weighted",
+            "Compute a weighted objective metric on one persisted candidate set.",
+        ),
+        candidate_set_mutate_in_place_descriptor(
+            "ScoreCandidateSetWeightedObjective",
+            "Compute a weighted objective metric on one persisted candidate set through the shared engine operation.",
+        ),
+        candidate_set_derive_descriptor(
+            "candidates filter",
+            "Filter one persisted candidate set into a named output set by metric thresholds or quantiles.",
+        ),
+        candidate_set_derive_descriptor(
+            "FilterCandidateSet",
+            "Filter one persisted candidate set into a named output set through the shared engine operation.",
+        ),
+        candidate_set_derive_descriptor(
+            "candidates top-k",
+            "Select top-k candidates from one persisted candidate set into a named output set.",
+        ),
+        candidate_set_derive_descriptor(
+            "TopKCandidateSet",
+            "Select top-k candidates from one persisted candidate set through the shared engine operation.",
+        ),
+        candidate_set_derive_descriptor(
+            "candidates pareto",
+            "Compute a Pareto/frontier subset from one persisted candidate set into a named output set.",
+        ),
+        candidate_set_derive_descriptor(
+            "ParetoFrontierCandidateSet",
+            "Compute a Pareto/frontier subset from one persisted candidate set through the shared engine operation.",
+        ),
+        candidate_set_binary_derive_descriptor(
+            "candidates set-op",
+            "Apply set algebra to two persisted candidate sets and write a named output set.",
+        ),
+        candidate_set_binary_derive_descriptor(
+            "CandidateSetOp",
+            "Apply set algebra to two persisted candidate sets through the shared engine operation.",
+        ),
+        no_project_inspection_operation_descriptor(
+            "guides list",
+            "List persisted guide-design sets.",
+            vec![],
+        ),
+        guide_set_upsert_descriptor(
+            "guides put",
+            "Create or replace one persisted guide-design set.",
+        ),
+        guide_set_upsert_descriptor(
+            "UpsertGuideSet",
+            "Create or replace one persisted guide-design set through the shared engine operation.",
+        ),
+        guide_set_read_descriptor(
+            "guides show",
+            "Inspect paged rows from one persisted guide set.",
+        ),
+        guide_set_delete_descriptor(
+            "guides delete",
+            "Delete one persisted guide set; deletion has no positive hard effect until absence effects are modeled.",
+        ),
+        guide_set_delete_descriptor(
+            "DeleteGuideSet",
+            "Delete one persisted guide set through the shared engine operation.",
+        ),
+        guide_set_filter_descriptor(
+            "guides filter",
+            "Apply practical design filtering to one persisted guide set.",
+        ),
+        guide_set_filter_descriptor(
+            "FilterGuidesPractical",
+            "Apply practical design filtering to one persisted guide set through the shared engine operation.",
+        ),
+        guide_filter_report_read_descriptor(
+            "guides filter-show",
+            "Inspect the latest practical-filter report for one guide set.",
+        ),
+        guide_oligo_generate_descriptor(
+            "guides oligos-generate",
+            "Generate and persist guide oligo records from one guide set.",
+        ),
+        guide_oligo_generate_descriptor(
+            "GenerateGuideOligos",
+            "Generate and persist guide oligo records through the shared engine operation.",
+        ),
+        no_project_inspection_operation_descriptor(
+            "guides oligos-list",
+            "List persisted guide oligo sets, optionally filtered by guide set.",
+            vec![guide_set_arg(
+                "GUIDE_SET_ID",
+                "optional guide-set id filter; not required for catalog readiness",
+            )],
+        ),
+        guide_oligo_read_descriptor(
+            "guides oligos-show",
+            "Inspect one persisted guide oligo set.",
+        ),
+        guide_oligo_export_descriptor(
+            "guides oligos-export",
+            "Export guide oligo records to an external CSV, plate CSV, or FASTA artifact.",
+        ),
+        guide_oligo_export_descriptor(
+            "ExportGuideOligos",
+            "Export guide oligo records through the shared engine operation.",
+        ),
+        guide_oligo_export_descriptor(
+            "guides protocol-export",
+            "Export a human-readable guide oligo protocol text artifact.",
+        ),
+        guide_oligo_export_descriptor(
+            "ExportGuideProtocolText",
+            "Export a human-readable guide oligo protocol through the shared engine operation.",
+        ),
         json!({
             "id": "render-svg",
             "kind": "operation",
@@ -18469,6 +19942,8 @@ fn subject_kind_for_arg(arg_name: &str) -> FactSubjectKind {
         | "INPUT_SEQ_ID"
         | "QUERY_SEQ_ID"
         | "TARGET_SEQ_ID"
+        | "OWNER_SEQ_ID"
+        | "REFERENCE_SEQ_ID"
         | "PROTEIN_SEQ_ID"
         | "TEMPLATE_SEQ_ID"
         | "DESTINATION_VECTOR_SEQ_ID" => FactSubjectKind::Sequence,

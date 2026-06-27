@@ -2306,6 +2306,38 @@ Shared shell command:
         design routes: they require `sequence.exists(TEMPLATE_SEQ_ID)` and
         verify the requested `report.exists(REPORT_ID)` kind when a
         deterministic report id is supplied
+      - dotplot and flexibility routes project stored payload facts:
+        `dotplot.exists(DOTPLOT_ID)` and
+        `flexibility_track.exists(TRACK_ID)`. `dotplot compute`,
+        `ComputeDotplot`, `dotplot overlay-compute`,
+        `ComputeDotplotOverlay`, `flex compute`, and
+        `ComputeFlexibilityTrack` require loaded sequence inputs and can verify
+        those payload facts when deterministic ids are supplied. `dotplot show`,
+        `flex show`, and `RenderDotplotSvg` become ready only once the stored
+        payload fact exists; `RenderDotplotSvg` models the SVG path as an
+        `artifact.written` external handoff
+      - candidate-window optimization routes project
+        `candidate_set.exists(SET_NAME)`. Candidate generation requires a
+        loaded source sequence and verifies the named set when deterministic
+        `SET_NAME` is supplied. Candidate show/metrics/score/delete routes
+        require the existing set; filter/top-k/pareto/set-op routes require
+        input set facts and verify the named output set. Deletion currently has
+        no positive hard effect because the fact language does not yet model
+        absence effects
+      - guide-design routes project `guide_set.exists(GUIDE_SET_ID)`,
+        `guide_filter_report.exists(GUIDE_SET_ID)`, and
+        `guide_oligo_set.exists(OLIGO_SET_ID)`. Guide-set upsert and oligo
+        generation can verify deterministic output ids; practical filtering
+        verifies the filter report and, when supplied, the filtered output guide
+        set. Guide exports require the guide set and model CSV/FASTA/protocol
+        files as `artifact.written` external handoffs
+      - container/rack authoring routes project
+        `container.exists(CONTAINER_ID)`, `arrangement.exists(ARRANGEMENT_ID)`,
+        and `rack.exists(RACK_ID)`. Container exclusivity updates require the
+        container fact. Serial arrangement and rack creation can verify supplied
+        deterministic ids. Rack move/profile/template/block commands require
+        and preserve `rack.exists`; rack SVG/OpenSCAD/simulation exports require
+        the rack and model files as `artifact.written` external handoffs
       - `ReverseTranslateProteinSequence` mirrors `reverse-translate run`:
         the input sequence must exist and have `sequence.kind == protein`, and
         a deterministic `OUTPUT_ID` can be verified as the generated coding-DNA
@@ -2334,7 +2366,14 @@ Shared shell command:
         `features tfbs-summary` become ready when the inspected
         `sequence.exists` fact is projected. The raw `SummarizeTfbsRegion`
         and `QueryProteinResidueGenomicCoordinates` operation rows expose the
-        same sequence-readiness model;
+        same sequence-readiness model. Variant promoter/reporter inspectors
+        (`variant promoter-context`, `variant reporter-fragments`, and their
+        raw operation rows) use the same sequence-readiness model and treat
+        optional JSON paths as `artifact.written` external handoffs, not
+        persistent project reports. `variant annotate-promoters`,
+        `AnnotatePromoterWindows`, and `AnnotateTfbs` are sequence-gated
+        mutating annotations without a hard fact effect until feature
+        freshness/count facts exist;
         `inspect-feature-expert` uses the same sequence-level readiness until
         target-specific facts exist
       - external feature exports such as `features export-bed` use the same

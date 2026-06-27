@@ -579,6 +579,15 @@ Suggested additions:
 | `view.selection` | view | closed | no | subject + `range` |
 | `view.viewport` | view | closed | no | visible bp window / lane window |
 | `view.visible_tracks` | view | closed | no | which tracks/lanes are shown |
+| `dotplot.exists` | project | closed | no | stored dotplot analysis payload; subject id is the dotplot id |
+| `flexibility_track.exists` | project | closed | no | stored sequence-flexibility track payload; subject id is the track id |
+| `candidate_set.exists` | project | closed | no | persisted candidate-window set; subject id is the set name |
+| `container.exists` | project | closed | no | persisted wet-lab container/pool/selection; subject id is the container id |
+| `arrangement.exists` | project | closed | no | persisted lane/plate arrangement; subject id is the arrangement id |
+| `rack.exists` | project | closed | no | persisted physical rack layout; subject id is the rack id |
+| `guide_set.exists` | project | closed | no | persisted guide-design set; subject id is the guide-set id |
+| `guide_filter_report.exists` | project | closed | no | persisted practical guide-filter report; subject id is the guide-set id |
+| `guide_oligo_set.exists` | project | closed | no | persisted guide-oligo output set; subject id is the oligo-set id |
 | `config.param` | config | closed | no | engine-owned `SetParameter` values; subject id is the parameter name, `value` is the JSON value |
 | `host.tool_available` | host | closed | no | e.g. primer3/blastn resolvable; see Reconciliation below |
 | `artifact.written` | host | open | yes | external file/handoff artifact written outside saved project state |
@@ -699,9 +708,34 @@ on semantic glyphs.
    `InspectSequenceContextView`, `ExportSequenceContextBundle`,
    `inspect-feature-expert`, `render-feature-expert-svg`,
    `features tfbs-summary`, `SummarizeTfbsRegion`,
-   `QueryProteinResidueGenomicCoordinates`,
+   `AnnotateTfbs`, `QueryProteinResidueGenomicCoordinates`,
+   `variant annotate-promoters`, `AnnotatePromoterWindows`,
+   `variant promoter-context`, `SummarizeVariantPromoterContext`,
+   `variant reporter-fragments`, `SuggestPromoterReporterFragments`,
    `variant materialize-allele`, `MaterializeVariantAllele`,
    `align compute`, `AlignSequences`,
+   `dotplot compute`, `ComputeDotplot`,
+   `dotplot overlay-compute`, `ComputeDotplotOverlay`,
+   `dotplot show`, `RenderDotplotSvg`,
+   `flex compute`, `ComputeFlexibilityTrack`, `flex show`,
+   `candidates generate`, `GenerateCandidateSet`,
+   `candidates generate-between-anchors`, `GenerateCandidateSetBetweenAnchors`,
+   `candidates show`, `candidates metrics`,
+   `candidates score`, `ScoreCandidateSetExpression`,
+   `candidates score-distance`, `ScoreCandidateSetDistance`,
+   `candidates score-weighted`, `ScoreCandidateSetWeightedObjective`,
+   `candidates filter`, `FilterCandidateSet`,
+   `candidates top-k`, `TopKCandidateSet`,
+   `candidates pareto`, `ParetoFrontierCandidateSet`,
+   `candidates set-op`, `CandidateSetOp`,
+   `candidates delete`, `DeleteCandidateSet`,
+   `guides list`, `guides put`, `UpsertGuideSet`,
+   `guides show`, `guides delete`, `DeleteGuideSet`,
+   `guides filter`, `FilterGuidesPractical`, `guides filter-show`,
+   `guides oligos-generate`, `GenerateGuideOligos`,
+   `guides oligos-list`, `guides oligos-show`,
+   `guides oligos-export`, `ExportGuideOligos`,
+   `guides protocol-export`, `ExportGuideProtocolText`,
    `render-svg`, `render-rna-svg`, `render-lineage-svg`, `RenderSequenceSvg`,
    `RenderFeatureExpertSvg`, `RenderTfbsScoreTrackCorrelationSvg`,
    `RenderRnaStructureSvg`, `RenderLineageSvg`,

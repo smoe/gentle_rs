@@ -12,6 +12,34 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-06-27
+
+- Added fact-aware introspection for sequence-gated variant promoter/reporter
+  routes and raw operation rows: `variant annotate-promoters`,
+  `AnnotatePromoterWindows`, `variant promoter-context`,
+  `SummarizeVariantPromoterContext`, `variant reporter-fragments`,
+  `SuggestPromoterReporterFragments`, and `AnnotateTfbs`. Optional JSON output
+  paths are modeled as `artifact.written` external handoffs rather than
+  invented persistent project reports.
+- Added closed-world `dotplot.exists` and `flexibility_track.exists` project
+  facts plus fact-aware introspection for dotplot/flex compute, show, overlay,
+  and SVG render routes. Deterministic `DOTPLOT_ID`/`TRACK_ID` bindings can now
+  be verified after compute operations, while dotplot SVG export remains an
+  external handoff.
+- Added closed-world `candidate_set.exists` introspection for persisted
+  candidate-window sets and fact-aware readiness/effect descriptors for
+  candidate generation, show/metrics, score, filter, top-k, Pareto, set algebra,
+  and delete routes. Delete rows are readiness-gated but do not yet claim a
+  positive hard absence effect.
+- Added closed-world `guide_set.exists`, `guide_filter_report.exists`, and
+  `guide_oligo_set.exists` introspection for guide-design workflows, including
+  fact-aware descriptors for guide-set upsert/show/filter/delete, oligo
+  generation/list/show, and guide oligo/protocol exports.
+- Added closed-world `container.exists`, `arrangement.exists`, and
+  `rack.exists` introspection for persisted wet-lab container/rack authoring,
+  including readiness/effect descriptors for arrangement creation, rack
+  placement/mutation, and rack SVG/OpenSCAD/simulation exports.
+
 ## 2026-06-26
 
 - Added the first shared `introspect facts|capabilities|readiness|all`

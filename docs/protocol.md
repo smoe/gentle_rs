@@ -4510,6 +4510,39 @@ facts, plus explicit restriction-site scan evidence:
   `align compute`: both query and target sequence ids must exist, and the
   operation declares no project-state effects because the alignment is returned
   in the operation result.
+- Dotplot and flexibility analysis payloads project closed-world project facts:
+  `dotplot.exists(DOTPLOT_ID)` and `flexibility_track.exists(TRACK_ID)`.
+  `dotplot compute`, `ComputeDotplot`, `dotplot overlay-compute`,
+  `ComputeDotplotOverlay`, `flex compute`, and `ComputeFlexibilityTrack`
+  require loaded sequence inputs and can verify those payload facts when
+  deterministic ids are supplied. `dotplot show`, `flex show`, and
+  `RenderDotplotSvg` use the stored payload facts for readiness;
+  `RenderDotplotSvg` models the SVG path as an `artifact.written` external
+  handoff.
+- Candidate-window optimization routes project a closed-world
+  `candidate_set.exists(SET_NAME)` fact from persisted candidate-set metadata.
+  Candidate generation requires `sequence.exists(SEQ_ID)` and verifies the
+  named set. Show/metrics/score/delete routes require the set fact;
+  filter/top-k/pareto/set-op routes require input set facts and verify the
+  named output set. Delete rows intentionally declare no hard positive effect
+  until absence/negative effects are modeled.
+- Guide-design routes project closed-world `guide_set.exists(GUIDE_SET_ID)`,
+  `guide_filter_report.exists(GUIDE_SET_ID)`, and
+  `guide_oligo_set.exists(OLIGO_SET_ID)` facts from persisted guide metadata.
+  Upsert verifies the guide-set fact; practical filtering verifies the filter
+  report and, when an output id is supplied, the filtered guide set; oligo
+  generation verifies the oligo-set fact. Guide CSV/FASTA/protocol exports use
+  `artifact.written` external handoff effects rather than local project-state
+  mutations.
+- Wet-lab container authoring routes project closed-world
+  `container.exists(CONTAINER_ID)`, `arrangement.exists(ARRANGEMENT_ID)`, and
+  `rack.exists(RACK_ID)` facts from persisted project state. Container
+  exclusivity updates require and preserve the container fact. Serial
+  arrangement creation can verify a deterministic arrangement id when supplied;
+  rack creation can verify a deterministic rack id when supplied. Rack
+  move/profile/template/block commands require and preserve `rack.exists`, while
+  rack SVG/OpenSCAD/simulation exports model output paths as `artifact.written`
+  external handoffs.
 - Raw persisted-report operation rows mirror the shell report readiness model
   where the report kind is unambiguous. `ListSequencingConfirmationReports`,
   `ListCutRunReadReports`, and `ListRnaReadReports` are catalog-ready with no
@@ -4541,8 +4574,16 @@ facts, plus explicit restriction-site scan evidence:
   `features tfbs-summary` use `sequence.exists` readiness and do not project
   persistent report effects. The raw `SummarizeTfbsRegion` and
   `QueryProteinResidueGenomicCoordinates` operation rows expose the same
-  sequence-readiness model. `inspect-feature-expert` currently uses the same
-  sequence-level readiness; target-specific facts can narrow this later.
+  sequence-readiness model. Variant promoter/reporter inspectors
+  (`variant promoter-context`, `variant reporter-fragments`,
+  `SummarizeVariantPromoterContext`, and
+  `SuggestPromoterReporterFragments`) use the same sequence-readiness model
+  and model optional JSON paths as `artifact.written` external handoffs rather
+  than persistent project reports. `variant annotate-promoters`,
+  `AnnotatePromoterWindows`, and `AnnotateTfbs` are sequence-gated mutating
+  annotation rows without hard fact effects until feature freshness/count facts
+  exist. `inspect-feature-expert` currently uses the same sequence-level
+  readiness; target-specific facts can narrow this later.
 - The known fact vocabulary is registered in engine protocol code and is also
   appended to the Agent Assistant system prompt, so prompt grounding and
   deterministic evaluation share one list of fact names.

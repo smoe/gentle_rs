@@ -859,7 +859,7 @@ impl GentleEngine {
                     message:
                         "RenderPoolGelSvg requires either inputs, container_ids, or arrangement_id"
                             .to_string(),
-                
+
                     cause_chain: vec![],});
                 }
                 let mut members: Vec<crate::pool_gel::GelSampleMember> =
@@ -1079,6 +1079,276 @@ impl GentleEngine {
             });
         }
 
+        if let Ok(serde_json::Value::Object(parameters)) =
+            serde_json::to_value(&self.state.parameters)
+        {
+            for (name, value) in parameters {
+                facts.push(ProjectFact {
+                    fact: "config.param".to_string(),
+                    domain: ProjectFactDomain::Config,
+                    subject: fact_subject(FactSubjectKind::Other, name),
+                    value: Some(value),
+                    ..ProjectFact::default()
+                });
+            }
+        }
+
+        facts.push(ProjectFact {
+            fact: "view.viewport".to_string(),
+            domain: ProjectFactDomain::View,
+            subject: fact_subject(FactSubjectKind::Ui, "linear_sequence".to_string()),
+            value: Some(serde_json::json!({
+                "start_bp": self.state.display.linear_view_start_bp,
+                "span_bp": self.state.display.linear_view_span_bp,
+            })),
+            ..ProjectFact::default()
+        });
+        facts.push(ProjectFact {
+            fact: "view.visible_tracks".to_string(),
+            domain: ProjectFactDomain::View,
+            subject: fact_subject(FactSubjectKind::Ui, "host".to_string()),
+            value: Some(serde_json::json!({
+                "sequence_panel": self.state.display.show_sequence_panel,
+                "linear_sequence_panel": self.state.display.show_linear_sequence_panel,
+                "map_panel": self.state.display.show_map_panel,
+                "features": self.state.display.show_features,
+                "cds_features": self.state.display.show_cds_features,
+                "gene_features": self.state.display.show_gene_features,
+                "mrna_features": self.state.display.show_mrna_features,
+                "repeat_features": self.state.display.show_repeat_features,
+                "array_features": self.state.display.show_array_features,
+                "construct_reasoning_overlay": self.state.display.show_construct_reasoning_overlay,
+                "tfbs": self.state.display.show_tfbs,
+                "restriction_enzymes": self.state.display.show_restriction_enzymes,
+                "gc_contents": self.state.display.show_gc_contents,
+                "open_reading_frames": self.state.display.show_open_reading_frames,
+                "methylation_sites": self.state.display.show_methylation_sites,
+            })),
+            ..ProjectFact::default()
+        });
+
+        for report in self.list_primer_design_reports() {
+            facts.push(ProjectFact {
+                fact: "report.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Report, report.report_id.clone()),
+                value: Some(serde_json::json!("primer_design")),
+                basis: Some(FactBasis {
+                    report_id: report.report_id,
+                    report_kind: "primer_design".to_string(),
+                    evidence_class: EvidenceClass::HardFact,
+                    op_id: report.op_id,
+                    run_id: report.run_id,
+                }),
+                ..ProjectFact::default()
+            });
+        }
+        for report in self.list_qpcr_design_reports() {
+            facts.push(ProjectFact {
+                fact: "report.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Report, report.report_id.clone()),
+                value: Some(serde_json::json!("qpcr_design")),
+                basis: Some(FactBasis {
+                    report_id: report.report_id,
+                    report_kind: "qpcr_design".to_string(),
+                    evidence_class: EvidenceClass::HardFact,
+                    op_id: report.op_id,
+                    run_id: report.run_id,
+                }),
+                ..ProjectFact::default()
+            });
+        }
+        for report in self.list_restriction_cloning_pcr_handoffs() {
+            facts.push(ProjectFact {
+                fact: "report.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Report, report.report_id.clone()),
+                value: Some(serde_json::json!("restriction_cloning_pcr_handoff")),
+                basis: Some(FactBasis {
+                    report_id: report.report_id,
+                    report_kind: "restriction_cloning_pcr_handoff".to_string(),
+                    evidence_class: EvidenceClass::HardFact,
+                    op_id: report.op_id,
+                    run_id: report.run_id,
+                }),
+                ..ProjectFact::default()
+            });
+        }
+        for report in self.list_reverse_translation_reports(None) {
+            facts.push(ProjectFact {
+                fact: "report.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Report, report.report_id.clone()),
+                value: Some(serde_json::json!("reverse_translation")),
+                basis: Some(FactBasis {
+                    report_id: report.report_id,
+                    report_kind: "reverse_translation".to_string(),
+                    evidence_class: EvidenceClass::HardFact,
+                    op_id: report.op_id,
+                    run_id: report.run_id,
+                }),
+                ..ProjectFact::default()
+            });
+        }
+        for report in self.list_sequencing_confirmation_reports(None) {
+            facts.push(ProjectFact {
+                fact: "report.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Report, report.report_id.clone()),
+                value: Some(serde_json::json!("sequencing_confirmation")),
+                basis: Some(FactBasis {
+                    report_id: report.report_id,
+                    report_kind: "sequencing_confirmation".to_string(),
+                    evidence_class: EvidenceClass::HardFact,
+                    op_id: None,
+                    run_id: None,
+                }),
+                ..ProjectFact::default()
+            });
+        }
+        for report in self.list_cutrun_read_reports(None) {
+            facts.push(ProjectFact {
+                fact: "report.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Report, report.report_id.clone()),
+                value: Some(serde_json::json!("cutrun_read")),
+                basis: Some(FactBasis {
+                    report_id: report.report_id,
+                    report_kind: "cutrun_read".to_string(),
+                    evidence_class: EvidenceClass::HardFact,
+                    op_id: None,
+                    run_id: None,
+                }),
+                ..ProjectFact::default()
+            });
+        }
+        for report in self.list_rna_read_reports(None) {
+            facts.push(ProjectFact {
+                fact: "report.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Report, report.report_id.clone()),
+                value: Some(serde_json::json!("rna_read")),
+                basis: Some(FactBasis {
+                    report_id: report.report_id,
+                    report_kind: "rna_read".to_string(),
+                    evidence_class: EvidenceClass::HardFact,
+                    op_id: report.op_id,
+                    run_id: report.run_id,
+                }),
+                ..ProjectFact::default()
+            });
+        }
+
+        for dotplot in self.list_dotplot_views(None) {
+            facts.push(ProjectFact {
+                fact: "dotplot.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Other, dotplot.dotplot_id),
+                value: Some(serde_json::json!({
+                    "owner_seq_id": dotplot.owner_seq_id,
+                    "seq_id": dotplot.seq_id,
+                    "reference_seq_id": dotplot.reference_seq_id,
+                    "mode": dotplot.mode.as_str(),
+                    "series_count": dotplot.series_count,
+                })),
+                ..ProjectFact::default()
+            });
+        }
+        for track in self.list_flexibility_tracks(None) {
+            facts.push(ProjectFact {
+                fact: "flexibility_track.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Other, track.track_id),
+                value: Some(serde_json::json!({
+                    "seq_id": track.seq_id,
+                    "model": serde_json::to_value(track.model).unwrap_or(serde_json::Value::Null),
+                    "bin_count": track.bin_count,
+                })),
+                ..ProjectFact::default()
+            });
+        }
+        for set in self.list_candidate_sets() {
+            facts.push(ProjectFact {
+                fact: "candidate_set.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Other, set.name),
+                value: Some(serde_json::json!({
+                    "source_seq_ids": set.source_seq_ids,
+                    "candidate_count": set.candidate_count,
+                    "metrics": set.metrics,
+                })),
+                ..ProjectFact::default()
+            });
+        }
+        for (container_id, container) in &self.state.container_state.containers {
+            facts.push(ProjectFact {
+                fact: "container.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Other, container_id.clone()),
+                value: Some(serde_json::json!({
+                    "kind": serde_json::to_value(&container.kind).unwrap_or(serde_json::Value::Null),
+                    "name": container.name,
+                    "member_count": container.members.len(),
+                    "declared_contents_exclusive": container.declared_contents_exclusive,
+                })),
+                ..ProjectFact::default()
+            });
+        }
+        for (arrangement_id, arrangement) in &self.state.container_state.arrangements {
+            facts.push(ProjectFact {
+                fact: "arrangement.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Other, arrangement_id.clone()),
+                value: Some(serde_json::json!({
+                    "mode": serde_json::to_value(&arrangement.mode).unwrap_or(serde_json::Value::Null),
+                    "name": arrangement.name,
+                    "lane_count": arrangement.lane_container_ids.len(),
+                    "ladder_count": arrangement.ladders.len(),
+                    "default_rack_id": arrangement.default_rack_id,
+                })),
+                ..ProjectFact::default()
+            });
+        }
+        for (rack_id, rack) in &self.state.container_state.racks {
+            facts.push(ProjectFact {
+                fact: "rack.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Other, rack_id.clone()),
+                value: Some(serde_json::json!({
+                    "name": rack.name,
+                    "profile_kind": serde_json::to_value(&rack.profile.kind).unwrap_or(serde_json::Value::Null),
+                    "rows": rack.profile.rows,
+                    "columns": rack.profile.columns,
+                    "placement_count": rack.placements.len(),
+                    "blocked_count": rack.profile.blocked_coordinates.len(),
+                })),
+                ..ProjectFact::default()
+            });
+        }
+        for set in self.list_guide_sets() {
+            facts.push(ProjectFact {
+                fact: "guide_set.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Other, set.guide_set_id),
+                value: Some(serde_json::json!({
+                    "guide_count": set.guide_count,
+                })),
+                ..ProjectFact::default()
+            });
+        }
+        let guide_store = self.read_guide_design_store();
+        for (guide_set_id, report) in guide_store.practical_filter_reports {
+            facts.push(ProjectFact {
+                fact: "guide_filter_report.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Other, guide_set_id),
+                value: Some(serde_json::json!({
+                    "passed_count": report.passed_count,
+                    "rejected_count": report.rejected_count,
+                    "row_count": report.results.len(),
+                })),
+                ..ProjectFact::default()
+            });
+        }
+        for set in self.list_guide_oligo_sets(None) {
+            facts.push(ProjectFact {
+                fact: "guide_oligo_set.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Other, set.oligo_set_id),
+                value: Some(serde_json::json!({
+                    "guide_set_id": set.guide_set_id,
+                    "template_id": set.template.template_id,
+                    "record_count": set.records.len(),
+                })),
+                ..ProjectFact::default()
+            });
+        }
+
         for report in restriction_reports {
             Self::push_restriction_scan_facts(&mut facts, report);
         }
@@ -1143,6 +1413,7 @@ impl GentleEngine {
                     range: Some(range.clone()),
                     value: Some(serde_json::json!(0)),
                     basis: Some(basis.clone()),
+                    ..ProjectFact::default()
                 });
             } else {
                 for hit in matching_hits {
@@ -1157,6 +1428,7 @@ impl GentleEngine {
                         }),
                         value: Some(serde_json::json!(true)),
                         basis: Some(basis.clone()),
+                        ..ProjectFact::default()
                     });
                 }
             }
@@ -4061,7 +4333,7 @@ impl GentleEngine {
                         "Sequence anchor '{}' occurrence {} was requested, but only {} match(es) found",
                         anchor_name, idx, matches.len()
                     ),
-                
+
                     cause_chain: vec![],})
             }
         }

@@ -1790,6 +1790,31 @@ impl FactSubjectKind {
     }
 }
 
+fn project_fact_domain_default() -> ProjectFactDomain {
+    ProjectFactDomain::Project
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[serde(rename_all = "snake_case")]
+/// High-level state domain addressed by a fact.
+pub enum ProjectFactDomain {
+    Project,
+    View,
+    Host,
+    Config,
+}
+
+impl ProjectFactDomain {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Project => "project",
+            Self::View => "view",
+            Self::Host => "host",
+            Self::Config => "config",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 /// World assumption used when evaluating a known project fact type.
@@ -1811,6 +1836,7 @@ impl ProjectFactWorld {
 /// Registry entry for one controlled project-fact vocabulary item.
 pub struct ProjectFactTypeSpec {
     pub name: &'static str,
+    pub domain: ProjectFactDomain,
     pub world: ProjectFactWorld,
     pub requires_basis: bool,
     pub subject_kind: FactSubjectKind,
@@ -1820,6 +1846,7 @@ pub struct ProjectFactTypeSpec {
 const PROJECT_FACT_TYPE_SPECS: &[ProjectFactTypeSpec] = &[
     ProjectFactTypeSpec {
         name: "sequence.exists",
+        domain: ProjectFactDomain::Project,
         world: ProjectFactWorld::ClosedWorld,
         requires_basis: false,
         subject_kind: FactSubjectKind::Sequence,
@@ -1827,6 +1854,7 @@ const PROJECT_FACT_TYPE_SPECS: &[ProjectFactTypeSpec] = &[
     },
     ProjectFactTypeSpec {
         name: "sequence.kind",
+        domain: ProjectFactDomain::Project,
         world: ProjectFactWorld::ClosedWorld,
         requires_basis: false,
         subject_kind: FactSubjectKind::Sequence,
@@ -1834,6 +1862,7 @@ const PROJECT_FACT_TYPE_SPECS: &[ProjectFactTypeSpec] = &[
     },
     ProjectFactTypeSpec {
         name: "sequence.length",
+        domain: ProjectFactDomain::Project,
         world: ProjectFactWorld::ClosedWorld,
         requires_basis: false,
         subject_kind: FactSubjectKind::Sequence,
@@ -1841,6 +1870,7 @@ const PROJECT_FACT_TYPE_SPECS: &[ProjectFactTypeSpec] = &[
     },
     ProjectFactTypeSpec {
         name: "sequence.circular",
+        domain: ProjectFactDomain::Project,
         world: ProjectFactWorld::ClosedWorld,
         requires_basis: false,
         subject_kind: FactSubjectKind::Sequence,
@@ -1848,13 +1878,87 @@ const PROJECT_FACT_TYPE_SPECS: &[ProjectFactTypeSpec] = &[
     },
     ProjectFactTypeSpec {
         name: "report.exists",
+        domain: ProjectFactDomain::Project,
         world: ProjectFactWorld::OpenWorld,
         requires_basis: true,
         subject_kind: FactSubjectKind::Report,
         description: "An explicit proof/report artifact is available as evidence.",
     },
     ProjectFactTypeSpec {
+        name: "dotplot.exists",
+        domain: ProjectFactDomain::Project,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Other,
+        description: "A stored dotplot analysis payload with this id exists in current project metadata.",
+    },
+    ProjectFactTypeSpec {
+        name: "flexibility_track.exists",
+        domain: ProjectFactDomain::Project,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Other,
+        description: "A stored sequence-flexibility track payload with this id exists in current project metadata.",
+    },
+    ProjectFactTypeSpec {
+        name: "candidate_set.exists",
+        domain: ProjectFactDomain::Project,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Other,
+        description: "A persisted candidate-window set with this name exists in current project metadata.",
+    },
+    ProjectFactTypeSpec {
+        name: "container.exists",
+        domain: ProjectFactDomain::Project,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Other,
+        description: "A persisted wet-lab container or pool with this id exists in current project state.",
+    },
+    ProjectFactTypeSpec {
+        name: "arrangement.exists",
+        domain: ProjectFactDomain::Project,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Other,
+        description: "A persisted lane/plate arrangement with this id exists in current project state.",
+    },
+    ProjectFactTypeSpec {
+        name: "rack.exists",
+        domain: ProjectFactDomain::Project,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Other,
+        description: "A persisted physical rack layout with this id exists in current project state.",
+    },
+    ProjectFactTypeSpec {
+        name: "guide_set.exists",
+        domain: ProjectFactDomain::Project,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Other,
+        description: "A persisted guide-design set with this id exists in current project metadata.",
+    },
+    ProjectFactTypeSpec {
+        name: "guide_oligo_set.exists",
+        domain: ProjectFactDomain::Project,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Other,
+        description: "A persisted guide-oligo set with this id exists in current project metadata.",
+    },
+    ProjectFactTypeSpec {
+        name: "guide_filter_report.exists",
+        domain: ProjectFactDomain::Project,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Other,
+        description: "A persisted practical guide-filter report exists for this guide-set id.",
+    },
+    ProjectFactTypeSpec {
         name: "restriction_site.present",
+        domain: ProjectFactDomain::Project,
         world: ProjectFactWorld::OpenWorld,
         requires_basis: true,
         subject_kind: FactSubjectKind::Sequence,
@@ -1862,6 +1966,7 @@ const PROJECT_FACT_TYPE_SPECS: &[ProjectFactTypeSpec] = &[
     },
     ProjectFactTypeSpec {
         name: "restriction_site.absent",
+        domain: ProjectFactDomain::Project,
         world: ProjectFactWorld::OpenWorld,
         requires_basis: true,
         subject_kind: FactSubjectKind::Sequence,
@@ -1869,10 +1974,59 @@ const PROJECT_FACT_TYPE_SPECS: &[ProjectFactTypeSpec] = &[
     },
     ProjectFactTypeSpec {
         name: "ui.host_available",
+        domain: ProjectFactDomain::View,
         world: ProjectFactWorld::ClosedWorld,
         requires_basis: false,
         subject_kind: FactSubjectKind::Ui,
         description: "The current adapter can ask the user to perform GUI-hosted actions such as picking a file.",
+    },
+    ProjectFactTypeSpec {
+        name: "view.selection",
+        domain: ProjectFactDomain::View,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Sequence,
+        description: "A GUI/view session has a selected range or inspection focus for this sequence.",
+    },
+    ProjectFactTypeSpec {
+        name: "view.viewport",
+        domain: ProjectFactDomain::View,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Ui,
+        description: "A GUI/view session has a deterministic visible sequence-window viewport.",
+    },
+    ProjectFactTypeSpec {
+        name: "view.visible_tracks",
+        domain: ProjectFactDomain::View,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Ui,
+        description: "A GUI/view session has explicit visible feature/display tracks.",
+    },
+    ProjectFactTypeSpec {
+        name: "host.tool_available",
+        domain: ProjectFactDomain::Host,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Other,
+        description: "A named local executable or host service has been deterministically probed as available.",
+    },
+    ProjectFactTypeSpec {
+        name: "artifact.written",
+        domain: ProjectFactDomain::Host,
+        world: ProjectFactWorld::OpenWorld,
+        requires_basis: true,
+        subject_kind: FactSubjectKind::Other,
+        description: "An external file or handoff artifact was written outside saved project state.",
+    },
+    ProjectFactTypeSpec {
+        name: "config.param",
+        domain: ProjectFactDomain::Config,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Other,
+        description: "An engine-owned configuration parameter is set to the supplied JSON value; the subject id is the parameter name.",
     },
 ];
 
@@ -1893,8 +2047,9 @@ pub fn project_fact_registry_prompt_block() -> String {
     ];
     for spec in PROJECT_FACT_TYPE_SPECS {
         lines.push(format!(
-            "- {}: subject_kind={}; world={}; requires_basis={}; {}",
+            "- {}: domain={}; subject_kind={}; world={}; requires_basis={}; {}",
             spec.name,
+            spec.domain.as_str(),
             spec.subject_kind.as_str(),
             spec.world.as_str(),
             spec.requires_basis,
@@ -2001,6 +2156,8 @@ impl Default for FactBasis {
 /// One ground fact projected from project state or explicit evidence.
 pub struct ProjectFact {
     pub fact: String,
+    #[serde(default = "project_fact_domain_default")]
+    pub domain: ProjectFactDomain,
     pub subject: FactSubject,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub enzyme: Option<String>,
@@ -2016,6 +2173,7 @@ impl Default for ProjectFact {
     fn default() -> Self {
         Self {
             fact: String::new(),
+            domain: ProjectFactDomain::Project,
             subject: FactSubject {
                 kind: FactSubjectKind::Other,
                 id: String::new(),

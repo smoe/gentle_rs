@@ -19282,6 +19282,31 @@ fn execute_introspect_readiness_checks_variant_materialize_input_sequence() {
         blocked_raw.output["readiness"][0]["unmet_atoms"][0]["fact"].as_str(),
         Some("sequence.exists")
     );
+    for capability_id in [
+        "variant annotate-promoters",
+        "AnnotatePromoterWindows",
+        "variant promoter-context",
+        "SummarizeVariantPromoterContext",
+        "variant reporter-fragments",
+        "SuggestPromoterReporterFragments",
+        "AnnotateTfbs",
+    ] {
+        let blocked = parse_shell_line(&format!(
+            "introspect readiness {capability_id} --arg SEQ_ID=demo"
+        ))
+        .expect("parse blocked variant/promoter readiness");
+        let blocked = execute_shell_command(&mut empty, &blocked)
+            .expect("execute blocked variant/promoter readiness");
+        assert_eq!(
+            blocked.output["readiness"][0]["readiness"].as_str(),
+            Some("blocked"),
+            "{capability_id} should require an existing sequence"
+        );
+        assert_eq!(
+            blocked.output["readiness"][0]["unmet_atoms"][0]["fact"].as_str(),
+            Some("sequence.exists")
+        );
+    }
 
     let mut engine = variant_materialize_demo_engine();
     let ready = parse_shell_line("introspect readiness variant materialize-allele --seq-id demo")
@@ -19301,6 +19326,27 @@ fn execute_introspect_readiness_checks_variant_materialize_input_sequence() {
         ready_raw.output["readiness"][0]["readiness"].as_str(),
         Some("ready")
     );
+    for capability_id in [
+        "variant annotate-promoters",
+        "AnnotatePromoterWindows",
+        "variant promoter-context",
+        "SummarizeVariantPromoterContext",
+        "variant reporter-fragments",
+        "SuggestPromoterReporterFragments",
+        "AnnotateTfbs",
+    ] {
+        let ready = parse_shell_line(&format!(
+            "introspect readiness {capability_id} --arg SEQ_ID=demo"
+        ))
+        .expect("parse ready variant/promoter readiness");
+        let ready = execute_shell_command(&mut engine, &ready)
+            .expect("execute ready variant/promoter readiness");
+        assert_eq!(
+            ready.output["readiness"][0]["readiness"].as_str(),
+            Some("ready"),
+            "{capability_id} should be ready for an existing sequence"
+        );
+    }
 }
 
 #[test]
@@ -19341,6 +19387,618 @@ fn execute_introspect_verify_effects_accepts_materialized_variant_sequence() {
         execute_shell_command(&mut engine, &after_raw).expect("execute post-raw-materialize");
     assert_eq!(after_raw.output["verified"].as_bool(), Some(true));
     assert_eq!(after_raw.output["status"].as_str(), Some("verified"));
+}
+
+#[test]
+fn execute_introspect_readiness_and_effects_cover_dotplot_and_flex_payloads() {
+    let mut empty = GentleEngine::default();
+    for capability_id in [
+        "dotplot compute",
+        "ComputeDotplot",
+        "flex compute",
+        "ComputeFlexibilityTrack",
+    ] {
+        let blocked = parse_shell_line(&format!(
+            "introspect readiness {capability_id} --arg SEQ_ID=demo"
+        ))
+        .expect("parse blocked analysis readiness");
+        let blocked =
+            execute_shell_command(&mut empty, &blocked).expect("execute blocked analysis");
+        assert_eq!(
+            blocked.output["readiness"][0]["readiness"].as_str(),
+            Some("blocked"),
+            "{capability_id} should require a loaded sequence"
+        );
+        assert_eq!(
+            blocked.output["readiness"][0]["unmet_atoms"][0]["fact"].as_str(),
+            Some("sequence.exists")
+        );
+    }
+
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "demo".to_string(),
+        DNAsequence::from_sequence("ACGTACGTACGT").expect("demo sequence"),
+    );
+    state.sequences.insert(
+        "reference".to_string(),
+        DNAsequence::from_sequence("ACGTACGTACGT").expect("reference sequence"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+
+    for capability_id in [
+        "dotplot compute",
+        "ComputeDotplot",
+        "flex compute",
+        "ComputeFlexibilityTrack",
+    ] {
+        let ready = parse_shell_line(&format!(
+            "introspect readiness {capability_id} --arg SEQ_ID=demo"
+        ))
+        .expect("parse ready analysis readiness");
+        let ready = execute_shell_command(&mut engine, &ready).expect("execute ready analysis");
+        assert_eq!(
+            ready.output["readiness"][0]["readiness"].as_str(),
+            Some("ready"),
+            "{capability_id} should be ready for a loaded sequence"
+        );
+    }
+    let overlay_ready = parse_shell_line(
+        "introspect readiness ComputeDotplotOverlay --arg OWNER_SEQ_ID=demo --arg REFERENCE_SEQ_ID=reference",
+    )
+    .expect("parse overlay readiness");
+    let overlay_ready =
+        execute_shell_command(&mut engine, &overlay_ready).expect("execute overlay readiness");
+    assert_eq!(
+        overlay_ready.output["readiness"][0]["readiness"].as_str(),
+        Some("ready")
+    );
+
+    let show_before =
+        parse_shell_line("introspect readiness dotplot show --arg DOTPLOT_ID=demo_dp")
+            .expect("parse missing dotplot readiness");
+    let show_before =
+        execute_shell_command(&mut engine, &show_before).expect("execute missing dotplot");
+    assert_eq!(
+        show_before.output["readiness"][0]["readiness"].as_str(),
+        Some("blocked")
+    );
+    assert_eq!(
+        show_before.output["readiness"][0]["unmet_atoms"][0]["fact"].as_str(),
+        Some("dotplot.exists")
+    );
+
+    let compute = parse_shell_line(
+        "dotplot compute demo --word-size 2 --step 1 --mode self_forward --id demo_dp",
+    )
+    .expect("parse dotplot compute");
+    let computed = execute_shell_command(&mut engine, &compute).expect("execute dotplot compute");
+    assert!(computed.state_changed);
+
+    let verify_dotplot =
+        parse_shell_line("introspect verify-effects dotplot compute --arg DOTPLOT_ID=demo_dp")
+            .expect("parse dotplot verify effects");
+    let verify_dotplot =
+        execute_shell_command(&mut engine, &verify_dotplot).expect("execute dotplot verify");
+    assert_eq!(verify_dotplot.output["verified"].as_bool(), Some(true));
+    assert_eq!(verify_dotplot.output["status"].as_str(), Some("verified"));
+    assert_eq!(
+        verify_dotplot.output["must_on_success_effects"][0]["fact"].as_str(),
+        Some("dotplot.exists")
+    );
+
+    for capability_id in ["dotplot show", "RenderDotplotSvg"] {
+        let ready = parse_shell_line(&format!(
+            "introspect readiness {capability_id} --arg SEQ_ID=demo --arg DOTPLOT_ID=demo_dp"
+        ))
+        .expect("parse dotplot payload readiness");
+        let ready =
+            execute_shell_command(&mut engine, &ready).expect("execute dotplot payload readiness");
+        assert_eq!(
+            ready.output["readiness"][0]["readiness"].as_str(),
+            Some("ready"),
+            "{capability_id} should be ready once the dotplot payload exists"
+        );
+    }
+
+    let flex = parse_shell_line(
+        "flex compute demo --model at_richness --bin-bp 3 --smoothing-bp 3 --id demo_flex",
+    )
+    .expect("parse flex compute");
+    let flexed = execute_shell_command(&mut engine, &flex).expect("execute flex compute");
+    assert!(flexed.state_changed);
+
+    let verify_flex =
+        parse_shell_line("introspect verify-effects flex compute --arg TRACK_ID=demo_flex")
+            .expect("parse flex verify effects");
+    let verify_flex =
+        execute_shell_command(&mut engine, &verify_flex).expect("execute flex verify");
+    assert_eq!(verify_flex.output["verified"].as_bool(), Some(true));
+    assert_eq!(verify_flex.output["status"].as_str(), Some("verified"));
+    assert_eq!(
+        verify_flex.output["must_on_success_effects"][0]["fact"].as_str(),
+        Some("flexibility_track.exists")
+    );
+
+    let flex_show = parse_shell_line("introspect readiness flex show --arg TRACK_ID=demo_flex")
+        .expect("parse flex show readiness");
+    let flex_show =
+        execute_shell_command(&mut engine, &flex_show).expect("execute flex show readiness");
+    assert_eq!(
+        flex_show.output["readiness"][0]["readiness"].as_str(),
+        Some("ready")
+    );
+
+    let facts = parse_shell_line("introspect facts --domain project").expect("parse facts");
+    let facts = execute_shell_command(&mut engine, &facts).expect("execute facts");
+    let project_facts = facts.output["facts"]["project"]["facts"]
+        .as_array()
+        .expect("project facts");
+    assert!(project_facts.iter().any(|fact| {
+        fact["fact"].as_str() == Some("dotplot.exists")
+            && fact["subject"]["id"].as_str() == Some("demo_dp")
+    }));
+    assert!(project_facts.iter().any(|fact| {
+        fact["fact"].as_str() == Some("flexibility_track.exists")
+            && fact["subject"]["id"].as_str() == Some("demo_flex")
+    }));
+}
+
+#[test]
+fn execute_introspect_readiness_and_effects_cover_candidate_sets() {
+    let mut empty = GentleEngine::default();
+    let show_missing = parse_shell_line("introspect readiness candidates show --arg SET_NAME=cand")
+        .expect("parse missing candidate-set readiness");
+    let show_missing =
+        execute_shell_command(&mut empty, &show_missing).expect("execute missing candidate-set");
+    assert_eq!(
+        show_missing.output["readiness"][0]["readiness"].as_str(),
+        Some("blocked")
+    );
+    assert_eq!(
+        show_missing.output["readiness"][0]["unmet_atoms"][0]["fact"].as_str(),
+        Some("candidate_set.exists")
+    );
+
+    let generate_blocked = parse_shell_line(
+        "introspect readiness candidates generate --arg SET_NAME=cand --arg SEQ_ID=seqA",
+    )
+    .expect("parse blocked candidate generation readiness");
+    let generate_blocked =
+        execute_shell_command(&mut empty, &generate_blocked).expect("execute blocked generation");
+    assert_eq!(
+        generate_blocked.output["readiness"][0]["readiness"].as_str(),
+        Some("blocked")
+    );
+    assert_eq!(
+        generate_blocked.output["readiness"][0]["unmet_atoms"][0]["fact"].as_str(),
+        Some("sequence.exists")
+    );
+
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "seqA".to_string(),
+        DNAsequence::from_sequence("GCATGAAA").expect("sequence"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+
+    let generate_ready = parse_shell_line(
+        "introspect readiness candidates generate --arg SET_NAME=cand --arg SEQ_ID=seqA",
+    )
+    .expect("parse ready candidate generation readiness");
+    let generate_ready =
+        execute_shell_command(&mut engine, &generate_ready).expect("execute ready generation");
+    assert_eq!(
+        generate_ready.output["readiness"][0]["readiness"].as_str(),
+        Some("ready")
+    );
+
+    let generate = parse_shell_line("candidates generate cand seqA --length 2 --step 2 --limit 64")
+        .expect("parse candidate generation");
+    let generated = execute_shell_command(&mut engine, &generate).expect("execute generation");
+    assert!(generated.state_changed);
+
+    let verify_generate =
+        parse_shell_line("introspect verify-effects candidates generate --arg SET_NAME=cand")
+            .expect("parse candidate generation verify effects");
+    let verify_generate =
+        execute_shell_command(&mut engine, &verify_generate).expect("execute generation verify");
+    assert_eq!(verify_generate.output["verified"].as_bool(), Some(true));
+    assert_eq!(verify_generate.output["status"].as_str(), Some("verified"));
+    assert_eq!(
+        verify_generate.output["must_on_success_effects"][0]["fact"].as_str(),
+        Some("candidate_set.exists")
+    );
+
+    for capability_id in [
+        "candidates show",
+        "candidates metrics",
+        "candidates score",
+        "candidates score-distance",
+        "candidates score-weighted",
+        "DeleteCandidateSet",
+    ] {
+        let ready = parse_shell_line(&format!(
+            "introspect readiness {capability_id} --arg SET_NAME=cand"
+        ))
+        .expect("parse candidate-set readiness");
+        let ready =
+            execute_shell_command(&mut engine, &ready).expect("execute candidate readiness");
+        assert_eq!(
+            ready.output["readiness"][0]["readiness"].as_str(),
+            Some("ready"),
+            "{capability_id} should be ready once candidate set exists"
+        );
+    }
+
+    for capability_id in [
+        "candidates filter",
+        "FilterCandidateSet",
+        "candidates top-k",
+        "TopKCandidateSet",
+        "candidates pareto",
+        "ParetoFrontierCandidateSet",
+    ] {
+        let ready = parse_shell_line(&format!(
+            "introspect readiness {capability_id} --arg INPUT_SET=cand --arg OUTPUT_SET=derived"
+        ))
+        .expect("parse candidate-set derived readiness");
+        let ready = execute_shell_command(&mut engine, &ready).expect("execute derived readiness");
+        assert_eq!(
+            ready.output["readiness"][0]["readiness"].as_str(),
+            Some("ready"),
+            "{capability_id} should be ready from an existing input set"
+        );
+    }
+
+    let score = parse_shell_line(
+        "candidates score-weighted cand objective --term gc_fraction:1:max --normalize",
+    )
+    .expect("parse weighted score");
+    let scored = execute_shell_command(&mut engine, &score).expect("execute weighted score");
+    assert!(scored.state_changed);
+    let topk = parse_shell_line(
+        "candidates top-k cand top --metric objective --k 1 --direction max --tie-break seq_start_end",
+    )
+    .expect("parse top-k");
+    let topk = execute_shell_command(&mut engine, &topk).expect("execute top-k");
+    assert!(topk.state_changed);
+
+    let verify_top =
+        parse_shell_line("introspect verify-effects candidates top-k --arg OUTPUT_SET=top")
+            .expect("parse top-k verify");
+    let verify_top = execute_shell_command(&mut engine, &verify_top).expect("execute top-k verify");
+    assert_eq!(verify_top.output["verified"].as_bool(), Some(true));
+    assert_eq!(verify_top.output["status"].as_str(), Some("verified"));
+
+    let facts = parse_shell_line("introspect facts --domain project").expect("parse facts");
+    let facts = execute_shell_command(&mut engine, &facts).expect("execute facts");
+    let project_facts = facts.output["facts"]["project"]["facts"]
+        .as_array()
+        .expect("project facts");
+    assert!(project_facts.iter().any(|fact| {
+        fact["fact"].as_str() == Some("candidate_set.exists")
+            && fact["subject"]["id"].as_str() == Some("cand")
+            && fact["value"]["candidate_count"].as_u64().unwrap_or(0) > 0
+    }));
+    assert!(project_facts.iter().any(|fact| {
+        fact["fact"].as_str() == Some("candidate_set.exists")
+            && fact["subject"]["id"].as_str() == Some("top")
+    }));
+}
+
+#[test]
+fn execute_introspect_readiness_and_effects_cover_guide_sets() {
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let missing_show =
+        parse_shell_line("introspect readiness guides show --arg GUIDE_SET_ID=tp73_guides")
+            .expect("parse missing guide-set readiness");
+    let missing_show =
+        execute_shell_command(&mut engine, &missing_show).expect("execute missing guide-set");
+    assert_eq!(
+        missing_show.output["readiness"][0]["readiness"].as_str(),
+        Some("blocked")
+    );
+    assert_eq!(
+        missing_show.output["readiness"][0]["unmet_atoms"][0]["fact"].as_str(),
+        Some("guide_set.exists")
+    );
+
+    let guides_json = serde_json::to_string(&vec![
+        GuideCandidate {
+            guide_id: "g1".to_string(),
+            seq_id: "tp73".to_string(),
+            start_0based: 100,
+            end_0based_exclusive: 120,
+            strand: "+".to_string(),
+            protospacer: "GACCTGTTGACGATGTTCCA".to_string(),
+            pam: "AGG".to_string(),
+            nuclease: "SpCas9".to_string(),
+            cut_offset_from_protospacer_start: 17,
+            rank: Some(1),
+        },
+        GuideCandidate {
+            guide_id: "g2".to_string(),
+            seq_id: "tp73".to_string(),
+            start_0based: 220,
+            end_0based_exclusive: 240,
+            strand: "+".to_string(),
+            protospacer: "TTTTGCCATGTTGACCTGAA".to_string(),
+            pam: "TGG".to_string(),
+            nuclease: "SpCas9".to_string(),
+            cut_offset_from_protospacer_start: 17,
+            rank: Some(2),
+        },
+    ])
+    .expect("serialize guides");
+
+    let put = execute_shell_command(
+        &mut engine,
+        &ShellCommand::GuidesPut {
+            guide_set_id: "tp73_guides".to_string(),
+            guides_json,
+        },
+    )
+    .expect("guides put");
+    assert!(put.state_changed);
+
+    let verify_put =
+        parse_shell_line("introspect verify-effects guides put --arg GUIDE_SET_ID=tp73_guides")
+            .expect("parse guide put verify");
+    let verify_put = execute_shell_command(&mut engine, &verify_put).expect("execute put verify");
+    assert_eq!(verify_put.output["verified"].as_bool(), Some(true));
+    assert_eq!(verify_put.output["status"].as_str(), Some("verified"));
+    assert_eq!(
+        verify_put.output["must_on_success_effects"][0]["fact"].as_str(),
+        Some("guide_set.exists")
+    );
+
+    for capability_id in [
+        "guides show",
+        "guides filter",
+        "FilterGuidesPractical",
+        "guides oligos-generate",
+        "GenerateGuideOligos",
+        "guides oligos-export",
+        "guides protocol-export",
+        "DeleteGuideSet",
+    ] {
+        let ready = parse_shell_line(&format!(
+            "introspect readiness {capability_id} --arg GUIDE_SET_ID=tp73_guides"
+        ))
+        .expect("parse guide readiness");
+        let ready = execute_shell_command(&mut engine, &ready).expect("execute guide readiness");
+        assert_eq!(
+            ready.output["readiness"][0]["readiness"].as_str(),
+            Some("ready"),
+            "{capability_id} should be ready once the guide set exists"
+        );
+    }
+
+    let filter = execute_shell_command(
+        &mut engine,
+        &ShellCommand::GuidesFilter {
+            guide_set_id: "tp73_guides".to_string(),
+            config_json: Some(
+                "{\"gc_min\":0.3,\"gc_max\":0.7,\"avoid_u6_terminator_tttt\":true}".to_string(),
+            ),
+            output_guide_set_id: Some("tp73_pass".to_string()),
+        },
+    )
+    .expect("guides filter");
+    assert!(filter.state_changed);
+    let verify_filter = parse_shell_line(
+        "introspect verify-effects guides filter --arg GUIDE_SET_ID=tp73_guides --arg OUTPUT_GUIDE_SET_ID=tp73_pass",
+    )
+    .expect("parse guide filter verify");
+    let verify_filter =
+        execute_shell_command(&mut engine, &verify_filter).expect("execute filter verify");
+    assert_eq!(verify_filter.output["verified"].as_bool(), Some(true));
+
+    let filter_show =
+        parse_shell_line("introspect readiness guides filter-show --arg GUIDE_SET_ID=tp73_guides")
+            .expect("parse filter report readiness");
+    let filter_show =
+        execute_shell_command(&mut engine, &filter_show).expect("execute filter report readiness");
+    assert_eq!(
+        filter_show.output["readiness"][0]["readiness"].as_str(),
+        Some("ready")
+    );
+
+    let generated = execute_shell_command(
+        &mut engine,
+        &ShellCommand::GuidesOligosGenerate {
+            guide_set_id: "tp73_guides".to_string(),
+            template_id: "lenti_bsmbi_u6_default".to_string(),
+            apply_5prime_g_extension: true,
+            output_oligo_set_id: Some("tp73_oligos".to_string()),
+            passed_only: true,
+        },
+    )
+    .expect("guides oligos-generate");
+    assert!(generated.state_changed);
+
+    let verify_oligos = parse_shell_line(
+        "introspect verify-effects guides oligos-generate --arg OLIGO_SET_ID=tp73_oligos",
+    )
+    .expect("parse guide oligo verify");
+    let verify_oligos =
+        execute_shell_command(&mut engine, &verify_oligos).expect("execute oligo verify");
+    assert_eq!(verify_oligos.output["verified"].as_bool(), Some(true));
+    assert_eq!(verify_oligos.output["status"].as_str(), Some("verified"));
+    assert_eq!(
+        verify_oligos.output["must_on_success_effects"][0]["fact"].as_str(),
+        Some("guide_oligo_set.exists")
+    );
+
+    let oligo_show =
+        parse_shell_line("introspect readiness guides oligos-show --arg OLIGO_SET_ID=tp73_oligos")
+            .expect("parse oligo show readiness");
+    let oligo_show =
+        execute_shell_command(&mut engine, &oligo_show).expect("execute oligo show readiness");
+    assert_eq!(
+        oligo_show.output["readiness"][0]["readiness"].as_str(),
+        Some("ready")
+    );
+
+    let facts = parse_shell_line("introspect facts --domain project").expect("parse facts");
+    let facts = execute_shell_command(&mut engine, &facts).expect("execute facts");
+    let project_facts = facts.output["facts"]["project"]["facts"]
+        .as_array()
+        .expect("project facts");
+    assert!(project_facts.iter().any(|fact| {
+        fact["fact"].as_str() == Some("guide_set.exists")
+            && fact["subject"]["id"].as_str() == Some("tp73_guides")
+            && fact["value"]["guide_count"].as_u64() == Some(2)
+    }));
+    assert!(project_facts.iter().any(|fact| {
+        fact["fact"].as_str() == Some("guide_oligo_set.exists")
+            && fact["subject"]["id"].as_str() == Some("tp73_oligos")
+    }));
+}
+
+#[test]
+fn execute_introspect_readiness_and_effects_cover_arrangements_and_racks() {
+    let mut empty = GentleEngine::from_state(ProjectState::default());
+    let missing_rack = parse_shell_line("introspect readiness racks show --arg RACK_ID=rack-1")
+        .expect("parse missing rack readiness");
+    let missing_rack =
+        execute_shell_command(&mut empty, &missing_rack).expect("execute missing rack readiness");
+    assert_eq!(
+        missing_rack.output["readiness"][0]["readiness"].as_str(),
+        Some("blocked")
+    );
+    assert_eq!(
+        missing_rack.output["readiness"][0]["unmet_atoms"][0]["fact"].as_str(),
+        Some("rack.exists")
+    );
+
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "seq_a".to_string(),
+        DNAsequence::from_sequence("ACGTACGT").expect("sequence"),
+    );
+    state.container_state.containers.insert(
+        "container-1".to_string(),
+        Container {
+            container_id: "container-1".to_string(),
+            kind: ContainerKind::Singleton,
+            name: Some("Lane A".to_string()),
+            members: vec!["seq_a".to_string()],
+            declared_contents_exclusive: true,
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    let mut engine = GentleEngine::from_state(state);
+
+    let container_ready = parse_shell_line(
+        "introspect readiness containers set-exclusive --arg CONTAINER_ID=container-1",
+    )
+    .expect("parse container readiness");
+    let container_ready =
+        execute_shell_command(&mut engine, &container_ready).expect("execute container readiness");
+    assert_eq!(
+        container_ready.output["readiness"][0]["readiness"].as_str(),
+        Some("ready")
+    );
+
+    let arrange = execute_shell_command(
+        &mut engine,
+        &ShellCommand::CreateArrangementSerial {
+            container_ids: vec!["container-1".to_string()],
+            arrangement_id: Some("arr-x".to_string()),
+            name: Some("Demo".to_string()),
+            ladders: Some(vec!["NEB 1kb DNA Ladder".to_string()]),
+        },
+    )
+    .expect("create arrangement");
+    assert!(arrange.state_changed);
+    let default_rack_id = engine
+        .state()
+        .container_state
+        .arrangements
+        .get("arr-x")
+        .and_then(|arrangement| arrangement.default_rack_id.clone())
+        .expect("default rack id");
+
+    let verify_arrangement =
+        parse_shell_line("introspect verify-effects arrange-serial --arg ARRANGEMENT_ID=arr-x")
+            .expect("parse arrangement verify");
+    let verify_arrangement = execute_shell_command(&mut engine, &verify_arrangement)
+        .expect("execute arrangement verify");
+    assert_eq!(verify_arrangement.output["verified"].as_bool(), Some(true));
+    assert_eq!(
+        verify_arrangement.output["must_on_success_effects"][0]["fact"].as_str(),
+        Some("arrangement.exists")
+    );
+
+    let rack_ready = parse_shell_line(&format!(
+        "introspect readiness racks show --arg RACK_ID={default_rack_id}"
+    ))
+    .expect("parse rack readiness");
+    let rack_ready =
+        execute_shell_command(&mut engine, &rack_ready).expect("execute rack readiness");
+    assert_eq!(
+        rack_ready.output["readiness"][0]["readiness"].as_str(),
+        Some("ready")
+    );
+
+    let place_ready = parse_shell_line(&format!(
+        "introspect readiness racks place-arrangement --arg ARRANGEMENT_ID=arr-x --arg RACK_ID={default_rack_id}"
+    ))
+    .expect("parse rack placement readiness");
+    let place_ready =
+        execute_shell_command(&mut engine, &place_ready).expect("execute rack placement readiness");
+    assert_eq!(
+        place_ready.output["readiness"][0]["readiness"].as_str(),
+        Some("ready")
+    );
+
+    let create_rack = execute_shell_command(
+        &mut engine,
+        &ShellCommand::RacksCreateFromArrangement {
+            arrangement_id: "arr-x".to_string(),
+            rack_id: Some("rack-extra".to_string()),
+            name: Some("Extra rack".to_string()),
+            profile: None,
+        },
+    )
+    .expect("create rack");
+    assert!(create_rack.state_changed);
+
+    let verify_rack = parse_shell_line(
+        "introspect verify-effects racks create-from-arrangement --arg RACK_ID=rack-extra",
+    )
+    .expect("parse rack create verify");
+    let verify_rack =
+        execute_shell_command(&mut engine, &verify_rack).expect("execute rack verify");
+    assert_eq!(verify_rack.output["verified"].as_bool(), Some(true));
+    assert_eq!(
+        verify_rack.output["must_on_success_effects"][0]["fact"].as_str(),
+        Some("rack.exists")
+    );
+
+    let facts = parse_shell_line("introspect facts --domain project").expect("parse facts");
+    let facts = execute_shell_command(&mut engine, &facts).expect("execute facts");
+    let project_facts = facts.output["facts"]["project"]["facts"]
+        .as_array()
+        .expect("project facts");
+    assert!(project_facts.iter().any(|fact| {
+        fact["fact"].as_str() == Some("container.exists")
+            && fact["subject"]["id"].as_str() == Some("container-1")
+            && fact["value"]["member_count"].as_u64() == Some(1)
+    }));
+    assert!(project_facts.iter().any(|fact| {
+        fact["fact"].as_str() == Some("arrangement.exists")
+            && fact["subject"]["id"].as_str() == Some("arr-x")
+            && fact["value"]["lane_count"].as_u64() == Some(1)
+    }));
+    assert!(project_facts.iter().any(|fact| {
+        fact["fact"].as_str() == Some("rack.exists")
+            && fact["subject"]["id"].as_str() == Some("rack-extra")
+            && fact["value"]["placement_count"].as_u64().unwrap_or(0) > 0
+    }));
 }
 
 fn reverse_translate_demo_engine() -> GentleEngine {
@@ -21378,6 +22036,14 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
             && descriptor["effects"].as_array().map(Vec::len) == Some(0)
     }));
     assert!(capabilities.iter().any(|descriptor| {
+        descriptor["id"].as_str() == Some("AnnotateTfbs")
+            && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+            && descriptor["registry"]["source"].as_str() == Some("engine_operation")
+            && descriptor["reads"][0]["fact"].as_str() == Some("sequence.exists")
+            && descriptor["reads"][0]["subject"]["arg"].as_str() == Some("SEQ_ID")
+            && descriptor["effects"].as_array().map(Vec::len) == Some(0)
+    }));
+    assert!(capabilities.iter().any(|descriptor| {
         descriptor["id"].as_str() == Some("QueryProteinResidueGenomicCoordinates")
             && descriptor["annotation_status"].as_str() == Some("fact_annotated")
             && descriptor["registry"]["source"].as_str() == Some("engine_operation")
@@ -21390,6 +22056,39 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
             && descriptor["annotation_status"].as_str() == Some("fact_annotated")
             && descriptor["effects"][0]["fact"].as_str() == Some("sequence.exists")
     }));
+    for id in [
+        "variant annotate-promoters",
+        "AnnotatePromoterWindows",
+        "variant promoter-context",
+        "SummarizeVariantPromoterContext",
+        "variant reporter-fragments",
+        "SuggestPromoterReporterFragments",
+    ] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"][0]["fact"].as_str() == Some("sequence.exists")
+            }),
+            "{id} should have a fact-annotated sequence precondition"
+        );
+    }
+    for id in [
+        "variant promoter-context",
+        "SummarizeVariantPromoterContext",
+        "variant reporter-fragments",
+        "SuggestPromoterReporterFragments",
+    ] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["effects"][0]["fact"].as_str() == Some("artifact.written")
+                    && descriptor["effects"][0]["subject"]["arg"].as_str() == Some("OUTPUT_PATH")
+                    && descriptor["effects"][0]["effect_kind"].as_str() == Some("external_handoff")
+            }),
+            "{id} should declare its optional path as an external handoff"
+        );
+    }
     assert!(capabilities.iter().any(|descriptor| {
         descriptor["id"].as_str() == Some("variant materialize-allele")
             && descriptor["annotation_status"].as_str() == Some("fact_annotated")
@@ -21421,6 +22120,213 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
             && descriptor["reads"][1]["subject"]["arg"].as_str() == Some("TARGET_SEQ_ID")
             && descriptor["effects"].as_array().map(Vec::len) == Some(0)
     }));
+    for id in ["dotplot compute", "ComputeDotplot"] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"][0]["fact"].as_str() == Some("sequence.exists")
+                    && descriptor["effects"][0]["fact"].as_str() == Some("dotplot.exists")
+                    && descriptor["effects"][0]["subject"]["arg"].as_str() == Some("DOTPLOT_ID")
+            }),
+            "{id} should declare sequence readiness and dotplot payload effect"
+        );
+    }
+    for id in ["dotplot overlay-compute", "ComputeDotplotOverlay"] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"][0]["fact"].as_str() == Some("sequence.exists")
+                    && descriptor["effects"][0]["fact"].as_str() == Some("dotplot.exists")
+            }),
+            "{id} should declare dotplot overlay readiness/effects"
+        );
+    }
+    assert!(capabilities.iter().any(|descriptor| {
+        descriptor["id"].as_str() == Some("dotplot show")
+            && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+            && descriptor["reads"][0]["fact"].as_str() == Some("dotplot.exists")
+            && descriptor["effects"].as_array().map(Vec::len) == Some(0)
+    }));
+    assert!(capabilities.iter().any(|descriptor| {
+        descriptor["id"].as_str() == Some("RenderDotplotSvg")
+            && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+            && descriptor["reads"].as_array().map(Vec::len) == Some(2)
+            && descriptor["effects"][0]["fact"].as_str() == Some("artifact.written")
+            && descriptor["effects"][0]["effect_kind"].as_str() == Some("external_handoff")
+    }));
+    for id in ["flex compute", "ComputeFlexibilityTrack"] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"][0]["fact"].as_str() == Some("sequence.exists")
+                    && descriptor["effects"][0]["fact"].as_str() == Some("flexibility_track.exists")
+                    && descriptor["effects"][0]["subject"]["arg"].as_str() == Some("TRACK_ID")
+            }),
+            "{id} should declare sequence readiness and flexibility-track effect"
+        );
+    }
+    assert!(capabilities.iter().any(|descriptor| {
+        descriptor["id"].as_str() == Some("flex show")
+            && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+            && descriptor["reads"][0]["fact"].as_str() == Some("flexibility_track.exists")
+            && descriptor["effects"].as_array().map(Vec::len) == Some(0)
+    }));
+    for id in [
+        "candidates generate",
+        "GenerateCandidateSet",
+        "candidates generate-between-anchors",
+        "GenerateCandidateSetBetweenAnchors",
+    ] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"][0]["fact"].as_str() == Some("sequence.exists")
+                    && descriptor["effects"][0]["fact"].as_str() == Some("candidate_set.exists")
+                    && descriptor["effects"][0]["subject"]["arg"].as_str() == Some("SET_NAME")
+            }),
+            "{id} should declare sequence readiness and candidate-set effect"
+        );
+    }
+    for id in [
+        "candidates show",
+        "candidates metrics",
+        "candidates score",
+        "ScoreCandidateSetExpression",
+        "candidates score-distance",
+        "ScoreCandidateSetDistance",
+        "candidates score-weighted",
+        "ScoreCandidateSetWeightedObjective",
+        "candidates delete",
+        "DeleteCandidateSet",
+    ] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"][0]["fact"].as_str() == Some("candidate_set.exists")
+                    && descriptor["reads"][0]["subject"]["arg"].as_str() == Some("SET_NAME")
+            }),
+            "{id} should declare candidate-set readiness"
+        );
+    }
+    for id in [
+        "candidates filter",
+        "FilterCandidateSet",
+        "candidates top-k",
+        "TopKCandidateSet",
+        "candidates pareto",
+        "ParetoFrontierCandidateSet",
+    ] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"][0]["fact"].as_str() == Some("candidate_set.exists")
+                    && descriptor["reads"][0]["subject"]["arg"].as_str() == Some("INPUT_SET")
+                    && descriptor["effects"][0]["fact"].as_str() == Some("candidate_set.exists")
+                    && descriptor["effects"][0]["subject"]["arg"].as_str() == Some("OUTPUT_SET")
+            }),
+            "{id} should declare input/output candidate-set facts"
+        );
+    }
+    for id in ["candidates set-op", "CandidateSetOp"] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"].as_array().map(Vec::len) == Some(2)
+                    && descriptor["reads"][0]["fact"].as_str() == Some("candidate_set.exists")
+                    && descriptor["reads"][1]["fact"].as_str() == Some("candidate_set.exists")
+                    && descriptor["effects"][0]["fact"].as_str() == Some("candidate_set.exists")
+                    && descriptor["effects"][0]["subject"]["arg"].as_str() == Some("OUTPUT_SET")
+            }),
+            "{id} should declare binary candidate-set readiness/effects"
+        );
+    }
+    assert!(capabilities.iter().any(|descriptor| {
+        descriptor["id"].as_str() == Some("guides list")
+            && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+            && descriptor["reads"].as_array().map(Vec::len) == Some(0)
+            && descriptor["effects"].as_array().map(Vec::len) == Some(0)
+    }));
+    for id in ["guides put", "UpsertGuideSet"] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["effects"][0]["fact"].as_str() == Some("guide_set.exists")
+                    && descriptor["effects"][0]["subject"]["arg"].as_str() == Some("GUIDE_SET_ID")
+            }),
+            "{id} should declare guide-set creation effect"
+        );
+    }
+    for id in ["guides show", "guides delete", "DeleteGuideSet"] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"][0]["fact"].as_str() == Some("guide_set.exists")
+                    && descriptor["reads"][0]["subject"]["arg"].as_str() == Some("GUIDE_SET_ID")
+            }),
+            "{id} should declare guide-set readiness"
+        );
+    }
+    for id in ["guides filter", "FilterGuidesPractical"] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"][0]["fact"].as_str() == Some("guide_set.exists")
+                    && descriptor["effects"][0]["fact"].as_str()
+                        == Some("guide_filter_report.exists")
+                    && descriptor["effects"][1]["fact"].as_str() == Some("guide_set.exists")
+            }),
+            "{id} should declare guide filtering report/output effects"
+        );
+    }
+    assert!(capabilities.iter().any(|descriptor| {
+        descriptor["id"].as_str() == Some("guides filter-show")
+            && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+            && descriptor["reads"][0]["fact"].as_str() == Some("guide_filter_report.exists")
+    }));
+    for id in ["guides oligos-generate", "GenerateGuideOligos"] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"][0]["fact"].as_str() == Some("guide_set.exists")
+                    && descriptor["effects"][0]["fact"].as_str() == Some("guide_oligo_set.exists")
+                    && descriptor["effects"][0]["subject"]["arg"].as_str() == Some("OLIGO_SET_ID")
+            }),
+            "{id} should declare guide-set readiness and oligo-set effect"
+        );
+    }
+    assert!(capabilities.iter().any(|descriptor| {
+        descriptor["id"].as_str() == Some("guides oligos-show")
+            && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+            && descriptor["reads"][0]["fact"].as_str() == Some("guide_oligo_set.exists")
+    }));
+    for id in [
+        "guides oligos-export",
+        "ExportGuideOligos",
+        "guides protocol-export",
+        "ExportGuideProtocolText",
+    ] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"][0]["fact"].as_str() == Some("guide_set.exists")
+                    && descriptor["effects"][0]["fact"].as_str() == Some("artifact.written")
+                    && descriptor["effects"][0]["effect_kind"].as_str() == Some("external_handoff")
+            }),
+            "{id} should declare guide-set readiness and external artifact effect"
+        );
+    }
     assert!(capabilities.iter().any(|descriptor| {
         descriptor["id"].as_str() == Some("render-svg")
             && descriptor["annotation_status"].as_str() == Some("fact_annotated")
