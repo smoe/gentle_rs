@@ -932,7 +932,8 @@ on semantic glyphs.
    `display`,
    `SetLinearViewport`, `ui intents`, `ui_intents`,
    `ui open`, `ui focus`, `ui close`, `ui_intent`,
-   `ui_prepared_genomes`, `ui_latest_prepared`, `ui selection`, `set-param`,
+   `ui_prepared_genomes`, `ui_latest_prepared`, `ui prepared-genomes`,
+   `ui latest-prepared`, `ui selection`, `set-param`, `set_parameter`,
    `SetTopology`, `RecomputeFeatures`, `agents preflight`,
    `agents discover-models`, `agent_preflight`, and `agent_models`
    (implemented).

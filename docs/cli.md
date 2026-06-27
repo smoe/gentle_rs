@@ -2294,8 +2294,9 @@ Shared shell command:
         Asking, planning, and plan execution remain separate adapter/transport
         operations.
       - adapter parity aliases `state_summary`, `reference_catalog_entries`,
-        `ui_intents`, `ui_prepared_genomes`, and `ui_latest_prepared` are
-        fact-annotated with the same no-project readiness as their shared shell
+        `ui_intents`, `ui_prepared_genomes`, and `ui_latest_prepared`, plus
+        shell routes `ui prepared-genomes` and `ui latest-prepared`, are
+        fact-annotated with the same no-project readiness as their shared
         contracts (`state-summary`, reference catalog listing, and deterministic
         UI catalog/prepared-genome query routes).
       - generic GUI intent requests (`ui open`, `ui focus`, `ui close`, and
@@ -2372,8 +2373,9 @@ Shared shell command:
         `config.param` facts under `introspect facts --domain config`; the
         subject id is the parameter name and the value is the current JSON
         value
-      - `set-param` is a fact-annotated `host_config` capability with no
-        project preconditions and a `must_on_success` effect that verifies
+      - `set-param` and the lower-case adapter alias `set_parameter` are
+        fact-annotated `host_config` capabilities with no project preconditions
+        and a `must_on_success` effect that verifies
         `config.param(PARAM_NAME) == PARAM_VALUE`; the raw `SetParameter`
         operation row exposes the same effect for registry-driven adapters
       - view/display commands such as `display show|hide|visibility` and the

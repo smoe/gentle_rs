@@ -23429,7 +23429,13 @@ fn execute_introspect_capabilities_filters_first_slice_by_kind() {
         );
         assert_eq!(descriptor["effects"].as_array().map(Vec::len), Some(0));
     }
-    for id in ["ui_intents", "ui_prepared_genomes", "ui_latest_prepared"] {
+    for id in [
+        "ui_intents",
+        "ui_prepared_genomes",
+        "ui_latest_prepared",
+        "ui prepared-genomes",
+        "ui latest-prepared",
+    ] {
         let descriptor = capabilities
             .iter()
             .find(|descriptor| descriptor["id"].as_str() == Some(id))
@@ -25063,6 +25069,17 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
             && descriptor["effects"][0]["equals"]["arg"].as_str() == Some("PARAM_VALUE")
             && descriptor["effects"][0]["effect_kind"].as_str() == Some("must_on_success")
     }));
+    assert!(capabilities.iter().any(|descriptor| {
+        descriptor["id"].as_str() == Some("set_parameter")
+            && descriptor["kind"].as_str() == Some("host_config")
+            && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+            && descriptor["registry"]["source"].as_str() == Some("glossary_command")
+            && descriptor["reads"].as_array().map(Vec::len) == Some(0)
+            && descriptor["effects"][0]["fact"].as_str() == Some("config.param")
+            && descriptor["effects"][0]["subject"]["arg"].as_str() == Some("PARAM_NAME")
+            && descriptor["effects"][0]["equals"]["arg"].as_str() == Some("PARAM_VALUE")
+            && descriptor["effects"][0]["effect_kind"].as_str() == Some("must_on_success")
+    }));
     for operation in [
         "Reverse",
         "Complement",
@@ -25467,6 +25484,15 @@ fn execute_introspect_config_facts_and_set_param_effects() {
         execute_shell_command(&mut engine, &raw_after).expect("execute raw verify after");
     assert_eq!(raw_after.output["verified"].as_bool(), Some(true));
     assert_eq!(raw_after.output["status"].as_str(), Some("verified"));
+
+    let alias_after = parse_shell_line(
+        "introspect verify-effects set_parameter --arg PARAM_NAME=max_fragments_per_container --arg PARAM_VALUE=21",
+    )
+    .expect("parse adapter alias set_parameter verify after");
+    let alias_after =
+        execute_shell_command(&mut engine, &alias_after).expect("execute alias verify after");
+    assert_eq!(alias_after.output["verified"].as_bool(), Some(true));
+    assert_eq!(alias_after.output["status"].as_str(), Some("verified"));
 }
 
 #[test]

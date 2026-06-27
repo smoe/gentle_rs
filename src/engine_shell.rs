@@ -22023,6 +22023,26 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "registry": registry_metadata_for_introspection("ui_prepared_genomes")
         }),
         json!({
+            "id": "ui prepared-genomes",
+            "kind": "view_intent",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "--helpers", "required": false, "subject_kind": "other", "detail": "query helper-genome cache instead of reference-genome cache"},
+                {"name": "--catalog", "required": false, "subject_kind": "other", "detail": "optional genome catalog path"},
+                {"name": "--cache-dir", "required": false, "subject_kind": "other", "detail": "optional prepared-genome cache root"},
+                {"name": "--filter", "required": false, "subject_kind": "other", "detail": "optional text filter"},
+                {"name": "--species", "required": false, "subject_kind": "other", "detail": "optional species/family filter"},
+                {"name": "--latest", "required": false, "subject_kind": "other", "detail": "select latest matching prepared entry"}
+            ],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Query prepared reference/helper genomes through the shared shell UI helper; catalog and cache validation happen during execution.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("ui prepared-genomes")
+        }),
+        json!({
             "id": "ui_latest_prepared",
             "kind": "view_intent",
             "mutating": "false",
@@ -22039,6 +22059,24 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "description": "Resolve the latest prepared genome for one species through the shared MCP/tool UI helper; catalog and cache validation happen during execution.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("ui_latest_prepared")
+        }),
+        json!({
+            "id": "ui latest-prepared",
+            "kind": "view_intent",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SPECIES", "required": true, "subject_kind": "other", "detail": "species/family filter"},
+                {"name": "--helpers", "required": false, "subject_kind": "other", "detail": "query helper-genome cache instead of reference-genome cache"},
+                {"name": "--catalog", "required": false, "subject_kind": "other", "detail": "optional genome catalog path"},
+                {"name": "--cache-dir", "required": false, "subject_kind": "other", "detail": "optional prepared-genome cache root"}
+            ],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Resolve the latest prepared genome for one species through the shared shell UI helper; catalog and cache validation happen during execution.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("ui latest-prepared")
         }),
         json!({
             "id": "ui selection",
@@ -22115,6 +22153,29 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "description": "Set one engine-owned configuration parameter through the raw engine operation row.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("SetParameter")
+        }),
+        json!({
+            "id": "set_parameter",
+            "kind": "host_config",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "PARAM_NAME", "required": true, "subject_kind": "other", "detail": "engine-owned parameter name accepted by the JS/Lua adapter alias"},
+                {"name": "PARAM_VALUE", "required": true, "detail": "JSON parameter value accepted by the JS/Lua adapter alias"}
+            ],
+            "reads": [],
+            "effects": [
+                {
+                    "fact": "config.param",
+                    "subject": {"arg": "PARAM_NAME"},
+                    "equals": {"arg": "PARAM_VALUE"},
+                    "effect_kind": "must_on_success"
+                }
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Set one engine-owned configuration parameter through the shared JS/Lua adapter alias.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("set_parameter")
         }),
         json!({
             "id": "agents preflight",
@@ -22589,6 +22650,8 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "ui_intents"
         | "ui_prepared_genomes"
         | "ui_latest_prepared"
+        | "ui prepared-genomes"
+        | "ui latest-prepared"
         | "protocol-cartoon list"
         | "protocol-cartoon render-svg"
         | "protocol-cartoon render-template-svg"
@@ -22673,7 +22736,7 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
             json!({"fact": "ui.host_available", "equals": true}),
             json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
         ]),
-        "set-param" | "SetParameter" => Some(vec![]),
+        "set-param" | "SetParameter" | "set_parameter" => Some(vec![]),
         "agents execute-plan" | "agent_execute_plan" => Some(vec![]),
         "agents ask" | "ask_agent_system" | "agents plan" | "agent_plan" => Some(vec![
             json!({"fact": "host.tool_available", "subject": {"arg": "SYSTEM_ID"}, "equals": true}),

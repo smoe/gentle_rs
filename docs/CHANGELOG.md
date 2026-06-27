@@ -12,6 +12,12 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-06-28
+
+- Added fact-aware introspection for shell-level prepared-genome UI query
+  routes (`ui prepared-genomes`, `ui latest-prepared`) and the lower-case
+  `set_parameter` adapter alias.
+
 ## 2026-06-27
 
 - Added fact-aware introspection for sequence-gated variant promoter/reporter

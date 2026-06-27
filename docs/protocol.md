@@ -4726,10 +4726,11 @@ Shared-shell routes:
   - Fact-layer commands `facts graph` and `facts eval` are fact-annotated,
     no-mutation routes; `facts eval` validates its supplied expression at
     execution time rather than as a projected project-state precondition.
-  - `set-param` is fact-annotated as a `host_config` route with no project
-    preconditions. Its verified effect binds `PARAM_NAME` to a `config.param`
-    subject and parses `PARAM_VALUE` as JSON before comparing it with the
-    projected parameter value.
+  - `set-param` and the lower-case adapter alias `set_parameter` are
+    fact-annotated as `host_config` routes with no project preconditions. Their
+    verified effect binds `PARAM_NAME` to a `config.param` subject and parses
+    `PARAM_VALUE` as JSON before comparing it with the projected parameter
+    value.
   - Direct sequence-derivation operation rows such as `Reverse`, `Complement`,
     `ReverseComplement`, `Branch`, and `ExtractRegion` are fact-annotated over
     raw operation payload fields. Their bound readiness requires
@@ -4922,9 +4923,10 @@ Shared-shell routes:
     readiness does not validate manifest contents, SRA accessions, tools, or
     filesystem paths; those checks remain execution-time behavior.
   - Adapter parity aliases `state_summary`, `reference_catalog_entries`,
-    `ui_intents`, `ui_prepared_genomes`, and `ui_latest_prepared` are
-    fact-annotated with the same no-project readiness as their shared shell
-    contracts (`state-summary`, reference catalog listing, and deterministic UI
+    `ui_intents`, `ui_prepared_genomes`, and `ui_latest_prepared`, plus shell
+    routes `ui prepared-genomes` and `ui latest-prepared`, are fact-annotated
+    with the same no-project readiness as their shared contracts
+    (`state-summary`, reference catalog listing, and deterministic UI
     catalog/prepared-genome query routes).
   - Generic GUI intent requests (`ui open`, `ui focus`, `ui close`, and
     `ui_intent`) are fact-annotated as view intents that require
