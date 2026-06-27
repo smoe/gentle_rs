@@ -58,6 +58,8 @@ Maintenance rule:
 - Added fact-aware introspection for planning consultation, protein-expression
   handoff, planning profile/objective mutation, suggestion resolution, and
   sync status/pull/push routes.
+- Added fact-aware introspection for resource sync/import/install/benchmark
+  routes plus local cache cleanup and publication-dataset preparation routes.
 - Added fact-aware introspection for raw core sequence operation rows:
   `SaveFile`, `Digest`, `Pcr`, `PcrAdvanced`, `PcrMutagenesis`, and
   `PcrOverlapExtensionMutagenesis`. PCR rows require a loaded template and can

@@ -22636,6 +22636,19 @@ fn execute_introspect_readiness_treats_resource_catalog_inspection_routes_as_rea
     for capability_id in [
         "resources summarize-jaspar",
         "resources status",
+        "resources sync-rebase",
+        "sync_rebase",
+        "resources sync-jaspar",
+        "sync_jaspar",
+        "resources sync-ucsc-rmsk",
+        "resources import-gene-list-cache",
+        "resources import-ontology-assignment-cache",
+        "resources import-co-regulated-cache",
+        "resources install-ucsc-rmsk",
+        "resources prepare-ucsc-rmsk-index",
+        "resources sync-jaspar-remote-metadata",
+        "SyncJasparRemoteMetadata",
+        "resources benchmark-jaspar",
         "resources suggest-ucsc-rmsk-index",
         "resources list-jaspar",
         "resources inspect-jaspar",
@@ -22655,6 +22668,47 @@ fn execute_introspect_readiness_treats_resource_catalog_inspection_routes_as_rea
             out.output["readiness"][0]["readiness"].as_str(),
             Some("ready"),
             "{capability_id} should be ready without project state"
+        );
+    }
+}
+
+#[test]
+fn execute_introspect_readiness_treats_local_cache_resource_mutations_as_ready_may_change() {
+    let mut engine = GentleEngine::default();
+    let capabilities = execute_shell_command(
+        &mut engine,
+        &parse_shell_line("introspect capabilities").expect("parse capabilities"),
+    )
+    .expect("execute capabilities");
+    let descriptors = capabilities.output["capabilities"]
+        .as_array()
+        .expect("capabilities array");
+
+    for capability_id in ["cache clear", "resources prepare-publication-dataset"] {
+        let descriptor = descriptors
+            .iter()
+            .find(|descriptor| descriptor["id"].as_str() == Some(capability_id))
+            .unwrap_or_else(|| panic!("missing descriptor for {capability_id}"));
+        assert_eq!(
+            descriptor["annotation_status"].as_str(),
+            Some("fact_annotated")
+        );
+        assert_eq!(descriptor["reads"].as_array().map(Vec::len), Some(0));
+        assert_eq!(
+            descriptor["effects"][0]["effect_kind"].as_str(),
+            Some("may_on_success")
+        );
+
+        let out = execute_shell_command(
+            &mut engine,
+            &parse_shell_line(&format!("introspect readiness {capability_id}"))
+                .expect("parse local mutation readiness"),
+        )
+        .expect("execute local mutation readiness");
+        assert_eq!(
+            out.output["readiness"][0]["readiness"].as_str(),
+            Some("ready"),
+            "{capability_id} should be ready without project facts"
         );
     }
 }
@@ -24440,8 +24494,33 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
             "{id} should have a fact-annotated planning-state descriptor"
         );
     }
+    for id in ["cache clear", "resources prepare-publication-dataset"] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["registry"]["source"].as_str() == Some("glossary_command")
+                    && descriptor["reads"].as_array().map(Vec::len) == Some(0)
+                    && descriptor["effects"][0]["effect_kind"].as_str() == Some("may_on_success")
+            }),
+            "{id} should have a fact-annotated local-resource mutation descriptor"
+        );
+    }
     for id in [
         "resources summarize-jaspar",
+        "resources sync-rebase",
+        "sync_rebase",
+        "resources sync-jaspar",
+        "sync_jaspar",
+        "resources sync-ucsc-rmsk",
+        "resources import-gene-list-cache",
+        "resources import-ontology-assignment-cache",
+        "resources import-co-regulated-cache",
+        "resources install-ucsc-rmsk",
+        "resources prepare-ucsc-rmsk-index",
+        "resources sync-jaspar-remote-metadata",
+        "SyncJasparRemoteMetadata",
+        "resources benchmark-jaspar",
         "resources list-jaspar",
         "resources inspect-jaspar",
         "resources resolve-tf-query",

@@ -4852,6 +4852,12 @@ Shared-shell routes:
     effect because profile/objective/suggestion facts are not projected yet.
   - Shell-level resource/catalog inspection routes such as
     `resources summarize-jaspar`, `resources status`,
+    `resources sync-rebase`, `resources sync-jaspar`,
+    `resources sync-ucsc-rmsk`, `resources import-gene-list-cache`,
+    `resources import-ontology-assignment-cache`,
+    `resources import-co-regulated-cache`, `resources install-ucsc-rmsk`,
+    `resources prepare-ucsc-rmsk-index`,
+    `resources sync-jaspar-remote-metadata`, `resources benchmark-jaspar`,
     `resources suggest-ucsc-rmsk-index`, `resources list-jaspar`,
     `resources inspect-jaspar`, `resources resolve-tf-query`,
     `resources list-publication-datasets`,
@@ -4860,6 +4866,11 @@ Shared-shell routes:
     `helpers vocabulary doctor` are fact-annotated as ready without project
     state. Optional JSON output paths are external artifact handoffs; catalog,
     motif, dataset, and file path validation remains an execution-time concern.
+  - Local cache/resource mutation routes (`cache clear` and
+    `resources prepare-publication-dataset`) are ready without project facts,
+    but declare only a non-verifiable `may_on_success` effect because concrete
+    filesystem/cache changes depend on supplied paths, download choices, and
+    execution-time validation.
   - Host/helper/protease/microRNA catalog helper routes such as `hosts list`,
     `list_host_profile_catalog_entries`, `host_profile_catalog_entries`,
     `list_helper_catalog_entries`, `helper_catalog_entries`,

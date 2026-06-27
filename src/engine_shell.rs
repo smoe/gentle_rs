@@ -15006,6 +15006,32 @@ fn project_state_save_descriptor(id: &str, description: &str) -> Value {
     })
 }
 
+fn local_state_may_change_descriptor(
+    id: &str,
+    description: &str,
+    mutating: &str,
+    args: Vec<Value>,
+) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": mutating,
+        "requires_confirmation": false,
+        "args": args,
+        "reads": [],
+        "effects": [
+            {
+                "effect_kind": "may_on_success",
+                "description": "This command may mutate local cache/resource state outside the project fact graph; concrete filesystem effects depend on supplied paths and execution-time validation."
+            }
+        ],
+        "precondition_expr": {"all": []},
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
 fn metadata_entry_create_descriptor(
     id: &str,
     fact_name: &str,
@@ -20264,6 +20290,138 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "Inspect local GENtle resource catalog status without project-state preconditions.",
             vec![],
         ),
+        local_state_may_change_descriptor(
+            "cache clear",
+            "Clear selected prepared-reference/helper cache artifacts; cache roots, modes, prepared ids, and prepared paths are validated during execution.",
+            "true",
+            vec![
+                json!({"name": "MODE", "required": true, "subject_kind": "other", "detail": "blast-db-only, derived-indexes-only, selected-prepared, or all-prepared-in-cache"}),
+                json!({"name": "--references|--helpers|--both", "required": false, "subject_kind": "other", "detail": "prepared-cache scope"}),
+                json!({"name": "--cache-dir", "required": false, "subject_kind": "other", "detail": "repeatable cache root path"}),
+                json!({"name": "--prepared-id|--prepared-path|--include-orphans", "required": false, "subject_kind": "other", "detail": "selection and orphan cleanup options"}),
+            ],
+        ),
+        optional_artifact_inspection_operation_descriptor(
+            "resources sync-rebase",
+            "external REBASE enzyme JSON output path; default path is used when omitted",
+            "Normalize a REBASE source file or URL into GENtle's local enzyme resource format without project-state preconditions.",
+            vec![
+                json!({"name": "INPUT", "required": true, "subject_kind": "other", "detail": "REBASE withrefm source path or URL"}),
+                json!({"name": "--commercial-only", "required": false, "subject_kind": "other", "detail": "retain only commercial enzymes"}),
+            ],
+        ),
+        optional_artifact_inspection_operation_descriptor(
+            "sync_rebase",
+            "external REBASE enzyme JSON output path; default path is used when omitted",
+            "Normalize a REBASE source file or URL through the shared MCP/tool resource route.",
+            vec![
+                json!({"name": "INPUT", "required": true, "subject_kind": "other", "detail": "REBASE withrefm source path or URL"}),
+                json!({"name": "COMMERCIAL_ONLY", "required": false, "subject_kind": "other", "detail": "retain only commercial enzymes"}),
+            ],
+        ),
+        optional_artifact_inspection_operation_descriptor(
+            "resources sync-jaspar",
+            "external JASPAR motif JSON output path; default path is used when omitted",
+            "Normalize a JASPAR source file or URL into GENtle's local TF-motif resource format without project-state preconditions.",
+            vec![
+                json!({"name": "INPUT", "required": true, "subject_kind": "other", "detail": "JASPAR source path or URL"}),
+            ],
+        ),
+        optional_artifact_inspection_operation_descriptor(
+            "sync_jaspar",
+            "external JASPAR motif JSON output path; default path is used when omitted",
+            "Normalize a JASPAR source file or URL through the shared MCP/tool resource route.",
+            vec![
+                json!({"name": "INPUT", "required": true, "subject_kind": "other", "detail": "JASPAR source path or URL"}),
+            ],
+        ),
+        optional_artifact_inspection_operation_descriptor(
+            "resources sync-ucsc-rmsk",
+            "external UCSC rmsk resource JSON output path; default path is used when omitted",
+            "Normalize a UCSC RepeatMasker rmsk source file or URL into GENtle's local repeat resource format without project-state preconditions.",
+            vec![
+                json!({"name": "INPUT", "required": true, "subject_kind": "other", "detail": "rmsk.txt, rmsk.txt.gz, or URL"}),
+                json!({"name": "--assembly", "required": false, "subject_kind": "other", "detail": "UCSC assembly database such as hg38 or mm39"}),
+                json!({"name": "--limit", "required": false, "subject_kind": "other", "detail": "optional maximum number of records"}),
+            ],
+        ),
+        external_artifact_catalog_operation_descriptor(
+            "resources import-gene-list-cache",
+            "external direct gene-list cache JSON output path",
+            "Import a tabular direct gene-list cache into GENtle's local gene-set resource format without project-state preconditions.",
+            vec![
+                json!({"name": "INPUT", "required": true, "subject_kind": "other", "detail": "input TSV/CSV gene-list cache path"}),
+                json!({"name": "--provider|--version|--organism|--taxon-id|--namespace|--list-id|--list-label", "required": false, "subject_kind": "other", "detail": "cache provenance and labeling options"}),
+            ],
+        ),
+        external_artifact_catalog_operation_descriptor(
+            "resources import-ontology-assignment-cache",
+            "external ontology-assignment cache JSON output path",
+            "Import a tabular ontology-assignment cache into GENtle's local gene-set resource format without project-state preconditions.",
+            vec![
+                json!({"name": "INPUT", "required": true, "subject_kind": "other", "detail": "input TSV/CSV ontology-assignment cache path"}),
+                json!({"name": "--provider|--version|--ontology-namespace|--organism|--taxon-id|--symbol-namespace", "required": false, "subject_kind": "other", "detail": "cache provenance and ontology labeling options"}),
+            ],
+        ),
+        external_artifact_catalog_operation_descriptor(
+            "resources import-co-regulated-cache",
+            "external co-regulated gene-set cache JSON output path",
+            "Import a tabular co-regulated gene-set cache into GENtle's local resource format without project-state preconditions.",
+            vec![
+                json!({"name": "INPUT", "required": true, "subject_kind": "other", "detail": "input TSV/CSV co-regulated cache path"}),
+                json!({"name": "--provider|--version|--dataset|--contrast|--condition|--normalization|--score|--organism", "required": false, "subject_kind": "other", "detail": "cache provenance and expression scoring options"}),
+            ],
+        ),
+        external_artifact_catalog_operation_descriptor(
+            "resources install-ucsc-rmsk",
+            "external UCSC rmsk resource JSON output path",
+            "Sync and index a UCSC RepeatMasker rmsk resource without project-state preconditions.",
+            vec![
+                json!({"name": "--input", "required": false, "subject_kind": "other", "detail": "rmsk source path or URL"}),
+                json!({"name": "--assembly", "required": false, "subject_kind": "other", "detail": "UCSC assembly database"}),
+                json!({"name": "--index-output", "required": false, "subject_kind": "other", "detail": "external interval-index JSON output path"}),
+                json!({"name": "--limit", "required": false, "subject_kind": "other", "detail": "optional maximum number of rows"}),
+            ],
+        ),
+        external_artifact_catalog_operation_descriptor(
+            "resources prepare-ucsc-rmsk-index",
+            "external UCSC rmsk interval-index JSON output path",
+            "Prepare an interval index from an existing GENtle UCSC rmsk resource JSON file without project-state preconditions.",
+            vec![
+                json!({"name": "RESOURCE_PATH", "required": true, "subject_kind": "other", "detail": "GENtle UCSC rmsk resource JSON path"}),
+            ],
+        ),
+        optional_artifact_inspection_operation_descriptor(
+            "resources sync-jaspar-remote-metadata",
+            "external JASPAR remote metadata JSON output path; default path is used when omitted",
+            "Fetch/cache JASPAR remote metadata for selected motifs without project-state preconditions; network availability is checked during execution.",
+            vec![
+                json!({"name": "--motif|--motifs|--all|--filter|--limit", "required": false, "subject_kind": "other", "detail": "remote metadata selection options"}),
+            ],
+        ),
+        optional_artifact_operation_descriptor(
+            "SyncJasparRemoteMetadata",
+            "external JASPAR remote metadata JSON output path carried by path; default path may be supplied by shell wrappers",
+            "Fetch/cache JASPAR remote metadata through the shared engine operation.",
+        ),
+        optional_artifact_inspection_operation_descriptor(
+            "resources benchmark-jaspar",
+            "external JASPAR benchmark JSON output path; default path is used when omitted",
+            "Benchmark local JASPAR motif scoring resources without project-state preconditions.",
+            vec![
+                json!({"name": "--random-length", "required": false, "subject_kind": "other", "detail": "random-background length"}),
+                json!({"name": "--seed", "required": false, "subject_kind": "other", "detail": "deterministic random seed"}),
+            ],
+        ),
+        local_state_may_change_descriptor(
+            "resources prepare-publication-dataset",
+            "Prepare/download local files for one publication-associated dataset; catalog, cache, download, and category filters are validated during execution.",
+            "external",
+            vec![
+                json!({"name": "DATASET_ID", "required": true, "subject_kind": "other", "detail": "publication-resource dataset id"}),
+                json!({"name": "--catalog|--cache-dir|--download-files|--max-files|--category|--categories", "required": false, "subject_kind": "other", "detail": "dataset catalog, cache, download, and category options"}),
+            ],
+        ),
         optional_artifact_inspection_operation_descriptor(
             "resources suggest-ucsc-rmsk-index",
             "optional external UCSC rmsk descriptor JSON output path",
@@ -22244,6 +22402,21 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "planning sync push"
         | "resources summarize-jaspar"
         | "resources status"
+        | "cache clear"
+        | "resources sync-rebase"
+        | "sync_rebase"
+        | "resources sync-jaspar"
+        | "sync_jaspar"
+        | "resources sync-ucsc-rmsk"
+        | "resources import-gene-list-cache"
+        | "resources import-ontology-assignment-cache"
+        | "resources import-co-regulated-cache"
+        | "resources install-ucsc-rmsk"
+        | "resources prepare-ucsc-rmsk-index"
+        | "resources sync-jaspar-remote-metadata"
+        | "SyncJasparRemoteMetadata"
+        | "resources benchmark-jaspar"
+        | "resources prepare-publication-dataset"
         | "resources suggest-ucsc-rmsk-index"
         | "resources list-jaspar"
         | "resources inspect-jaspar"
