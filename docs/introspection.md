@@ -1,11 +1,13 @@
 # GENtle Introspection Contract (Proposal / Working Draft)
 
-Last updated: 2026-06-26
+Last updated: 2026-06-27
 
-Status: design proposal. This document is intentionally a starting point, not a
-frozen spec. Sections marked "Degrees of freedom" call out where the
-implementing agent (Codex) is expected to adjust shapes to its own view of the
-code.
+Status: implemented for `introspect facts`, `introspect capabilities`,
+`introspect readiness`, and `introspect all`. The capability route now projects
+the shared protocol capability registry and overlays fact-aware annotations for
+the validated first slice. Full fact annotation for every catalog row remains a
+working design. Sections marked "Degrees of freedom" call out where later
+implementation should adjust shapes to validated code.
 
 Revision note: incorporates the first Codex review (argument binding, fact
 domains, effect modality, subroutes, narrowed "lossless", explicit host fact).
@@ -89,12 +91,20 @@ scoped route.
 - `introspect facts` — state read-back (the fact graph, grouped by domain).
 - `introspect capabilities` — the verb catalog with self-descriptions.
 - `introspect readiness` — capability readiness against current facts.
+- `introspect verify-effects` — post-run verification for hard effects.
 - `introspect all` — the aggregate, for clients that want one round trip.
 
 Scoping applies within each subroute (filter by `domain`, `kind`, `readiness`,
 or subject `--seq-id`), because the catalog is large (hundreds of shell
 commands). A words-only client must be able to ask "what can I do with `insert`
 right now?" and get a short, ready-annotated list.
+
+Implemented scoping in the first slice:
+
+- `introspect facts --domain ... --seq-id ...`
+- `introspect capabilities --kind ...`
+- `introspect readiness --seq-id ... --readiness ...`
+- `introspect verify-effects CAPABILITY_ID --seq-id ... --evidence ...`
 
 `introspect capabilities` descriptor shape:
 
@@ -103,9 +113,24 @@ right now?" and get a short, ready-annotated list.
   "schema": "gentle.introspection.v1",
   "capabilities": [
     {
+      "id": "sequence create",
+      "kind": "operation",
+      "mutating": "true",
+      "requires_confirmation": false,
+      "args": [
+        { "name": "--sequence-text", "required": true, "detail": "inline DNA sequence text" },
+        { "name": "OUTPUT_ID", "required": true, "detail": "explicit id supplied with --output-id" }
+      ],
+      "reads": [],
+      "effects": [ { "fact": "sequence.exists", "subject": { "arg": "OUTPUT_ID" },
+                     "effect_kind": "must_on_success" } ],
+      "precondition_expr": { "all": [] },
+      "description": "Create a persistent project sequence from inline sequence text."
+    },
+    {
       "id": "features restriction-scan",
       "kind": "operation",
-      "mutating": false,
+      "mutating": "false",
       "requires_confirmation": false,
       "args": [
         { "name": "SEQ_ID", "required": true, "detail": "loaded sequence id" },
@@ -113,14 +138,321 @@ right now?" and get a short, ready-annotated list.
       ],
       "reads":   [ { "fact": "sequence.exists", "subject": { "arg": "SEQ_ID" } } ],
       "effects": [ { "fact": "report.exists", "report_kind": "restriction_scan",
-                     "subject": { "arg": "SEQ_ID" }, "effect_kind": "must_on_success" } ],
+                     "equals": "restriction_scan", "effect_kind": "must_on_success" } ],
       "precondition_expr": { "all": [ { "fact": "sequence.exists", "subject": { "arg": "SEQ_ID" } } ] },
       "description": "Scan a loaded sequence for restriction-enzyme sites."
     },
     {
-      "id": "ui select",
+      "id": "variant materialize-allele",
+      "kind": "operation",
+      "mutating": "true",
+      "requires_confirmation": false,
+      "args": [
+        { "name": "SEQ_ID", "required": true, "detail": "loaded variant-bearing sequence id" },
+        { "name": "--allele", "required": true, "detail": "reference or alternate" },
+        { "name": "OUTPUT_ID", "required": false, "detail": "explicit id supplied with --output-id; required for deterministic effect verification" }
+      ],
+      "reads": [ { "fact": "sequence.exists", "subject": { "arg": "SEQ_ID" } } ],
+      "effects": [ { "fact": "sequence.exists", "subject": { "arg": "OUTPUT_ID" },
+                     "effect_kind": "must_on_success" } ],
+      "precondition_expr": { "all": [ { "fact": "sequence.exists", "subject": { "arg": "SEQ_ID" } } ] },
+      "description": "Create one reference or alternate single-allele sequence from a variant-bearing sequence."
+    },
+    {
+      "id": "align compute",
+      "kind": "operation",
+      "mutating": "false",
+      "requires_confirmation": false,
+      "args": [
+        { "name": "QUERY_SEQ_ID", "required": true, "detail": "loaded query sequence id" },
+        { "name": "TARGET_SEQ_ID", "required": true, "detail": "loaded target sequence id" }
+      ],
+      "reads": [
+        { "fact": "sequence.exists", "subject": { "arg": "QUERY_SEQ_ID" } },
+        { "fact": "sequence.exists", "subject": { "arg": "TARGET_SEQ_ID" } }
+      ],
+      "effects": [],
+      "precondition_expr": { "all": [
+        { "fact": "sequence.exists", "subject": { "arg": "QUERY_SEQ_ID" } },
+        { "fact": "sequence.exists", "subject": { "arg": "TARGET_SEQ_ID" } }
+      ] },
+      "description": "Compute a pairwise alignment between two loaded project sequences."
+    },
+    {
+      "id": "render-svg",
+      "kind": "operation",
+      "mutating": "false",
+      "requires_confirmation": false,
+      "args": [
+        { "name": "SEQ_ID", "required": true, "detail": "loaded sequence id to render" },
+        { "name": "MODE", "required": true, "detail": "linear or circular render mode" },
+        { "name": "OUTPUT_PATH", "required": true, "detail": "external SVG output path" }
+      ],
+      "reads": [
+        { "fact": "sequence.exists", "subject": { "arg": "SEQ_ID" } }
+      ],
+      "effects": [ { "fact": "artifact.written", "subject": { "arg": "OUTPUT_PATH" },
+                     "effect_kind": "external_handoff" } ],
+      "precondition_expr": { "all": [
+        { "fact": "sequence.exists", "subject": { "arg": "SEQ_ID" } }
+      ] },
+      "description": "Render a loaded sequence map to an external SVG file."
+    },
+    {
+      "id": "render-rna-svg",
+      "kind": "operation",
+      "mutating": "false",
+      "requires_confirmation": false,
+      "args": [
+        { "name": "SEQ_ID", "required": true, "detail": "loaded RNA sequence id to render" },
+        { "name": "OUTPUT_PATH", "required": true, "detail": "external SVG output path" }
+      ],
+      "reads": [
+        { "fact": "sequence.exists", "subject": { "arg": "SEQ_ID" } }
+      ],
+      "effects": [ { "fact": "artifact.written", "subject": { "arg": "OUTPUT_PATH" },
+                     "effect_kind": "external_handoff" } ],
+      "precondition_expr": { "all": [
+        { "fact": "sequence.exists", "subject": { "arg": "SEQ_ID" } }
+      ] },
+      "description": "Render a loaded RNA secondary-structure SVG file."
+    },
+    {
+      "id": "render-lineage-svg",
+      "kind": "operation",
+      "mutating": "false",
+      "requires_confirmation": false,
+      "args": [
+        { "name": "OUTPUT_PATH", "required": true, "detail": "external SVG output path" }
+      ],
+      "reads": [],
+      "effects": [ { "fact": "artifact.written", "subject": { "arg": "OUTPUT_PATH" },
+                     "effect_kind": "external_handoff" } ],
+      "precondition_expr": { "all": [] },
+      "description": "Render the current project lineage graph to an external SVG file."
+    },
+    {
+      "id": "rna-info",
+      "kind": "operation",
+      "mutating": "false",
+      "requires_confirmation": false,
+      "args": [
+        { "name": "SEQ_ID", "required": true, "detail": "loaded sequence id to inspect with the RNA structure text reporter" }
+      ],
+      "reads": [
+        { "fact": "sequence.exists", "subject": { "arg": "SEQ_ID" } }
+      ],
+      "effects": [],
+      "precondition_expr": { "all": [
+        { "fact": "sequence.exists", "subject": { "arg": "SEQ_ID" } }
+      ] },
+      "description": "Inspect one loaded sequence with the RNA structure text reporter."
+    },
+    {
+      "id": "reverse-translate run",
+      "kind": "operation",
+      "mutating": "true",
+      "requires_confirmation": false,
+      "args": [
+        { "name": "PROTEIN_SEQ_ID", "required": true, "detail": "loaded protein sequence id" },
+        { "name": "OUTPUT_ID", "required": false, "detail": "explicit coding-DNA sequence id supplied with --output-id; required for deterministic effect verification" }
+      ],
+      "reads": [
+        { "fact": "sequence.exists", "subject": { "arg": "PROTEIN_SEQ_ID" } },
+        { "fact": "sequence.kind", "subject": { "arg": "PROTEIN_SEQ_ID" }, "equals": "protein" }
+      ],
+      "effects": [ { "fact": "sequence.exists", "subject": { "arg": "OUTPUT_ID" },
+                     "effect_kind": "must_on_success" } ],
+      "precondition_expr": { "all": [
+        { "fact": "sequence.exists", "subject": { "arg": "PROTEIN_SEQ_ID" } },
+        { "fact": "sequence.kind", "subject": { "arg": "PROTEIN_SEQ_ID" }, "equals": "protein" }
+      ] },
+      "description": "Reverse-translate one protein sequence into a synthetic coding-DNA product."
+    },
+    {
+      "id": "reverse-translate list-reports",
+      "kind": "operation",
+      "mutating": "false",
+      "requires_confirmation": false,
+      "args": [
+        { "name": "PROTEIN_SEQ_ID", "required": false, "detail": "optional protein sequence id filter" }
+      ],
+      "reads": [],
+      "effects": [],
+      "precondition_expr": { "all": [] },
+      "description": "List persisted reverse-translation reports, optionally filtered by protein sequence id."
+    },
+    {
+      "id": "reverse-translate show-report",
+      "kind": "operation",
+      "mutating": "false",
+      "requires_confirmation": false,
+      "args": [
+        { "name": "REPORT_ID", "required": true, "detail": "persisted reverse-translation report id" }
+      ],
+      "reads": [
+        { "fact": "report.exists", "subject": { "arg": "REPORT_ID" }, "equals": "reverse_translation" }
+      ],
+      "effects": [],
+      "precondition_expr": { "all": [
+        { "fact": "report.exists", "subject": { "arg": "REPORT_ID" }, "equals": "reverse_translation" }
+      ] },
+      "description": "Inspect one persisted reverse-translation provenance report."
+    },
+    {
+      "id": "primers design",
+      "kind": "operation",
+      "mutating": "true",
+      "requires_confirmation": false,
+      "args": [
+        { "name": "REQUEST_JSON", "required": true, "detail": "DesignPrimerPairs operation payload or @file" },
+        { "name": "TEMPLATE_SEQ_ID", "required": true, "detail": "template sequence id carried by the payload" },
+        { "name": "REPORT_ID", "required": false, "detail": "explicit primer-design report id carried by the payload; required for deterministic effect verification" }
+      ],
+      "reads": [
+        { "fact": "sequence.exists", "subject": { "arg": "TEMPLATE_SEQ_ID" } }
+      ],
+      "effects": [ { "fact": "report.exists", "subject": { "arg": "REPORT_ID" },
+                     "equals": "primer_design", "effect_kind": "must_on_success" } ],
+      "precondition_expr": { "all": [
+        { "fact": "sequence.exists", "subject": { "arg": "TEMPLATE_SEQ_ID" } }
+      ] },
+      "description": "Generate and persist a ranked primer-pair design report."
+    },
+    {
+      "id": "primers list-reports",
+      "kind": "operation",
+      "mutating": "false",
+      "requires_confirmation": false,
+      "args": [],
+      "reads": [],
+      "effects": [],
+      "precondition_expr": { "all": [] },
+      "description": "List persisted primer-pair design reports."
+    },
+    {
+      "id": "primers show-report",
+      "kind": "operation",
+      "mutating": "false",
+      "requires_confirmation": false,
+      "args": [
+        { "name": "REPORT_ID", "required": true, "detail": "persisted primer-design report id" }
+      ],
+      "reads": [
+        { "fact": "report.exists", "subject": { "arg": "REPORT_ID" }, "equals": "primer_design" }
+      ],
+      "effects": [],
+      "precondition_expr": { "all": [
+        { "fact": "report.exists", "subject": { "arg": "REPORT_ID" }, "equals": "primer_design" }
+      ] },
+      "description": "Inspect one persisted primer-pair design report."
+    },
+    {
+      "id": "primers design-qpcr",
+      "kind": "operation",
+      "mutating": "true",
+      "requires_confirmation": false,
+      "args": [
+        { "name": "REQUEST_JSON", "required": true, "detail": "DesignQpcrAssays operation payload or seed payload" },
+        { "name": "TEMPLATE_SEQ_ID", "required": true, "detail": "template sequence id carried by the payload" },
+        { "name": "REPORT_ID", "required": false, "detail": "explicit qPCR design report id carried by the payload; required for deterministic effect verification" }
+      ],
+      "reads": [
+        { "fact": "sequence.exists", "subject": { "arg": "TEMPLATE_SEQ_ID" } }
+      ],
+      "effects": [ { "fact": "report.exists", "subject": { "arg": "REPORT_ID" },
+                     "equals": "qpcr_design", "effect_kind": "must_on_success" } ],
+      "precondition_expr": { "all": [
+        { "fact": "sequence.exists", "subject": { "arg": "TEMPLATE_SEQ_ID" } }
+      ] },
+      "description": "Generate and persist a ranked qPCR assay design report."
+    },
+    {
+      "id": "primers list-qpcr-reports",
+      "kind": "operation",
+      "mutating": "false",
+      "requires_confirmation": false,
+      "args": [],
+      "reads": [],
+      "effects": [],
+      "precondition_expr": { "all": [] },
+      "description": "List persisted qPCR assay design reports."
+    },
+    {
+      "id": "primers show-qpcr-report",
+      "kind": "operation",
+      "mutating": "false",
+      "requires_confirmation": false,
+      "args": [
+        { "name": "REPORT_ID", "required": true, "detail": "persisted qPCR design report id" }
+      ],
+      "reads": [
+        { "fact": "report.exists", "subject": { "arg": "REPORT_ID" }, "equals": "qpcr_design" }
+      ],
+      "effects": [],
+      "precondition_expr": { "all": [
+        { "fact": "report.exists", "subject": { "arg": "REPORT_ID" }, "equals": "qpcr_design" }
+      ] },
+      "description": "Inspect one persisted qPCR assay design report."
+    },
+    {
+      "id": "primers prepare-restriction-cloning",
+      "kind": "operation",
+      "mutating": "true",
+      "requires_confirmation": false,
+      "args": [
+        { "name": "REQUEST_JSON", "required": true, "detail": "PrepareRestrictionCloningPcrHandoff operation payload or @file" },
+        { "name": "TEMPLATE_SEQ_ID", "required": true, "detail": "template sequence id carried by the payload" },
+        { "name": "PRIMER_REPORT_ID", "required": true, "detail": "persisted primer-design report id carried by the payload" },
+        { "name": "DESTINATION_VECTOR_SEQ_ID", "required": true, "detail": "destination vector sequence id carried by the payload" },
+        { "name": "REPORT_ID", "required": false, "detail": "restriction-cloning handoff report id returned by execution; required for deterministic effect verification" }
+      ],
+      "reads": [
+        { "fact": "sequence.exists", "subject": { "arg": "TEMPLATE_SEQ_ID" } },
+        { "fact": "report.exists", "subject": { "arg": "PRIMER_REPORT_ID" }, "equals": "primer_design" },
+        { "fact": "sequence.exists", "subject": { "arg": "DESTINATION_VECTOR_SEQ_ID" } }
+      ],
+      "effects": [ { "fact": "report.exists", "subject": { "arg": "REPORT_ID" },
+                     "equals": "restriction_cloning_pcr_handoff", "effect_kind": "must_on_success" } ],
+      "precondition_expr": { "all": [
+        { "fact": "sequence.exists", "subject": { "arg": "TEMPLATE_SEQ_ID" } },
+        { "fact": "report.exists", "subject": { "arg": "PRIMER_REPORT_ID" }, "equals": "primer_design" },
+        { "fact": "sequence.exists", "subject": { "arg": "DESTINATION_VECTOR_SEQ_ID" } }
+      ] },
+      "description": "Create a restriction-site cloning PCR handoff from one persisted primer-pair report and a destination vector."
+    },
+    {
+      "id": "primers list-restriction-cloning-handoffs",
+      "kind": "operation",
+      "mutating": "false",
+      "requires_confirmation": false,
+      "args": [],
+      "reads": [],
+      "effects": [],
+      "precondition_expr": { "all": [] },
+      "description": "List persisted restriction-site cloning PCR handoff reports."
+    },
+    {
+      "id": "primers show-restriction-cloning-handoff",
+      "kind": "operation",
+      "mutating": "false",
+      "requires_confirmation": false,
+      "args": [
+        { "name": "REPORT_ID", "required": true, "detail": "persisted restriction-cloning handoff report id" }
+      ],
+      "reads": [
+        { "fact": "report.exists", "subject": { "arg": "REPORT_ID" }, "equals": "restriction_cloning_pcr_handoff" }
+      ],
+      "effects": [],
+      "precondition_expr": { "all": [
+        { "fact": "report.exists", "subject": { "arg": "REPORT_ID" }, "equals": "restriction_cloning_pcr_handoff" }
+      ] },
+      "description": "Inspect one persisted restriction-site cloning PCR handoff report."
+    },
+    {
+      "id": "ui selection",
       "kind": "view_intent",
-      "mutating": false,
+      "mutating": "false",
       "requires_confirmation": false,
       "args": [
         { "name": "SEQ_ID", "required": true, "detail": "subject to select within" },
@@ -191,7 +523,9 @@ evaluator and `FactTruth` are reused unchanged.
 Not all effects are guaranteed. Each effect carries an `effect_kind`:
 
 - `must_on_success` — the effect must hold if the command succeeds. **Only these
-  are asserted by post-run verification** (diff the fact graph before/after).
+  are asserted by post-run verification** through
+  `introspect verify-effects`. The verifier evaluates declared hard effects
+  against the current fact graph plus supplied evidence.
 - `may_on_success` — conditional/optional; not asserted.
 - `external_handoff` — an external/provider action, not a local state change.
   Aligns with the existing `mutating: "external"` posture.
@@ -245,8 +579,9 @@ Suggested additions:
 | `view.selection` | view | closed | no | subject + `range` |
 | `view.viewport` | view | closed | no | visible bp window / lane window |
 | `view.visible_tracks` | view | closed | no | which tracks/lanes are shown |
-| `config.param.<name>` | config | closed | no | `SetParameter` values; `equals`/`compare` |
+| `config.param` | config | closed | no | engine-owned `SetParameter` values; subject id is the parameter name, `value` is the JSON value |
 | `host.tool_available` | host | closed | no | e.g. primer3/blastn resolvable; see Reconciliation below |
+| `artifact.written` | host | open | yes | external file/handoff artifact written outside saved project state |
 
 These are closed-world: the host/adapter resolves them deterministically when
 asked, so a missing fact means `unsatisfied`, not `unknown` (unlike open-world
@@ -261,7 +596,7 @@ no host). Fix: **always project the host-presence fact explicitly.**
 as new spellings, reuse the existing `ui.host_available` as the single
 host-presence fact (now in the `view` domain). In headless contexts it projects
 `false` and all other `view.*` facts are omitted by design. Then bound readiness
-for `ui select` resolves to `unsatisfied` with `ui.host_available` as the named
+for `ui selection` resolves to `unsatisfied` with `ui.host_available` as the named
 unmet atom — surfaced to the user as "unavailable: no view host," **not** as a
 new fourth `FactTruth` value. The three-valued evaluator is preserved; the
 "unavailable" distinction is a presentation of unsatisfied-with-reason.
@@ -270,15 +605,33 @@ new fourth `FactTruth` value. The three-valued evaluator is preserved; the
 
 Tool availability already has adjacent contracts (`agents preflight`,
 helper/genome `status`, primer3 preflight). `host.tool_available` should
-**project from those existing probes**, not introduce a parallel detector. Open
-for Codex: whether it belongs in the introspection `host` domain or in a separate
-host-capability projection that introspection merely references.
+**project from those existing probes**, not introduce a parallel detector. The
+first implementation keeps it directly in the introspection `host` domain and
+currently projects deterministic agent-system availability from the configured
+agent catalog. This keeps `agents preflight` readiness inside the same evaluator
+as project and view facts.
+
+### Config parameters
+
+The implemented config fact keeps the fact registry finite:
+`config.param` uses `subject.kind = "other"` and `subject.id = PARAM_NAME`
+instead of minting a new fact name for every parameter. The first projection is
+limited to `EngineParameters` (`max_fragments_per_container`,
+`require_verified_genome_anchor_for_extension`,
+`genome_anchor_prepared_fallback_policy`, `primer_design_backend`, and
+`primer3_executable`). Display-specific `set-param` aliases can be folded into
+the same pattern later when their canonical names are normalized.
+
+`set-param` is fact-annotated as a `host_config` capability with no project
+preconditions and a `must_on_success` effect:
+`config.param(PARAM_NAME) == PARAM_VALUE`, where `PARAM_VALUE` is parsed as
+JSON before verification.
 
 ### Degrees of freedom
 
-Namespace spelling (`config.param.foo` vs `param.foo`), whether `view.*` facts
-are projected lazily (only with a host attached) vs always with a marker, and
-whether `domain` is a field on each fact vs a wrapper per group.
+Whether `view.*` facts are projected lazily (only with a host attached) vs
+always with a marker, and whether `domain` is a field on each fact vs a wrapper
+per group.
 
 ## 6. Reachability and parity
 
@@ -288,7 +641,7 @@ Success criterion for the words-only model is twofold:
    visualization/mouse-driven control resolves to some agent-reachable contract
    (operation, view_intent, host_config). A GUI-only mutation path with no shared
    route is a reachability-parity gap (a bug). Continuous gestures are not
-   commands, but their discrete forms are (`ui select`, `ui zoom-to`,
+   commands, but their discrete forms are (`ui selection`, `ui zoom-to`,
    `ui fit-features`), and those must exist.
 2. **No capability without a self-description** (section 4).
 
@@ -327,41 +680,158 @@ on semantic glyphs.
 - **Reuse, don't fork.** `facts`, vocabulary, `readiness`, and capability
   metadata come from existing sources.
 
-## 10. Suggested first slice (review tweak adopted)
+## 10. First slice (review tweak adopted)
 
 1. Add the `domain` discriminator and the `view` domain, including
-   `ui.host_available` projected as `false` in headless contexts (read side
-   first — lowest risk, immediately useful to a words-only client).
-2. Add `introspect facts` and `introspect capabilities` as separate subroutes.
+   `ui.host_available` projected as `false` in headless contexts (implemented).
+2. Add `introspect facts` and `introspect capabilities` as separate subroutes
+   (implemented; `introspect readiness` and `introspect all` are also present).
 3. Attach engine-owned bound self-description (`args`, `reads`, `effects` with
-   `effect_kind`, `precondition_expr`) to **three** capabilities only:
-   one mutating operation, one `ui` view intent, one host/config capability.
+   `effect_kind`, `precondition_expr`) to the first fact-annotated capabilities:
+   `help`, `capabilities`, `state-summary`, `state_summary`,
+   `history status`, `facts graph`,
+   `facts eval`, `sequence create`,
+   `introspect facts`, `introspect capabilities`, `introspect readiness`,
+   `introspect verify-effects`, `introspect all`,
+   `Reverse`, `Complement`, `ReverseComplement`, `Branch`, `ExtractRegion`,
+   `features restriction-scan`, `features query`, `features export-bed`,
+   `ExportFeaturesBed`,
+   `InspectSequenceContextView`, `ExportSequenceContextBundle`,
+   `inspect-feature-expert`, `render-feature-expert-svg`,
+   `features tfbs-summary`, `SummarizeTfbsRegion`,
+   `QueryProteinResidueGenomicCoordinates`,
+   `variant materialize-allele`, `MaterializeVariantAllele`,
+   `align compute`, `AlignSequences`,
+   `render-svg`, `render-rna-svg`, `render-lineage-svg`, `RenderSequenceSvg`,
+   `RenderFeatureExpertSvg`, `RenderTfbsScoreTrackCorrelationSvg`,
+   `RenderRnaStructureSvg`, `RenderLineageSvg`,
+   `rna-info`, `reverse-translate run`, `ReverseTranslateProteinSequence`,
+   `reverse-translate list-reports`,
+   `reverse-translate show-report`, `reverse-translate export-report`,
+   `primers design`, `DesignPrimerPairs`, `DesignInsertionPrimerPairs`,
+   `primers list-reports`,
+   `primers show-report`, `primers export-report`, `primers design-qpcr`,
+   `DesignQpcrAssays`, `primers list-qpcr-reports`, `primers show-qpcr-report`,
+   `primers export-qpcr-report`, `ExportPrimerDesignReport`,
+   `primers prepare-restriction-cloning`,
+   `primers list-restriction-cloning-handoffs`,
+   `primers show-restriction-cloning-handoff`,
+   `primers export-restriction-cloning-handoff`,
+   `primers preflight`, `primers seed-from-feature`,
+   `primers seed-from-splicing`,
+   `primers restriction-cloning-vector-suggestions`,
+   `primers seed-restriction-cloning-handoff`,
+   `seq-confirm list-reports`, `seq-confirm show-report`,
+   `seq-confirm export-report`, `seq-confirm export-support-tsv`,
+   `ListSequencingConfirmationReports`,
+   `ShowSequencingConfirmationReport`,
+   `ExportSequencingConfirmationReport`,
+   `ExportSequencingConfirmationSupportTsv`,
+   `cutrun list-read-reports`, `cutrun show-read-report`,
+   `cutrun export-coverage`, `ListCutRunReadReports`, `ShowCutRunReadReport`,
+   `ExportCutRunReadCoverage`, `rna-reads list-reports`,
+   `rna-reads show-report`, `rna-reads export-report`,
+   `rna-reads export-hits-fasta`, `rna-reads export-target-quality`,
+   `rna-reads export-paths-tsv`, `rna-reads export-abundance-tsv`,
+   `rna-reads export-score-density-svg`, `rna-reads export-alignments-tsv`,
+   `rna-reads export-isoform-triage-tsv`,
+   `rna-reads export-alignment-dotplot-svg`,
+   `ListRnaReadReports`, `ShowRnaReadReport`, `ExportRnaReadReport`,
+   `ExportRnaReadHitsFasta`, `ExportRnaReadTargetQuality`,
+   `ExportRnaReadExonPathsTsv`, `ExportRnaReadExonAbundanceTsv`,
+   `ExportRnaReadScoreDensitySvg`, `ExportRnaReadAlignmentsTsv`,
+   `ExportRnaReadIsoformTriageTsv`, `ExportRnaReadAlignmentDotplotSvg`,
+   `rna-reads align-report`, `AlignRnaReadReport`,
+   `rna-reads preflight-isoforms`, `PreflightRnaReadIsoforms`,
+   `rna-reads materialize-hits`, `MaterializeRnaReadHitSequences`,
+   `SummarizeRnaReadGeneSupport`, `InspectRnaReadGeneSupport`,
+   `SummarizeJasparEntries`, `BenchmarkJasparRegistry`,
+   `ListJasparCatalog`, `ResolveTfQueries`, `ListReporterCatalog`,
+   `RecommendReporters`,
+   `reporters list`, `reporters recommend`, `reporters export-corpus`,
+   `ExportReporterCorpus`,
+   `services status`, `services providers list`,
+   `services providers doctor`,
+   `planning profile show`, `planning objective show`,
+   `planning suggestions list`,
+   `resources summarize-jaspar`, `resources status`,
+   `resources suggest-ucsc-rmsk-index`, `resources list-jaspar`,
+   `resources inspect-jaspar`, `resources resolve-tf-query`,
+   `resources list-publication-datasets`,
+   `resources status-publication-dataset`,
+   `genomes validate-catalog`, `helpers validate-catalog`,
+   `helpers vocabulary list`, `helpers vocabulary doctor`,
+   `hosts list`, `list_host_profile_catalog_entries`,
+   `host_profile_catalog_entries`, `list_helper_catalog_entries`,
+   `helper_catalog_entries`, `helper_semantics_vocabulary`,
+   `helper_interpretation`, `proteases list`, `proteases show`,
+   `mirna explain-seed`, `mirna catalog-show`,
+   `ladders list`, `inspect_dna_ladders`, `inspect_rna_ladders`,
+   `list_dna_ladders`, `list_rna_ladders`, `ladders export`,
+   `export_dna_ladders`, `export_rna_ladders`,
+   `ExportDnaLadders`, `ExportRnaLadders`,
+   `agents list`, `agent_systems`, `list_agent_systems`,
+   `protocol-cartoon list`, `protocol-cartoon render-svg`,
+   `protocol-cartoon render-template-svg`,
+   `protocol-cartoon render-with-bindings`,
+   `protocol-cartoon template-export`, `protocol-cartoon template-validate`,
+   `RenderProtocolCartoonSvg`, `RenderProtocolCartoonTemplateSvg`,
+   `RenderProtocolCartoonTemplateWithBindingsSvg`,
+   `ExportProtocolCartoonTemplateJson`, `ValidateProtocolCartoonTemplate`,
+   `cache inspect`, `cutrun list`, `ListCutRunDatasets`, `cutrun status`,
+   `ShowCutRunDatasetStatus`, `arrays inspect-microarray-track`,
+   `arrays inspect-probe-region-output`,
+   `arrays render-probe-region-output-svg`,
+   `candidates list`, `candidates template-list`, `guides list`,
+   `macros instance-list`, `macros template-list`, `routines list`,
+   `routines explain`, `routines compare`,
+   `construct-reasoning list-graphs`, `construct_reasoning_graphs`,
+   `dotplot list`, `flex list`,
+   `genomes list`, `helpers list`, `genomes status`, `helpers status`,
+   `genomes genes`, `helpers genes`,
+   `list_reference_genomes`, `list_reference_catalog_entries`,
+   `reference_catalog_entries`,
+   `is_reference_genome_prepared`, `list_reference_genome_genes`,
+   `genomes blast-status`, `helpers blast-status`,
+   `genomes blast-list`, `helpers blast-list`,
+   `blast_async_status`, `blast_async_list`,
+   `ensembl-gene list`,
+   `ensembl-protein list`, `gene-groups list`, `gene-groups show`,
+   `gene-groups resolve`, `gene-groups doctor`,
+   `display`,
+   `SetLinearViewport`, `ui intents`, `ui_intents`,
+   `ui_prepared_genomes`, `ui_latest_prepared`, `ui selection`, `set-param`,
+   `SetTopology`, `RecomputeFeatures`, `agents preflight`,
+   `agents discover-models`, `agent_preflight`, and `agent_models`
+   (implemented).
 4. Add readiness tests proving the **same descriptor** resolves correctly in both
-   a GUI-attached and a headless context (the binding + host-domain payoff).
-5. Defer: full catalog annotation, `introspect readiness`/`all`, post-run effect
-   verification, glossary-as-projection inversion, and any
-   visualization-interpretation work.
+   a GUI-attached and a headless context (implemented through explicit
+   `--ui-host true|false` projection).
+5. Defer: full catalog fact annotation, glossary-as-projection inversion, and
+   any visualization-interpretation work.
 
-## 11. Resolved decisions (pending first-slice validation)
+## 11. Resolved decisions
 
-These were open questions in the prior draft; the review resolved them. Promote
-the non-negotiables into `docs/decisions.md` **only after** the first slice
-validates the shape.
+These were open questions in the prior draft; the review and implemented first
+slice resolved them. The non-negotiables are promoted into `docs/decisions.md`.
 
 - **Routes:** subroutes + aggregate, not one scoped route (section 3).
 - **Domains:** additive `domain` field; landed facts unchanged (section 5).
 - **Headless:** explicit `ui.host_available` fact; "unavailable" is
   unsatisfied-with-reason, not a new truth value (section 5).
-- **Effects:** carry `effect_kind`; only `must_on_success` is verified
-  (section 4).
+- **Effects:** carry `effect_kind`; only `must_on_success` is verified by
+  `introspect verify-effects` (section 4).
 - **Args source (long term):** an engine/protocol-side descriptor becomes the
   root truth and `docs/glossary.json` becomes a projection of it. Direction
   accepted; the inversion is **deferred** past the first slice.
+- **Domain representation:** projected facts carry a per-fact `domain` field
+  and `introspect facts` additionally groups rows by domain for client
+  convenience.
+- **Bound readiness route:** bound readiness lives in `introspect readiness`.
+  `introspect capabilities` remains catalog/descriptor discovery.
 
-## 12. Still open for Codex
+## 12. Remaining implementation work
 
-- Exact representation of `domain` (per-fact field vs per-group wrapper).
-- Whether `host.tool_available` lives in the introspection `host` domain or a
-  separate host-capability projection it references.
-- Whether bound readiness should be exposed as part of `introspect capabilities`
-  (when args are supplied) or only via `introspect readiness`.
+- Add fact-aware annotations for more glossary/engine capability rows.
+- Migrate glossary/help generation toward projection from an engine/protocol-side
+  descriptor once enough annotated rows prove the shape.

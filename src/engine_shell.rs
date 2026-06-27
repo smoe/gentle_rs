@@ -46,10 +46,11 @@ use crate::{
         DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP, DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP,
         DOTPLOT_ANALYSIS_METADATA_KEY, DisplayTarget, DotplotMode, DotplotOverlayAnchorExonRef,
         DotplotOverlayQuerySpec, DotplotOverlayXAxisMode, EditableStatus, Engine,
-        ExonSkipReturnKind, ExonSkipSelectionCriterion, FactExpression, FeatureBedCoordinateMode,
-        FeatureExpertTarget, FeatureExpertView, FlexibilityModel, GUIDE_DESIGN_METADATA_KEY,
-        GeneSetCohortRelationship, GeneSetProducerFilter, GeneSetPromoterCohortReport,
-        GeneSetRequest, GeneSetResolutionReport, GeneSetResolutionReviewStatus, GenomeAnchorSide,
+        ExonSkipReturnKind, ExonSkipSelectionCriterion, FactAtom, FactExpression, FactSubject,
+        FactSubjectKind, FactTruth, FeatureBedCoordinateMode, FeatureExpertTarget,
+        FeatureExpertView, FlexibilityModel, GUIDE_DESIGN_METADATA_KEY, GeneSetCohortRelationship,
+        GeneSetProducerFilter, GeneSetPromoterCohortReport, GeneSetRequest,
+        GeneSetResolutionReport, GeneSetResolutionReviewStatus, GenomeAnchorSide,
         GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackSource, GenomeTrackSubscription,
         GentleEngine, GuideCandidate, GuideOligoExportFormat, GuideOligoPlateFormat,
         GuidePracticalFilterConfig, InlineSequenceTopology, LabAssistantInstructionsFormat,
@@ -65,9 +66,10 @@ use crate::{
         PlanningCloningSuggestedNextAction, PlanningCloningVectorCandidate, PlanningEstimate,
         PlanningObjective, PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus,
         PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignReport,
-        PrimerDesignSideConstraint, PrimerSpecificityPolicy, ProbeRegionRequest, ProjectState,
-        PromoterArtifactManifestEntry, PromoterCohortKind, PromoterExpressionEvidenceInput,
-        PromoterTfbsGeneQuery, PromoterWindowCollapseMode, ProteinExpressionCdsAssessment,
+        PrimerDesignSideConstraint, PrimerSpecificityPolicy, ProbeRegionRequest, ProjectFact,
+        ProjectFactDomain, ProjectFactGraph, ProjectState, PromoterArtifactManifestEntry,
+        PromoterCohortKind, PromoterExpressionEvidenceInput, PromoterTfbsGeneQuery,
+        PromoterWindowCollapseMode, ProteinExpressionCdsAssessment,
         ProteinExpressionFeatureSummary, ProteinExpressionHandoffReport,
         ProteinExpressionHostChassisCandidate, ProteinExpressionProductDefinition,
         ProteinExpressionProductReadiness, ProteinExpressionSequenceContext,
@@ -98,7 +100,8 @@ use crate::{
         WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow, WorkflowMacroTemplate,
         WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
         construct_reasoning_action_dotplot_request, parse_feature_coordinate_term_on_sequence,
-        resolve_selection_formula_range_0based_on_sequence, split_feature_formula_range_expression,
+        project_fact_type_specs, resolve_selection_formula_range_0based_on_sequence,
+        split_feature_formula_range_expression,
     },
     enzymes::active_restriction_enzymes,
     enzymes::is_type_iis_capable_enzyme_name,
@@ -125,10 +128,11 @@ use crate::{
     tf_motifs, ucsc_rmsk,
 };
 use gentle_protocol::{
-    EXTERNAL_SERVICE_DELIVERY_ROUTE_REQUEST_SCHEMA, EXTERNAL_SERVICE_REQUEST_SCHEMA,
-    ExternalServiceDeliveryRouteReport, ExternalServiceDeliveryRouteRequest,
-    ExternalServiceRequest, GENE_SET_CO_REGULATED_CACHE_SCHEMA, GENE_SET_DIRECT_LIST_CACHE_SCHEMA,
-    GENE_SET_ONTOLOGY_ASSIGNMENT_CACHE_SCHEMA,
+    CapabilityDescriptor, EXTERNAL_SERVICE_DELIVERY_ROUTE_REQUEST_SCHEMA,
+    EXTERNAL_SERVICE_REQUEST_SCHEMA, ExternalServiceDeliveryRouteReport,
+    ExternalServiceDeliveryRouteRequest, ExternalServiceRequest,
+    GENE_SET_CO_REGULATED_CACHE_SCHEMA, GENE_SET_DIRECT_LIST_CACHE_SCHEMA,
+    GENE_SET_ONTOLOGY_ASSIGNMENT_CACHE_SCHEMA, capability_registry,
 };
 #[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
 use objc2_app_kit::NSApplication;
@@ -506,6 +510,32 @@ pub enum ShellCommand {
     FactsEval {
         expression_json: String,
         evidence_paths: Vec<String>,
+    },
+    IntrospectFacts {
+        evidence_paths: Vec<String>,
+        domain_filter: Option<String>,
+        seq_id_filter: Option<String>,
+        ui_host_available: bool,
+    },
+    IntrospectCapabilities {
+        kind_filter: Option<String>,
+    },
+    IntrospectReadiness {
+        capability_id: Option<String>,
+        args: BTreeMap<String, String>,
+        evidence_paths: Vec<String>,
+        readiness_filter: Option<String>,
+        ui_host_available: bool,
+    },
+    IntrospectVerifyEffects {
+        capability_id: String,
+        args: BTreeMap<String, String>,
+        evidence_paths: Vec<String>,
+        ui_host_available: bool,
+    },
+    IntrospectAll {
+        evidence_paths: Vec<String>,
+        ui_host_available: bool,
     },
     HistoryStatus,
     HistoryUndo,
@@ -6397,6 +6427,56 @@ impl ShellCommand {
                 "evaluate project fact expression (payload_len={}, restriction evidence files={})",
                 expression_json.len(),
                 evidence_paths.len()
+            ),
+            Self::IntrospectFacts {
+                evidence_paths,
+                domain_filter,
+                seq_id_filter,
+                ui_host_available,
+            } => format!(
+                "introspect facts (domain={}, seq_id={}, restriction evidence files={}, ui_host_available={})",
+                domain_filter.as_deref().unwrap_or("all"),
+                seq_id_filter.as_deref().unwrap_or("all"),
+                evidence_paths.len(),
+                ui_host_available
+            ),
+            Self::IntrospectCapabilities { kind_filter } => format!(
+                "introspect capabilities (kind={})",
+                kind_filter.as_deref().unwrap_or("all")
+            ),
+            Self::IntrospectReadiness {
+                capability_id,
+                args,
+                evidence_paths,
+                readiness_filter,
+                ui_host_available,
+            } => format!(
+                "introspect readiness (capability={}, args={}, readiness={}, restriction evidence files={}, ui_host_available={})",
+                capability_id.as_deref().unwrap_or("all"),
+                args.len(),
+                readiness_filter.as_deref().unwrap_or("all"),
+                evidence_paths.len(),
+                ui_host_available
+            ),
+            Self::IntrospectVerifyEffects {
+                capability_id,
+                args,
+                evidence_paths,
+                ui_host_available,
+            } => format!(
+                "introspect verify-effects (capability={}, args={}, restriction evidence files={}, ui_host_available={})",
+                capability_id,
+                args.len(),
+                evidence_paths.len(),
+                ui_host_available
+            ),
+            Self::IntrospectAll {
+                evidence_paths,
+                ui_host_available,
+            } => format!(
+                "introspect all (restriction evidence files={}, ui_host_available={})",
+                evidence_paths.len(),
+                ui_host_available
             ),
             Self::HistoryStatus => "show session-local undo/redo history status".to_string(),
             Self::HistoryUndo => "undo the most recent operation-level state change".to_string(),
@@ -14098,6 +14178,309 @@ fn parse_facts_command(tokens: &[String]) -> Result<ShellCommand, String> {
     }
 }
 
+fn parse_bool_option_value(raw: &str, option_name: &str, context: &str) -> Result<bool, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "true" | "yes" | "1" | "available" | "attached" => Ok(true),
+        "false" | "no" | "0" | "unavailable" | "detached" | "headless" => Ok(false),
+        other => Err(format!(
+            "Invalid {option_name} value '{other}' for {context}: expected true|false"
+        )),
+    }
+}
+
+fn parse_introspection_arg_binding(raw: &str) -> Result<(String, String), String> {
+    let Some((name, value)) = raw.split_once('=') else {
+        return Err("introspect readiness --arg expects NAME=VALUE".to_string());
+    };
+    let name = name.trim();
+    let value = value.trim();
+    if name.is_empty() || value.is_empty() {
+        return Err("introspect readiness --arg expects non-empty NAME=VALUE".to_string());
+    }
+    Ok((name.to_string(), value.to_string()))
+}
+
+fn parse_introspect_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err(
+            "introspect requires a subcommand: facts, capabilities, readiness, verify-effects, or all".to_string(),
+        );
+    }
+    match tokens[1].as_str() {
+        "facts" => {
+            let mut evidence_paths = vec![];
+            let mut domain_filter: Option<String> = None;
+            let mut seq_id_filter: Option<String> = None;
+            let mut ui_host_available = false;
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--evidence" => {
+                        evidence_paths.push(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--evidence",
+                            "introspect facts",
+                        )?);
+                    }
+                    "--domain" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--domain", "introspect facts")?;
+                        let normalized = raw.trim().to_ascii_lowercase();
+                        if normalized.is_empty() {
+                            return Err("introspect facts --domain must not be empty".to_string());
+                        }
+                        domain_filter = Some(normalized);
+                    }
+                    "--seq-id" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--seq-id", "introspect facts")?;
+                        let seq_id = raw.trim();
+                        if seq_id.is_empty() {
+                            return Err("introspect facts --seq-id must not be empty".to_string());
+                        }
+                        seq_id_filter = Some(seq_id.to_string());
+                    }
+                    "--ui-host" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--ui-host", "introspect facts")?;
+                        ui_host_available =
+                            parse_bool_option_value(&raw, "--ui-host", "introspect facts")?;
+                    }
+                    other => return Err(format!("Unknown option '{other}' for introspect facts")),
+                }
+            }
+            Ok(ShellCommand::IntrospectFacts {
+                evidence_paths,
+                domain_filter,
+                seq_id_filter,
+                ui_host_available,
+            })
+        }
+        "capabilities" => {
+            let mut kind_filter: Option<String> = None;
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--kind" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--kind",
+                            "introspect capabilities",
+                        )?;
+                        let normalized = raw.trim().to_ascii_lowercase();
+                        if normalized.is_empty() {
+                            return Err(
+                                "introspect capabilities --kind must not be empty".to_string()
+                            );
+                        }
+                        kind_filter = Some(normalized);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for introspect capabilities"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::IntrospectCapabilities { kind_filter })
+        }
+        "readiness" => {
+            let mut capability_tokens = vec![];
+            let mut args = BTreeMap::new();
+            let mut evidence_paths = vec![];
+            let mut readiness_filter: Option<String> = None;
+            let mut ui_host_available = false;
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--arg" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--arg", "introspect readiness")?;
+                        let (name, value) = parse_introspection_arg_binding(&raw)?;
+                        args.insert(name, value);
+                    }
+                    "--seq-id" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--seq-id",
+                            "introspect readiness",
+                        )?;
+                        let seq_id = raw.trim();
+                        if seq_id.is_empty() {
+                            return Err(
+                                "introspect readiness --seq-id must not be empty".to_string()
+                            );
+                        }
+                        args.insert("SEQ_ID".to_string(), seq_id.to_string());
+                    }
+                    "--readiness" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--readiness",
+                            "introspect readiness",
+                        )?;
+                        let normalized = raw.trim().to_ascii_lowercase();
+                        if !matches!(normalized.as_str(), "ready" | "blocked" | "unknown") {
+                            return Err(
+                                "introspect readiness --readiness expects ready|blocked|unknown"
+                                    .to_string(),
+                            );
+                        }
+                        readiness_filter = Some(normalized);
+                    }
+                    "--evidence" => {
+                        evidence_paths.push(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--evidence",
+                            "introspect readiness",
+                        )?);
+                    }
+                    "--ui-host" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--ui-host",
+                            "introspect readiness",
+                        )?;
+                        ui_host_available =
+                            parse_bool_option_value(&raw, "--ui-host", "introspect readiness")?;
+                    }
+                    other if other.starts_with("--") => {
+                        return Err(format!("Unknown option '{other}' for introspect readiness"));
+                    }
+                    other => {
+                        capability_tokens.push(other.to_string());
+                        idx += 1;
+                    }
+                }
+            }
+            let capability_id = if capability_tokens.is_empty() {
+                None
+            } else {
+                Some(capability_tokens.join(" "))
+            };
+            Ok(ShellCommand::IntrospectReadiness {
+                capability_id,
+                args,
+                evidence_paths,
+                readiness_filter,
+                ui_host_available,
+            })
+        }
+        "verify-effects" => {
+            let mut capability_tokens = vec![];
+            let mut args = BTreeMap::new();
+            let mut evidence_paths = vec![];
+            let mut ui_host_available = false;
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--arg" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--arg",
+                            "introspect verify-effects",
+                        )?;
+                        let (name, value) = parse_introspection_arg_binding(&raw)?;
+                        args.insert(name, value);
+                    }
+                    "--seq-id" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--seq-id",
+                            "introspect verify-effects",
+                        )?;
+                        let seq_id = raw.trim();
+                        if seq_id.is_empty() {
+                            return Err(
+                                "introspect verify-effects --seq-id must not be empty".to_string()
+                            );
+                        }
+                        args.insert("SEQ_ID".to_string(), seq_id.to_string());
+                    }
+                    "--evidence" => {
+                        evidence_paths.push(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--evidence",
+                            "introspect verify-effects",
+                        )?);
+                    }
+                    "--ui-host" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--ui-host",
+                            "introspect verify-effects",
+                        )?;
+                        ui_host_available = parse_bool_option_value(
+                            &raw,
+                            "--ui-host",
+                            "introspect verify-effects",
+                        )?;
+                    }
+                    other if other.starts_with("--") => {
+                        return Err(format!(
+                            "Unknown option '{other}' for introspect verify-effects"
+                        ));
+                    }
+                    other => {
+                        capability_tokens.push(other.to_string());
+                        idx += 1;
+                    }
+                }
+            }
+            if capability_tokens.is_empty() {
+                return Err("introspect verify-effects requires a capability id".to_string());
+            }
+            Ok(ShellCommand::IntrospectVerifyEffects {
+                capability_id: capability_tokens.join(" "),
+                args,
+                evidence_paths,
+                ui_host_available,
+            })
+        }
+        "all" => {
+            let mut evidence_paths = vec![];
+            let mut ui_host_available = false;
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--evidence" => {
+                        evidence_paths.push(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--evidence",
+                            "introspect all",
+                        )?);
+                    }
+                    "--ui-host" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--ui-host", "introspect all")?;
+                        ui_host_available =
+                            parse_bool_option_value(&raw, "--ui-host", "introspect all")?;
+                    }
+                    other => return Err(format!("Unknown option '{other}' for introspect all")),
+                }
+            }
+            Ok(ShellCommand::IntrospectAll {
+                evidence_paths,
+                ui_host_available,
+            })
+        }
+        other => Err(format!(
+            "Unknown introspect subcommand '{other}' (expected facts, capabilities, readiness, verify-effects, or all)"
+        )),
+    }
+}
+
 fn load_restriction_site_scan_evidence(
     evidence_paths: &[String],
 ) -> Result<Vec<RestrictionSiteScanReport>, String> {
@@ -14118,6 +14501,4292 @@ fn load_restriction_site_scan_evidence(
         reports.push(report);
     }
     Ok(reports)
+}
+
+fn introspection_project_graph(
+    engine: &GentleEngine,
+    restriction_reports: &[RestrictionSiteScanReport],
+    ui_host_available: bool,
+) -> ProjectFactGraph {
+    let mut graph = engine.project_fact_graph_with_restriction_evidence(restriction_reports);
+    graph.facts.push(ProjectFact {
+        fact: "ui.host_available".to_string(),
+        domain: ProjectFactDomain::View,
+        subject: FactSubject {
+            kind: FactSubjectKind::Ui,
+            id: "host".to_string(),
+        },
+        value: Some(json!(ui_host_available)),
+        ..ProjectFact::default()
+    });
+    if let Ok((_catalog_path, catalog)) = load_agent_system_catalog(None) {
+        for system in catalog.systems {
+            let availability = agent_system_availability(&system);
+            graph.facts.push(ProjectFact {
+                fact: "host.tool_available".to_string(),
+                domain: ProjectFactDomain::Host,
+                subject: FactSubject {
+                    kind: FactSubjectKind::Other,
+                    id: system.id,
+                },
+                value: Some(json!(availability.available)),
+                ..ProjectFact::default()
+            });
+        }
+    }
+    graph
+}
+
+fn domain_matches_filter(domain: ProjectFactDomain, filter: Option<&str>) -> bool {
+    filter
+        .map(|filter| domain.as_str() == filter)
+        .unwrap_or(true)
+}
+
+fn fact_matches_seq_id_filter(fact: &ProjectFact, seq_id_filter: Option<&str>) -> bool {
+    seq_id_filter
+        .map(|seq_id| fact.subject.kind == FactSubjectKind::Sequence && fact.subject.id == seq_id)
+        .unwrap_or(true)
+}
+
+fn introspection_facts_payload(
+    engine: &GentleEngine,
+    evidence: &[RestrictionSiteScanReport],
+    domain_filter: Option<&str>,
+    seq_id_filter: Option<&str>,
+    ui_host_available: bool,
+) -> Value {
+    let graph = introspection_project_graph(engine, evidence, ui_host_available);
+    let mut grouped: BTreeMap<String, Value> = BTreeMap::new();
+    for domain in [
+        ProjectFactDomain::Project,
+        ProjectFactDomain::View,
+        ProjectFactDomain::Host,
+        ProjectFactDomain::Config,
+    ] {
+        if !domain_matches_filter(domain, domain_filter) {
+            continue;
+        }
+        let facts = graph
+            .facts
+            .iter()
+            .filter(|fact| fact.domain == domain)
+            .filter(|fact| fact_matches_seq_id_filter(fact, seq_id_filter))
+            .cloned()
+            .collect::<Vec<_>>();
+        let mut entry = json!({ "facts": facts });
+        if domain == ProjectFactDomain::Project {
+            entry["schema"] = json!("gentle.project_fact_graph.v1");
+        }
+        if domain == ProjectFactDomain::View {
+            entry["host_attached"] = json!(ui_host_available);
+        }
+        grouped.insert(domain.as_str().to_string(), entry);
+    }
+    let specs = project_fact_type_specs()
+        .iter()
+        .filter(|spec| domain_matches_filter(spec.domain, domain_filter))
+        .collect::<Vec<_>>();
+    json!({
+        "schema": "gentle.introspection.v1",
+        "route": "facts",
+        "filters": {
+            "domain": domain_filter,
+            "seq_id": seq_id_filter,
+        },
+        "facts": grouped,
+        "fact_type_specs": specs,
+    })
+}
+
+fn introspection_kind_for_registry_descriptor(descriptor: &CapabilityDescriptor) -> &'static str {
+    if descriptor.name.starts_with("ui ") {
+        "view_intent"
+    } else {
+        "operation"
+    }
+}
+
+fn introspection_registry_descriptor(descriptor: &CapabilityDescriptor) -> Value {
+    json!({
+        "id": descriptor.name,
+        "kind": introspection_kind_for_registry_descriptor(descriptor),
+        "mutating": descriptor.mutating,
+        "requires_confirmation": descriptor.mutating.as_str() != "false",
+        "args": [],
+        "reads": [],
+        "effects": [],
+        "precondition_expr": Value::Null,
+        "description": descriptor.description,
+        "annotation_status": "registry_only",
+        "registry": {
+            "source": descriptor.source,
+            "title": descriptor.title,
+            "input_schema": descriptor.input_schema,
+            "output_schema": descriptor.output_schema,
+            "surfacing": {
+                "gui": descriptor.gui,
+                "cli": descriptor.cli,
+                "mcp": descriptor.mcp,
+                "js": descriptor.js,
+                "lua": descriptor.lua,
+                "clawbio": descriptor.clawbio,
+            },
+            "surfacing_justifications": descriptor.surfacing_justifications,
+            "inline_operand_ok": descriptor.inline_operand_ok,
+            "engine_operations": descriptor.engine_operations,
+        }
+    })
+}
+
+fn registry_metadata_for_introspection(id: &str) -> Option<Value> {
+    capability_registry()
+        .iter()
+        .find(|descriptor| descriptor.name == id)
+        .map(|descriptor| introspection_registry_descriptor(descriptor)["registry"].clone())
+}
+
+fn sequence_derivation_operation_descriptor(
+    id: &str,
+    description: &str,
+    extra_args: Vec<Value>,
+) -> Value {
+    let mut args = vec![json!({
+        "name": "INPUT_SEQ_ID",
+        "required": true,
+        "subject_kind": "sequence",
+        "detail": "loaded input sequence id carried by the operation payload"
+    })];
+    args.extend(extra_args);
+    args.push(json!({
+        "name": "OUTPUT_ID",
+        "required": false,
+        "subject_kind": "sequence",
+        "detail": "requested output sequence id; required for deterministic effect verification and may be uniquified if already present"
+    }));
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": false,
+        "args": args,
+        "reads": [
+            {"fact": "sequence.exists", "subject": {"arg": "INPUT_SEQ_ID"}}
+        ],
+        "effects": [
+            {
+                "fact": "sequence.exists",
+                "subject": {"arg": "OUTPUT_ID"},
+                "effect_kind": "must_on_success"
+            }
+        ],
+        "precondition_expr": {
+            "all": [
+                {"fact": "sequence.exists", "subject": {"arg": "INPUT_SEQ_ID"}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn report_list_operation_descriptor(
+    id: &str,
+    description: &str,
+    optional_filter_arg: &str,
+) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "false",
+        "requires_confirmation": false,
+        "args": [
+            {"name": optional_filter_arg, "required": false, "subject_kind": "sequence", "detail": "optional sequence id filter carried by the operation payload"}
+        ],
+        "reads": [],
+        "effects": [],
+        "precondition_expr": {"all": []},
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn report_show_operation_descriptor(id: &str, report_kind: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "false",
+        "requires_confirmation": false,
+        "args": [
+            {"name": "REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted report id carried by the operation payload"}
+        ],
+        "reads": [
+            {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": report_kind}
+        ],
+        "effects": [],
+        "precondition_expr": {
+            "all": [
+                {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": report_kind}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn report_export_operation_descriptor(
+    id: &str,
+    report_kind: &str,
+    output_detail: &str,
+    description: &str,
+) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "false",
+        "requires_confirmation": false,
+        "args": [
+            {"name": "REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted report id carried by the operation payload"},
+            {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": output_detail}
+        ],
+        "reads": [
+            {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": report_kind}
+        ],
+        "effects": [
+            {
+                "fact": "artifact.written",
+                "subject": {"arg": "OUTPUT_PATH"},
+                "effect_kind": "external_handoff"
+            }
+        ],
+        "precondition_expr": {
+            "all": [
+                {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": report_kind}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn report_export_any_kind_operation_descriptor(
+    id: &str,
+    report_kinds: &[&str],
+    output_detail: &str,
+    description: &str,
+) -> Value {
+    let reads = report_kinds
+        .iter()
+        .map(|report_kind| {
+            json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": report_kind})
+        })
+        .collect::<Vec<_>>();
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "false",
+        "requires_confirmation": false,
+        "args": [
+            {"name": "REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted report id carried by the operation payload"},
+            {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": output_detail}
+        ],
+        "reads": reads,
+        "effects": [
+            {
+                "fact": "artifact.written",
+                "subject": {"arg": "OUTPUT_PATH"},
+                "effect_kind": "external_handoff"
+            }
+        ],
+        "precondition_expr": {
+            "any": report_kinds
+                .iter()
+                .map(|report_kind| {
+                    json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": report_kind})
+                })
+                .collect::<Vec<_>>()
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn rna_read_report_mutation_descriptor(id: &str, description: &str, effects: Vec<Value>) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": false,
+        "args": [
+            {"name": "REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted RNA-read interpretation report id"}
+        ],
+        "reads": [
+            {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "rna_read"}
+        ],
+        "effects": effects,
+        "precondition_expr": {
+            "all": [
+                {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "rna_read"}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn optional_artifact_operation_descriptor(
+    id: &str,
+    output_detail: &str,
+    description: &str,
+) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "false",
+        "requires_confirmation": false,
+        "args": [
+            {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": output_detail}
+        ],
+        "reads": [],
+        "effects": [
+            {
+                "fact": "artifact.written",
+                "subject": {"arg": "OUTPUT_PATH"},
+                "effect_kind": "external_handoff"
+            }
+        ],
+        "precondition_expr": {"all": []},
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn catalog_read_operation_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "false",
+        "requires_confirmation": false,
+        "args": [
+            {"name": "FILTER", "required": false, "subject_kind": "other", "detail": "optional catalog filter carried by the command or helper"}
+        ],
+        "reads": [],
+        "effects": [],
+        "precondition_expr": {"all": []},
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn external_artifact_catalog_operation_descriptor(
+    id: &str,
+    output_detail: &str,
+    description: &str,
+    extra_args: Vec<Value>,
+) -> Value {
+    let mut args = extra_args;
+    args.push(json!({
+        "name": "OUTPUT_PATH",
+        "required": true,
+        "subject_kind": "other",
+        "detail": output_detail
+    }));
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "false",
+        "requires_confirmation": false,
+        "args": args,
+        "reads": [],
+        "effects": [
+            {
+                "fact": "artifact.written",
+                "subject": {"arg": "OUTPUT_PATH"},
+                "effect_kind": "external_handoff"
+            }
+        ],
+        "precondition_expr": {"all": []},
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn no_project_inspection_operation_descriptor(
+    id: &str,
+    description: &str,
+    args: Vec<Value>,
+) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "false",
+        "requires_confirmation": false,
+        "args": args,
+        "reads": [],
+        "effects": [],
+        "precondition_expr": {"all": []},
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn optional_artifact_inspection_operation_descriptor(
+    id: &str,
+    output_detail: &str,
+    description: &str,
+    mut args: Vec<Value>,
+) -> Value {
+    args.push(json!({
+        "name": "OUTPUT_PATH",
+        "required": false,
+        "subject_kind": "other",
+        "detail": output_detail
+    }));
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "false",
+        "requires_confirmation": false,
+        "args": args,
+        "reads": [],
+        "effects": [
+            {
+                "fact": "artifact.written",
+                "subject": {"arg": "OUTPUT_PATH"},
+                "effect_kind": "external_handoff"
+            }
+        ],
+        "precondition_expr": {"all": []},
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn primer_design_operation_descriptor(id: &str, report_kind: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": false,
+        "args": [
+            {"name": "TEMPLATE_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "template sequence id carried by the operation payload"},
+            {"name": "REPORT_ID", "required": false, "subject_kind": "report", "detail": "explicit report id carried by the operation payload; required for deterministic effect verification"}
+        ],
+        "reads": [
+            {"fact": "sequence.exists", "subject": {"arg": "TEMPLATE_SEQ_ID"}}
+        ],
+        "effects": [
+            {
+                "fact": "report.exists",
+                "subject": {"arg": "REPORT_ID"},
+                "report_kind": report_kind,
+                "equals": report_kind,
+                "effect_kind": "must_on_success"
+            }
+        ],
+        "precondition_expr": {
+            "all": [
+                {"fact": "sequence.exists", "subject": {"arg": "TEMPLATE_SEQ_ID"}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn annotated_introspection_capability_descriptors() -> Vec<Value> {
+    vec![
+        json!({
+            "id": "help",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "COMMAND", "required": false, "detail": "optional command path/topic"},
+                {"name": "--format", "required": false, "detail": "text, json, or markdown output"},
+                {"name": "--interface", "required": false, "detail": "optional interface filter"}
+            ],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Show the shell command help catalog or one command topic.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("help")
+        }),
+        json!({
+            "id": "capabilities",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Inspect shared engine capability metadata.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("capabilities")
+        }),
+        json!({
+            "id": "state-summary",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Summarize loaded project state for humans, adapters, and agent context.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("state-summary")
+        }),
+        json!({
+            "id": "state_summary",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Summarize loaded project state through the shared MCP/tool route.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("state_summary")
+        }),
+        json!({
+            "id": "history status",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Inspect session-local undo/redo availability without changing project state.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("history status")
+        }),
+        json!({
+            "id": "facts graph",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "--evidence", "required": false, "subject_kind": "other", "detail": "optional restriction-site scan evidence JSON path"}
+            ],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Return the deterministic project fact graph, optionally enriched with explicit evidence files.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("facts graph")
+        }),
+        json!({
+            "id": "facts eval",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "FACT_EXPR_JSON_OR_@FILE", "required": true, "subject_kind": "other", "detail": "gentle.fact_expression.v1 JSON expression or @file"},
+                {"name": "--evidence", "required": false, "subject_kind": "other", "detail": "optional restriction-site scan evidence JSON path"}
+            ],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Evaluate one fact expression against the current project fact graph and explicit evidence files.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("facts eval")
+        }),
+        json!({
+            "id": "introspect facts",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "--domain", "required": false, "subject_kind": "other", "detail": "optional project, view, host, or config domain filter"},
+                {"name": "--seq-id", "required": false, "subject_kind": "sequence", "detail": "optional concrete sequence-subject filter"},
+                {"name": "--evidence", "required": false, "subject_kind": "other", "detail": "optional restriction-site scan evidence JSON path"},
+                {"name": "--ui-host", "required": false, "subject_kind": "other", "detail": "override projected GUI host availability for attached clients"}
+            ],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Return the grouped introspection fact projection for project, view, host, and config domains.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("introspect facts")
+        }),
+        json!({
+            "id": "introspect capabilities",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "--kind", "required": false, "subject_kind": "other", "detail": "optional operation, view_intent, or host_config filter"}
+            ],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Return shared registry-backed capability metadata plus fact-aware descriptors where implemented.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("introspect capabilities")
+        }),
+        json!({
+            "id": "introspect readiness",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "CAPABILITY_ID", "required": false, "subject_kind": "other", "detail": "optional capability id to evaluate"},
+                {"name": "--arg", "required": false, "subject_kind": "other", "detail": "optional NAME=VALUE argument binding; repeatable"},
+                {"name": "--seq-id", "required": false, "subject_kind": "sequence", "detail": "shortcut binding for SEQ_ID"},
+                {"name": "--readiness", "required": false, "subject_kind": "other", "detail": "optional ready, blocked, or unknown result filter"},
+                {"name": "--evidence", "required": false, "subject_kind": "other", "detail": "optional restriction-site scan evidence JSON path"},
+                {"name": "--ui-host", "required": false, "subject_kind": "other", "detail": "override projected GUI host availability for attached clients"}
+            ],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Evaluate bound or unbound readiness for fact-annotated capabilities against the current fact projection.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("introspect readiness")
+        }),
+        json!({
+            "id": "introspect verify-effects",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "CAPABILITY_ID", "required": true, "subject_kind": "other", "detail": "capability id whose must_on_success effects are verified"},
+                {"name": "--arg", "required": false, "subject_kind": "other", "detail": "optional NAME=VALUE argument binding; repeatable"},
+                {"name": "--seq-id", "required": false, "subject_kind": "sequence", "detail": "shortcut binding for SEQ_ID"},
+                {"name": "--evidence", "required": false, "subject_kind": "other", "detail": "optional restriction-site scan evidence JSON path"},
+                {"name": "--ui-host", "required": false, "subject_kind": "other", "detail": "override projected GUI host availability for attached clients"}
+            ],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Verify declared must_on_success effects for a fact-annotated capability against current facts.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("introspect verify-effects")
+        }),
+        json!({
+            "id": "introspect all",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "--evidence", "required": false, "subject_kind": "other", "detail": "optional restriction-site scan evidence JSON path"},
+                {"name": "--ui-host", "required": false, "subject_kind": "other", "detail": "override projected GUI host availability for attached clients"}
+            ],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Return facts, capabilities, and unbound readiness in one aggregate introspection payload.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("introspect all")
+        }),
+        json!({
+            "id": "sequence create",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "--sequence-text", "required": true, "detail": "inline DNA sequence text"},
+                {"name": "OUTPUT_ID", "required": true, "subject_kind": "sequence", "detail": "explicit sequence id supplied with --output-id"}
+            ],
+            "reads": [],
+            "effects": [
+                {
+                    "fact": "sequence.exists",
+                    "subject": {"arg": "OUTPUT_ID"},
+                    "effect_kind": "must_on_success"
+                }
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Create a persistent project sequence from inline sequence text.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("sequence create")
+        }),
+        sequence_derivation_operation_descriptor(
+            "Reverse",
+            "Create a new sequence by reversing the stored input sequence.",
+            vec![],
+        ),
+        sequence_derivation_operation_descriptor(
+            "Complement",
+            "Create a new sequence by complementing the stored input sequence.",
+            vec![],
+        ),
+        sequence_derivation_operation_descriptor(
+            "ReverseComplement",
+            "Create a new sequence by reverse-complementing the stored input sequence.",
+            vec![],
+        ),
+        sequence_derivation_operation_descriptor(
+            "Branch",
+            "Create a branch copy of one stored input sequence.",
+            vec![],
+        ),
+        sequence_derivation_operation_descriptor(
+            "ExtractRegion",
+            "Create a new sequence by extracting one interval from a stored input sequence.",
+            vec![
+                json!({"name": "FROM", "required": true, "detail": "0-based start coordinate carried by the operation payload"}),
+                json!({"name": "TO", "required": true, "detail": "0-based end coordinate carried by the operation payload"}),
+            ],
+        ),
+        json!({
+            "id": "SetTopology",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id carried by the operation payload"},
+                {"name": "CIRCULAR", "required": true, "detail": "boolean topology flag carried by the operation payload"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "sequence.circular",
+                    "subject": {"arg": "SEQ_ID"},
+                    "equals": {"arg": "CIRCULAR"},
+                    "effect_kind": "must_on_success"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Set the topology flag of one loaded sequence.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("SetTopology")
+        }),
+        json!({
+            "id": "RecomputeFeatures",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id carried by the operation payload"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Recompute derived feature annotations for one loaded sequence.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("RecomputeFeatures")
+        }),
+        json!({
+            "id": "features restriction-scan",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id"},
+                {"name": "--enzyme", "required": false, "detail": "optional restriction enzyme name"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "report.exists",
+                    "report_kind": "restriction_scan",
+                    "equals": "restriction_scan",
+                    "effect_kind": "must_on_success"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Scan a loaded sequence for restriction-enzyme sites.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("features restriction-scan")
+        }),
+        json!({
+            "id": "features query",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id"},
+                {"name": "--kind", "required": false, "detail": "optional feature kind filter"},
+                {"name": "--range", "required": false, "detail": "optional query interval START..END"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Query annotated features on one loaded sequence with optional filters.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("features query")
+        }),
+        json!({
+            "id": "features export-bed",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id"},
+                {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external BED output path"},
+                {"name": "--coordinate-mode", "required": false, "detail": "auto, local, or genomic coordinates"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_PATH"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Export matching annotated features from one loaded sequence to an external BED file.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("features export-bed")
+        }),
+        json!({
+            "id": "ExportFeaturesBed",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id carried by query.seq_id"},
+                {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external BED output path carried by path"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_PATH"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Export matching annotated features from one loaded sequence to an external BED file through the shared engine operation.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("ExportFeaturesBed")
+        }),
+        json!({
+            "id": "InspectSequenceContextView",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id carried by seq_id"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Inspect one loaded DNA sequence-window context through the shared engine operation.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("InspectSequenceContextView")
+        }),
+        json!({
+            "id": "ExportSequenceContextBundle",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id carried by seq_id"},
+                {"name": "OUTPUT_DIR", "required": true, "subject_kind": "other", "detail": "external output directory carried by output_dir"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_DIR"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Export one loaded DNA sequence-window context as a deterministic external artifact bundle.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("ExportSequenceContextBundle")
+        }),
+        json!({
+            "id": "inspect-feature-expert",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id"},
+                {"name": "TARGET", "required": true, "detail": "expert target such as tfbs, restriction, splicing, isoform, protein-comparison, or uniprot-projection"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Inspect one feature-expert target on a loaded sequence.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("inspect-feature-expert")
+        }),
+        json!({
+            "id": "render-feature-expert-svg",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id"},
+                {"name": "TARGET", "required": true, "detail": "expert target such as tfbs, restriction, splicing, isoform, protein-comparison, or uniprot-projection"},
+                {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external SVG output path"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_PATH"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Render one feature-expert target from a loaded sequence to an external SVG file.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("render-feature-expert-svg")
+        }),
+        json!({
+            "id": "features tfbs-summary",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id"},
+                {"name": "--focus", "required": true, "detail": "focus interval START..END"},
+                {"name": "--context", "required": false, "detail": "optional wider context interval START..END"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Group TFBS hits by factor name within one focus window and compare them against a wider context window.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("features tfbs-summary")
+        }),
+        json!({
+            "id": "SummarizeTfbsRegion",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id carried by seq_id"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Summarize TFBS occurrences around one focus window on a loaded sequence.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("SummarizeTfbsRegion")
+        }),
+        json!({
+            "id": "QueryProteinResidueGenomicCoordinates",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded annotated genomic/source sequence id carried by seq_id"},
+                {"name": "TRANSCRIPT_ID", "required": false, "detail": "optional transcript selector carried by transcript_id"},
+                {"name": "RESIDUE_START_1BASED", "required": true, "detail": "one-based inclusive residue range start"},
+                {"name": "RESIDUE_END_1BASED", "required": true, "detail": "one-based inclusive residue range end"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Map transcript-native protein residue coordinates back to genomic/source coordinates on one loaded sequence.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("QueryProteinResidueGenomicCoordinates")
+        }),
+        json!({
+            "id": "variant materialize-allele",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence carrying a variant feature"},
+                {"name": "--allele", "required": true, "detail": "reference or alternate allele choice"},
+                {"name": "OUTPUT_ID", "required": false, "subject_kind": "sequence", "detail": "explicit sequence id supplied with --output-id; required for deterministic effect verification"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "sequence.exists",
+                    "subject": {"arg": "OUTPUT_ID"},
+                    "effect_kind": "must_on_success"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Create one reference or alternate single-allele sequence from a variant-bearing sequence.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("variant materialize-allele")
+        }),
+        json!({
+            "id": "MaterializeVariantAllele",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "INPUT_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence carrying a variant feature, carried by the operation input field"},
+                {"name": "ALLELE", "required": true, "detail": "reference or alternate allele choice carried by the operation payload"},
+                {"name": "OUTPUT_ID", "required": false, "subject_kind": "sequence", "detail": "explicit sequence id carried by the operation payload; required for deterministic effect verification"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "INPUT_SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "sequence.exists",
+                    "subject": {"arg": "OUTPUT_ID"},
+                    "effect_kind": "must_on_success"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "INPUT_SEQ_ID"}}
+                ]
+            },
+            "description": "Create one reference or alternate single-allele sequence through the shared engine operation.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("MaterializeVariantAllele")
+        }),
+        json!({
+            "id": "align compute",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "QUERY_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded query sequence id for the seq-id alignment form"},
+                {"name": "TARGET_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded target sequence id for the seq-id alignment form"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "QUERY_SEQ_ID"}},
+                {"fact": "sequence.exists", "subject": {"arg": "TARGET_SEQ_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "QUERY_SEQ_ID"}},
+                    {"fact": "sequence.exists", "subject": {"arg": "TARGET_SEQ_ID"}}
+                ]
+            },
+            "description": "Compute a pairwise alignment between two loaded project sequences.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("align compute")
+        }),
+        json!({
+            "id": "AlignSequences",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "QUERY_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded query sequence id carried by the operation query target"},
+                {"name": "TARGET_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded target sequence id carried by the operation target"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "QUERY_SEQ_ID"}},
+                {"fact": "sequence.exists", "subject": {"arg": "TARGET_SEQ_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "QUERY_SEQ_ID"}},
+                    {"fact": "sequence.exists", "subject": {"arg": "TARGET_SEQ_ID"}}
+                ]
+            },
+            "description": "Compute a pairwise alignment between two loaded project sequences through the shared engine operation.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("AlignSequences")
+        }),
+        json!({
+            "id": "render-svg",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id to render"},
+                {"name": "MODE", "required": true, "detail": "linear or circular render mode"},
+                {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external SVG output path"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_PATH"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Render a loaded sequence map to an external SVG file.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("render-svg")
+        }),
+        json!({
+            "id": "render-rna-svg",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded RNA sequence id to render"},
+                {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external SVG output path"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_PATH"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Render a loaded RNA secondary-structure SVG file.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("render-rna-svg")
+        }),
+        json!({
+            "id": "render-lineage-svg",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external SVG output path"}
+            ],
+            "reads": [],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_PATH"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Render the current project lineage graph to an external SVG file.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("render-lineage-svg")
+        }),
+        json!({
+            "id": "RenderSequenceSvg",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id carried by the operation payload"},
+                {"name": "MODE", "required": true, "detail": "linear or circular render mode carried by the operation payload"},
+                {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external SVG output path carried by the operation payload"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_PATH"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Render a loaded sequence map to an external SVG file through the shared engine operation.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("RenderSequenceSvg")
+        }),
+        json!({
+            "id": "RenderFeatureExpertSvg",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id carried by the operation payload"},
+                {"name": "TARGET", "required": true, "detail": "feature expert target carried by the operation payload"},
+                {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external SVG output path carried by the operation payload"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_PATH"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Render one feature-expert target from a loaded sequence to an external SVG file through the shared engine operation.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("RenderFeatureExpertSvg")
+        }),
+        json!({
+            "id": "RenderTfbsScoreTrackCorrelationSvg",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id carried by the operation payload"},
+                {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external SVG output path carried by the operation payload"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_PATH"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Render a TFBS score-track correlation matrix from one loaded sequence to an external SVG file.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("RenderTfbsScoreTrackCorrelationSvg")
+        }),
+        json!({
+            "id": "RenderRnaStructureSvg",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded RNA sequence id carried by the operation payload"},
+                {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external SVG output path carried by the operation payload"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_PATH"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Render a loaded RNA secondary-structure SVG file through the shared engine operation.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("RenderRnaStructureSvg")
+        }),
+        json!({
+            "id": "RenderLineageSvg",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external SVG output path carried by the operation payload"}
+            ],
+            "reads": [],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_PATH"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Render the current project lineage graph to an external SVG file through the shared engine operation.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("RenderLineageSvg")
+        }),
+        json!({
+            "id": "rna-info",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id to inspect with the RNA structure text reporter"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Inspect one loaded sequence with the RNA structure text reporter.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("rna-info")
+        }),
+        json!({
+            "id": "reverse-translate run",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "PROTEIN_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded protein sequence id"},
+                {"name": "OUTPUT_ID", "required": false, "subject_kind": "sequence", "detail": "explicit coding-DNA sequence id supplied with --output-id; required for deterministic effect verification"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "PROTEIN_SEQ_ID"}},
+                {"fact": "sequence.kind", "subject": {"arg": "PROTEIN_SEQ_ID"}, "equals": "protein"}
+            ],
+            "effects": [
+                {
+                    "fact": "sequence.exists",
+                    "subject": {"arg": "OUTPUT_ID"},
+                    "effect_kind": "must_on_success"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "PROTEIN_SEQ_ID"}},
+                    {"fact": "sequence.kind", "subject": {"arg": "PROTEIN_SEQ_ID"}, "equals": "protein"}
+                ]
+            },
+            "description": "Reverse-translate one protein sequence into a synthetic coding-DNA product.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("reverse-translate run")
+        }),
+        json!({
+            "id": "ReverseTranslateProteinSequence",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "PROTEIN_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded protein sequence id carried by the operation payload"},
+                {"name": "OUTPUT_ID", "required": false, "subject_kind": "sequence", "detail": "explicit coding-DNA sequence id carried by the operation payload; required for deterministic effect verification"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "PROTEIN_SEQ_ID"}},
+                {"fact": "sequence.kind", "subject": {"arg": "PROTEIN_SEQ_ID"}, "equals": "protein"}
+            ],
+            "effects": [
+                {
+                    "fact": "sequence.exists",
+                    "subject": {"arg": "OUTPUT_ID"},
+                    "effect_kind": "must_on_success"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "PROTEIN_SEQ_ID"}},
+                    {"fact": "sequence.kind", "subject": {"arg": "PROTEIN_SEQ_ID"}, "equals": "protein"}
+                ]
+            },
+            "description": "Reverse-translate one loaded protein sequence through the shared engine operation.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("ReverseTranslateProteinSequence")
+        }),
+        json!({
+            "id": "reverse-translate list-reports",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "PROTEIN_SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "optional protein sequence id filter"}
+            ],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "List persisted reverse-translation reports, optionally filtered by protein sequence id.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("reverse-translate list-reports")
+        }),
+        json!({
+            "id": "reverse-translate show-report",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted reverse-translation report id"}
+            ],
+            "reads": [
+                {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "reverse_translation"}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "reverse_translation"}
+                ]
+            },
+            "description": "Inspect one persisted reverse-translation provenance report.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("reverse-translate show-report")
+        }),
+        json!({
+            "id": "reverse-translate export-report",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted reverse-translation report id"},
+                {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external JSON output path"}
+            ],
+            "reads": [
+                {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "reverse_translation"}
+            ],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_PATH"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "reverse_translation"}
+                ]
+            },
+            "description": "Export one persisted reverse-translation report to an external JSON file.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("reverse-translate export-report")
+        }),
+        json!({
+            "id": "primers design",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REQUEST_JSON", "required": true, "detail": "DesignPrimerPairs operation payload or @file"},
+                {"name": "TEMPLATE_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "template sequence id carried by the DesignPrimerPairs payload"},
+                {"name": "REPORT_ID", "required": false, "subject_kind": "report", "detail": "explicit primer-design report id carried by the payload; required for deterministic effect verification"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "TEMPLATE_SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "report.exists",
+                    "subject": {"arg": "REPORT_ID"},
+                    "report_kind": "primer_design",
+                    "equals": "primer_design",
+                    "effect_kind": "must_on_success"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "TEMPLATE_SEQ_ID"}}
+                ]
+            },
+            "description": "Generate and persist a ranked primer-pair design report from a DesignPrimerPairs payload.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers design")
+        }),
+        primer_design_operation_descriptor(
+            "DesignPrimerPairs",
+            "primer_design",
+            "Generate and persist a ranked primer-pair design report through the shared engine operation.",
+        ),
+        primer_design_operation_descriptor(
+            "DesignInsertionPrimerPairs",
+            "primer_design",
+            "Generate and persist a ranked insertion-primer design report through the shared engine operation.",
+        ),
+        json!({
+            "id": "primers list-reports",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "List persisted primer-pair design reports.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers list-reports")
+        }),
+        json!({
+            "id": "primers show-report",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted primer-design report id"}
+            ],
+            "reads": [
+                {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "primer_design"}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "primer_design"}
+                ]
+            },
+            "description": "Inspect one persisted primer-pair design report.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers show-report")
+        }),
+        json!({
+            "id": "primers export-report",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted primer-design report id"},
+                {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external JSON output path"}
+            ],
+            "reads": [
+                {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "primer_design"}
+            ],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_PATH"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "primer_design"}
+                ]
+            },
+            "description": "Export one persisted primer-pair design report to an external JSON file.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers export-report")
+        }),
+        json!({
+            "id": "primers design-qpcr",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REQUEST_JSON", "required": true, "detail": "DesignQpcrAssays operation payload or gentle.qpcr_seed_request.v1 payload"},
+                {"name": "TEMPLATE_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "template sequence id carried by the qPCR design payload"},
+                {"name": "REPORT_ID", "required": false, "subject_kind": "report", "detail": "explicit qPCR design report id carried by the payload; required for deterministic effect verification"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "TEMPLATE_SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "report.exists",
+                    "subject": {"arg": "REPORT_ID"},
+                    "report_kind": "qpcr_design",
+                    "equals": "qpcr_design",
+                    "effect_kind": "must_on_success"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "TEMPLATE_SEQ_ID"}}
+                ]
+            },
+            "description": "Generate and persist a ranked qPCR assay design report from a DesignQpcrAssays payload.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers design-qpcr")
+        }),
+        primer_design_operation_descriptor(
+            "DesignQpcrAssays",
+            "qpcr_design",
+            "Generate and persist a ranked qPCR assay design report through the shared engine operation.",
+        ),
+        json!({
+            "id": "primers list-qpcr-reports",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "List persisted qPCR assay design reports.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers list-qpcr-reports")
+        }),
+        json!({
+            "id": "primers show-qpcr-report",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted qPCR design report id"}
+            ],
+            "reads": [
+                {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "qpcr_design"}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "qpcr_design"}
+                ]
+            },
+            "description": "Inspect one persisted qPCR assay design report.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers show-qpcr-report")
+        }),
+        json!({
+            "id": "primers export-qpcr-report",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted qPCR design report id"},
+                {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external JSON output path"}
+            ],
+            "reads": [
+                {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "qpcr_design"}
+            ],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_PATH"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "qpcr_design"}
+                ]
+            },
+            "description": "Export one persisted qPCR assay design report to an external JSON file.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers export-qpcr-report")
+        }),
+        report_export_any_kind_operation_descriptor(
+            "ExportPrimerDesignReport",
+            &["primer_design", "qpcr_design"],
+            "external JSON output path carried by the operation payload",
+            "Export one persisted primer or qPCR design report to an external JSON file through the shared engine operation.",
+        ),
+        json!({
+            "id": "primers prepare-restriction-cloning",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REQUEST_JSON", "required": true, "detail": "PrepareRestrictionCloningPcrHandoff operation payload or @file"},
+                {"name": "TEMPLATE_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "template sequence id carried by the handoff payload"},
+                {"name": "PRIMER_REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted primer-design report id carried by the handoff payload"},
+                {"name": "DESTINATION_VECTOR_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded destination vector sequence id carried by the handoff payload"},
+                {"name": "REPORT_ID", "required": false, "subject_kind": "report", "detail": "restriction-cloning handoff report id returned by execution; required for deterministic effect verification"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "TEMPLATE_SEQ_ID"}},
+                {"fact": "report.exists", "subject": {"arg": "PRIMER_REPORT_ID"}, "equals": "primer_design"},
+                {"fact": "sequence.exists", "subject": {"arg": "DESTINATION_VECTOR_SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "report.exists",
+                    "subject": {"arg": "REPORT_ID"},
+                    "report_kind": "restriction_cloning_pcr_handoff",
+                    "equals": "restriction_cloning_pcr_handoff",
+                    "effect_kind": "must_on_success"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "TEMPLATE_SEQ_ID"}},
+                    {"fact": "report.exists", "subject": {"arg": "PRIMER_REPORT_ID"}, "equals": "primer_design"},
+                    {"fact": "sequence.exists", "subject": {"arg": "DESTINATION_VECTOR_SEQ_ID"}}
+                ]
+            },
+            "description": "Create a restriction-site cloning PCR handoff from one persisted primer-pair report and a destination vector.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers prepare-restriction-cloning")
+        }),
+        json!({
+            "id": "primers list-restriction-cloning-handoffs",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "List persisted restriction-site cloning PCR handoff reports.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers list-restriction-cloning-handoffs")
+        }),
+        no_project_inspection_operation_descriptor(
+            "primers preflight",
+            "Probe selected primer-design backend reachability without project-state preconditions.",
+            vec![
+                json!({"name": "--backend", "required": false, "subject_kind": "other", "detail": "auto, internal, or primer3 backend selector"}),
+                json!({"name": "--primer3-exec", "required": false, "subject_kind": "other", "detail": "optional primer3_core executable path"}),
+            ],
+        ),
+        json!({
+            "id": "primers seed-from-feature",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id"},
+                {"name": "FEATURE_ID", "required": true, "subject_kind": "other", "detail": "feature index/id interpreted by the seed helper"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Resolve one feature ROI and emit seeded primer/qPCR design payloads.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers seed-from-feature")
+        }),
+        json!({
+            "id": "primers seed-from-splicing",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id"},
+                {"name": "FEATURE_ID", "required": true, "subject_kind": "other", "detail": "splicing feature index/id interpreted by the seed helper"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Resolve one splicing-group ROI and emit seeded primer/qPCR design payloads.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers seed-from-splicing")
+        }),
+        json!({
+            "id": "primers restriction-cloning-vector-suggestions",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded destination-vector sequence id"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Inspect MCS-first and unique-cutter restriction-enzyme suggestions for one destination vector.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers restriction-cloning-vector-suggestions")
+        }),
+        json!({
+            "id": "primers seed-restriction-cloning-handoff",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "PRIMER_REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted primer-design report id"},
+                {"name": "DESTINATION_VECTOR_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded destination-vector sequence id"},
+                {"name": "--pair-rank", "required": false, "subject_kind": "other", "detail": "1-based primer-pair rank"}
+            ],
+            "reads": [
+                {"fact": "report.exists", "subject": {"arg": "PRIMER_REPORT_ID"}, "equals": "primer_design"},
+                {"fact": "sequence.exists", "subject": {"arg": "DESTINATION_VECTOR_SEQ_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "report.exists", "subject": {"arg": "PRIMER_REPORT_ID"}, "equals": "primer_design"},
+                    {"fact": "sequence.exists", "subject": {"arg": "DESTINATION_VECTOR_SEQ_ID"}}
+                ]
+            },
+            "description": "Build a validated non-mutating restriction-cloning handoff request from a saved primer report and destination vector.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers seed-restriction-cloning-handoff")
+        }),
+        json!({
+            "id": "primers show-restriction-cloning-handoff",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted restriction-cloning handoff report id"}
+            ],
+            "reads": [
+                {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "restriction_cloning_pcr_handoff"}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "restriction_cloning_pcr_handoff"}
+                ]
+            },
+            "description": "Inspect one persisted restriction-site cloning PCR handoff report.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers show-restriction-cloning-handoff")
+        }),
+        json!({
+            "id": "primers export-restriction-cloning-handoff",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted restriction-cloning handoff report id"},
+                {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external JSON output path"}
+            ],
+            "reads": [
+                {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "restriction_cloning_pcr_handoff"}
+            ],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_PATH"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "restriction_cloning_pcr_handoff"}
+                ]
+            },
+            "description": "Export one persisted restriction-site cloning PCR handoff report to an external JSON file.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("primers export-restriction-cloning-handoff")
+        }),
+        json!({
+            "id": "seq-confirm list-reports",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "EXPECTED_SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "optional expected sequence id filter"}
+            ],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "List persisted sequencing-confirmation reports, optionally filtered by expected sequence id.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("seq-confirm list-reports")
+        }),
+        json!({
+            "id": "seq-confirm show-report",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted sequencing-confirmation report id"}
+            ],
+            "reads": [
+                {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "sequencing_confirmation"}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "sequencing_confirmation"}
+                ]
+            },
+            "description": "Inspect one persisted sequencing-confirmation report.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("seq-confirm show-report")
+        }),
+        json!({
+            "id": "seq-confirm export-report",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted sequencing-confirmation report id"},
+                {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external JSON output path"}
+            ],
+            "reads": [
+                {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "sequencing_confirmation"}
+            ],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_PATH"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "sequencing_confirmation"}
+                ]
+            },
+            "description": "Export one persisted sequencing-confirmation report to an external JSON file.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("seq-confirm export-report")
+        }),
+        json!({
+            "id": "seq-confirm export-support-tsv",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted sequencing-confirmation report id"},
+                {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external TSV output path"}
+            ],
+            "reads": [
+                {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "sequencing_confirmation"}
+            ],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_PATH"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "sequencing_confirmation"}
+                ]
+            },
+            "description": "Export sequencing-confirmation target support rows to an external TSV file.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("seq-confirm export-support-tsv")
+        }),
+        json!({
+            "id": "cutrun list-read-reports",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "optional anchored sequence id filter"}
+            ],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "List saved CUT&RUN ROI read reports, optionally filtered to one anchored sequence.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("cutrun list-read-reports")
+        }),
+        json!({
+            "id": "cutrun show-read-report",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted CUT&RUN read report id"}
+            ],
+            "reads": [
+                {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "cutrun_read"}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "cutrun_read"}
+                ]
+            },
+            "description": "Inspect one persisted CUT&RUN ROI read report.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("cutrun show-read-report")
+        }),
+        json!({
+            "id": "cutrun export-coverage",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted CUT&RUN read report id"},
+                {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external coverage/cut-site/fragment TSV output path"},
+                {"name": "--kind", "required": false, "detail": "coverage, cut_sites, or fragments"}
+            ],
+            "reads": [
+                {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "cutrun_read"}
+            ],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_PATH"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "cutrun_read"}
+                ]
+            },
+            "description": "Export coverage, cut-site, or fragment rows from one persisted CUT&RUN read report.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("cutrun export-coverage")
+        }),
+        json!({
+            "id": "rna-reads list-reports",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "optional target sequence id filter"}
+            ],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "List persisted RNA-read interpretation reports, optionally filtered by target sequence id.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("rna-reads list-reports")
+        }),
+        rna_read_report_mutation_descriptor(
+            "rna-reads align-report",
+            "Run the retained-hit alignment pass for one persisted RNA-read interpretation report.",
+            vec![json!({
+                "fact": "report.exists",
+                "subject": {"arg": "REPORT_ID"},
+                "equals": "rna_read",
+                "effect_kind": "must_on_success"
+            })],
+        ),
+        json!({
+            "id": "rna-reads preflight-isoforms",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id"},
+                {"name": "FEATURE_ID", "required": true, "detail": "seed feature id"},
+                {"name": "--positive-transcript-fasta", "required": false, "subject_kind": "other", "detail": "optional external positive transcript FASTA path"},
+                {"name": "--control-transcript-fasta", "required": false, "subject_kind": "other", "detail": "optional external control transcript FASTA path"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Preflight RNA-read isoform seed-filter controls for one loaded sequence.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("rna-reads preflight-isoforms")
+        }),
+        json!({
+            "id": "rna-reads show-report",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted RNA-read interpretation report id"}
+            ],
+            "reads": [
+                {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "rna_read"}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "rna_read"}
+                ]
+            },
+            "description": "Inspect one persisted RNA-read interpretation report.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("rna-reads show-report")
+        }),
+        json!({
+            "id": "rna-reads export-report",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted RNA-read interpretation report id"},
+                {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external JSON output path"}
+            ],
+            "reads": [
+                {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "rna_read"}
+            ],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_PATH"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "rna_read"}
+                ]
+            },
+            "description": "Export one persisted RNA-read interpretation report to an external JSON file.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("rna-reads export-report")
+        }),
+        report_export_operation_descriptor(
+            "rna-reads export-hits-fasta",
+            "rna_read",
+            "external FASTA output path",
+            "Export retained hit sequences from one persisted RNA-read interpretation report to an external FASTA file.",
+        ),
+        report_export_operation_descriptor(
+            "rna-reads export-target-quality",
+            "rna_read",
+            "external target-quality SVG or JSON output path",
+            "Export target-quality comparison artifacts from one persisted RNA-read interpretation report.",
+        ),
+        report_export_operation_descriptor(
+            "rna-reads export-paths-tsv",
+            "rna_read",
+            "external exon-path TSV output path",
+            "Export exon-path rows from one persisted RNA-read interpretation report.",
+        ),
+        report_export_operation_descriptor(
+            "rna-reads export-abundance-tsv",
+            "rna_read",
+            "external exon-abundance TSV output path",
+            "Export exon and transition abundance rows from one persisted RNA-read interpretation report.",
+        ),
+        report_export_operation_descriptor(
+            "rna-reads export-score-density-svg",
+            "rna_read",
+            "external score-density SVG output path",
+            "Export score-density bins from one persisted RNA-read interpretation report to an external SVG file.",
+        ),
+        report_export_operation_descriptor(
+            "rna-reads export-alignments-tsv",
+            "rna_read",
+            "external alignment TSV output path",
+            "Export alignment rows from one persisted RNA-read interpretation report.",
+        ),
+        report_export_operation_descriptor(
+            "rna-reads export-isoform-triage-tsv",
+            "rna_read",
+            "external isoform-triage TSV output path",
+            "Export conservative isoform-triage rows from one persisted RNA-read interpretation report.",
+        ),
+        report_export_operation_descriptor(
+            "rna-reads export-alignment-dotplot-svg",
+            "rna_read",
+            "external alignment-dotplot SVG output path",
+            "Export a dotplot-style alignment summary from one persisted RNA-read interpretation report.",
+        ),
+        rna_read_report_mutation_descriptor(
+            "rna-reads materialize-hits",
+            "Materialize selected retained RNA-read hit sequences from one persisted report into project sequences; created ids are selection-dependent and are not currently modeled as a hard introspection effect.",
+            vec![],
+        ),
+        report_list_operation_descriptor(
+            "ListSequencingConfirmationReports",
+            "List persisted sequencing-confirmation reports through the shared engine operation.",
+            "EXPECTED_SEQ_ID",
+        ),
+        report_show_operation_descriptor(
+            "ShowSequencingConfirmationReport",
+            "sequencing_confirmation",
+            "Inspect one persisted sequencing-confirmation report through the shared engine operation.",
+        ),
+        report_export_operation_descriptor(
+            "ExportSequencingConfirmationReport",
+            "sequencing_confirmation",
+            "external JSON output path carried by the operation payload",
+            "Export one persisted sequencing-confirmation report to an external JSON file through the shared engine operation.",
+        ),
+        report_export_operation_descriptor(
+            "ExportSequencingConfirmationSupportTsv",
+            "sequencing_confirmation",
+            "external TSV output path carried by the operation payload",
+            "Export sequencing-confirmation target support rows to an external TSV file through the shared engine operation.",
+        ),
+        report_list_operation_descriptor(
+            "ListCutRunReadReports",
+            "List persisted CUT&RUN ROI read reports through the shared engine operation.",
+            "SEQ_ID",
+        ),
+        report_show_operation_descriptor(
+            "ShowCutRunReadReport",
+            "cutrun_read",
+            "Inspect one persisted CUT&RUN ROI read report through the shared engine operation.",
+        ),
+        report_export_operation_descriptor(
+            "ExportCutRunReadCoverage",
+            "cutrun_read",
+            "external coverage/cut-site/fragment TSV output path carried by the operation payload",
+            "Export coverage, cut-site, or fragment rows from one persisted CUT&RUN read report through the shared engine operation.",
+        ),
+        report_list_operation_descriptor(
+            "ListRnaReadReports",
+            "List persisted RNA-read interpretation reports through the shared engine operation.",
+            "SEQ_ID",
+        ),
+        rna_read_report_mutation_descriptor(
+            "AlignRnaReadReport",
+            "Run the retained-hit alignment pass for one persisted RNA-read report through the shared engine operation.",
+            vec![json!({
+                "fact": "report.exists",
+                "subject": {"arg": "REPORT_ID"},
+                "equals": "rna_read",
+                "effect_kind": "must_on_success"
+            })],
+        ),
+        json!({
+            "id": "PreflightRnaReadIsoforms",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id carried by the operation payload"},
+                {"name": "FEATURE_ID", "required": true, "detail": "seed feature id carried by seed_feature_id"},
+                {"name": "POSITIVE_FASTA_PATH", "required": false, "subject_kind": "other", "detail": "optional external positive transcript FASTA path"},
+                {"name": "CONTROL_FASTA_PATH", "required": false, "subject_kind": "other", "detail": "optional external control transcript FASTA path"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Preflight RNA-read isoform seed-filter controls through the shared engine operation.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("PreflightRnaReadIsoforms")
+        }),
+        report_show_operation_descriptor(
+            "ShowRnaReadReport",
+            "rna_read",
+            "Inspect one persisted RNA-read interpretation report through the shared engine operation.",
+        ),
+        report_export_operation_descriptor(
+            "ExportRnaReadReport",
+            "rna_read",
+            "external JSON output path carried by the operation payload",
+            "Export one persisted RNA-read interpretation report to an external JSON file through the shared engine operation.",
+        ),
+        report_export_operation_descriptor(
+            "ExportRnaReadHitsFasta",
+            "rna_read",
+            "external FASTA output path carried by the operation payload",
+            "Export retained hit sequences from one persisted RNA-read report to an external FASTA file through the shared engine operation.",
+        ),
+        report_export_operation_descriptor(
+            "ExportRnaReadTargetQuality",
+            "rna_read",
+            "external target-quality SVG or JSON output path carried by the operation payload",
+            "Export target-quality comparison artifacts from one persisted RNA-read report through the shared engine operation.",
+        ),
+        report_export_operation_descriptor(
+            "ExportRnaReadExonPathsTsv",
+            "rna_read",
+            "external exon-path TSV output path carried by the operation payload",
+            "Export exon-path rows from one persisted RNA-read report through the shared engine operation.",
+        ),
+        report_export_operation_descriptor(
+            "ExportRnaReadExonAbundanceTsv",
+            "rna_read",
+            "external exon-abundance TSV output path carried by the operation payload",
+            "Export exon and transition abundance rows from one persisted RNA-read report through the shared engine operation.",
+        ),
+        report_export_operation_descriptor(
+            "ExportRnaReadScoreDensitySvg",
+            "rna_read",
+            "external score-density SVG output path carried by the operation payload",
+            "Export score-density bins from one persisted RNA-read report to an external SVG file through the shared engine operation.",
+        ),
+        report_export_operation_descriptor(
+            "ExportRnaReadAlignmentsTsv",
+            "rna_read",
+            "external alignment TSV output path carried by the operation payload",
+            "Export alignment rows from one persisted RNA-read report through the shared engine operation.",
+        ),
+        report_export_operation_descriptor(
+            "ExportRnaReadIsoformTriageTsv",
+            "rna_read",
+            "external isoform-triage TSV output path carried by the operation payload",
+            "Export conservative isoform-triage rows from one persisted RNA-read report through the shared engine operation.",
+        ),
+        report_export_operation_descriptor(
+            "ExportRnaReadAlignmentDotplotSvg",
+            "rna_read",
+            "external alignment-dotplot SVG output path carried by the operation payload",
+            "Export a dotplot-style alignment summary from one persisted RNA-read report through the shared engine operation.",
+        ),
+        rna_read_report_mutation_descriptor(
+            "MaterializeRnaReadHitSequences",
+            "Materialize selected retained RNA-read hit sequences from one persisted report through the shared engine operation; created ids are selection-dependent and are not currently modeled as a hard introspection effect.",
+            vec![],
+        ),
+        optional_artifact_operation_descriptor(
+            "SummarizeJasparEntries",
+            "optional external JASPAR presentation JSON output path carried by path",
+            "Summarize selected local JASPAR motif entries without project-state preconditions.",
+        ),
+        optional_artifact_operation_descriptor(
+            "BenchmarkJasparRegistry",
+            "optional external JASPAR benchmark JSON output path carried by path",
+            "Benchmark the local JASPAR registry without project-state preconditions.",
+        ),
+        optional_artifact_operation_descriptor(
+            "ListJasparCatalog",
+            "optional external JASPAR catalog JSON output path carried by path",
+            "List local JASPAR catalog entries without project-state preconditions.",
+        ),
+        optional_artifact_operation_descriptor(
+            "ResolveTfQueries",
+            "optional external TF-query resolution JSON output path carried by path",
+            "Resolve transcription-factor query aliases without project-state preconditions.",
+        ),
+        optional_artifact_operation_descriptor(
+            "ListReporterCatalog",
+            "optional external reporter catalog JSON output path carried by path",
+            "List reporter-vector catalog entries without project-state preconditions.",
+        ),
+        optional_artifact_operation_descriptor(
+            "RecommendReporters",
+            "optional external reporter recommendation JSON output path carried by path",
+            "Recommend reporter vectors from constraints without project-state preconditions.",
+        ),
+        optional_artifact_inspection_operation_descriptor(
+            "reporters list",
+            "optional external reporter catalog JSON output path",
+            "List reporter-vector catalog entries without project-state preconditions; catalog path validation happens during execution.",
+            vec![
+                json!({"name": "--catalog", "required": false, "subject_kind": "other", "detail": "optional reporter catalog path"}),
+                json!({"name": "--filter", "required": false, "subject_kind": "other", "detail": "optional reporter text filter"}),
+                json!({"name": "--limit", "required": false, "subject_kind": "other", "detail": "optional maximum number of returned reporters"}),
+            ],
+        ),
+        optional_artifact_inspection_operation_descriptor(
+            "reporters recommend",
+            "optional external reporter recommendation JSON output path",
+            "Recommend reporter vectors from local constraints without project-state preconditions; catalog path validation happens during execution.",
+            vec![
+                json!({"name": "--catalog", "required": false, "subject_kind": "other", "detail": "optional reporter catalog path"}),
+                json!({"name": "--assay|--chassis|--class|--color", "required": false, "subject_kind": "other", "detail": "optional reporter recommendation filters"}),
+                json!({"name": "--limit", "required": false, "subject_kind": "other", "detail": "optional maximum number of returned recommendations"}),
+            ],
+        ),
+        external_artifact_catalog_operation_descriptor(
+            "reporters export-corpus",
+            "external reporter corpus JSON/JSONL output path",
+            "Export the active reporter catalog as a JSON or JSONL corpus without project-state preconditions.",
+            vec![
+                json!({"name": "--catalog", "required": false, "subject_kind": "other", "detail": "optional reporter catalog path"}),
+                json!({"name": "--format", "required": false, "subject_kind": "other", "detail": "json or jsonl output format"}),
+            ],
+        ),
+        external_artifact_catalog_operation_descriptor(
+            "ExportReporterCorpus",
+            "external reporter corpus JSON/JSONL output path carried by path",
+            "Export the active reporter catalog as a JSON or JSONL corpus through the shared engine operation.",
+            vec![
+                json!({"name": "CATALOG_PATH", "required": false, "subject_kind": "other", "detail": "optional reporter catalog path carried by catalog_path"}),
+                json!({"name": "FORMAT", "required": false, "subject_kind": "other", "detail": "json or jsonl output format carried by format"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "services status",
+            "Inspect combined GENtle service/resource readiness without project-state preconditions.",
+            vec![],
+        ),
+        no_project_inspection_operation_descriptor(
+            "services providers list",
+            "List configured external-service provider catalog entries without project-state preconditions.",
+            vec![],
+        ),
+        optional_artifact_inspection_operation_descriptor(
+            "services providers doctor",
+            "optional external service-provider doctor JSON output path",
+            "Validate external-service provider catalog overlays without project-state preconditions; catalog path validation happens during execution.",
+            vec![
+                json!({"name": "--catalog", "required": false, "subject_kind": "other", "detail": "optional external-service provider catalog path"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "planning profile show",
+            "Inspect one planning profile scope or the merged effective planning profile without project-state preconditions.",
+            vec![
+                json!({"name": "--scope", "required": false, "subject_kind": "other", "detail": "global, project_override, confirmed_agent_overlay, or effective"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "planning objective show",
+            "Inspect current planning objective weights and guardrails without project-state preconditions.",
+            vec![],
+        ),
+        no_project_inspection_operation_descriptor(
+            "planning suggestions list",
+            "List planning sync suggestions without project-state preconditions.",
+            vec![
+                json!({"name": "--status", "required": false, "subject_kind": "other", "detail": "pending, accepted, or rejected suggestion status filter"}),
+            ],
+        ),
+        optional_artifact_inspection_operation_descriptor(
+            "resources summarize-jaspar",
+            "optional external JASPAR summary JSON output path",
+            "Summarize local JASPAR motif entries without project-state preconditions; local resource validation happens during execution.",
+            vec![
+                json!({"name": "MOTIF", "required": false, "subject_kind": "other", "detail": "optional motif id/name filter"}),
+                json!({"name": "--random-length", "required": false, "subject_kind": "other", "detail": "optional random-background length"}),
+                json!({"name": "--seed", "required": false, "subject_kind": "other", "detail": "optional deterministic random seed"}),
+                json!({"name": "--fetch-remote", "required": false, "subject_kind": "other", "detail": "optional remote metadata enrichment; network availability is checked during execution"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "resources status",
+            "Inspect local GENtle resource catalog status without project-state preconditions.",
+            vec![],
+        ),
+        optional_artifact_inspection_operation_descriptor(
+            "resources suggest-ucsc-rmsk-index",
+            "optional external UCSC rmsk descriptor JSON output path",
+            "Describe UCSC RepeatMasker rmsk source URLs and recommended GENtle indexes without downloading data.",
+            vec![
+                json!({"name": "--assembly", "required": false, "subject_kind": "other", "detail": "optional UCSC assembly database such as hg38 or mm39"}),
+            ],
+        ),
+        optional_artifact_inspection_operation_descriptor(
+            "resources list-jaspar",
+            "optional external JASPAR catalog JSON output path",
+            "List local JASPAR catalog entries without project-state preconditions; local resource validation happens during execution.",
+            vec![
+                json!({"name": "--filter", "required": false, "subject_kind": "other", "detail": "optional motif text filter"}),
+                json!({"name": "--limit", "required": false, "subject_kind": "other", "detail": "optional maximum number of returned motifs"}),
+                json!({"name": "--fetch-remote", "required": false, "subject_kind": "other", "detail": "optional remote metadata enrichment; network availability is checked during execution"}),
+            ],
+        ),
+        optional_artifact_inspection_operation_descriptor(
+            "resources inspect-jaspar",
+            "optional external JASPAR expert JSON output path",
+            "Inspect one local JASPAR motif entry without project-state preconditions; motif and local resource validation happen during execution.",
+            vec![
+                json!({"name": "MOTIF", "required": true, "subject_kind": "other", "detail": "motif id, name, or query token"}),
+                json!({"name": "--random-length", "required": false, "subject_kind": "other", "detail": "optional random-background length"}),
+                json!({"name": "--seed", "required": false, "subject_kind": "other", "detail": "optional deterministic random seed"}),
+                json!({"name": "--fetch-remote", "required": false, "subject_kind": "other", "detail": "optional remote metadata enrichment; network availability is checked during execution"}),
+            ],
+        ),
+        optional_artifact_inspection_operation_descriptor(
+            "resources resolve-tf-query",
+            "optional external TF-query resolution JSON output path",
+            "Resolve transcription-factor query aliases against local resources without project-state preconditions.",
+            vec![
+                json!({"name": "QUERY", "required": true, "subject_kind": "other", "detail": "one or more TF, group, alias, or family-like query tokens"}),
+            ],
+        ),
+        optional_artifact_inspection_operation_descriptor(
+            "resources list-publication-datasets",
+            "optional external publication-dataset catalog JSON output path",
+            "List publication-associated external datasets from the local resource catalog without project-state preconditions; catalog path validation happens during execution.",
+            vec![
+                json!({"name": "--filter", "required": false, "subject_kind": "other", "detail": "optional dataset text filter"}),
+                json!({"name": "--catalog", "required": false, "subject_kind": "other", "detail": "optional publication-resource catalog path"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "resources status-publication-dataset",
+            "Inspect local manifest/cache status for one publication-associated dataset; dataset, catalog, and cache path validation happen during execution.",
+            vec![
+                json!({"name": "DATASET_ID", "required": true, "subject_kind": "other", "detail": "publication-resource dataset id"}),
+                json!({"name": "--catalog", "required": false, "subject_kind": "other", "detail": "optional publication-resource catalog path"}),
+                json!({"name": "--cache-dir", "required": false, "subject_kind": "other", "detail": "optional publication-resource cache root"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "genomes validate-catalog",
+            "Validate reference-genome catalog entries without project-state preconditions; catalog path validation happens during execution.",
+            vec![
+                json!({"name": "--catalog", "required": false, "subject_kind": "other", "detail": "optional reference-genome catalog path"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "helpers validate-catalog",
+            "Validate helper-genome catalog entries without project-state preconditions; catalog path validation happens during execution.",
+            vec![
+                json!({"name": "--catalog", "required": false, "subject_kind": "other", "detail": "optional helper-genome catalog path"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "helpers vocabulary list",
+            "List/search resolved helper semantics vocabulary terms without project-state preconditions; vocabulary path validation happens during execution.",
+            vec![
+                json!({"name": "--vocabulary", "required": false, "subject_kind": "other", "detail": "optional helper semantics vocabulary file or overlay directory"}),
+                json!({"name": "--filter", "required": false, "subject_kind": "other", "detail": "optional vocabulary text filter"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "helpers vocabulary doctor",
+            "Validate helper semantics vocabulary overlays without project-state preconditions; vocabulary and routine-catalog path validation happen during execution.",
+            vec![
+                json!({"name": "--vocabulary", "required": false, "subject_kind": "other", "detail": "optional helper semantics vocabulary file or overlay directory"}),
+                json!({"name": "--routine-catalog", "required": false, "subject_kind": "other", "detail": "optional cloning-routine catalog path"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "hosts list",
+            "List/search structured host-profile catalog entries without project-state preconditions; catalog path validation happens during execution.",
+            vec![
+                json!({"name": "--catalog", "required": false, "subject_kind": "other", "detail": "optional host-profile catalog path"}),
+                json!({"name": "--filter", "required": false, "subject_kind": "other", "detail": "optional host-profile text filter"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "list_host_profile_catalog_entries",
+            "List structured host-profile catalog entries through JS/Lua helper adapters.",
+            vec![
+                json!({"name": "CATALOG_PATH", "required": false, "subject_kind": "other", "detail": "optional host-profile catalog path"}),
+                json!({"name": "FILTER", "required": false, "subject_kind": "other", "detail": "optional host-profile text filter"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "host_profile_catalog_entries",
+            "Return structured host-profile catalog entries through the shared MCP/tool row.",
+            vec![
+                json!({"name": "CATALOG_PATH", "required": false, "subject_kind": "other", "detail": "optional host-profile catalog path"}),
+                json!({"name": "FILTER", "required": false, "subject_kind": "other", "detail": "optional host-profile text filter"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "list_helper_catalog_entries",
+            "List structured helper catalog entries through JS/Lua helper adapters.",
+            vec![
+                json!({"name": "CATALOG_PATH", "required": false, "subject_kind": "other", "detail": "optional helper catalog path"}),
+                json!({"name": "FILTER", "required": false, "subject_kind": "other", "detail": "optional helper catalog text filter"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "helper_catalog_entries",
+            "Return structured helper catalog entries through the shared MCP/tool row.",
+            vec![
+                json!({"name": "CATALOG_PATH", "required": false, "subject_kind": "other", "detail": "optional helper catalog path"}),
+                json!({"name": "FILTER", "required": false, "subject_kind": "other", "detail": "optional helper catalog text filter"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "helper_semantics_vocabulary",
+            "Return resolved helper semantics vocabulary terms through the shared MCP/tool row.",
+            vec![
+                json!({"name": "VOCABULARY_PATH", "required": false, "subject_kind": "other", "detail": "optional helper semantics vocabulary file or overlay directory"}),
+                json!({"name": "FILTER", "required": false, "subject_kind": "other", "detail": "optional vocabulary text filter"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "helper_interpretation",
+            "Return normalized helper-construct interpretation for one helper id or alias; lookup validation happens during execution.",
+            vec![
+                json!({"name": "HELPER_ID", "required": true, "subject_kind": "other", "detail": "helper catalog id or alias"}),
+                json!({"name": "CATALOG_PATH", "required": false, "subject_kind": "other", "detail": "optional helper catalog path"}),
+            ],
+        ),
+        optional_artifact_inspection_operation_descriptor(
+            "proteases list",
+            "optional external protease catalog JSON output path",
+            "Inspect the built-in protease catalog without project-state preconditions.",
+            vec![
+                json!({"name": "--filter", "required": false, "subject_kind": "other", "detail": "optional protease text filter"}),
+            ],
+        ),
+        optional_artifact_inspection_operation_descriptor(
+            "proteases show",
+            "optional external protease entry JSON output path",
+            "Inspect one built-in protease catalog entry by name or alias; query validation happens during execution.",
+            vec![
+                json!({"name": "QUERY", "required": true, "subject_kind": "other", "detail": "protease name or alias"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "mirna explain-seed",
+            "Resolve a microRNA mature sequence and derive canonical seed-site motifs without project-state preconditions.",
+            vec![
+                json!({"name": "MIRNA", "required": true, "subject_kind": "other", "detail": "microRNA id or alias"}),
+                json!({"name": "--mature-sequence", "required": false, "subject_kind": "other", "detail": "optional explicit mature microRNA sequence"}),
+                json!({"name": "--format", "required": false, "subject_kind": "other", "detail": "json output format selector"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "mirna catalog-show",
+            "Show a GENtle-backed microRNA catalog record without project-state preconditions; lookup validation happens during execution.",
+            vec![
+                json!({"name": "MIRNA", "required": true, "subject_kind": "other", "detail": "microRNA id or alias"}),
+            ],
+        ),
+        catalog_read_operation_descriptor(
+            "ladders list",
+            "Inspect built-in DNA/RNA ladder catalogs without project-state preconditions.",
+        ),
+        catalog_read_operation_descriptor(
+            "inspect_dna_ladders",
+            "Inspect built-in DNA ladder definitions without project-state preconditions.",
+        ),
+        catalog_read_operation_descriptor(
+            "inspect_rna_ladders",
+            "Inspect built-in RNA ladder definitions without project-state preconditions.",
+        ),
+        catalog_read_operation_descriptor(
+            "list_dna_ladders",
+            "List built-in DNA ladder definitions without project-state preconditions.",
+        ),
+        catalog_read_operation_descriptor(
+            "list_rna_ladders",
+            "List built-in RNA ladder definitions without project-state preconditions.",
+        ),
+        catalog_read_operation_descriptor(
+            "agents list",
+            "List configured external and builtin agent systems without project-state preconditions.",
+        ),
+        catalog_read_operation_descriptor(
+            "agent_systems",
+            "Return configured external and builtin agent systems through the shared operation row.",
+        ),
+        catalog_read_operation_descriptor(
+            "list_agent_systems",
+            "List configured external and builtin agent systems through JS/Lua helper adapters.",
+        ),
+        catalog_read_operation_descriptor(
+            "protocol-cartoon list",
+            "List built-in protocol-cartoon templates without project-state preconditions.",
+        ),
+        external_artifact_catalog_operation_descriptor(
+            "protocol-cartoon render-svg",
+            "external protocol-cartoon SVG output path",
+            "Render one built-in protocol cartoon to an external SVG file without project-state preconditions.",
+            vec![
+                json!({"name": "PROTOCOL_ID", "required": true, "subject_kind": "other", "detail": "built-in protocol cartoon id"}),
+            ],
+        ),
+        external_artifact_catalog_operation_descriptor(
+            "protocol-cartoon render-template-svg",
+            "external protocol-cartoon SVG output path",
+            "Render one protocol-cartoon template JSON file to an external SVG file; template path validation happens at execution time.",
+            vec![
+                json!({"name": "TEMPLATE_PATH", "required": true, "subject_kind": "other", "detail": "external protocol-cartoon template JSON input path"}),
+            ],
+        ),
+        external_artifact_catalog_operation_descriptor(
+            "protocol-cartoon render-with-bindings",
+            "external protocol-cartoon SVG output path",
+            "Render one protocol-cartoon template JSON file with bindings to an external SVG file; input path validation happens at execution time.",
+            vec![
+                json!({"name": "TEMPLATE_PATH", "required": true, "subject_kind": "other", "detail": "external protocol-cartoon template JSON input path"}),
+                json!({"name": "BINDINGS_PATH", "required": true, "subject_kind": "other", "detail": "external protocol-cartoon bindings JSON input path"}),
+            ],
+        ),
+        external_artifact_catalog_operation_descriptor(
+            "protocol-cartoon template-export",
+            "external protocol-cartoon template JSON output path",
+            "Export one built-in protocol-cartoon template to an external JSON file without project-state preconditions.",
+            vec![
+                json!({"name": "PROTOCOL_ID", "required": true, "subject_kind": "other", "detail": "built-in protocol cartoon id"}),
+            ],
+        ),
+        json!({
+            "id": "protocol-cartoon template-validate",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "TEMPLATE_PATH", "required": true, "subject_kind": "other", "detail": "external protocol-cartoon template JSON input path"}
+            ],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Validate one protocol-cartoon template JSON file; template path validation happens at execution time.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("protocol-cartoon template-validate")
+        }),
+        external_artifact_catalog_operation_descriptor(
+            "RenderProtocolCartoonSvg",
+            "external protocol-cartoon SVG output path carried by path",
+            "Render one built-in protocol cartoon through the shared engine operation.",
+            vec![
+                json!({"name": "PROTOCOL_ID", "required": true, "subject_kind": "other", "detail": "built-in protocol cartoon id carried by protocol"}),
+            ],
+        ),
+        external_artifact_catalog_operation_descriptor(
+            "RenderProtocolCartoonTemplateSvg",
+            "external protocol-cartoon SVG output path carried by path",
+            "Render one protocol-cartoon template JSON file through the shared engine operation.",
+            vec![
+                json!({"name": "TEMPLATE_PATH", "required": true, "subject_kind": "other", "detail": "external protocol-cartoon template JSON input path carried by template_path"}),
+            ],
+        ),
+        external_artifact_catalog_operation_descriptor(
+            "RenderProtocolCartoonTemplateWithBindingsSvg",
+            "external protocol-cartoon SVG output path carried by path",
+            "Render one protocol-cartoon template JSON file with bindings through the shared engine operation.",
+            vec![
+                json!({"name": "TEMPLATE_PATH", "required": true, "subject_kind": "other", "detail": "external protocol-cartoon template JSON input path carried by template_path"}),
+                json!({"name": "BINDINGS_PATH", "required": true, "subject_kind": "other", "detail": "external protocol-cartoon bindings JSON input path carried by bindings_path"}),
+            ],
+        ),
+        external_artifact_catalog_operation_descriptor(
+            "ExportProtocolCartoonTemplateJson",
+            "external protocol-cartoon template JSON output path carried by path",
+            "Export one built-in protocol-cartoon template through the shared engine operation.",
+            vec![
+                json!({"name": "PROTOCOL_ID", "required": true, "subject_kind": "other", "detail": "built-in protocol cartoon id carried by protocol"}),
+            ],
+        ),
+        json!({
+            "id": "ValidateProtocolCartoonTemplate",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "TEMPLATE_PATH", "required": true, "subject_kind": "other", "detail": "external protocol-cartoon template JSON input path carried by template_path"}
+            ],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Validate one protocol-cartoon template JSON file through the shared engine operation.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("ValidateProtocolCartoonTemplate")
+        }),
+        no_project_inspection_operation_descriptor(
+            "cache inspect",
+            "Inspect prepared reference/helper cache roots without project-state preconditions; filesystem path checks happen during execution.",
+            vec![
+                json!({"name": "--cache-dir", "required": false, "subject_kind": "other", "detail": "optional prepared cache root path"}),
+                json!({"name": "--references|--helpers|--both", "required": false, "subject_kind": "other", "detail": "cache scope selector"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "cutrun list",
+            "List configured CUT&RUN datasets without project-state preconditions.",
+            vec![
+                json!({"name": "--catalog", "required": false, "subject_kind": "other", "detail": "optional CUT&RUN dataset catalog path"}),
+                json!({"name": "--filter", "required": false, "subject_kind": "other", "detail": "optional dataset text filter"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "ListCutRunDatasets",
+            "List configured CUT&RUN datasets through the shared engine operation.",
+            vec![
+                json!({"name": "CATALOG_PATH", "required": false, "subject_kind": "other", "detail": "optional CUT&RUN dataset catalog path carried by catalog_path"}),
+                json!({"name": "FILTER", "required": false, "subject_kind": "other", "detail": "optional dataset text filter"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "cutrun status",
+            "Inspect prepared/local status for one configured CUT&RUN dataset; dataset and cache path checks happen during execution.",
+            vec![
+                json!({"name": "DATASET_ID", "required": true, "subject_kind": "other", "detail": "configured CUT&RUN dataset id"}),
+                json!({"name": "--catalog", "required": false, "subject_kind": "other", "detail": "optional CUT&RUN dataset catalog path"}),
+                json!({"name": "--cache-dir", "required": false, "subject_kind": "other", "detail": "optional CUT&RUN prepared-cache root"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "ShowCutRunDatasetStatus",
+            "Inspect prepared/local status for one configured CUT&RUN dataset through the shared engine operation.",
+            vec![
+                json!({"name": "DATASET_ID", "required": true, "subject_kind": "other", "detail": "configured CUT&RUN dataset id carried by dataset_id"}),
+                json!({"name": "CATALOG_PATH", "required": false, "subject_kind": "other", "detail": "optional CUT&RUN dataset catalog path carried by catalog_path"}),
+                json!({"name": "CACHE_DIR", "required": false, "subject_kind": "other", "detail": "optional CUT&RUN prepared-cache root carried by cache_dir"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "arrays inspect-microarray-track",
+            "Inspect a prepared microarray-track manifest without project-state preconditions; manifest path validation happens during execution.",
+            vec![
+                json!({"name": "MANIFEST_PATH", "required": true, "subject_kind": "other", "detail": "external microarray-track manifest JSON path"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "arrays inspect-probe-region-output",
+            "Inspect explicit probe-region helper output without project-state preconditions; output directory validation happens during execution.",
+            vec![
+                json!({"name": "OUTPUT_DIR", "required": true, "subject_kind": "other", "detail": "external probe-region helper output directory"}),
+            ],
+        ),
+        external_artifact_catalog_operation_descriptor(
+            "arrays render-probe-region-output-svg",
+            "external probe-region SVG output path",
+            "Render completed probe-region helper output to an external SVG file without project-state preconditions; input directory validation happens during execution.",
+            vec![
+                json!({"name": "OUTPUT_DIR", "required": true, "subject_kind": "other", "detail": "external probe-region helper output directory"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "candidates list",
+            "List persisted candidate sets without project-state preconditions.",
+            vec![],
+        ),
+        no_project_inspection_operation_descriptor(
+            "candidates template-list",
+            "List persisted candidate macro templates without project-state preconditions.",
+            vec![],
+        ),
+        no_project_inspection_operation_descriptor(
+            "guides list",
+            "List persisted guide sets without project-state preconditions.",
+            vec![],
+        ),
+        no_project_inspection_operation_descriptor(
+            "macros instance-list",
+            "List recorded macro-instance lineage rows without project-state preconditions.",
+            vec![],
+        ),
+        no_project_inspection_operation_descriptor(
+            "macros template-list",
+            "List persisted workflow macro templates without project-state preconditions.",
+            vec![],
+        ),
+        no_project_inspection_operation_descriptor(
+            "routines list",
+            "List cloning routines from the typed routine catalog without project-state preconditions; catalog path and filter validation happens during execution.",
+            vec![
+                json!({"name": "--catalog", "required": false, "subject_kind": "other", "detail": "optional cloning-routine catalog path"}),
+                json!({"name": "--family|--status|--tag|--query", "required": false, "subject_kind": "other", "detail": "optional routine-catalog filters"}),
+                json!({"name": "--seq-id", "required": false, "subject_kind": "sequence", "detail": "optional sequence-context id used only for contextual routine ranking"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "routines explain",
+            "Explain one cloning routine from the typed routine catalog; routine id and catalog path validation happens during execution.",
+            vec![
+                json!({"name": "ROUTINE_ID", "required": true, "subject_kind": "other", "detail": "cloning routine id"}),
+                json!({"name": "--catalog", "required": false, "subject_kind": "other", "detail": "optional cloning-routine catalog path"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "routines compare",
+            "Compare two cloning routines from the typed routine catalog; routine ids and catalog path validation happens during execution.",
+            vec![
+                json!({"name": "LEFT_ROUTINE_ID", "required": true, "subject_kind": "other", "detail": "first cloning routine id"}),
+                json!({"name": "RIGHT_ROUTINE_ID", "required": true, "subject_kind": "other", "detail": "second cloning routine id"}),
+                json!({"name": "--catalog", "required": false, "subject_kind": "other", "detail": "optional cloning-routine catalog path"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "construct-reasoning list-graphs",
+            "List persisted construct-reasoning graph summaries without project-state preconditions.",
+            vec![
+                json!({"name": "SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "optional sequence id filter; it is not a readiness precondition"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "construct_reasoning_graphs",
+            "List persisted construct-reasoning graph summaries through the shared MCP/tool operation row.",
+            vec![
+                json!({"name": "SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "optional sequence id filter; it is not a readiness precondition"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "dotplot list",
+            "List persisted dotplot payload summaries without project-state preconditions.",
+            vec![
+                json!({"name": "SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "optional sequence id filter; it is not a readiness precondition"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "flex list",
+            "List persisted flexibility-track summaries without project-state preconditions.",
+            vec![
+                json!({"name": "SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "optional sequence id filter; it is not a readiness precondition"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "genomes list",
+            "List/search local reference-genome catalog entries without project-state preconditions; catalog path validation happens during execution.",
+            vec![
+                json!({"name": "--catalog", "required": false, "subject_kind": "other", "detail": "optional reference-genome catalog path"}),
+                json!({"name": "--filter", "required": false, "subject_kind": "other", "detail": "optional catalog text filter"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "helpers list",
+            "List/search local helper-genome catalog entries without project-state preconditions; catalog path validation happens during execution.",
+            vec![
+                json!({"name": "--catalog", "required": false, "subject_kind": "other", "detail": "optional helper-genome catalog path"}),
+                json!({"name": "--filter", "required": false, "subject_kind": "other", "detail": "optional catalog text filter"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "genomes status",
+            "Inspect local cache/preparation status for one reference genome; genome id, catalog, and cache path validation happen during execution.",
+            vec![
+                json!({"name": "GENOME_ID", "required": true, "subject_kind": "other", "detail": "reference-genome catalog id"}),
+                json!({"name": "--catalog", "required": false, "subject_kind": "other", "detail": "optional reference-genome catalog path"}),
+                json!({"name": "--cache-dir", "required": false, "subject_kind": "other", "detail": "optional reference-genome cache root"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "helpers status",
+            "Inspect local cache/preparation status for one helper genome; genome id, catalog, and cache path validation happen during execution.",
+            vec![
+                json!({"name": "GENOME_ID", "required": true, "subject_kind": "other", "detail": "helper-genome catalog id"}),
+                json!({"name": "--catalog", "required": false, "subject_kind": "other", "detail": "optional helper-genome catalog path"}),
+                json!({"name": "--cache-dir", "required": false, "subject_kind": "other", "detail": "optional helper-genome cache root"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "genomes genes",
+            "List/filter annotation records for one prepared reference genome; preparation, catalog, cache, regex, and biotype validation happen during execution.",
+            vec![
+                json!({"name": "GENOME_ID", "required": true, "subject_kind": "other", "detail": "reference-genome catalog id"}),
+                json!({"name": "--catalog", "required": false, "subject_kind": "other", "detail": "optional reference-genome catalog path"}),
+                json!({"name": "--cache-dir", "required": false, "subject_kind": "other", "detail": "optional reference-genome cache root"}),
+                json!({"name": "--filter", "required": false, "subject_kind": "other", "detail": "optional gene-name regex filter"}),
+                json!({"name": "--biotype", "required": false, "subject_kind": "other", "detail": "optional biotype filter; repeatable"}),
+                json!({"name": "--limit", "required": false, "subject_kind": "other", "detail": "maximum returned rows"}),
+                json!({"name": "--offset", "required": false, "subject_kind": "other", "detail": "pagination offset"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "helpers genes",
+            "List/filter annotation records for one prepared helper genome; preparation, catalog, cache, regex, and biotype validation happen during execution.",
+            vec![
+                json!({"name": "GENOME_ID", "required": true, "subject_kind": "other", "detail": "helper-genome catalog id"}),
+                json!({"name": "--catalog", "required": false, "subject_kind": "other", "detail": "optional helper-genome catalog path"}),
+                json!({"name": "--cache-dir", "required": false, "subject_kind": "other", "detail": "optional helper-genome cache root"}),
+                json!({"name": "--filter", "required": false, "subject_kind": "other", "detail": "optional feature-name regex filter"}),
+                json!({"name": "--biotype", "required": false, "subject_kind": "other", "detail": "optional biotype filter; repeatable"}),
+                json!({"name": "--limit", "required": false, "subject_kind": "other", "detail": "maximum returned rows"}),
+                json!({"name": "--offset", "required": false, "subject_kind": "other", "detail": "pagination offset"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "list_reference_genomes",
+            "List local reference-genome ids through JS/Lua helper adapters; catalog path validation happens during execution.",
+            vec![
+                json!({"name": "CATALOG_PATH", "required": false, "subject_kind": "other", "detail": "optional reference-genome catalog path"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "list_reference_catalog_entries",
+            "List local reference-genome catalog entries through JS/Lua helper adapters; catalog path validation happens during execution.",
+            vec![
+                json!({"name": "CATALOG_PATH", "required": false, "subject_kind": "other", "detail": "optional reference-genome catalog path"}),
+                json!({"name": "FILTER", "required": false, "subject_kind": "other", "detail": "optional catalog text filter"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "reference_catalog_entries",
+            "List local reference-genome catalog entries through the shared MCP/tool route; catalog path validation happens during execution.",
+            vec![
+                json!({"name": "CATALOG_PATH", "required": false, "subject_kind": "other", "detail": "optional reference-genome catalog path"}),
+                json!({"name": "FILTER", "required": false, "subject_kind": "other", "detail": "optional catalog text filter"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "is_reference_genome_prepared",
+            "Inspect whether one local reference genome cache is prepared through JS/Lua helper adapters; genome id, catalog, and cache validation happen during execution.",
+            vec![
+                json!({"name": "GENOME_ID", "required": true, "subject_kind": "other", "detail": "reference-genome catalog id"}),
+                json!({"name": "CATALOG_PATH", "required": false, "subject_kind": "other", "detail": "optional reference-genome catalog path"}),
+                json!({"name": "CACHE_DIR", "required": false, "subject_kind": "other", "detail": "optional reference-genome cache root"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "list_reference_genome_genes",
+            "List/filter annotation records for one prepared reference genome through JS/Lua helper adapters; preparation and path validation happen during execution.",
+            vec![
+                json!({"name": "GENOME_ID", "required": true, "subject_kind": "other", "detail": "reference-genome catalog id"}),
+                json!({"name": "CATALOG_PATH", "required": false, "subject_kind": "other", "detail": "optional reference-genome catalog path"}),
+                json!({"name": "CACHE_DIR", "required": false, "subject_kind": "other", "detail": "optional reference-genome cache root"}),
+                json!({"name": "FILTER", "required": false, "subject_kind": "other", "detail": "optional gene-name regex filter"}),
+                json!({"name": "BIOTYPES", "required": false, "subject_kind": "other", "detail": "optional biotype filters"}),
+            ],
+        ),
+        json!({
+            "id": "genomes blast-status",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "JOB_ID", "required": true, "subject_kind": "other", "detail": "async reference-genome BLAST job id"},
+                {"name": "--with-report", "required": false, "subject_kind": "other", "detail": "include terminal BLAST report payload when available"}
+            ],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Poll one async reference-genome BLAST job; job lookup and optional terminal report availability are validated during execution.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("genomes blast-status")
+        }),
+        json!({
+            "id": "helpers blast-status",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "JOB_ID", "required": true, "subject_kind": "other", "detail": "async helper-genome BLAST job id"},
+                {"name": "--with-report", "required": false, "subject_kind": "other", "detail": "include terminal BLAST report payload when available"}
+            ],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Poll one async helper-genome BLAST job; job lookup and optional terminal report availability are validated during execution.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("helpers blast-status")
+        }),
+        json!({
+            "id": "genomes blast-list",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "List known async reference-genome BLAST jobs; refreshing persisted job snapshots may update runtime metadata.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("genomes blast-list")
+        }),
+        json!({
+            "id": "helpers blast-list",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "List known async helper-genome BLAST jobs; refreshing persisted job snapshots may update runtime metadata.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("helpers blast-list")
+        }),
+        json!({
+            "id": "blast_async_status",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "JOB_ID", "required": true, "subject_kind": "other", "detail": "async BLAST job id"},
+                {"name": "WITH_REPORT", "required": false, "subject_kind": "other", "detail": "include terminal BLAST report payload when available"}
+            ],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Poll one async BLAST job through the MCP/tool route; job lookup and optional terminal report availability are validated during execution.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("blast_async_status")
+        }),
+        json!({
+            "id": "blast_async_list",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "HELPER_MODE", "required": false, "subject_kind": "other", "detail": "optional helper/reference job-scope filter"}
+            ],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "List known async BLAST jobs through the MCP/tool route; refreshing persisted job snapshots may update runtime metadata.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("blast_async_list")
+        }),
+        no_project_inspection_operation_descriptor(
+            "ensembl-gene list",
+            "List stored Ensembl gene metadata entries without project-state preconditions.",
+            vec![],
+        ),
+        no_project_inspection_operation_descriptor(
+            "ensembl-protein list",
+            "List stored Ensembl protein metadata entries without project-state preconditions.",
+            vec![],
+        ),
+        optional_artifact_inspection_operation_descriptor(
+            "gene-groups list",
+            "optional external gene-group list JSON output path",
+            "List deterministic local gene-group catalog entries without project-state preconditions; catalog path validation happens during execution.",
+            vec![
+                json!({"name": "--catalog", "required": false, "subject_kind": "other", "detail": "optional gene-group catalog path"}),
+                json!({"name": "--filter", "required": false, "subject_kind": "other", "detail": "optional catalog text filter"}),
+            ],
+        ),
+        optional_artifact_inspection_operation_descriptor(
+            "gene-groups show",
+            "optional external gene-group entry JSON output path",
+            "Show one gene-group catalog entry without project-state preconditions; group id and catalog path validation happen during execution.",
+            vec![
+                json!({"name": "GROUP_ID", "required": true, "subject_kind": "other", "detail": "gene-group catalog id"}),
+                json!({"name": "--catalog", "required": false, "subject_kind": "other", "detail": "optional gene-group catalog path"}),
+            ],
+        ),
+        optional_artifact_inspection_operation_descriptor(
+            "gene-groups resolve",
+            "optional external gene-group resolution JSON output path",
+            "Resolve a token against local gene-group catalogs without project-state preconditions; token and catalog validation happen during execution.",
+            vec![
+                json!({"name": "TOKEN", "required": true, "subject_kind": "other", "detail": "gene-group id, label, or alias token"}),
+                json!({"name": "--catalog", "required": false, "subject_kind": "other", "detail": "optional gene-group catalog path"}),
+            ],
+        ),
+        optional_artifact_inspection_operation_descriptor(
+            "gene-groups doctor",
+            "optional external gene-group doctor JSON output path",
+            "Validate local gene-group catalog overlays without project-state preconditions; catalog path validation happens during execution.",
+            vec![
+                json!({"name": "--catalog", "required": false, "subject_kind": "other", "detail": "optional gene-group catalog path"}),
+            ],
+        ),
+        optional_artifact_operation_descriptor(
+            "ladders export",
+            "external ladder-catalog JSON output path",
+            "Export built-in DNA or RNA ladder definitions to an external JSON file without project-state preconditions.",
+        ),
+        optional_artifact_operation_descriptor(
+            "export_dna_ladders",
+            "external DNA ladder-catalog JSON output path",
+            "Export built-in DNA ladder definitions to an external JSON file without project-state preconditions.",
+        ),
+        optional_artifact_operation_descriptor(
+            "export_rna_ladders",
+            "external RNA ladder-catalog JSON output path",
+            "Export built-in RNA ladder definitions to an external JSON file without project-state preconditions.",
+        ),
+        optional_artifact_operation_descriptor(
+            "ExportDnaLadders",
+            "external DNA ladder-catalog JSON output path carried by path",
+            "Export built-in DNA ladder definitions through the shared engine operation.",
+        ),
+        optional_artifact_operation_descriptor(
+            "ExportRnaLadders",
+            "external RNA ladder-catalog JSON output path carried by path",
+            "Export built-in RNA ladder definitions through the shared engine operation.",
+        ),
+        json!({
+            "id": "SummarizeRnaReadGeneSupport",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted RNA-read interpretation report id carried by the operation payload"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external JSON output path carried by path"}
+            ],
+            "reads": [
+                {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "rna_read"}
+            ],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_PATH"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "rna_read"}
+                ]
+            },
+            "description": "Summarize target-gene support from one persisted RNA-read interpretation report through the shared engine operation.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("SummarizeRnaReadGeneSupport")
+        }),
+        json!({
+            "id": "InspectRnaReadGeneSupport",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted RNA-read interpretation report id carried by the operation payload"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external JSON output path carried by path"}
+            ],
+            "reads": [
+                {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "rna_read"}
+            ],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_PATH"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "rna_read"}
+                ]
+            },
+            "description": "Inspect target-gene support cohorts from one persisted RNA-read interpretation report through the shared engine operation.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("InspectRnaReadGeneSupport")
+        }),
+        json!({
+            "id": "display",
+            "kind": "view_intent",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "TARGET", "required": true, "subject_kind": "other", "detail": "display target such as features, tfbs, restriction-enzymes, or repeat-features"},
+                {"name": "VISIBLE", "required": true, "detail": "show/hide or on/off visibility state"}
+            ],
+            "reads": [],
+            "effects": [
+                {
+                    "fact": "view.visible_tracks",
+                    "subject": {"kind": "ui", "id": "host"},
+                    "effect_kind": "view_session"
+                }
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Toggle shared display visibility targets for sequence-window feature layers and panels.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("display")
+        }),
+        json!({
+            "id": "SetDisplayVisibility",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "TARGET", "required": true, "subject_kind": "other", "detail": "display target carried by the operation payload"},
+                {"name": "VISIBLE", "required": true, "detail": "visibility boolean carried by the operation payload"}
+            ],
+            "reads": [],
+            "effects": [
+                {
+                    "fact": "view.visible_tracks",
+                    "subject": {"kind": "ui", "id": "host"},
+                    "effect_kind": "view_session"
+                }
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Toggle shared display visibility through the raw engine operation row.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("SetDisplayVisibility")
+        }),
+        json!({
+            "id": "SetLinearViewport",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "START_BP", "required": true, "detail": "0-based viewport start carried by the operation payload"},
+                {"name": "SPAN_BP", "required": true, "detail": "visible viewport span carried by the operation payload"}
+            ],
+            "reads": [],
+            "effects": [
+                {
+                    "fact": "view.viewport",
+                    "subject": {"kind": "ui", "id": "linear_sequence"},
+                    "equals": {
+                        "start_bp": {"arg": "START_BP"},
+                        "span_bp": {"arg": "SPAN_BP"}
+                    },
+                    "effect_kind": "must_on_success"
+                }
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Set the linear sequence viewport start and span.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("SetLinearViewport")
+        }),
+        json!({
+            "id": "ui intents",
+            "kind": "view_intent",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "List supported GUI intent targets and commands for words-only clients.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("ui intents")
+        }),
+        json!({
+            "id": "ui_intents",
+            "kind": "view_intent",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "List supported GUI intent targets and commands through the shared MCP/tool route.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("ui_intents")
+        }),
+        json!({
+            "id": "ui_prepared_genomes",
+            "kind": "view_intent",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "HELPER_MODE", "required": false, "subject_kind": "other", "detail": "query helper-genome cache instead of reference-genome cache"},
+                {"name": "CATALOG_PATH", "required": false, "subject_kind": "other", "detail": "optional genome catalog path"},
+                {"name": "CACHE_DIR", "required": false, "subject_kind": "other", "detail": "optional prepared-genome cache root"},
+                {"name": "FILTER", "required": false, "subject_kind": "other", "detail": "optional text filter"},
+                {"name": "SPECIES", "required": false, "subject_kind": "other", "detail": "optional species/family filter"},
+                {"name": "LATEST", "required": false, "subject_kind": "other", "detail": "select latest matching prepared entry"}
+            ],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Query prepared reference/helper genomes through the shared MCP/tool UI helper; catalog and cache validation happen during execution.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("ui_prepared_genomes")
+        }),
+        json!({
+            "id": "ui_latest_prepared",
+            "kind": "view_intent",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SPECIES", "required": true, "subject_kind": "other", "detail": "species/family filter"},
+                {"name": "HELPER_MODE", "required": false, "subject_kind": "other", "detail": "query helper-genome cache instead of reference-genome cache"},
+                {"name": "CATALOG_PATH", "required": false, "subject_kind": "other", "detail": "optional genome catalog path"},
+                {"name": "CACHE_DIR", "required": false, "subject_kind": "other", "detail": "optional prepared-genome cache root"}
+            ],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Resolve the latest prepared genome for one species through the shared MCP/tool UI helper; catalog and cache validation happen during execution.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("ui_latest_prepared")
+        }),
+        json!({
+            "id": "ui selection",
+            "kind": "view_intent",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id"},
+                {"name": "--range", "required": false, "detail": "START..END (0-based, end-exclusive)"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}},
+                {"fact": "ui.host_available", "equals": true}
+            ],
+            "effects": [
+                {
+                    "fact": "view.selection",
+                    "subject": {"arg": "SEQ_ID"},
+                    "effect_kind": "view_session"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "ui.host_available", "equals": true},
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Select or inspect a region in a GUI sequence window.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("ui selection")
+        }),
+        json!({
+            "id": "set-param",
+            "kind": "host_config",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "PARAM_NAME", "required": true, "subject_kind": "other", "detail": "engine-owned parameter name accepted by set-param"},
+                {"name": "PARAM_VALUE", "required": true, "detail": "JSON parameter value accepted by set-param"}
+            ],
+            "reads": [],
+            "effects": [
+                {
+                    "fact": "config.param",
+                    "subject": {"arg": "PARAM_NAME"},
+                    "equals": {"arg": "PARAM_VALUE"},
+                    "effect_kind": "must_on_success"
+                }
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Set one engine-owned configuration parameter to a JSON value.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("set-param")
+        }),
+        json!({
+            "id": "SetParameter",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "PARAM_NAME", "required": true, "subject_kind": "other", "detail": "engine-owned parameter name carried by the operation payload"},
+                {"name": "PARAM_VALUE", "required": true, "detail": "JSON parameter value carried by the operation payload"}
+            ],
+            "reads": [],
+            "effects": [
+                {
+                    "fact": "config.param",
+                    "subject": {"arg": "PARAM_NAME"},
+                    "equals": {"arg": "PARAM_VALUE"},
+                    "effect_kind": "must_on_success"
+                }
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Set one engine-owned configuration parameter through the raw engine operation row.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("SetParameter")
+        }),
+        json!({
+            "id": "agents preflight",
+            "kind": "host_config",
+            "mutating": "external",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SYSTEM_ID", "required": true, "subject_kind": "other", "detail": "configured agent-system id"}
+            ],
+            "reads": [
+                {"fact": "host.tool_available", "subject": {"arg": "SYSTEM_ID"}, "equals": true}
+            ],
+            "effects": [
+                {
+                    "fact": "report.exists",
+                    "report_kind": "agent_preflight",
+                    "subject": {"arg": "SYSTEM_ID"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "host.tool_available", "subject": {"arg": "SYSTEM_ID"}, "equals": true}
+                ]
+            },
+            "description": "Inspect whether a configured external agent adapter appears reachable.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("agents preflight")
+        }),
+        json!({
+            "id": "agents discover-models",
+            "kind": "host_config",
+            "mutating": "external",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SYSTEM_ID", "required": true, "subject_kind": "other", "detail": "configured agent-system id"},
+                {"name": "--catalog", "required": false, "subject_kind": "other", "detail": "optional agent-system catalog path"},
+                {"name": "--base-url", "required": false, "subject_kind": "other", "detail": "optional OpenAI-compatible base URL override"}
+            ],
+            "reads": [
+                {"fact": "host.tool_available", "subject": {"arg": "SYSTEM_ID"}, "equals": true}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "host.tool_available", "subject": {"arg": "SYSTEM_ID"}, "equals": true}
+                ]
+            },
+            "description": "Discover model ids exposed by a configured external agent adapter.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("agents discover-models")
+        }),
+        json!({
+            "id": "agent_models",
+            "kind": "host_config",
+            "mutating": "external",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SYSTEM_ID", "required": true, "subject_kind": "other", "detail": "configured agent-system id"},
+                {"name": "CATALOG_PATH", "required": false, "subject_kind": "other", "detail": "optional agent-system catalog path"},
+                {"name": "BASE_URL", "required": false, "subject_kind": "other", "detail": "optional OpenAI-compatible base URL override"}
+            ],
+            "reads": [
+                {"fact": "host.tool_available", "subject": {"arg": "SYSTEM_ID"}, "equals": true}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "host.tool_available", "subject": {"arg": "SYSTEM_ID"}, "equals": true}
+                ]
+            },
+            "description": "Discover model ids exposed by a configured external agent adapter through the shared MCP/tool route.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("agent_models")
+        }),
+        json!({
+            "id": "agent_preflight",
+            "kind": "host_config",
+            "mutating": "external",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SYSTEM_ID", "required": true, "subject_kind": "other", "detail": "configured agent-system id"}
+            ],
+            "reads": [
+                {"fact": "host.tool_available", "subject": {"arg": "SYSTEM_ID"}, "equals": true}
+            ],
+            "effects": [
+                {
+                    "fact": "report.exists",
+                    "report_kind": "agent_preflight",
+                    "subject": {"arg": "SYSTEM_ID"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "host.tool_available", "subject": {"arg": "SYSTEM_ID"}, "equals": true}
+                ]
+            },
+            "description": "Inspect whether a configured external agent adapter appears reachable through the shared MCP/tool operation row.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("agent_preflight")
+        }),
+    ]
+}
+
+fn introspection_capability_descriptors(kind_filter: Option<&str>) -> Vec<Value> {
+    let mut descriptors = BTreeMap::<String, Value>::new();
+    for descriptor in capability_registry() {
+        let projected = introspection_registry_descriptor(descriptor);
+        descriptors.insert(descriptor.name.clone(), projected);
+    }
+    for descriptor in annotated_introspection_capability_descriptors() {
+        if let Some(id) = descriptor["id"].as_str() {
+            descriptors.insert(id.to_string(), descriptor);
+        }
+    }
+    let mut descriptors = descriptors.into_values().collect::<Vec<_>>();
+    if let Some(kind) = kind_filter {
+        descriptors.retain(|descriptor| descriptor["kind"].as_str() == Some(kind));
+    }
+    descriptors
+}
+
+fn introspection_capabilities_payload(kind_filter: Option<&str>) -> Value {
+    json!({
+        "schema": "gentle.introspection.v1",
+        "route": "capabilities",
+        "annotation_scope": "registry_with_fact_annotated_slice",
+        "capabilities": introspection_capability_descriptors(kind_filter),
+    })
+}
+
+fn canonical_introspection_capability_id(capability_id: &str) -> &str {
+    match capability_id {
+        "ui select" => "ui selection",
+        _ => capability_id,
+    }
+}
+
+fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
+    match canonical_introspection_capability_id(capability_id) {
+        "help" => Some(vec![]),
+        "capabilities" => Some(vec![]),
+        "state-summary" => Some(vec![]),
+        "history status" => Some(vec![]),
+        "facts graph" => Some(vec![]),
+        "facts eval" => Some(vec![]),
+        "introspect facts"
+        | "introspect capabilities"
+        | "introspect readiness"
+        | "introspect verify-effects"
+        | "introspect all" => Some(vec![]),
+        "sequence create" => Some(vec![]),
+        "Reverse" | "Complement" | "ReverseComplement" | "Branch" | "ExtractRegion" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "INPUT_SEQ_ID"}}),
+        ]),
+        "SetTopology" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
+        ]),
+        "RecomputeFeatures" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
+        ]),
+        "features restriction-scan" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
+        ]),
+        "features query" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
+        ]),
+        "features export-bed" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
+        ]),
+        "inspect-feature-expert" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
+        ]),
+        "render-feature-expert-svg" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
+        ]),
+        "features tfbs-summary" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
+        ]),
+        "QueryProteinResidueGenomicCoordinates" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
+        ]),
+        "variant materialize-allele" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
+        ]),
+        "align compute" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "QUERY_SEQ_ID"}}),
+            json!({"fact": "sequence.exists", "subject": {"arg": "TARGET_SEQ_ID"}}),
+        ]),
+        "render-svg" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
+        ]),
+        "render-rna-svg" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
+        ]),
+        "render-lineage-svg" => Some(vec![]),
+        "RenderSequenceSvg" | "RenderFeatureExpertSvg" | "RenderRnaStructureSvg" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
+        ]),
+        "RenderLineageSvg" => Some(vec![]),
+        "rna-info" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
+        ]),
+        "reverse-translate run" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "PROTEIN_SEQ_ID"}}),
+            json!({"fact": "sequence.kind", "subject": {"arg": "PROTEIN_SEQ_ID"}, "equals": "protein"}),
+        ]),
+        "reverse-translate list-reports" => Some(vec![]),
+        "reverse-translate show-report" => Some(vec![
+            json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "reverse_translation"}),
+        ]),
+        "reverse-translate export-report" => Some(vec![
+            json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "reverse_translation"}),
+        ]),
+        "primers design" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "TEMPLATE_SEQ_ID"}}),
+        ]),
+        "primers list-reports" => Some(vec![]),
+        "primers show-report" => Some(vec![
+            json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "primer_design"}),
+        ]),
+        "primers export-report" => Some(vec![
+            json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "primer_design"}),
+        ]),
+        "primers design-qpcr" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "TEMPLATE_SEQ_ID"}}),
+        ]),
+        "primers list-qpcr-reports" => Some(vec![]),
+        "primers show-qpcr-report" => Some(vec![
+            json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "qpcr_design"}),
+        ]),
+        "primers export-qpcr-report" => Some(vec![
+            json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "qpcr_design"}),
+        ]),
+        "primers prepare-restriction-cloning" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "TEMPLATE_SEQ_ID"}}),
+            json!({"fact": "report.exists", "subject": {"arg": "PRIMER_REPORT_ID"}, "equals": "primer_design"}),
+            json!({"fact": "sequence.exists", "subject": {"arg": "DESTINATION_VECTOR_SEQ_ID"}}),
+        ]),
+        "primers list-restriction-cloning-handoffs" => Some(vec![]),
+        "primers preflight" => Some(vec![]),
+        "primers seed-from-feature"
+        | "primers seed-from-splicing"
+        | "primers restriction-cloning-vector-suggestions" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
+        ]),
+        "primers seed-restriction-cloning-handoff" => Some(vec![
+            json!({"fact": "report.exists", "subject": {"arg": "PRIMER_REPORT_ID"}, "equals": "primer_design"}),
+            json!({"fact": "sequence.exists", "subject": {"arg": "DESTINATION_VECTOR_SEQ_ID"}}),
+        ]),
+        "primers show-restriction-cloning-handoff" => Some(vec![
+            json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "restriction_cloning_pcr_handoff"}),
+        ]),
+        "primers export-restriction-cloning-handoff" => Some(vec![
+            json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "restriction_cloning_pcr_handoff"}),
+        ]),
+        "seq-confirm list-reports" => Some(vec![]),
+        "seq-confirm show-report" => Some(vec![
+            json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "sequencing_confirmation"}),
+        ]),
+        "seq-confirm export-report" => Some(vec![
+            json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "sequencing_confirmation"}),
+        ]),
+        "seq-confirm export-support-tsv" => Some(vec![
+            json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "sequencing_confirmation"}),
+        ]),
+        "ListSequencingConfirmationReports" => Some(vec![]),
+        "ShowSequencingConfirmationReport"
+        | "ExportSequencingConfirmationReport"
+        | "ExportSequencingConfirmationSupportTsv" => Some(vec![
+            json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "sequencing_confirmation"}),
+        ]),
+        "cutrun list-read-reports" => Some(vec![]),
+        "cutrun show-read-report" => Some(vec![
+            json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "cutrun_read"}),
+        ]),
+        "cutrun export-coverage" => Some(vec![
+            json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "cutrun_read"}),
+        ]),
+        "ListCutRunReadReports" => Some(vec![]),
+        "ShowCutRunReadReport" | "ExportCutRunReadCoverage" => Some(vec![
+            json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "cutrun_read"}),
+        ]),
+        "rna-reads list-reports" => Some(vec![]),
+        "rna-reads show-report" | "rna-reads align-report" | "rna-reads materialize-hits" => {
+            Some(vec![
+                json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "rna_read"}),
+            ])
+        }
+        "rna-reads preflight-isoforms" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
+        ]),
+        "rna-reads export-report"
+        | "rna-reads export-hits-fasta"
+        | "rna-reads export-target-quality"
+        | "rna-reads export-paths-tsv"
+        | "rna-reads export-abundance-tsv"
+        | "rna-reads export-score-density-svg"
+        | "rna-reads export-alignments-tsv"
+        | "rna-reads export-isoform-triage-tsv"
+        | "rna-reads export-alignment-dotplot-svg" => Some(vec![
+            json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "rna_read"}),
+        ]),
+        "ListRnaReadReports" => Some(vec![]),
+        "SummarizeJasparEntries"
+        | "BenchmarkJasparRegistry"
+        | "ListJasparCatalog"
+        | "ResolveTfQueries"
+        | "ListReporterCatalog"
+        | "RecommendReporters"
+        | "reporters list"
+        | "reporters recommend"
+        | "reporters export-corpus"
+        | "ExportReporterCorpus"
+        | "services status"
+        | "state_summary"
+        | "services providers list"
+        | "services providers doctor"
+        | "planning profile show"
+        | "planning objective show"
+        | "planning suggestions list"
+        | "resources summarize-jaspar"
+        | "resources status"
+        | "resources suggest-ucsc-rmsk-index"
+        | "resources list-jaspar"
+        | "resources inspect-jaspar"
+        | "resources resolve-tf-query"
+        | "resources list-publication-datasets"
+        | "resources status-publication-dataset"
+        | "genomes validate-catalog"
+        | "helpers validate-catalog"
+        | "helpers vocabulary list"
+        | "helpers vocabulary doctor"
+        | "hosts list"
+        | "list_host_profile_catalog_entries"
+        | "host_profile_catalog_entries"
+        | "list_helper_catalog_entries"
+        | "helper_catalog_entries"
+        | "helper_semantics_vocabulary"
+        | "helper_interpretation"
+        | "proteases list"
+        | "proteases show"
+        | "mirna explain-seed"
+        | "mirna catalog-show"
+        | "genomes list"
+        | "helpers list"
+        | "genomes status"
+        | "helpers status"
+        | "genomes genes"
+        | "helpers genes"
+        | "list_reference_genomes"
+        | "list_reference_catalog_entries"
+        | "reference_catalog_entries"
+        | "is_reference_genome_prepared"
+        | "list_reference_genome_genes"
+        | "genomes blast-status"
+        | "helpers blast-status"
+        | "genomes blast-list"
+        | "helpers blast-list"
+        | "blast_async_status"
+        | "blast_async_list"
+        | "ladders list"
+        | "inspect_dna_ladders"
+        | "inspect_rna_ladders"
+        | "list_dna_ladders"
+        | "list_rna_ladders"
+        | "agents list"
+        | "agent_systems"
+        | "list_agent_systems"
+        | "ui_intents"
+        | "ui_prepared_genomes"
+        | "ui_latest_prepared"
+        | "protocol-cartoon list"
+        | "protocol-cartoon render-svg"
+        | "protocol-cartoon render-template-svg"
+        | "protocol-cartoon render-with-bindings"
+        | "protocol-cartoon template-export"
+        | "protocol-cartoon template-validate"
+        | "RenderProtocolCartoonSvg"
+        | "RenderProtocolCartoonTemplateSvg"
+        | "RenderProtocolCartoonTemplateWithBindingsSvg"
+        | "ExportProtocolCartoonTemplateJson"
+        | "ValidateProtocolCartoonTemplate"
+        | "cache inspect"
+        | "cutrun list"
+        | "ListCutRunDatasets"
+        | "cutrun status"
+        | "ShowCutRunDatasetStatus"
+        | "arrays inspect-microarray-track"
+        | "arrays inspect-probe-region-output"
+        | "arrays render-probe-region-output-svg"
+        | "candidates list"
+        | "candidates template-list"
+        | "guides list"
+        | "macros instance-list"
+        | "macros template-list"
+        | "routines list"
+        | "routines explain"
+        | "routines compare"
+        | "construct-reasoning list-graphs"
+        | "construct_reasoning_graphs"
+        | "dotplot list"
+        | "flex list"
+        | "ensembl-gene list"
+        | "ensembl-protein list"
+        | "gene-groups list"
+        | "gene-groups show"
+        | "gene-groups resolve"
+        | "gene-groups doctor"
+        | "ladders export"
+        | "export_dna_ladders"
+        | "export_rna_ladders"
+        | "ExportDnaLadders"
+        | "ExportRnaLadders" => Some(vec![]),
+        "ShowRnaReadReport"
+        | "AlignRnaReadReport"
+        | "ExportRnaReadReport"
+        | "ExportRnaReadHitsFasta"
+        | "ExportRnaReadTargetQuality"
+        | "ExportRnaReadExonPathsTsv"
+        | "ExportRnaReadExonAbundanceTsv"
+        | "ExportRnaReadScoreDensitySvg"
+        | "ExportRnaReadAlignmentsTsv"
+        | "ExportRnaReadIsoformTriageTsv"
+        | "ExportRnaReadAlignmentDotplotSvg"
+        | "MaterializeRnaReadHitSequences"
+        | "SummarizeRnaReadGeneSupport"
+        | "InspectRnaReadGeneSupport" => Some(vec![
+            json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "rna_read"}),
+        ]),
+        "PreflightRnaReadIsoforms" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
+        ]),
+        "display" | "SetDisplayVisibility" => Some(vec![]),
+        "SetLinearViewport" => Some(vec![]),
+        "ui intents" => Some(vec![]),
+        "ui selection" => Some(vec![
+            json!({"fact": "ui.host_available", "equals": true}),
+            json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
+        ]),
+        "set-param" | "SetParameter" => Some(vec![]),
+        "agents preflight" | "agents discover-models" | "agent_preflight" | "agent_models" => {
+            Some(vec![
+                json!({"fact": "host.tool_available", "subject": {"arg": "SYSTEM_ID"}, "equals": true}),
+            ])
+        }
+        _ => None,
+    }
+}
+
+fn capability_precondition_expr_value(capability_id: &str) -> Option<Value> {
+    let canonical = canonical_introspection_capability_id(capability_id);
+    let descriptor = annotated_introspection_capability_descriptors()
+        .into_iter()
+        .find(|descriptor| descriptor["id"].as_str() == Some(canonical))?;
+    descriptor.get("precondition_expr").cloned()
+}
+
+fn capability_must_effect_atoms(capability_id: &str) -> Option<Vec<Value>> {
+    let canonical = canonical_introspection_capability_id(capability_id);
+    let descriptor = annotated_introspection_capability_descriptors()
+        .into_iter()
+        .find(|descriptor| descriptor["id"].as_str() == Some(canonical))?;
+    let effects = descriptor["effects"].as_array()?;
+    Some(
+        effects
+            .iter()
+            .filter(|effect| effect["effect_kind"].as_str() == Some("must_on_success"))
+            .cloned()
+            .collect(),
+    )
+}
+
+fn subject_kind_for_arg(arg_name: &str) -> FactSubjectKind {
+    match arg_name {
+        "SEQ_ID"
+        | "OUTPUT_ID"
+        | "ID"
+        | "INPUT_SEQ_ID"
+        | "QUERY_SEQ_ID"
+        | "TARGET_SEQ_ID"
+        | "PROTEIN_SEQ_ID"
+        | "TEMPLATE_SEQ_ID"
+        | "DESTINATION_VECTOR_SEQ_ID" => FactSubjectKind::Sequence,
+        "REPORT_ID" | "PRIMER_REPORT_ID" => FactSubjectKind::Report,
+        "PARAM_NAME" => FactSubjectKind::Other,
+        _ => FactSubjectKind::Other,
+    }
+}
+
+fn introspection_subject_kind_from_str(kind: &str) -> FactSubjectKind {
+    match kind {
+        "sequence" => FactSubjectKind::Sequence,
+        "report" => FactSubjectKind::Report,
+        "ui" => FactSubjectKind::Ui,
+        _ => FactSubjectKind::Other,
+    }
+}
+
+fn instantiate_introspection_value(
+    value: &Value,
+    args: &BTreeMap<String, String>,
+) -> Result<Value, String> {
+    if let Some(arg_name) = value.get("arg").and_then(Value::as_str) {
+        let Some(raw) = args.get(arg_name) else {
+            return Err(format!("unbound argument {arg_name}"));
+        };
+        return Ok(serde_json::from_str::<Value>(raw).unwrap_or_else(|_| json!(raw)));
+    }
+    match value {
+        Value::Array(values) => values
+            .iter()
+            .map(|value| instantiate_introspection_value(value, args))
+            .collect::<Result<Vec<_>, _>>()
+            .map(Value::Array),
+        Value::Object(map) => {
+            let mut instantiated = serde_json::Map::new();
+            for (key, value) in map {
+                instantiated.insert(key.clone(), instantiate_introspection_value(value, args)?);
+            }
+            Ok(Value::Object(instantiated))
+        }
+        _ => Ok(value.clone()),
+    }
+}
+
+fn instantiate_introspection_atom(
+    atom: &Value,
+    args: &BTreeMap<String, String>,
+) -> Result<FactAtom, String> {
+    let fact = atom
+        .get("fact")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "introspection atom missing fact".to_string())?
+        .to_string();
+    let mut subject = None;
+    if let Some(subject_value) = atom.get("subject") {
+        if let Some(arg_name) = subject_value.get("arg").and_then(Value::as_str) {
+            let Some(id) = args.get(arg_name) else {
+                return Err(format!("unbound argument {arg_name}"));
+            };
+            subject = Some(FactSubject {
+                kind: subject_kind_for_arg(arg_name),
+                id: id.clone(),
+            });
+        } else if let (Some(kind), Some(id)) = (
+            subject_value.get("kind").and_then(Value::as_str),
+            subject_value.get("id").and_then(Value::as_str),
+        ) {
+            subject = Some(FactSubject {
+                kind: introspection_subject_kind_from_str(kind),
+                id: id.to_string(),
+            });
+        }
+    }
+    let equals = match atom.get("equals") {
+        Some(value) => Some(instantiate_introspection_value(value, args)?),
+        None => atom
+            .get("report_kind")
+            .and_then(Value::as_str)
+            .map(|value| json!(value)),
+    };
+    Ok(FactAtom {
+        fact,
+        subject,
+        id: None,
+        enzyme: atom
+            .get("enzyme")
+            .and_then(Value::as_str)
+            .map(|value| value.to_string()),
+        range: None,
+        equals,
+        compare: None,
+    })
+}
+
+fn fact_atom_label(atom: &Value) -> Value {
+    let mut labeled = atom.clone();
+    if labeled.get("reason").is_none()
+        && let Some(obj) = labeled.as_object_mut()
+    {
+        obj.insert("reason".to_string(), json!("unbound argument"));
+    }
+    labeled
+}
+
+fn instantiate_introspection_expression(
+    value: &Value,
+    args: &BTreeMap<String, String>,
+    unknown_atoms: &mut Vec<Value>,
+) -> Option<FactExpression> {
+    if let Some(children) = value.get("all").and_then(Value::as_array) {
+        let all = children
+            .iter()
+            .filter_map(|child| instantiate_introspection_expression(child, args, unknown_atoms))
+            .collect::<Vec<_>>();
+        return Some(FactExpression::All { all });
+    }
+    if let Some(children) = value.get("any").and_then(Value::as_array) {
+        let any = children
+            .iter()
+            .filter_map(|child| instantiate_introspection_expression(child, args, unknown_atoms))
+            .collect::<Vec<_>>();
+        return Some(FactExpression::Any { any });
+    }
+    if let Some(child) = value.get("not") {
+        return instantiate_introspection_expression(child, args, unknown_atoms)
+            .map(|not| FactExpression::Not { not: Box::new(not) });
+    }
+    match instantiate_introspection_atom(value, args) {
+        Ok(atom) => Some(FactExpression::Atom(atom)),
+        Err(_) => {
+            unknown_atoms.push(fact_atom_label(value));
+            None
+        }
+    }
+}
+
+fn introspection_readiness_for_capability(
+    engine: &GentleEngine,
+    capability_id: &str,
+    args: &BTreeMap<String, String>,
+    evidence: &[RestrictionSiteScanReport],
+    ui_host_available: bool,
+) -> Value {
+    let Some(precondition_expr) = capability_precondition_expr_value(capability_id) else {
+        return json!({
+            "capability_id": capability_id,
+            "mode": if args.is_empty() { "unbound" } else { "bound" },
+            "readiness": "unknown",
+            "unknown_atoms": [{"reason": "unknown capability"}],
+            "unmet_atoms": [],
+        });
+    };
+    let mode = if args.is_empty() { "unbound" } else { "bound" };
+    let mut unknown_atoms = vec![];
+    let expression = if precondition_expr.is_null() {
+        let Some(atoms) = capability_precondition_atoms(capability_id) else {
+            return json!({
+                "capability_id": capability_id,
+                "mode": mode,
+                "readiness": "unknown",
+                "unknown_atoms": [{"reason": "unknown capability"}],
+                "unmet_atoms": [],
+            });
+        };
+        let mut expression_atoms = vec![];
+        for atom in &atoms {
+            match instantiate_introspection_atom(atom, args) {
+                Ok(instantiated) => expression_atoms.push(FactExpression::Atom(instantiated)),
+                Err(_) => unknown_atoms.push(fact_atom_label(atom)),
+            }
+        }
+        FactExpression::All {
+            all: expression_atoms,
+        }
+    } else {
+        instantiate_introspection_expression(&precondition_expr, args, &mut unknown_atoms)
+            .unwrap_or(FactExpression::All { all: vec![] })
+    };
+    let graph = introspection_project_graph(engine, evidence, ui_host_available);
+    let evaluation = Some(GentleEngine::evaluate_fact_expression_against_graph(
+        &expression,
+        &graph,
+    ));
+    let mut readiness = match evaluation.as_ref().map(|result| result.truth) {
+        Some(FactTruth::Satisfied) if unknown_atoms.is_empty() => "ready",
+        Some(FactTruth::Unsatisfied) => "blocked",
+        Some(FactTruth::Unknown) | None => "unknown",
+        Some(FactTruth::Satisfied) => "unknown",
+    };
+    if !unknown_atoms.is_empty() && readiness == "ready" {
+        readiness = "unknown";
+    }
+    json!({
+        "capability_id": capability_id,
+        "mode": mode,
+        "readiness": readiness,
+        "truth": evaluation.as_ref().map(|result| result.truth),
+        "unmet_atoms": evaluation.as_ref().map(|result| result.unmet_atoms.clone()).unwrap_or_default(),
+        "unknown_atoms": unknown_atoms,
+        "evaluation_unknown_atoms": evaluation.as_ref().map(|result| result.unknown_atoms.clone()).unwrap_or_default(),
+    })
+}
+
+fn introspection_readiness_payload(
+    engine: &GentleEngine,
+    capability_id: Option<&str>,
+    args: &BTreeMap<String, String>,
+    evidence: &[RestrictionSiteScanReport],
+    readiness_filter: Option<&str>,
+    ui_host_available: bool,
+) -> Value {
+    let ids = capability_id
+        .map(|id| vec![id.to_string()])
+        .unwrap_or_else(|| {
+            introspection_capability_descriptors(None)
+                .into_iter()
+                .filter_map(|descriptor| descriptor["id"].as_str().map(|id| id.to_string()))
+                .collect()
+        });
+    let mut readiness = ids
+        .iter()
+        .map(|id| {
+            introspection_readiness_for_capability(engine, id, args, evidence, ui_host_available)
+        })
+        .collect::<Vec<_>>();
+    if let Some(filter) = readiness_filter {
+        readiness.retain(|row| row["readiness"].as_str() == Some(filter));
+    }
+    json!({
+        "schema": "gentle.introspection.v1",
+        "route": "readiness",
+        "filters": {
+            "capability_id": capability_id,
+            "readiness": readiness_filter,
+            "args": args,
+        },
+        "readiness": readiness,
+    })
+}
+
+fn introspection_verify_effects_payload(
+    engine: &GentleEngine,
+    capability_id: &str,
+    args: &BTreeMap<String, String>,
+    evidence: &[RestrictionSiteScanReport],
+    ui_host_available: bool,
+) -> Value {
+    let Some(atoms) = capability_must_effect_atoms(capability_id) else {
+        return json!({
+            "schema": "gentle.introspection.v1",
+            "route": "verify-effects",
+            "capability_id": capability_id,
+            "canonical_capability_id": canonical_introspection_capability_id(capability_id),
+            "verified": false,
+            "status": "unknown_capability",
+            "must_on_success_effects": [],
+            "unmet_atoms": [],
+            "unknown_atoms": [{"reason": "unknown capability"}],
+            "evaluation_unknown_atoms": [],
+        });
+    };
+    if atoms.is_empty() {
+        return json!({
+            "schema": "gentle.introspection.v1",
+            "route": "verify-effects",
+            "capability_id": capability_id,
+            "canonical_capability_id": canonical_introspection_capability_id(capability_id),
+            "verified": true,
+            "status": "no_must_on_success_effects",
+            "must_on_success_effects": [],
+            "unmet_atoms": [],
+            "unknown_atoms": [],
+            "evaluation_unknown_atoms": [],
+        });
+    }
+    let mut expression_atoms = vec![];
+    let mut unknown_atoms = vec![];
+    for atom in &atoms {
+        match instantiate_introspection_atom(atom, args) {
+            Ok(instantiated) => expression_atoms.push(FactExpression::Atom(instantiated)),
+            Err(_) => unknown_atoms.push(fact_atom_label(atom)),
+        }
+    }
+    let graph = introspection_project_graph(engine, evidence, ui_host_available);
+    let evaluation = if expression_atoms.is_empty() {
+        None
+    } else {
+        Some(GentleEngine::evaluate_fact_expression_against_graph(
+            &FactExpression::All {
+                all: expression_atoms,
+            },
+            &graph,
+        ))
+    };
+    let verified = matches!(
+        evaluation.as_ref().map(|result| result.truth),
+        Some(FactTruth::Satisfied)
+    ) && unknown_atoms.is_empty();
+    let status = match evaluation.as_ref().map(|result| result.truth) {
+        Some(FactTruth::Satisfied) if unknown_atoms.is_empty() => "verified",
+        Some(FactTruth::Unsatisfied) => "failed",
+        Some(FactTruth::Unknown) | None => "unknown",
+        Some(FactTruth::Satisfied) => "unknown",
+    };
+    json!({
+        "schema": "gentle.introspection.v1",
+        "route": "verify-effects",
+        "capability_id": capability_id,
+        "canonical_capability_id": canonical_introspection_capability_id(capability_id),
+        "verified": verified,
+        "status": status,
+        "must_on_success_effects": atoms,
+        "truth": evaluation.as_ref().map(|result| result.truth),
+        "unmet_atoms": evaluation.as_ref().map(|result| result.unmet_atoms.clone()).unwrap_or_default(),
+        "unknown_atoms": unknown_atoms,
+        "evaluation_unknown_atoms": evaluation.as_ref().map(|result| result.unknown_atoms.clone()).unwrap_or_default(),
+    })
 }
 
 fn parse_services_route_project_rank_csv(raw: &str, flag: &str) -> Result<Vec<usize>, String> {
@@ -24594,6 +29263,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
             }
         }
         "facts" => parse_facts_command(tokens),
+        "introspect" => parse_introspect_command(tokens),
         "history" => {
             if tokens.len() != 2 {
                 return Err("history requires one subcommand: status, undo, or redo".to_string());
@@ -30296,6 +34966,93 @@ fn execute_agent_meta_command(
                     engine.evaluate_fact_expression(&expression, &evidence),
                 )
                 .map_err(|e| format!("Could not serialize fact evaluation: {e}"))?,
+            })
+        }
+        ShellCommand::IntrospectFacts {
+            evidence_paths,
+            domain_filter,
+            seq_id_filter,
+            ui_host_available,
+        } => {
+            let evidence = load_restriction_site_scan_evidence(evidence_paths)?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: introspection_facts_payload(
+                    engine,
+                    &evidence,
+                    domain_filter.as_deref(),
+                    seq_id_filter.as_deref(),
+                    *ui_host_available,
+                ),
+            })
+        }
+        ShellCommand::IntrospectCapabilities { kind_filter } => Ok(ShellRunResult {
+            state_changed: false,
+            output: introspection_capabilities_payload(kind_filter.as_deref()),
+        }),
+        ShellCommand::IntrospectReadiness {
+            capability_id,
+            args,
+            evidence_paths,
+            readiness_filter,
+            ui_host_available,
+        } => {
+            let evidence = load_restriction_site_scan_evidence(evidence_paths)?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: introspection_readiness_payload(
+                    engine,
+                    capability_id.as_deref(),
+                    args,
+                    &evidence,
+                    readiness_filter.as_deref(),
+                    *ui_host_available,
+                ),
+            })
+        }
+        ShellCommand::IntrospectVerifyEffects {
+            capability_id,
+            args,
+            evidence_paths,
+            ui_host_available,
+        } => {
+            let evidence = load_restriction_site_scan_evidence(evidence_paths)?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: introspection_verify_effects_payload(
+                    engine,
+                    capability_id,
+                    args,
+                    &evidence,
+                    *ui_host_available,
+                ),
+            })
+        }
+        ShellCommand::IntrospectAll {
+            evidence_paths,
+            ui_host_available,
+        } => {
+            let evidence = load_restriction_site_scan_evidence(evidence_paths)?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.introspection.v1",
+                    "route": "all",
+                    "facts": introspection_facts_payload(engine, &evidence, None, None, *ui_host_available),
+                    "capabilities": introspection_capabilities_payload(None),
+                    "readiness": introspection_readiness_payload(engine, None, &BTreeMap::new(), &evidence, None, *ui_host_available),
+                    "effect_verification": [
+                        introspection_verify_effects_payload(engine, "sequence create", &BTreeMap::new(), &evidence, *ui_host_available),
+                        introspection_verify_effects_payload(engine, "features restriction-scan", &BTreeMap::new(), &evidence, *ui_host_available),
+                        introspection_verify_effects_payload(engine, "variant materialize-allele", &BTreeMap::new(), &evidence, *ui_host_available),
+                        introspection_verify_effects_payload(engine, "reverse-translate run", &BTreeMap::new(), &evidence, *ui_host_available),
+                        introspection_verify_effects_payload(engine, "primers design", &BTreeMap::new(), &evidence, *ui_host_available),
+                        introspection_verify_effects_payload(engine, "primers design-qpcr", &BTreeMap::new(), &evidence, *ui_host_available),
+                        introspection_verify_effects_payload(engine, "primers prepare-restriction-cloning", &BTreeMap::new(), &evidence, *ui_host_available),
+                        introspection_verify_effects_payload(engine, "ui selection", &BTreeMap::new(), &evidence, *ui_host_available),
+                        introspection_verify_effects_payload(engine, "agents preflight", &BTreeMap::new(), &evidence, *ui_host_available),
+                    ],
+                }),
             })
         }
         _ => Err("execute_agent_meta_command called with unsupported command".to_string()),
@@ -42528,6 +47285,11 @@ fn execute_shell_command_with_options_dispatch(
             | ShellCommand::StateSummary
             | ShellCommand::FactsGraph { .. }
             | ShellCommand::FactsEval { .. }
+            | ShellCommand::IntrospectFacts { .. }
+            | ShellCommand::IntrospectCapabilities { .. }
+            | ShellCommand::IntrospectReadiness { .. }
+            | ShellCommand::IntrospectVerifyEffects { .. }
+            | ShellCommand::IntrospectAll { .. }
     ) {
         return execute_agent_meta_command(engine, command);
     }
@@ -43055,7 +47817,12 @@ fn execute_shell_command_with_options_inner(
         ShellCommand::Capabilities
         | ShellCommand::StateSummary
         | ShellCommand::FactsGraph { .. }
-        | ShellCommand::FactsEval { .. } => execute_agent_meta_command(engine, command)?,
+        | ShellCommand::FactsEval { .. }
+        | ShellCommand::IntrospectFacts { .. }
+        | ShellCommand::IntrospectCapabilities { .. }
+        | ShellCommand::IntrospectReadiness { .. }
+        | ShellCommand::IntrospectVerifyEffects { .. }
+        | ShellCommand::IntrospectAll { .. } => execute_agent_meta_command(engine, command)?,
         ShellCommand::HistoryStatus | ShellCommand::HistoryUndo | ShellCommand::HistoryRedo => {
             execute_history_command(engine, command)?
         }

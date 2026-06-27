@@ -12,6 +12,241 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-06-26
+
+- Added the first shared `introspect facts|capabilities|readiness|all`
+  implementation, including additive fact domains, explicit headless
+  `ui.host_available=false`, deterministic agent-system
+  `host.tool_available` facts, registry-backed capability discovery,
+  fact-annotated readiness descriptors, and `--seq-id` / `--readiness`
+  introspection scoping.
+- Added `introspect verify-effects` to verify fact-annotated
+  `must_on_success` effects against the current fact graph plus supplied
+  evidence, starting with restriction-scan report verification.
+- Added fact-aware introspection for `sequence create`, including readiness
+  with no fact preconditions and post-run verification that the requested
+  output sequence id exists.
+- Added fact-aware introspection for `variant materialize-allele`, including
+  input sequence readiness and post-run verification of the materialized output
+  sequence id.
+- Added fact-aware readiness introspection for `align compute`, checking that
+  both loaded query and target sequence ids exist before alignment.
+- Added matching fact-aware introspection for the raw `AlignSequences`
+  operation row so registry-driven adapters can make the same query/target
+  readiness check as the shell command.
+- Added fact-aware readiness introspection for `render-svg`, `render-rna-svg`,
+  and `render-lineage-svg`, checking sequence inputs where applicable and
+  modeling external SVG files as `artifact.written` `external_handoff` effects.
+- Added matching fact-aware introspection for the raw render operation rows
+  `RenderSequenceSvg`, `RenderRnaStructureSvg`, `RenderFeatureExpertSvg`,
+  `RenderTfbsScoreTrackCorrelationSvg`, and `RenderLineageSvg`, keeping
+  registry-driven adapters aligned with the shell render commands.
+- Added fact-aware introspection for unambiguous raw persisted-report operation
+  rows: `ListSequencingConfirmationReports`, `ListCutRunReadReports`,
+  `ListRnaReadReports`, `ExportSequencingConfirmationReport`,
+  `ExportSequencingConfirmationSupportTsv`, `ExportCutRunReadCoverage`, and
+  `ExportRnaReadReport`.
+- Added fact-aware introspection for raw persisted-report show operations:
+  `ShowSequencingConfirmationReport`, `ShowCutRunReadReport`, and
+  `ShowRnaReadReport`.
+- Updated `introspect readiness` to evaluate full descriptor
+  `precondition_expr` trees, including `any` branches, and added fact-aware
+  introspection for the shared raw `ExportPrimerDesignReport` operation across
+  primer and qPCR design reports.
+- Added fact-aware introspection for raw primer/qPCR design operations:
+  `DesignPrimerPairs`, `DesignInsertionPrimerPairs`, and `DesignQpcrAssays`.
+- Added fact-aware introspection for raw `ReverseTranslateProteinSequence`,
+  including protein-kind input readiness and deterministic output sequence
+  effect verification.
+- Added fact-aware introspection for raw `MaterializeVariantAllele`, including
+  input-sequence readiness and deterministic output sequence effect
+  verification.
+- Added fact-aware readiness introspection for the read-only `rna-info`
+  sequence inspector.
+- Added fact-aware introspection for `reverse-translate run`, including
+  protein-kind input readiness and post-run verification of the requested
+  coding-DNA output sequence id.
+- Added `report.exists` fact projection for persisted reverse-translation
+  reports and fact-aware readiness introspection for
+  `reverse-translate show-report`.
+- Added `report.exists` fact projection for persisted primer/qPCR design
+  reports and fact-aware introspection for `primers design` and
+  `primers design-qpcr`, including template-sequence readiness and post-run
+  verification of the requested report id.
+- Added `report.exists` fact projection and fact-aware introspection for
+  `primers prepare-restriction-cloning`, checking template, primer-report, and
+  destination-vector readiness and verifying the generated handoff report.
+- Added fact-aware readiness introspection for persisted primer, qPCR, and
+  restriction-cloning report inspection commands:
+  `primers show-report`, `primers show-qpcr-report`, and
+  `primers show-restriction-cloning-handoff`.
+- Added fact-aware, no-precondition catalog readiness for report-list commands:
+  `primers list-reports`, `primers list-qpcr-reports`,
+  `primers list-restriction-cloning-handoffs`, and
+  `reverse-translate list-reports`.
+- Added fact-aware readiness introspection for `features tfbs-summary`, treating
+  it as a read-only sequence inspector whose readiness depends on the inspected
+  `sequence.exists` fact.
+- Added matching fact-aware introspection for the raw `SummarizeTfbsRegion`
+  operation row with the same sequence-readiness model.
+- Added fact-aware introspection for the raw
+  `QueryProteinResidueGenomicCoordinates` operation row as a read-only
+  sequence inspector.
+- Added fact-aware catalog readiness for self-description commands
+  `capabilities` and `state-summary`, both with empty project preconditions.
+- Added fact-aware readiness introspection for `features query` and
+  `features export-bed`; feature queries are read-only sequence inspectors,
+  while BED exports model the output path as an `artifact.written` external
+  handoff.
+- Added matching fact-aware introspection for the raw `ExportFeaturesBed`
+  operation row, keeping registry-driven adapters aligned with the shell BED
+  export command.
+- Added fact-aware introspection for raw sequence-context operations:
+  `InspectSequenceContextView` checks sequence readiness, and
+  `ExportSequenceContextBundle` additionally models its output directory as an
+  external artifact handoff.
+- Added fact-aware readiness introspection for `inspect-feature-expert` and
+  `render-feature-expert-svg`; both require the inspected sequence to exist,
+  and the SVG renderer models its output path as an `artifact.written`
+  external handoff.
+- Registered `view.selection` and `view.visible_tracks` fact vocabulary entries
+  and added fact-aware catalog readiness for the `display` visibility command
+  with a `view.visible_tracks` view-session effect.
+- Added fact-aware catalog readiness for `ui intents`, exposing GUI intent
+  discovery as a no-precondition view-intent route.
+- Added fact-aware catalog readiness for `help`, exposing shell help/topic
+  lookup as a no-precondition command-catalog route.
+- Added fact-aware catalog readiness for `history status`, exposing
+  undo/redo availability as a no-precondition status route.
+- Registered `facts graph` and `facts eval` in the shared glossary and added
+  fact-aware catalog readiness for both fact-layer routes.
+- Added fact-aware readiness introspection for `reverse-translate export-report`,
+  checking the source report and modeling the output JSON path as an
+  `artifact.written` external handoff.
+- Added fact-aware readiness introspection for `primers export-report` and
+  `primers export-qpcr-report`, using persisted report facts and external JSON
+  handoff effects.
+- Added fact-aware readiness introspection for
+  `primers export-restriction-cloning-handoff`, using the persisted handoff
+  report fact and an external JSON handoff effect.
+- Added `report.exists` fact projection for persisted sequencing-confirmation
+  reports and fact-aware readiness introspection for `seq-confirm list-reports`,
+  `seq-confirm show-report`, `seq-confirm export-report`, and
+  `seq-confirm export-support-tsv`.
+- Added fact-aware, no-precondition catalog readiness for
+  `cutrun list-read-reports` and `rna-reads list-reports`.
+- Added `report.exists` fact projection for persisted CUT&RUN read and RNA-read
+  interpretation reports, plus fact-aware readiness introspection for
+  `cutrun show-read-report`, `cutrun export-coverage`,
+  `rna-reads show-report`, and `rna-reads export-report`.
+- Added fact-aware introspection for raw RNA-read gene-support operations:
+  `SummarizeRnaReadGeneSupport` and `InspectRnaReadGeneSupport` require an
+  existing `rna_read` report and treat optional JSON output paths as external
+  artifact handoffs.
+- Added fact-aware introspection for no-project local catalog/report operations
+  `SummarizeJasparEntries`, `BenchmarkJasparRegistry`, `ListJasparCatalog`,
+  `ResolveTfQueries`, `ListReporterCatalog`, and `RecommendReporters`, treating
+  optional JSON output paths as external artifact handoffs.
+- Added `config.param` fact projection for engine-owned configuration
+  parameters and fact-aware `set-param` introspection, including JSON-value
+  effect verification through `introspect verify-effects`.
+- Added fact-aware introspection for direct sequence-derivation operation rows
+  `Reverse`, `Complement`, `ReverseComplement`, `Branch`, and `ExtractRegion`,
+  checking the input sequence and verifying deterministic output sequence ids.
+- Added fact-aware introspection for the raw `SetTopology` operation row,
+  checking the target sequence and verifying the projected `sequence.circular`
+  boolean fact.
+- Added readiness-only fact-aware introspection for the raw `RecomputeFeatures`
+  operation row, checking that the target sequence exists without inventing a
+  computed-feature freshness fact.
+- Added the closed-world `view.viewport` fact projection and fact-aware
+  introspection for the raw `SetLinearViewport` operation row, including nested
+  argument binding for exact viewport verification.
+- Added closed-world `view.visible_tracks` fact projection from persisted
+  display-layer booleans so words-only clients can read back visible track
+  state, not only see display intent descriptors.
+- Added fact-aware introspection for raw `SetDisplayVisibility` and
+  `SetParameter` operation rows, mirroring the existing `display` and
+  `set-param` shell descriptors without introducing duplicate fact names.
+- Added fact-aware introspection for specialized RNA-read artifact exports
+  such as hit FASTA, target-quality, exon-path, exon-abundance, score-density,
+  alignment TSV, isoform-triage, and alignment-dotplot exports, including raw
+  engine operation rows.
+- Added fact-aware introspection for RNA-read alignment, isoform preflight, and
+  hit-sequence materialization routes, with conservative effect declarations
+  for selection-dependent materialized sequence ids.
+- Added fact-aware introspection for built-in DNA/RNA ladder catalog list and
+  export routes, including JS/Lua helper names and raw ladder export operation
+  rows.
+- Added fact-aware introspection for agent-system catalog list routes
+  `agents list`, `agent_systems`, and `list_agent_systems`, keeping configured
+  system enumeration distinct from live adapter/model-discovery readiness.
+- Added fact-aware introspection for the raw `agent_preflight` MCP/tool
+  operation row, mirroring `agents preflight` through the shared
+  `host.tool_available(SYSTEM_ID)` readiness fact.
+- Added fact-aware introspection for protocol-cartoon catalog, render, template
+  validation, and template export routes, including the raw engine operation
+  rows and external SVG/JSON artifact handoff effects.
+- Added fact-aware introspection for no-project external inspection routes:
+  prepared-cache inspection, CUT&RUN dataset catalog/status inspection, and
+  array helper inspection/rendering, with SVG artifact handoff modeling where
+  applicable.
+- Added fact-aware introspection for no-project catalog/list routes covering
+  candidate sets, candidate macro templates, guide sets, workflow macro
+  instances/templates, and routine catalog list/explain/compare operations.
+- Added fact-aware introspection for construct-reasoning graph list routes,
+  treating optional sequence ids as filters rather than readiness
+  preconditions.
+- Added fact-aware introspection for persisted dotplot and flexibility-track
+  list routes, treating optional sequence ids as filters rather than readiness
+  preconditions.
+- Added fact-aware introspection for local metadata/catalog routes covering
+  reference/helper catalog listing, stored Ensembl gene/protein metadata lists,
+  and gene-group list/show/resolve/doctor routes with optional JSON artifact
+  handoffs.
+- Added fact-aware introspection for shell-level resource/catalog inspection
+  routes covering JASPAR summary/list/inspect/TF-query resolution, resource
+  status, UCSC rmsk indexing suggestions, publication dataset list/status,
+  reference/helper catalog validation, and helper vocabulary list/doctor
+  commands.
+- Added fact-aware introspection for reporter catalog shell routes
+  `reporters list`, `reporters recommend`, `reporters export-corpus`, and raw
+  `ExportReporterCorpus`, keeping shell and operation-level catalog readiness
+  aligned.
+- Added fact-aware introspection for service readiness/provider catalog routes
+  `services status`, `services providers list`, and
+  `services providers doctor`, with optional doctor JSON output modeled as an
+  external artifact handoff.
+- Added fact-aware introspection for planning read-back routes
+  `planning profile show`, `planning objective show`, and
+  `planning suggestions list`, keeping mutating planning updates separate.
+- Added fact-aware introspection for host/helper/protease/microRNA catalog
+  helper routes, including JS/Lua/MCP helper catalog row names and optional
+  protease JSON artifact handoffs.
+- Added fact-aware introspection for reference/helper genome cache inspection
+  and adapter readbacks (`genomes status|genes`, `helpers status|genes`,
+  `list_reference_genomes`, `list_reference_catalog_entries`,
+  `is_reference_genome_prepared`, `list_reference_genome_genes`), keeping
+  concrete catalog/cache validation as execution-time behavior.
+- Added fact-aware descriptors for the top-level read-only introspection shell
+  routes: `introspect facts`, `introspect capabilities`,
+  `introspect readiness`, `introspect verify-effects`, and `introspect all`.
+- Added fact-aware introspection for async BLAST status/list readbacks:
+  `genomes blast-status`, `helpers blast-status`, `genomes blast-list`,
+  `helpers blast-list`, `blast_async_status`, and `blast_async_list`, while
+  leaving start/cancel/execution rows registry-only until their external
+  runtime effects are modeled.
+- Added fact-aware introspection for agent model-discovery routes
+  `agents discover-models` and `agent_models`, using the same
+  `host.tool_available(SYSTEM_ID)` readiness model as agent preflight while
+  declaring no project effects for model enumeration.
+- Added fact-aware introspection for adapter parity aliases:
+  `state_summary`, `reference_catalog_entries`, `ui_intents`,
+  `ui_prepared_genomes`, and `ui_latest_prepared`.
+- Added fact-aware introspection for non-mutating primer helper readbacks:
+  Primer3/backend preflight, feature/splicing ROI seed helpers, restriction
+  cloning vector suggestions, and restriction-cloning handoff request seeding.
+
 ## 2026-06-24
 
 - Added shared Agent Assistant/shell controls for DNA sequence-window selection

@@ -4465,14 +4465,84 @@ Project fact graph:
 GENtle's `state-summary` remains the compact project snapshot for humans,
 adapters, and LLM context. The engine also exposes
 `gentle.project_fact_graph.v1`, a deterministic typed projection for planning
-and readiness checks. Slice 1 covers loaded sequence facts plus explicit
-restriction-site scan evidence:
+and readiness checks. The current slice covers loaded sequence facts,
+persisted reverse-translation, primer/qPCR, restriction-cloning handoff,
+sequencing-confirmation, CUT&RUN read, and RNA-read interpretation report
+facts, plus explicit restriction-site scan evidence:
 
 - `sequence.exists`, `sequence.kind`, `sequence.length`, `sequence.circular`
   are closed-world facts over the loaded project state. `sequence.kind` uses
   normalized values `dna`, `rna`, or `protein`.
 - `report.exists`, `restriction_site.present`, and `restriction_site.absent`
-  are open-world facts and require a proof basis.
+  are open-world facts and require a proof basis. Persisted primer-pair design
+  reports project as `report.exists` with `value: "primer_design"`, persisted
+  reverse-translation reports project with `value: "reverse_translation"`,
+  persisted qPCR design reports project with `value: "qpcr_design"`,
+  persisted restriction-cloning PCR handoff reports project with
+  `value: "restriction_cloning_pcr_handoff"`, persisted
+  sequencing-confirmation reports project with
+  `value: "sequencing_confirmation"`, persisted CUT&RUN read reports project
+  with `value: "cutrun_read"`, and persisted RNA-read interpretation reports
+  project with `value: "rna_read"`. Each carries a hard-fact basis.
+  Restriction-scan reports supplied through `--evidence` project as
+  `value: "restriction_scan"`.
+  Read-only report inspection commands use the same values for readiness, so a
+  planner can prove whether a specific persisted report id is inspectable before
+  issuing `show-*` commands.
+- `introspect readiness` evaluates fact-annotated descriptors through their
+  full `precondition_expr`, including `any` branches. This allows shared raw
+  operation rows such as `ExportPrimerDesignReport` to express that either a
+  `primer_design` or a `qpcr_design` report can satisfy readiness for the same
+  operation payload.
+- Raw primer/qPCR design operation rows `DesignPrimerPairs`,
+  `DesignInsertionPrimerPairs`, and `DesignQpcrAssays` are fact-annotated with
+  the same engine-owned semantics as their shell routes: the template sequence
+  must exist, and a deterministic `REPORT_ID` can be verified as the generated
+  `report.exists` effect.
+- `ReverseTranslateProteinSequence` is fact-annotated with the same
+  engine-owned semantics as `reverse-translate run`: the input sequence must
+  exist and be protein-kind, and a deterministic `OUTPUT_ID` can be verified as
+  the generated coding-DNA sequence.
+- `MaterializeVariantAllele` is fact-annotated with the same engine-owned
+  semantics as `variant materialize-allele`: the input sequence must exist, and
+  a deterministic `OUTPUT_ID` can be verified as the generated allele sequence.
+- `AlignSequences` is fact-annotated with the same readiness semantics as
+  `align compute`: both query and target sequence ids must exist, and the
+  operation declares no project-state effects because the alignment is returned
+  in the operation result.
+- Raw persisted-report operation rows mirror the shell report readiness model
+  where the report kind is unambiguous. `ListSequencingConfirmationReports`,
+  `ListCutRunReadReports`, and `ListRnaReadReports` are catalog-ready with no
+  project preconditions. `ShowSequencingConfirmationReport`,
+  `ShowCutRunReadReport`, and `ShowRnaReadReport` require the matching
+  `report.exists` fact and declare no effects.
+  `ExportSequencingConfirmationReport`, `ExportSequencingConfirmationSupportTsv`,
+  `ExportCutRunReadCoverage`, and `ExportRnaReadReport` require the matching
+  `report.exists` fact and model the output path as an `artifact.written`
+  external handoff.
+- `artifact.written` is a host-domain open-world fact for external file or
+  handoff artifacts. It is used as an `external_handoff` effect for commands
+  such as `render-svg`, `render-rna-svg`, `render-lineage-svg`, and
+  `features export-bed`; `render-feature-expert-svg` follows the same SVG
+  handoff pattern. The raw engine operation rows `ExportFeaturesBed`,
+  `ExportSequenceContextBundle`, `RenderSequenceSvg`, `RenderRnaStructureSvg`,
+  `RenderFeatureExpertSvg`, `RenderTfbsScoreTrackCorrelationSvg`, and
+  `RenderLineageSvg` expose the same readiness and external-handoff model for
+  registry-driven adapters.
+  `InspectSequenceContextView` exposes the same sequence-readiness model
+  without an artifact effect. Project readiness for those commands is still
+  evaluated from their project inputs.
+- `config.param` is a config-domain closed-world fact for engine-owned
+  behavioral parameters. The subject kind is `other`, the subject id is the
+  parameter name, and the fact value is the current JSON value. The first
+  projection covers `EngineParameters`; display-only `set-param` aliases remain
+  execution-supported but are not yet all canonicalized as config facts.
+- Read-only sequence inspectors such as `rna-info`, `features query`, and
+  `features tfbs-summary` use `sequence.exists` readiness and do not project
+  persistent report effects. The raw `SummarizeTfbsRegion` and
+  `QueryProteinResidueGenomicCoordinates` operation rows expose the same
+  sequence-readiness model. `inspect-feature-expert` currently uses the same
+  sequence-level readiness; target-specific facts can narrow this later.
 - The known fact vocabulary is registered in engine protocol code and is also
   appended to the Agent Assistant system prompt, so prompt grounding and
   deterministic evaluation share one list of fact names.
@@ -4482,10 +4552,11 @@ restriction-site scan evidence:
 - Absence is never inferred from a missing `restriction_site.present` fact.
   Use a proof-backed `restriction_site.absent` fact from a covering
   zero-hit restriction scan.
-- Open-world proof facts are built from explicit evidence bundles today.
-  Restriction-site scan reports are not auto-persisted into project state, and
-  a future evidence ledger such as `state.metadata["fact_evidence"]` should be
-  added deliberately rather than as an implicit side effect.
+- Open-world proof facts are built from persisted report metadata or explicit
+  evidence bundles today. Restriction-site scan reports are not auto-persisted
+  into project state, and a future evidence ledger such as
+  `state.metadata["fact_evidence"]` should be added deliberately rather than as
+  an implicit side effect.
 
 Shared-shell routes:
 
@@ -4496,6 +4567,22 @@ Shared-shell routes:
   `display visibility TARGET on|off`
   - Apply `SetDisplayVisibility` and return
     `gentle.display_visibility_result.v1`.
+  - In introspection, `display` has no project preconditions and declares a
+    `view.visible_tracks` `view_session` effect. The current display-layer
+    booleans are also projected as a closed-world `view.visible_tracks` fact
+    on the `host` UI subject so words-only clients can read the visible layer
+    state back deterministically. The fact vocabulary also includes
+    `view.selection` for `ui selection` effects; selection effects remain
+    descriptors rather than verified hard postconditions.
+- `SetLinearViewport { start_bp, span_bp }`
+  - In introspection, the raw operation row declares no preconditions and
+    verifies the closed-world `view.viewport` fact for the
+    `linear_sequence` UI subject. The effect value is an object with
+    `start_bp` and `span_bp` fields.
+- `ui intents`
+  - Returns `gentle.ui_intents.v1`.
+  - In introspection, this is a no-precondition, fact-annotated catalog route
+    for discovering GUI intent targets and command forms.
 - `facts graph [--evidence SCAN.json ...]`
   - Returns `gentle.project_fact_graph.v1`.
   - `--evidence` accepts JSON emitted by `features restriction-scan ... --path`.
@@ -4504,6 +4591,216 @@ Shared-shell routes:
     `unmet_atoms[]`, and `unknown_atoms[]`.
   - Readiness mapping is advisory: `satisfied -> ready`,
     `unsatisfied -> blocked`, `unknown -> unknown`.
+- `introspect facts [--domain project|view|host|config] [--seq-id SEQ_ID] [--evidence SCAN.json ...] [--ui-host true|false]`
+  - Returns `gentle.introspection.v1` route `facts`.
+  - Groups fact read-back by domain. Existing project facts keep their names
+    (`sequence.*`, `report.*`, `restriction_site.*`) and carry additive
+    `domain: "project"`.
+  - `--seq-id` filters projected facts to a concrete sequence subject.
+  - Always projects `ui.host_available` in the `view` domain. Headless shell
+    contexts default to `false`; GUI-attached callers may pass
+    `--ui-host true` when evaluating view-intent readiness.
+  - Projects deterministic `host.tool_available` rows for configured agent
+    systems from the same non-live availability checks used by
+    `agents list`/`agents preflight`.
+- `introspect capabilities [--kind operation|view_intent|host_config]`
+  - Returns `gentle.introspection.v1` route `capabilities`.
+  - Projects the shared protocol capability registry so glossary commands,
+    engine operations, and MCP tools are discoverable through the same
+    words-only route.
+  - Rows with validated fact preconditions/effects carry
+    `annotation_status: "fact_annotated"`; registry-only rows remain visible as
+    `annotation_status: "registry_only"` without invented readiness semantics.
+    The payload labels this as
+    `annotation_scope: "registry_with_fact_annotated_slice"`.
+  - The top-level `introspect facts`, `introspect capabilities`,
+    `introspect readiness`, `introspect verify-effects`, and `introspect all`
+    shell routes are also fact-annotated as read-only self-description/status
+    routes with no project-state preconditions.
+- `introspect readiness [CAPABILITY_ID] [--arg NAME=VALUE ...] [--seq-id SEQ_ID] [--readiness ready|blocked|unknown] [--evidence SCAN.json ...] [--ui-host true|false]`
+  - Returns `gentle.introspection.v1` route `readiness`.
+  - `--seq-id` is shorthand for `--arg SEQ_ID=...` and asks about
+    sequence-subject readiness for fact-annotated descriptors.
+  - `--readiness` filters returned rows after evaluation.
+  - Without args, templated atoms such as `{"subject":{"arg":"SEQ_ID"}}`
+    report `unknown` with reason `unbound argument`.
+  - Self-description/status commands such as `help`, `capabilities`,
+    `state-summary`, and `history status` have empty precondition expressions
+    and are ready in catalog mode.
+  - Fact-layer commands `facts graph` and `facts eval` are fact-annotated,
+    no-mutation routes; `facts eval` validates its supplied expression at
+    execution time rather than as a projected project-state precondition.
+  - `set-param` is fact-annotated as a `host_config` route with no project
+    preconditions. Its verified effect binds `PARAM_NAME` to a `config.param`
+    subject and parses `PARAM_VALUE` as JSON before comparing it with the
+    projected parameter value.
+  - Direct sequence-derivation operation rows such as `Reverse`, `Complement`,
+    `ReverseComplement`, `Branch`, and `ExtractRegion` are fact-annotated over
+    raw operation payload fields. Their bound readiness requires
+    `sequence.exists(INPUT_SEQ_ID)`, and hard-effect verification checks
+    `sequence.exists(OUTPUT_ID)` when the caller supplies the deterministic
+    output id that execution created.
+  - `SetTopology` is fact-annotated over raw operation payload fields. Its
+    bound readiness requires `sequence.exists(SEQ_ID)`, and hard-effect
+    verification checks the closed-world `sequence.circular(SEQ_ID)` fact
+    against the JSON boolean `CIRCULAR` binding.
+  - `RecomputeFeatures` is fact-annotated as a readiness-only operation over
+    raw operation payload fields. Its bound readiness requires
+    `sequence.exists(SEQ_ID)`, but it declares no hard fact effect until
+    computed-feature freshness is represented in the project fact graph.
+  - `SetLinearViewport` is fact-annotated over raw operation payload fields.
+    It has no project preconditions and verifies the closed-world
+    `view.viewport` value for the `linear_sequence` UI subject using nested
+    argument bindings for `START_BP` and `SPAN_BP`.
+  - Persisted-report export commands such as `reverse-translate export-report`,
+    `primers export-report`, `primers export-qpcr-report`, and
+    `primers export-restriction-cloning-handoff`, plus
+    `seq-confirm export-report`, `seq-confirm export-support-tsv`,
+    `cutrun export-coverage`, `rna-reads export-report`, and specialized
+    RNA-read artifact exports (`rna-reads export-hits-fasta`,
+    `rna-reads export-target-quality`, `rna-reads export-paths-tsv`,
+    `rna-reads export-abundance-tsv`, `rna-reads export-score-density-svg`,
+    `rna-reads export-alignments-tsv`,
+    `rna-reads export-isoform-triage-tsv`, and
+    `rna-reads export-alignment-dotplot-svg`) use `report.exists` readiness and
+    model the output path as an `artifact.written` `external_handoff` effect.
+  - Sequencing-confirmation report commands project
+    `report.exists == sequencing_confirmation`; `seq-confirm list-reports` is
+    catalog-ready with no project preconditions.
+  - Report-list routes such as `cutrun list-read-reports` and
+    `rna-reads list-reports` are fact-annotated as no-precondition catalog
+    reads. `cutrun show-read-report`, `cutrun export-coverage`,
+    `rna-reads show-report`, `rna-reads export-report`, and the specialized
+    RNA-read artifact exports use the projected `cutrun_read` / `rna_read`
+    report facts for bound readiness.
+    `rna-reads align-report` / `AlignRnaReadReport` also use the projected
+    `rna_read` report fact and verify that the report remains present after the
+    mutating alignment pass. `rna-reads materialize-hits` /
+    `MaterializeRnaReadHitSequences` use `rna_read` report readiness but do not
+    yet declare a hard sequence-creation effect because created ids depend on
+    the selected hits. `rna-reads preflight-isoforms` /
+    `PreflightRnaReadIsoforms` use `sequence.exists(SEQ_ID)` readiness and do
+    not mutate project state.
+    `SummarizeRnaReadGeneSupport` and `InspectRnaReadGeneSupport` use the same
+    `rna_read` report fact and model their optional JSON path as an external
+    artifact handoff.
+  - Primer helper readbacks are fact-annotated where existing facts can express
+    readiness: `primers preflight` is ready without project state,
+    `primers seed-from-feature`, `primers seed-from-splicing`, and
+    `primers restriction-cloning-vector-suggestions` require
+    `sequence.exists(SEQ_ID)`, and
+    `primers seed-restriction-cloning-handoff` requires both
+    `report.exists(PRIMER_REPORT_ID) == primer_design` and
+    `sequence.exists(DESTINATION_VECTOR_SEQ_ID)`. cDNA assay test routes remain
+    registry-only until their conditional product-materialization effects are
+    modeled.
+  - No-project local catalog/report operations such as
+    `SummarizeJasparEntries`, `BenchmarkJasparRegistry`, `ListJasparCatalog`,
+    `ResolveTfQueries`, `ListReporterCatalog`, and `RecommendReporters` are
+    fact-annotated as catalog-ready and model optional JSON `path` outputs as
+    external artifact handoffs.
+  - Reporter shell routes `reporters list` and `reporters recommend` mirror
+    the raw reporter catalog operations as catalog-ready optional JSON artifact
+    handoffs. `reporters export-corpus` and raw `ExportReporterCorpus` are
+    also catalog-ready and model their required JSON/JSONL output path as an
+    `artifact.written` external handoff.
+  - Service status/provider catalog routes (`services status`,
+    `services providers list`, `services providers doctor`) are
+    fact-annotated as ready without project state. The doctor route models its
+    optional JSON report path as an external artifact handoff; provider catalog
+    path validation remains an execution-time concern.
+  - Planning read-back routes (`planning profile show`,
+    `planning objective show`, `planning suggestions list`) are fact-annotated
+    as ready without project state and declare no side effects. Profile/
+    objective set/clear and suggestion resolution remain separate mutating
+    routes.
+  - Shell-level resource/catalog inspection routes such as
+    `resources summarize-jaspar`, `resources status`,
+    `resources suggest-ucsc-rmsk-index`, `resources list-jaspar`,
+    `resources inspect-jaspar`, `resources resolve-tf-query`,
+    `resources list-publication-datasets`,
+    `resources status-publication-dataset`, `genomes validate-catalog`,
+    `helpers validate-catalog`, `helpers vocabulary list`, and
+    `helpers vocabulary doctor` are fact-annotated as ready without project
+    state. Optional JSON output paths are external artifact handoffs; catalog,
+    motif, dataset, and file path validation remains an execution-time concern.
+  - Host/helper/protease/microRNA catalog helper routes such as `hosts list`,
+    `list_host_profile_catalog_entries`, `host_profile_catalog_entries`,
+    `list_helper_catalog_entries`, `helper_catalog_entries`,
+    `helper_semantics_vocabulary`, `helper_interpretation`, `proteases list`,
+    `proteases show`, `mirna explain-seed`, and `mirna catalog-show` are
+    fact-annotated as ready without project state. Protease list/show JSON
+    output paths are modeled as optional external artifact handoffs; catalog
+    lookup validation remains an execution-time concern.
+  - Reference/helper genome cache inspection routes (`genomes status`,
+    `helpers status`, `genomes genes`, `helpers genes`) and JS/Lua helper
+    adapters (`list_reference_genomes`, `list_reference_catalog_entries`,
+    `is_reference_genome_prepared`, `list_reference_genome_genes`) are
+    fact-annotated as ready without project state. This is catalog-mode
+    readiness only: concrete genome ids, prepared caches, catalog paths, regex
+    filters, and biotype filters remain execution-time validation concerns
+    until dedicated reference-resource facts are projected.
+  - Built-in ladder catalog routes (`ladders list`, `inspect_dna_ladders`,
+    `inspect_rna_ladders`, `list_dna_ladders`, `list_rna_ladders`) are
+    fact-annotated as catalog-ready without project state. Ladder export routes
+    (`ladders export`, `export_dna_ladders`, `export_rna_ladders`,
+    `ExportDnaLadders`, `ExportRnaLadders`) additionally model their JSON
+    output path as an `artifact.written` external handoff.
+  - Agent-system catalog routes (`agents list`, `agent_systems`,
+    `list_agent_systems`) are fact-annotated as catalog-ready without project
+    state because they only enumerate configured systems.
+  - `agents preflight`, `agents discover-models`, `agent_preflight`, and
+    `agent_models` are fact-annotated host-config routes that require
+    `host.tool_available(SYSTEM_ID) == true`. Preflight may emit an
+    external-handoff report; model discovery declares no project effects.
+    Asking, planning, and plan execution remain separate adapter/transport
+    operations.
+  - Adapter parity aliases `state_summary`, `reference_catalog_entries`,
+    `ui_intents`, `ui_prepared_genomes`, and `ui_latest_prepared` are
+    fact-annotated with the same no-project readiness as their shared shell
+    contracts (`state-summary`, reference catalog listing, and deterministic UI
+    catalog/prepared-genome query routes).
+  - Protocol-cartoon catalog/render/template rows are fact-annotated as ready
+    without project state. Render/export rows model SVG or JSON outputs as
+    `artifact.written` external handoffs; template input path validation remains
+    an execution-time file concern rather than a project fact.
+  - Prepared-cache inspection, CUT&RUN dataset catalog/status inspection, and
+    array helper inspection rows are ready without project state. External
+    file/directory/catalog validation remains an execution-time concern;
+    `arrays render-probe-region-output-svg` additionally models its SVG output
+    as an `artifact.written` external handoff.
+  - Catalog/list routes for candidate sets, guide sets, workflow macros,
+    candidate macro templates, and routine catalogs are ready without project
+    state. Routes that inspect a named persisted set/template remain
+    registry-only until those object-existence facts are projected.
+  - Construct-reasoning graph list routes (`construct-reasoning list-graphs`,
+    `construct_reasoning_graphs`) are ready without project state; optional
+    `SEQ_ID` is a filter, not a readiness precondition. Named graph
+    inspection/action routes remain registry-only until graph-existence facts
+    are projected.
+  - Persisted analysis-payload list routes (`dotplot list`, `flex list`) are
+    ready without project state; optional `SEQ_ID` is a filter, not a readiness
+    precondition. Show/render-by-id routes remain registry-only until
+    dotplot/flex-track existence facts are projected.
+  - Local metadata/catalog routes (`genomes list`, `helpers list`,
+    `ensembl-gene list`, `ensembl-protein list`, and
+    `gene-groups list|show|resolve|doctor`) are ready without project state.
+    Catalog/group/token validation remains an execution-time concern, and
+    gene-group JSON outputs are modeled as optional `artifact.written` external
+    handoffs.
+  - With args, the engine instantiates the atoms and evaluates them through the
+    same fact evaluator used by `facts eval`.
+- `introspect verify-effects CAPABILITY_ID [--arg NAME=VALUE ...] [--seq-id SEQ_ID] [--evidence SCAN.json ...] [--ui-host true|false]`
+  - Returns `gentle.introspection.v1` route `verify-effects`.
+  - Evaluates only effects with `effect_kind: "must_on_success"` for the named
+    fact-annotated capability.
+  - `verified=true` means all hard postconditions are satisfied against the
+    current fact graph plus supplied evidence. `view_session`,
+    `external_handoff`, and `may_on_success` effects remain descriptor metadata
+    and are not asserted as local postconditions.
+- `introspect all [--evidence SCAN.json ...] [--ui-host true|false]`
+  - Returns facts, registry-backed capability descriptors, and catalog-mode
+    readiness in one aggregate `gentle.introspection.v1` payload.
 
 Initial fact-expression shape:
 
@@ -8641,6 +8938,17 @@ Async BLAST shell contract (agent/MCP-ready baseline):
     - otherwise -> `failed` with explicit restart/reload interruption reason.
   - `blast-start`, `blast-status`, `blast-cancel`, and `blast-list` may mark
     shell state as changed when they persist updated async job snapshots.
+- Introspection:
+  - Read-only async BLAST status/list rows (`genomes blast-status`,
+    `helpers blast-status`, `genomes blast-list`, `helpers blast-list`,
+    `blast_async_status`, `blast_async_list`) are fact-annotated with no
+    project-state preconditions.
+  - These rows may refresh async-job metadata while polling/listing, but they
+    declare no hard biological project effects; job ids and optional terminal
+    reports remain execution-time validation concerns.
+  - Async BLAST start/cancel and synchronous BLAST execution remain
+    registry-only until their external-binary, prepared-index, cancellation,
+    and report/materialization semantics are modeled explicitly.
 - Scheduler policy:
   - async BLAST jobs are executed by a bounded FIFO scheduler (queue + worker slots)
   - default concurrency uses host CPU parallelism
