@@ -766,6 +766,8 @@ on semantic glyphs.
    `RenderFeatureExpertSvg`, `RenderTfbsScoreTrackCorrelationSvg`,
    `RenderRnaStructureSvg`, `RenderLineageSvg`,
    `rna-info`, `reverse-translate run`, `ReverseTranslateProteinSequence`,
+   `DeriveTranscriptSequences`, `DeriveProteinSequences`,
+   `DeriveSplicingReferences`,
    `reverse-translate list-reports`,
    `reverse-translate show-report`, `reverse-translate export-report`,
    `proteases list`, `proteases show`, `proteases digest`,

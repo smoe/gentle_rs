@@ -4513,6 +4513,13 @@ restriction-site scan evidence:
   engine-owned semantics as `reverse-translate run`: the input sequence must
   exist and be protein-kind, and a deterministic `OUTPUT_ID` can be verified as
   the generated coding-DNA sequence.
+- Raw transcript/protein/splicing derivation rows `DeriveTranscriptSequences`,
+  `DeriveProteinSequences`, and `DeriveSplicingReferences` require
+  `sequence.exists(SEQ_ID)` and declare conservative `may_on_success`
+  sequence-creation effects because output ids are feature/prefix/uniqueness
+  derived. `DeriveProteinSequences` also verifies
+  `report.exists(REPORT_ID) == protein_derivation` when a deterministic
+  report id is supplied.
 - Protease catalog and digest routes are fact-annotated where existing facts
   can express readiness. `proteases list` and `proteases show` are
   no-precondition catalog reads. `proteases digest`,

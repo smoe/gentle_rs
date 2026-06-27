@@ -15346,6 +15346,46 @@ fn protease_digest_sequence_precondition(subject_arg: &str) -> Value {
     })
 }
 
+fn sequence_derivation_may_create_descriptor(
+    id: &str,
+    description: &str,
+    mut extra_args: Vec<Value>,
+    extra_effects: Vec<Value>,
+) -> Value {
+    let mut args = vec![json!({
+        "name": "SEQ_ID",
+        "required": true,
+        "subject_kind": "sequence",
+        "detail": "loaded source sequence id carried by the operation payload"
+    })];
+    args.append(&mut extra_args);
+    let mut effects = vec![json!({
+        "fact": "sequence.exists",
+        "effect_kind": "may_on_success",
+        "description": "Derived sequence ids are generated from feature ids, output prefixes, and uniqueness rules, so readiness can prove the source sequence but cannot predict every created id without executing the operation."
+    })];
+    effects.extend(extra_effects);
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": false,
+        "args": args,
+        "reads": [
+            {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+        ],
+        "effects": effects,
+        "precondition_expr": {
+            "all": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
 fn protease_digest_operation_descriptor(
     id: &str,
     description: &str,
@@ -18340,6 +18380,45 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("rna-info")
         }),
+        sequence_derivation_may_create_descriptor(
+            "DeriveTranscriptSequences",
+            "Derive transcript/cDNA sequences from mRNA or transcript features on one loaded sequence.",
+            vec![
+                json!({"name": "FEATURE_IDS", "required": false, "subject_kind": "other", "detail": "optional transcript feature ids carried by feature_ids"}),
+                json!({"name": "SCOPE", "required": false, "subject_kind": "other", "detail": "optional splicing scope preset"}),
+                json!({"name": "OUTPUT_PREFIX", "required": false, "subject_kind": "other", "detail": "optional derived transcript sequence id prefix"}),
+            ],
+            vec![],
+        ),
+        sequence_derivation_may_create_descriptor(
+            "DeriveProteinSequences",
+            "Derive protein sequences from transcript features on one loaded sequence and persist a protein-derivation report.",
+            vec![
+                json!({"name": "FEATURE_IDS", "required": false, "subject_kind": "other", "detail": "optional transcript feature ids carried by feature_ids"}),
+                json!({"name": "FEATURE_QUERY", "required": false, "subject_kind": "other", "detail": "optional feature-query payload used to select transcript features"}),
+                json!({"name": "SCOPE", "required": false, "subject_kind": "other", "detail": "optional splicing scope preset"}),
+                json!({"name": "OUTPUT_PREFIX", "required": false, "subject_kind": "other", "detail": "optional derived protein sequence id prefix"}),
+                json!({"name": "REPORT_ID", "required": false, "subject_kind": "report", "detail": "optional deterministic protein-derivation report id carried by report_id"}),
+            ],
+            vec![json!({
+                "fact": "report.exists",
+                "subject": {"arg": "REPORT_ID"},
+                "equals": "protein_derivation",
+                "effect_kind": "must_on_success"
+            })],
+        ),
+        sequence_derivation_may_create_descriptor(
+            "DeriveSplicingReferences",
+            "Derive a DNA window, transcript isoforms, and exon-reference sequences from one loaded sequence span.",
+            vec![
+                json!({"name": "SPAN_START_0BASED", "required": true, "detail": "0-based inclusive span start"}),
+                json!({"name": "SPAN_END_0BASED", "required": true, "detail": "0-based exclusive span end"}),
+                json!({"name": "SEED_FEATURE_ID", "required": false, "subject_kind": "other", "detail": "optional seed mRNA feature id"}),
+                json!({"name": "SCOPE", "required": false, "subject_kind": "other", "detail": "optional splicing scope preset"}),
+                json!({"name": "OUTPUT_PREFIX", "required": false, "subject_kind": "other", "detail": "optional derived reference sequence id prefix"}),
+            ],
+            vec![],
+        ),
         json!({
             "id": "reverse-translate run",
             "kind": "operation",
@@ -21264,6 +21343,11 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         "rna-info" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
         ]),
+        "DeriveTranscriptSequences" | "DeriveProteinSequences" | "DeriveSplicingReferences" => {
+            Some(vec![
+                json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
+            ])
+        }
         "reverse-translate run" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "PROTEIN_SEQ_ID"}}),
             json!({"fact": "sequence.kind", "subject": {"arg": "PROTEIN_SEQ_ID"}, "equals": "protein"}),

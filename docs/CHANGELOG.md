@@ -322,6 +322,11 @@ Maintenance rule:
   protein-kind sequence, persisted protein-derivation reports project as
   `report.exists == protein_derivation`, and SVG render routes model their
   output paths as `artifact.written` handoffs.
+- Added fact-aware introspection for raw transcript/protein/splicing
+  derivation rows: `DeriveTranscriptSequences`, `DeriveProteinSequences`, and
+  `DeriveSplicingReferences` now require `sequence.exists(SEQ_ID)`, declare
+  conservative derived-sequence effects, and verify protein-derivation reports
+  when deterministic report ids are supplied.
 - Added fact-aware introspection for non-mutating primer helper readbacks:
   Primer3/backend preflight, feature/splicing ROI seed helpers, restriction
   cloning vector suggestions, and restriction-cloning handoff request seeding.
