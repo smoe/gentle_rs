@@ -69,8 +69,7 @@ use crate::{
         PrimerDesignSideConstraint, PrimerSpecificityPolicy, ProbeRegionRequest, ProjectFact,
         ProjectFactDomain, ProjectFactGraph, ProjectFactTypeSpec, ProjectState,
         PromoterArtifactManifestEntry, PromoterCohortKind, PromoterExpressionEvidenceInput,
-        PromoterTfbsGeneQuery,
-        PromoterWindowCollapseMode, ProteinExpressionCdsAssessment,
+        PromoterTfbsGeneQuery, PromoterWindowCollapseMode, ProteinExpressionCdsAssessment,
         ProteinExpressionFeatureSummary, ProteinExpressionHandoffReport,
         ProteinExpressionHostChassisCandidate, ProteinExpressionProductDefinition,
         ProteinExpressionProductReadiness, ProteinExpressionSequenceContext,
@@ -15461,6 +15460,32 @@ fn read_acquire_operation_descriptor(
     })
 }
 
+fn ensembl_catalog_update_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "false",
+        "requires_confirmation": false,
+        "args": [
+            {"name": "CATALOG_PATH", "required": false, "subject_kind": "other", "detail": "input genome/helper catalog path"},
+            {"name": "OUTPUT_CATALOG_PATH", "required": false, "subject_kind": "other", "detail": "external output catalog path; if omitted, execution may update the input catalog path"}
+        ],
+        "reads": [],
+        "effects": [
+            {
+                "fact": "artifact.written",
+                "subject": {"arg": "OUTPUT_CATALOG_PATH"},
+                "effect_kind": "external_handoff",
+                "description": "Catalog-update execution writes an external catalog file; when no output path is supplied, the effective path is resolved during execution."
+            }
+        ],
+        "precondition_expr": {"all": []},
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
 fn external_artifact_catalog_operation_descriptor(
     id: &str,
     output_detail: &str,
@@ -20982,6 +21007,60 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             ],
         ),
         no_project_inspection_operation_descriptor(
+            "genomes ensembl-available",
+            "Discover currently installable Ensembl reference-genome candidates without project-state preconditions.",
+            vec![
+                json!({"name": "--collection", "required": false, "subject_kind": "other", "detail": "optional Ensembl collection filter"}),
+                json!({"name": "--filter", "required": false, "subject_kind": "other", "detail": "optional species/name text filter"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "helpers ensembl-available",
+            "Discover currently installable Ensembl helper-genome candidates without project-state preconditions.",
+            vec![
+                json!({"name": "--collection", "required": false, "subject_kind": "other", "detail": "optional Ensembl collection filter"}),
+                json!({"name": "--filter", "required": false, "subject_kind": "other", "detail": "optional species/name text filter"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "ensembl_installable_genomes",
+            "Discover currently installable Ensembl candidates through the shared MCP/tool route.",
+            vec![
+                json!({"name": "COLLECTION", "required": false, "subject_kind": "other", "detail": "optional Ensembl collection filter"}),
+                json!({"name": "FILTER", "required": false, "subject_kind": "other", "detail": "optional species/name text filter"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "list_ensembl_installable_genomes",
+            "Discover currently installable Ensembl candidates through JS/Lua helper adapters.",
+            vec![
+                json!({"name": "COLLECTION", "required": false, "subject_kind": "other", "detail": "optional Ensembl collection filter"}),
+                json!({"name": "FILTER", "required": false, "subject_kind": "other", "detail": "optional species/name text filter"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "genomes preview-ensembl-specs",
+            "Preview Ensembl URL/template updates for a reference-genome catalog without writing project state.",
+            vec![
+                json!({"name": "CATALOG_PATH", "required": false, "subject_kind": "other", "detail": "optional reference-genome catalog path"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "helpers preview-ensembl-specs",
+            "Preview Ensembl URL/template updates for a helper-genome catalog without writing project state.",
+            vec![
+                json!({"name": "CATALOG_PATH", "required": false, "subject_kind": "other", "detail": "optional helper-genome catalog path"}),
+            ],
+        ),
+        ensembl_catalog_update_descriptor(
+            "genomes update-ensembl-specs",
+            "Write an updated reference-genome catalog with refreshed Ensembl URL/template fields.",
+        ),
+        ensembl_catalog_update_descriptor(
+            "helpers update-ensembl-specs",
+            "Write an updated helper-genome catalog with refreshed Ensembl URL/template fields.",
+        ),
+        no_project_inspection_operation_descriptor(
             "list_reference_genomes",
             "List local reference-genome ids through JS/Lua helper adapters; catalog path validation happens during execution.",
             vec![
@@ -21954,6 +22033,12 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "helpers status"
         | "genomes genes"
         | "helpers genes"
+        | "genomes ensembl-available"
+        | "helpers ensembl-available"
+        | "ensembl_installable_genomes"
+        | "list_ensembl_installable_genomes"
+        | "genomes preview-ensembl-specs"
+        | "helpers preview-ensembl-specs"
         | "list_reference_genomes"
         | "list_reference_catalog_entries"
         | "reference_catalog_entries"
@@ -22078,6 +22163,7 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "ReadAcquirePrepare"
         | "ReadAcquireInspect"
         | "ReadAcquireCancel" => Some(vec![]),
+        "genomes update-ensembl-specs" | "helpers update-ensembl-specs" => Some(vec![]),
         _ => None,
     }
 }

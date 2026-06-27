@@ -2243,6 +2243,15 @@ Shared shell command:
         can be evaluated from the current project-fact graph; concrete genome
         ids, prepared caches, catalog paths, regex filters, and biotype filters
         are still validated by the command when it runs.
+      - Ensembl discovery/catalog-maintenance routes
+        (`genomes ensembl-available`, `helpers ensembl-available`,
+        `ensembl_installable_genomes`, `list_ensembl_installable_genomes`,
+        `genomes preview-ensembl-specs`, `helpers preview-ensembl-specs`,
+        `genomes update-ensembl-specs`, and
+        `helpers update-ensembl-specs`) are fact-annotated as ready without
+        project state. Update rows model the external catalog output as
+        `artifact.written(OUTPUT_CATALOG_PATH)`; concrete catalog paths and
+        Ensembl/network availability remain execution-time concerns.
       - async BLAST status/list routes (`genomes blast-status`,
         `helpers blast-status`, `genomes blast-list`, `helpers blast-list`,
         `blast_async_status`, `blast_async_list`) are fact-annotated with no

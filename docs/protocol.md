@@ -4945,6 +4945,14 @@ Shared-shell routes:
     Catalog/group/token validation remains an execution-time concern, and
     gene-group JSON outputs are modeled as optional `artifact.written` external
     handoffs.
+  - Ensembl discovery/catalog-maintenance routes (`genomes ensembl-available`,
+    `helpers ensembl-available`, `ensembl_installable_genomes`,
+    `list_ensembl_installable_genomes`, `genomes preview-ensembl-specs`,
+    `helpers preview-ensembl-specs`, `genomes update-ensembl-specs`, and
+    `helpers update-ensembl-specs`) are ready without project state. Update
+    rows model the external catalog output as
+    `artifact.written(OUTPUT_CATALOG_PATH)`, while concrete catalog paths and
+    Ensembl/network availability remain execution-time concerns.
   - With args, the engine instantiates the atoms and evaluates them through the
     same fact evaluator used by `facts eval`.
 - `introspect verify-effects CAPABILITY_ID [--arg NAME=VALUE ...] [--seq-id SEQ_ID] [--evidence SCAN.json ...] [--ui-host true|false]`

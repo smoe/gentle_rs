@@ -22408,6 +22408,14 @@ fn execute_introspect_readiness_treats_local_metadata_catalog_routes_as_ready() 
         "helpers status",
         "genomes genes",
         "helpers genes",
+        "genomes ensembl-available",
+        "helpers ensembl-available",
+        "ensembl_installable_genomes",
+        "list_ensembl_installable_genomes",
+        "genomes preview-ensembl-specs",
+        "helpers preview-ensembl-specs",
+        "genomes update-ensembl-specs",
+        "helpers update-ensembl-specs",
         "list_reference_genomes",
         "list_reference_catalog_entries",
         "reference_catalog_entries",
@@ -24418,6 +24426,12 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
         "helpers status",
         "genomes genes",
         "helpers genes",
+        "genomes ensembl-available",
+        "helpers ensembl-available",
+        "ensembl_installable_genomes",
+        "list_ensembl_installable_genomes",
+        "genomes preview-ensembl-specs",
+        "helpers preview-ensembl-specs",
         "list_reference_genomes",
         "list_reference_catalog_entries",
         "reference_catalog_entries",
@@ -24440,6 +24454,23 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
                     && descriptor["effects"].as_array().map(Vec::len) == Some(0)
             }),
             "{id} should have a fact-annotated local metadata catalog descriptor"
+        );
+    }
+    for id in [
+        "genomes update-ensembl-specs",
+        "helpers update-ensembl-specs",
+    ] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"].as_array().map(Vec::len) == Some(0)
+                    && descriptor["effects"][0]["fact"].as_str() == Some("artifact.written")
+                    && descriptor["effects"][0]["subject"]["arg"].as_str()
+                        == Some("OUTPUT_CATALOG_PATH")
+                    && descriptor["effects"][0]["effect_kind"].as_str() == Some("external_handoff")
+            }),
+            "{id} should have a fact-annotated Ensembl catalog update descriptor"
         );
     }
     for id in [

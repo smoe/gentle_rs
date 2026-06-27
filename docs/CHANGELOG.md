@@ -329,6 +329,10 @@ Maintenance rule:
   `reads acquire cancel`, and raw `ReadAcquire*` rows are payload/path-ready,
   with prepare/cancel external state updates modeled as `artifact.written`
   handoffs.
+- Added fact-aware introspection for Ensembl discovery/catalog-maintenance
+  routes: availability, installable-list, preview, and update-spec rows are
+  ready without project state, while update rows model external catalog writes
+  as `artifact.written` handoffs.
 - Added closed-world `sequencing_trace.exists` introspection for imported
   sequencing-trace evidence records, including readiness/effect descriptors for
   trace import/list/show shell routes and raw operation rows.
