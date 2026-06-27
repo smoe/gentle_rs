@@ -71,6 +71,10 @@ Maintenance rule:
   fetch/import routes can verify explicit entry ids, show/import-sequence
   routes require stored metadata facts, and metadata-backed sequence imports can
   still verify deterministic `sequence.exists(OUTPUT_ID)` products.
+- Added fact-aware introspection for UniProt projection map/list routes and
+  persisted UniProt projection audit/audit-parity report show/export routes.
+  Projection-specific inspection remains registry-only until
+  `uniprot_projection.exists` is promoted as a closed-world project fact.
 - Tightened construct-reasoning repeat-family wording so rmsk-backed Alu-like
   evidence uses curated-family support language while rmsk-absent heuristic
   calls retain the soft-catalog caveat.

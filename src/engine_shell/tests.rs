@@ -19422,6 +19422,47 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
         Some("ready")
     );
 
+    let blocked_map = execute_shell_command(
+        &mut engine,
+        &parse_shell_line(
+            "introspect readiness uniprot map --arg ENTRY_ID=PTEST1 --arg SEQ_ID=seq_u",
+        )
+        .expect("parse blocked uniprot map readiness"),
+    )
+    .expect("execute blocked uniprot map readiness");
+    assert_eq!(
+        blocked_map.output["readiness"][0]["readiness"].as_str(),
+        Some("blocked")
+    );
+    assert!(
+        blocked_map.output["readiness"][0]["unmet_atoms"]
+            .as_array()
+            .expect("unmet atoms")
+            .iter()
+            .any(|atom| atom["fact"].as_str() == Some("sequence.exists"))
+    );
+
+    engine.state_mut().sequences.insert(
+        "seq_u".to_string(),
+        DNAsequence::from_sequence("ATGGAGGAGCCACAGTCAGACCCATCTGTGGAACCCCTCCTCAG")
+            .expect("projection target"),
+    );
+    for capability_id in ["uniprot map", "ProjectUniprotToGenome"] {
+        let ready_map = execute_shell_command(
+            &mut engine,
+            &parse_shell_line(&format!(
+                "introspect readiness {capability_id} --arg ENTRY_ID=PTEST1 --arg SEQ_ID=seq_u"
+            ))
+            .expect("parse ready uniprot map readiness"),
+        )
+        .expect("execute ready uniprot map readiness");
+        assert_eq!(
+            ready_map.output["readiness"][0]["readiness"].as_str(),
+            Some("ready"),
+            "{capability_id} should be ready once the UniProt entry and sequence exist"
+        );
+    }
+
     engine
         .upsert_ensembl_gene_entry(synthetic_ensembl_gene_entry())
         .expect("upsert Ensembl gene entry");
@@ -24368,6 +24409,59 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
                     && descriptor["effects"][0]["effect_kind"].as_str() == Some("external_handoff")
             }),
             "{id} should have a fact-annotated RNA-read gene-support descriptor"
+        );
+    }
+    for id in [
+        "uniprot projection-list",
+        "uniprot audit-list",
+        "uniprot audit-parity-list",
+    ] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["registry"]["source"].as_str() == Some("glossary_command")
+                    && descriptor["reads"].as_array().map(Vec::len) == Some(0)
+                    && descriptor["effects"].as_array().map(Vec::len) == Some(0)
+            }),
+            "{id} should have a fact-annotated UniProt list descriptor"
+        );
+    }
+    for id in ["uniprot map", "ProjectUniprotToGenome"] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"][0]["fact"].as_str() == Some("uniprot_entry.exists")
+                    && descriptor["reads"][0]["subject"]["arg"].as_str() == Some("ENTRY_ID")
+                    && descriptor["reads"][1]["fact"].as_str() == Some("sequence.exists")
+                    && descriptor["reads"][1]["subject"]["arg"].as_str() == Some("SEQ_ID")
+                    && descriptor["effects"][0]["effect_kind"].as_str() == Some("may_on_success")
+            }),
+            "{id} should have a fact-annotated UniProt projection descriptor"
+        );
+    }
+    for (id, report_kind) in [
+        ("uniprot audit-show", "uniprot_projection_audit"),
+        ("uniprot audit-export", "uniprot_projection_audit"),
+        (
+            "uniprot audit-parity-show",
+            "uniprot_projection_audit_parity",
+        ),
+        (
+            "uniprot audit-parity-export",
+            "uniprot_projection_audit_parity",
+        ),
+    ] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["registry"]["source"].as_str() == Some("glossary_command")
+                    && descriptor["reads"][0]["fact"].as_str() == Some("report.exists")
+                    && descriptor["reads"][0]["equals"].as_str() == Some(report_kind)
+            }),
+            "{id} should have a fact-annotated UniProt audit report descriptor"
         );
     }
     for id in [
@@ -33116,6 +33210,26 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
             .map(|body| body.contains("presumed inconsistency"))
             .unwrap_or(false)
     );
+    let audit_ready = execute_shell_command(
+        &mut engine,
+        &parse_shell_line("introspect readiness uniprot audit-show --arg REPORT_ID=toy_audit")
+            .expect("parse audit-show readiness"),
+    )
+    .expect("execute audit-show readiness");
+    assert_eq!(
+        audit_ready.output["readiness"][0]["readiness"].as_str(),
+        Some("ready")
+    );
+    let audit_export_ready = execute_shell_command(
+        &mut engine,
+        &parse_shell_line("introspect readiness uniprot audit-export --arg REPORT_ID=toy_audit")
+            .expect("parse audit-export readiness"),
+    )
+    .expect("execute audit-export readiness");
+    assert_eq!(
+        audit_export_ready.output["readiness"][0]["readiness"].as_str(),
+        Some("ready")
+    );
 
     let listed = execute_shell_command(
         &mut engine,
@@ -33164,6 +33278,36 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
         parity.output["report"]["schema"].as_str(),
         Some("gentle.uniprot_projection_audit_parity.v1")
     );
+    let parity_ready = execute_shell_command(
+        &mut engine,
+        &parse_shell_line(
+            "introspect readiness uniprot audit-parity-show --arg REPORT_ID=toy_audit_parity",
+        )
+        .expect("parse audit-parity-show readiness"),
+    )
+    .expect("execute audit-parity-show readiness");
+    assert_eq!(
+        parity_ready.output["readiness"][0]["readiness"].as_str(),
+        Some("ready")
+    );
+    let facts = execute_shell_command(
+        &mut engine,
+        &parse_shell_line("introspect facts --domain project").expect("parse facts"),
+    )
+    .expect("execute facts");
+    let project_facts = facts.output["facts"]["project"]["facts"]
+        .as_array()
+        .expect("project facts");
+    assert!(project_facts.iter().any(|fact| {
+        fact["fact"].as_str() == Some("report.exists")
+            && fact["subject"]["id"].as_str() == Some("toy_audit")
+            && fact["value"].as_str() == Some("uniprot_projection_audit")
+    }));
+    assert!(project_facts.iter().any(|fact| {
+        fact["fact"].as_str() == Some("report.exists")
+            && fact["subject"]["id"].as_str() == Some("toy_audit_parity")
+            && fact["value"].as_str() == Some("uniprot_projection_audit_parity")
+    }));
 
     let parity_list = execute_shell_command(
         &mut engine,

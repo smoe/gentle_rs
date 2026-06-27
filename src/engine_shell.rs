@@ -14580,6 +14580,18 @@ fn push_introspection_report_facts(graph: &mut ProjectFactGraph, engine: &Gentle
             .into_iter()
             .map(|row| introspection_report_fact(row.report_id, "rna_read")),
     );
+    graph.facts.extend(
+        engine
+            .list_uniprot_projection_audit_reports(None)
+            .into_iter()
+            .map(|row| introspection_report_fact(row.report_id, "uniprot_projection_audit")),
+    );
+    graph.facts.extend(
+        engine
+            .list_uniprot_projection_audit_parity_reports(None)
+            .into_iter()
+            .map(|row| introspection_report_fact(row.report_id, "uniprot_projection_audit_parity")),
+    );
 }
 
 fn push_introspection_config_facts(graph: &mut ProjectFactGraph, engine: &GentleEngine) {
@@ -17316,6 +17328,75 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "uniprot_entry.exists",
             "Inspect one stored UniProt metadata entry by id.",
         ),
+        json!({
+            "id": "uniprot map",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "ENTRY_ID", "required": true, "subject_kind": "other", "detail": "stored UniProt metadata entry id"},
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded genome/cDNA sequence id receiving the projection"},
+                {"name": "PROJECTION_ID", "required": false, "subject_kind": "other", "detail": "optional explicit UniProt projection id"},
+                {"name": "--transcript", "required": false, "subject_kind": "other", "detail": "optional transcript id filter"}
+            ],
+            "reads": [
+                {"fact": "uniprot_entry.exists", "subject": {"arg": "ENTRY_ID"}},
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "effect_kind": "may_on_success",
+                    "description": "Stores a UniProt genome projection; a dedicated uniprot_projection.exists fact is not projected yet."
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "uniprot_entry.exists", "subject": {"arg": "ENTRY_ID"}},
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Project one stored UniProt entry onto one loaded sequence.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("uniprot map")
+        }),
+        json!({
+            "id": "ProjectUniprotToGenome",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "ENTRY_ID", "required": true, "subject_kind": "other", "detail": "stored UniProt metadata entry id carried by entry_id"},
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded genome/cDNA sequence id carried by seq_id"},
+                {"name": "PROJECTION_ID", "required": false, "subject_kind": "other", "detail": "optional explicit UniProt projection id carried by projection_id"},
+                {"name": "TRANSCRIPT_ID", "required": false, "subject_kind": "other", "detail": "optional transcript id filter carried by transcript_id"}
+            ],
+            "reads": [
+                {"fact": "uniprot_entry.exists", "subject": {"arg": "ENTRY_ID"}},
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "effect_kind": "may_on_success",
+                    "description": "Stores a UniProt genome projection; a dedicated uniprot_projection.exists fact is not projected yet."
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "uniprot_entry.exists", "subject": {"arg": "ENTRY_ID"}},
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Project one stored UniProt entry through the shared engine operation.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("ProjectUniprotToGenome")
+        }),
+        no_project_inspection_operation_descriptor(
+            "uniprot projection-list",
+            "List stored UniProt genome projections without project-state preconditions; optional sequence id is a filter only.",
+            vec![
+                json!({"name": "--seq", "required": false, "subject_kind": "sequence", "detail": "optional sequence id filter; it is not a readiness precondition"}),
+            ],
+        ),
         metadata_entry_read_descriptor(
             "ensembl-gene show",
             "ensembl_gene_entry.exists",
@@ -19887,6 +19968,38 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             vec![],
         ),
         report_list_operation_descriptor(
+            "uniprot audit-list",
+            "List persisted UniProt projection audit reports without project-state preconditions.",
+            "SEQ_ID",
+        ),
+        report_show_operation_descriptor(
+            "uniprot audit-show",
+            "uniprot_projection_audit",
+            "Inspect one persisted UniProt projection audit report.",
+        ),
+        report_export_operation_descriptor(
+            "uniprot audit-export",
+            "uniprot_projection_audit",
+            "external UniProt audit report JSON output path",
+            "Export one persisted UniProt projection audit report to an external JSON file.",
+        ),
+        report_list_operation_descriptor(
+            "uniprot audit-parity-list",
+            "List persisted UniProt projection audit parity reports without project-state preconditions.",
+            "SEQ_ID",
+        ),
+        report_show_operation_descriptor(
+            "uniprot audit-parity-show",
+            "uniprot_projection_audit_parity",
+            "Inspect one persisted UniProt projection audit parity report.",
+        ),
+        report_export_operation_descriptor(
+            "uniprot audit-parity-export",
+            "uniprot_projection_audit_parity",
+            "external UniProt audit parity report JSON output path",
+            "Export one persisted UniProt projection audit parity report to an external JSON file.",
+        ),
+        report_list_operation_descriptor(
             "ListSequencingConfirmationReports",
             "List persisted sequencing-confirmation reports through the shared engine operation.",
             "EXPECTED_SEQ_ID",
@@ -22183,6 +22296,10 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         ]),
         "genomes blast-track" | "helpers blast-track" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "TARGET_SEQ_ID"}}),
+        ]),
+        "uniprot map" | "ProjectUniprotToGenome" => Some(vec![
+            json!({"fact": "uniprot_entry.exists", "subject": {"arg": "ENTRY_ID"}}),
+            json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
         ]),
         "features restriction-scan"
         | "FindRestrictionSites"
