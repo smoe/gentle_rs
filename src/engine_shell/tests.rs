@@ -22616,6 +22616,17 @@ fn execute_introspect_readiness_treats_local_metadata_catalog_routes_as_ready() 
         "reference_catalog_entries",
         "is_reference_genome_prepared",
         "list_reference_genome_genes",
+        "genomes extract-region",
+        "helpers extract-region",
+        "extract_genome_region",
+        "ExtractGenomeRegion",
+        "genomes extract-gene",
+        "helpers extract-gene",
+        "extract_genome_gene",
+        "ExtractGenomeGene",
+        "genomes extract-promoter",
+        "helpers extract-promoter",
+        "ExtractGenomePromoterSlice",
         "genomes blast-status",
         "helpers blast-status",
         "genomes blast-list",
@@ -22639,6 +22650,86 @@ fn execute_introspect_readiness_treats_local_metadata_catalog_routes_as_ready() 
             "{capability_id} should be ready without project state"
         );
     }
+}
+
+#[test]
+fn execute_introspect_readiness_and_effects_cover_genome_anchor_routes() {
+    let mut engine = GentleEngine::default();
+
+    for capability_id in [
+        "genomes extend-anchor",
+        "helpers extend-anchor",
+        "extend_genome_anchor",
+        "ExtendGenomeAnchor",
+        "genomes verify-anchor",
+        "helpers verify-anchor",
+    ] {
+        let blocked = execute_shell_command(
+            &mut engine,
+            &parse_shell_line(&format!(
+                "introspect readiness {capability_id} --arg SEQ_ID=anchored_seq"
+            ))
+            .expect("parse blocked anchor readiness"),
+        )
+        .expect("execute blocked anchor readiness");
+        assert_eq!(
+            blocked.output["readiness"][0]["readiness"].as_str(),
+            Some("blocked"),
+            "{capability_id} should require the source sequence"
+        );
+        assert!(
+            blocked.output["readiness"][0]["unmet_atoms"]
+                .as_array()
+                .expect("unmet atoms")
+                .iter()
+                .any(|atom| atom["fact"].as_str() == Some("sequence.exists"))
+        );
+    }
+
+    engine.state_mut().sequences.insert(
+        "anchored_seq".to_string(),
+        DNAsequence::from_sequence("ACGTACGT").expect("anchor source sequence"),
+    );
+    for capability_id in [
+        "genomes extend-anchor",
+        "helpers extend-anchor",
+        "extend_genome_anchor",
+        "ExtendGenomeAnchor",
+        "genomes verify-anchor",
+        "helpers verify-anchor",
+    ] {
+        let ready = execute_shell_command(
+            &mut engine,
+            &parse_shell_line(&format!(
+                "introspect readiness {capability_id} --arg SEQ_ID=anchored_seq"
+            ))
+            .expect("parse ready anchor readiness"),
+        )
+        .expect("execute ready anchor readiness");
+        assert_eq!(
+            ready.output["readiness"][0]["readiness"].as_str(),
+            Some("ready"),
+            "{capability_id} should be ready once the source sequence exists"
+        );
+    }
+
+    engine.state_mut().sequences.insert(
+        "genome_slice".to_string(),
+        DNAsequence::from_sequence("ACGTACGT").expect("genome slice sequence"),
+    );
+    let verify = execute_shell_command(
+        &mut engine,
+        &parse_shell_line(
+            "introspect verify-effects genomes extract-region --arg OUTPUT_ID=genome_slice",
+        )
+        .expect("parse genome extraction verify"),
+    )
+    .expect("execute genome extraction verify");
+    assert_eq!(verify.output["verified"].as_bool(), Some(true));
+    assert_eq!(
+        verify.output["must_on_success_effects"][0]["fact"].as_str(),
+        Some("sequence.exists")
+    );
 }
 
 #[test]
@@ -24887,6 +24978,61 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
                     && descriptor["effects"][0]["effect_kind"].as_str() == Some("external_handoff")
             }),
             "{id} should have a fact-annotated Ensembl catalog update descriptor"
+        );
+    }
+    for id in [
+        "genomes extract-region",
+        "helpers extract-region",
+        "extract_genome_region",
+        "ExtractGenomeRegion",
+        "genomes extract-gene",
+        "helpers extract-gene",
+        "extract_genome_gene",
+        "ExtractGenomeGene",
+        "genomes extract-promoter",
+        "helpers extract-promoter",
+        "ExtractGenomePromoterSlice",
+    ] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"].as_array().map(Vec::len) == Some(0)
+                    && descriptor["effects"][0]["fact"].as_str() == Some("sequence.exists")
+                    && descriptor["effects"][0]["subject"]["arg"].as_str() == Some("OUTPUT_ID")
+                    && descriptor["effects"][0]["effect_kind"].as_str() == Some("must_on_success")
+            }),
+            "{id} should have a fact-annotated prepared-genome extraction descriptor"
+        );
+    }
+    for id in [
+        "genomes extend-anchor",
+        "helpers extend-anchor",
+        "extend_genome_anchor",
+        "ExtendGenomeAnchor",
+    ] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"][0]["fact"].as_str() == Some("sequence.exists")
+                    && descriptor["reads"][0]["subject"]["arg"].as_str() == Some("SEQ_ID")
+                    && descriptor["effects"][0]["fact"].as_str() == Some("sequence.exists")
+                    && descriptor["effects"][0]["subject"]["arg"].as_str() == Some("OUTPUT_ID")
+            }),
+            "{id} should have a fact-annotated genome-anchor extension descriptor"
+        );
+    }
+    for id in ["genomes verify-anchor", "helpers verify-anchor"] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"][0]["fact"].as_str() == Some("sequence.exists")
+                    && descriptor["reads"][0]["subject"]["arg"].as_str() == Some("SEQ_ID")
+                    && descriptor["effects"].as_array().map(Vec::len) == Some(0)
+            }),
+            "{id} should have a fact-annotated genome-anchor verification descriptor"
         );
     }
     for id in [

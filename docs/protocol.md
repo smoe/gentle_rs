@@ -4598,6 +4598,14 @@ restriction-site scan evidence:
   routes can be readiness-checked. Projection-specific show, feature-coding,
   transcript-comparison, and audit-generation routes remain registry-only until
   a dedicated `uniprot_projection.exists` fact is promoted.
+- Reference/helper genome extraction routes are fact-aware for the project
+  sequence they create, not for prepared-cache existence. `genomes|helpers
+  extract-region`, `extract-gene`, and `extract-promoter`, the raw
+  `ExtractGenome*` operation rows, and JS/Lua aliases can verify
+  `sequence.exists(OUTPUT_ID)` when a deterministic output id was supplied.
+  Catalog lookup, prepared-cache compatibility, annotation filters, and repeat
+  materialization remain execution-time checks. Anchor extension and
+  verification routes require `sequence.exists(SEQ_ID)`.
 - Raw persisted-report operation rows mirror the shell report readiness model
   where the report kind is unambiguous. `ListSequencingConfirmationReports`,
   `ListCutRunReadReports`, and `ListRnaReadReports` are catalog-ready with no

@@ -2261,6 +2261,14 @@ Shared shell command:
         can be evaluated from the current project-fact graph; concrete genome
         ids, prepared caches, catalog paths, regex filters, and biotype filters
         are still validated by the command when it runs.
+      - reference/helper genome extraction routes (`genomes|helpers
+        extract-region`, `extract-gene`, and `extract-promoter`) plus raw
+        `ExtractGenome*` operation rows and JS/Lua helper aliases are
+        fact-annotated as project-sequence creation routes. The prepared cache
+        is still validated during execution; introspection can verify the
+        resulting `sequence.exists(OUTPUT_ID)` fact when the caller supplied a
+        deterministic output id. Anchor extension/verification routes require
+        the source `sequence.exists(SEQ_ID)` fact.
       - Ensembl discovery/catalog-maintenance routes
         (`genomes ensembl-available`, `helpers ensembl-available`,
         `ensembl_installable_genomes`, `list_ensembl_installable_genomes`,

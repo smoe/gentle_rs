@@ -14814,6 +14814,91 @@ fn external_sequence_create_descriptor(
     })
 }
 
+fn genome_sequence_create_descriptor(
+    id: &str,
+    genome_arg_name: &str,
+    genome_detail: &str,
+    description: &str,
+    mut extra_args: Vec<Value>,
+) -> Value {
+    let mut args = vec![json!({
+        "name": genome_arg_name,
+        "required": true,
+        "subject_kind": "other",
+        "detail": genome_detail
+    })];
+    args.append(&mut extra_args);
+    args.push(json!({
+        "name": "OUTPUT_ID",
+        "required": false,
+        "subject_kind": "sequence",
+        "detail": "requested output sequence id; required for deterministic effect verification and may be uniquified if already present"
+    }));
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": false,
+        "args": args,
+        "reads": [],
+        "effects": [
+            {
+                "fact": "sequence.exists",
+                "subject": {"arg": "OUTPUT_ID"},
+                "effect_kind": "must_on_success"
+            }
+        ],
+        "precondition_expr": {"all": []},
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn genome_anchor_sequence_create_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": false,
+        "args": [
+            {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded genome-anchored sequence id"},
+            {"name": "OUTPUT_ID", "required": false, "subject_kind": "sequence", "detail": "requested output sequence id; required for deterministic effect verification and may be uniquified if already present"},
+            {"name": "PREPARED_GENOME_ID", "required": false, "subject_kind": "other", "detail": "optional explicit prepared genome/cache id; cache compatibility is validated during execution"}
+        ],
+        "reads": [
+            {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+        ],
+        "effects": [
+            {
+                "fact": "sequence.exists",
+                "subject": {"arg": "OUTPUT_ID"},
+                "effect_kind": "must_on_success"
+            }
+        ],
+        "precondition_expr": {
+            "all": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn genome_anchor_read_descriptor(id: &str, description: &str) -> Value {
+    sequence_read_operation_descriptor(
+        id,
+        "SEQ_ID",
+        "loaded genome-anchored sequence id",
+        description,
+        vec![
+            json!({"name": "PREPARED_GENOME_ID", "required": false, "subject_kind": "other", "detail": "optional explicit prepared genome/cache id; cache compatibility is validated during execution"}),
+        ],
+    )
+}
+
 fn sequence_derivation_operation_descriptor(
     id: &str,
     description: &str,
@@ -21599,6 +21684,149 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "FILTER", "required": false, "subject_kind": "other", "detail": "optional gene-name regex filter"}),
                 json!({"name": "BIOTYPES", "required": false, "subject_kind": "other", "detail": "optional biotype filters"}),
             ],
+        ),
+        genome_sequence_create_descriptor(
+            "genomes extract-region",
+            "GENOME_ID",
+            "reference-genome catalog id",
+            "Extract one region from a prepared reference genome into a loaded project sequence; catalog/cache/preparation checks happen during execution.",
+            vec![
+                json!({"name": "CHR", "required": true, "subject_kind": "other", "detail": "chromosome/contig name"}),
+                json!({"name": "START", "required": true, "subject_kind": "other", "detail": "1-based inclusive start coordinate"}),
+                json!({"name": "END", "required": true, "subject_kind": "other", "detail": "1-based inclusive end coordinate"}),
+                json!({"name": "--catalog", "required": false, "subject_kind": "other", "detail": "optional reference-genome catalog path"}),
+                json!({"name": "--cache-dir", "required": false, "subject_kind": "other", "detail": "optional reference-genome cache root"}),
+            ],
+        ),
+        genome_sequence_create_descriptor(
+            "helpers extract-region",
+            "GENOME_ID",
+            "helper-genome catalog id",
+            "Extract one region from a prepared helper genome into a loaded project sequence; catalog/cache/preparation checks happen during execution.",
+            vec![
+                json!({"name": "CHR", "required": true, "subject_kind": "other", "detail": "chromosome/contig name"}),
+                json!({"name": "START", "required": true, "subject_kind": "other", "detail": "1-based inclusive start coordinate"}),
+                json!({"name": "END", "required": true, "subject_kind": "other", "detail": "1-based inclusive end coordinate"}),
+                json!({"name": "--catalog", "required": false, "subject_kind": "other", "detail": "optional helper-genome catalog path"}),
+                json!({"name": "--cache-dir", "required": false, "subject_kind": "other", "detail": "optional helper-genome cache root"}),
+            ],
+        ),
+        genome_sequence_create_descriptor(
+            "extract_genome_region",
+            "GENOME_ID",
+            "reference-genome catalog id carried by the JS/Lua adapter call",
+            "Extract one reference-genome region through JS/Lua helper adapters; catalog/cache/preparation checks happen during execution.",
+            vec![
+                json!({"name": "CHROMOSOME", "required": true, "subject_kind": "other", "detail": "chromosome/contig name"}),
+                json!({"name": "START_1BASED", "required": true, "subject_kind": "other", "detail": "1-based inclusive start coordinate"}),
+                json!({"name": "END_1BASED", "required": true, "subject_kind": "other", "detail": "1-based inclusive end coordinate"}),
+            ],
+        ),
+        genome_sequence_create_descriptor(
+            "ExtractGenomeRegion",
+            "GENOME_ID",
+            "reference/helper genome catalog id carried by the operation payload",
+            "Extract one prepared genome region through the raw engine operation row; catalog/cache/preparation checks happen during execution.",
+            vec![
+                json!({"name": "CHROMOSOME", "required": true, "subject_kind": "other", "detail": "chromosome/contig name"}),
+                json!({"name": "START_1BASED", "required": true, "subject_kind": "other", "detail": "1-based inclusive start coordinate"}),
+                json!({"name": "END_1BASED", "required": true, "subject_kind": "other", "detail": "1-based inclusive end coordinate"}),
+            ],
+        ),
+        genome_sequence_create_descriptor(
+            "genomes extract-gene",
+            "GENOME_ID",
+            "reference-genome catalog id",
+            "Extract one gene-centered region from a prepared reference genome into a loaded project sequence; catalog/cache/preparation checks happen during execution.",
+            vec![
+                json!({"name": "GENE_QUERY", "required": true, "subject_kind": "other", "detail": "gene symbol/name/id query"}),
+                json!({"name": "--occurrence", "required": false, "subject_kind": "other", "detail": "1-based matching gene occurrence"}),
+                json!({"name": "--catalog", "required": false, "subject_kind": "other", "detail": "optional reference-genome catalog path"}),
+                json!({"name": "--cache-dir", "required": false, "subject_kind": "other", "detail": "optional reference-genome cache root"}),
+            ],
+        ),
+        genome_sequence_create_descriptor(
+            "helpers extract-gene",
+            "GENOME_ID",
+            "helper-genome catalog id",
+            "Extract one feature/gene-centered region from a prepared helper genome into a loaded project sequence; catalog/cache/preparation checks happen during execution.",
+            vec![
+                json!({"name": "GENE_QUERY", "required": true, "subject_kind": "other", "detail": "feature/gene name/id query"}),
+                json!({"name": "--occurrence", "required": false, "subject_kind": "other", "detail": "1-based matching feature occurrence"}),
+                json!({"name": "--catalog", "required": false, "subject_kind": "other", "detail": "optional helper-genome catalog path"}),
+                json!({"name": "--cache-dir", "required": false, "subject_kind": "other", "detail": "optional helper-genome cache root"}),
+            ],
+        ),
+        genome_sequence_create_descriptor(
+            "extract_genome_gene",
+            "GENOME_ID",
+            "reference-genome catalog id carried by the JS/Lua adapter call",
+            "Extract one reference-genome gene through JS/Lua helper adapters; catalog/cache/preparation checks happen during execution.",
+            vec![
+                json!({"name": "GENE_QUERY", "required": true, "subject_kind": "other", "detail": "gene symbol/name/id query"}),
+            ],
+        ),
+        genome_sequence_create_descriptor(
+            "ExtractGenomeGene",
+            "GENOME_ID",
+            "reference/helper genome catalog id carried by the operation payload",
+            "Extract one prepared genome gene through the raw engine operation row; catalog/cache/preparation checks happen during execution.",
+            vec![
+                json!({"name": "GENE_QUERY", "required": true, "subject_kind": "other", "detail": "gene or feature query"}),
+            ],
+        ),
+        genome_sequence_create_descriptor(
+            "genomes extract-promoter",
+            "GENOME_ID",
+            "reference-genome catalog id",
+            "Extract one promoter slice from a prepared reference genome into a loaded project sequence; catalog/cache/preparation checks happen during execution.",
+            vec![
+                json!({"name": "GENE_QUERY", "required": true, "subject_kind": "other", "detail": "gene symbol/name/id query"}),
+                json!({"name": "--upstream-bp|--downstream-bp", "required": false, "subject_kind": "other", "detail": "promoter window size"}),
+            ],
+        ),
+        genome_sequence_create_descriptor(
+            "helpers extract-promoter",
+            "GENOME_ID",
+            "helper-genome catalog id",
+            "Extract one promoter-like feature window from a prepared helper genome into a loaded project sequence; catalog/cache/preparation checks happen during execution.",
+            vec![
+                json!({"name": "GENE_QUERY", "required": true, "subject_kind": "other", "detail": "feature/gene name/id query"}),
+                json!({"name": "--upstream-bp|--downstream-bp", "required": false, "subject_kind": "other", "detail": "promoter window size"}),
+            ],
+        ),
+        genome_sequence_create_descriptor(
+            "ExtractGenomePromoterSlice",
+            "GENOME_ID",
+            "reference/helper genome catalog id carried by the operation payload",
+            "Extract one prepared genome promoter slice through the raw engine operation row; catalog/cache/preparation checks happen during execution.",
+            vec![
+                json!({"name": "GENE_QUERY", "required": true, "subject_kind": "other", "detail": "gene or feature query"}),
+            ],
+        ),
+        genome_anchor_sequence_create_descriptor(
+            "genomes extend-anchor",
+            "Extend a loaded genome-anchored sequence from the prepared reference cache; prepared-cache compatibility is validated during execution.",
+        ),
+        genome_anchor_sequence_create_descriptor(
+            "helpers extend-anchor",
+            "Extend a loaded helper-genome-anchored sequence from the prepared helper cache; prepared-cache compatibility is validated during execution.",
+        ),
+        genome_anchor_sequence_create_descriptor(
+            "extend_genome_anchor",
+            "Extend a loaded genome-anchored sequence through the JS/Lua adapter alias; prepared-cache compatibility is validated during execution.",
+        ),
+        genome_anchor_sequence_create_descriptor(
+            "ExtendGenomeAnchor",
+            "Extend a loaded genome-anchored sequence through the raw engine operation row; prepared-cache compatibility is validated during execution.",
+        ),
+        genome_anchor_read_descriptor(
+            "genomes verify-anchor",
+            "Verify the stored genome anchor for one loaded sequence against prepared reference cache metadata.",
+        ),
+        genome_anchor_read_descriptor(
+            "helpers verify-anchor",
+            "Verify the stored genome anchor for one loaded sequence against prepared helper cache metadata.",
         ),
         json!({
             "id": "genomes blast-status",

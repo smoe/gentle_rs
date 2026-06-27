@@ -17,6 +17,10 @@ Maintenance rule:
 - Added fact-aware introspection for shell-level prepared-genome UI query
   routes (`ui prepared-genomes`, `ui latest-prepared`) and the lower-case
   `set_parameter` adapter alias.
+- Added fact-aware introspection for reference/helper genome extraction and
+  anchor extension/verification routes. Extraction effects verify loaded
+  `sequence.exists(OUTPUT_ID)` results while prepared-cache validation remains
+  execution-time behavior.
 
 ## 2026-06-27
 
