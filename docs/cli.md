@@ -2484,15 +2484,16 @@ Shared shell command:
         `ImportEnsemblGeneSequence`, `ensembl-protein import-sequence`, and
         `ImportEnsemblProteinSequence` can also verify
         `sequence.exists(OUTPUT_ID)` when a deterministic output id was supplied
-      - UniProt projection routes are partially fact-aware:
-        `uniprot map` and `ProjectUniprotToGenome` require the stored
-        UniProt-entry fact plus the target `sequence.exists(SEQ_ID)` fact, and
-        `uniprot projection-list` is catalog-ready. UniProt projection audit
-        and audit-parity reports project as `report.exists(REPORT_ID)` facts,
-        so their show/export routes can be readiness-checked. Projection-show,
-        feature-coding, transcript comparison, and audit-generation routes
-        remain registry-only until a dedicated `uniprot_projection.exists`
-        fact is promoted.
+      - UniProt projection routes project closed-world
+        `uniprot_projection.exists(PROJECTION_ID)` facts. `uniprot map` and
+        `ProjectUniprotToGenome` require the stored UniProt-entry fact plus the
+        target `sequence.exists(SEQ_ID)` fact and can verify a supplied
+        deterministic `PROJECTION_ID`. Projection-show, feature-coding,
+        Ensembl-link resolution, transcript accounting, Ensembl comparison, and
+        audit-generation routes require the projection fact. UniProt projection
+        audit and audit-parity reports still project as
+        `report.exists(REPORT_ID)` facts, so their show/export routes can be
+        readiness-checked.
       - raw core sequence operation rows are fact-annotated where the state
         contract is deterministic: `SaveFile` requires `sequence.exists(SEQ_ID)`
         and declares an `artifact.written(OUTPUT_PATH)` external handoff;

@@ -1428,6 +1428,22 @@ impl GentleEngine {
                 ..ProjectFact::default()
             });
         }
+        for projection in self.list_uniprot_genome_projections(None) {
+            facts.push(ProjectFact {
+                fact: "uniprot_projection.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Other, projection.projection_id),
+                value: Some(serde_json::json!({
+                    "entry_id": projection.entry_id,
+                    "seq_id": projection.seq_id,
+                    "transcript_id_filter": projection.transcript_id_filter,
+                    "transcript_projection_count": projection.transcript_projection_count,
+                    "created_at_unix_ms": projection.created_at_unix_ms,
+                    "op_id": projection.op_id,
+                    "run_id": projection.run_id,
+                })),
+                ..ProjectFact::default()
+            });
+        }
         for entry in self.list_ensembl_gene_entries() {
             facts.push(ProjectFact {
                 fact: "ensembl_gene_entry.exists".to_string(),

@@ -4594,14 +4594,16 @@ restriction-site scan evidence:
   show routes and metadata-backed sequence imports require the matching stored
   metadata fact. Metadata-backed sequence imports can also verify
   `sequence.exists(OUTPUT_ID)` when a deterministic output id was supplied.
-- UniProt projection routes are partially fact-aware. `uniprot map` and
+- UniProt projection routes project closed-world
+  `uniprot_projection.exists(PROJECTION_ID)` facts. `uniprot map` and
   `ProjectUniprotToGenome` require both `uniprot_entry.exists(ENTRY_ID)` and
-  `sequence.exists(SEQ_ID)`, while `uniprot projection-list` is ready without
-  project preconditions. Persisted UniProt projection audit and audit-parity
-  reports project as `report.exists(REPORT_ID)` facts, so their show/export
-  routes can be readiness-checked. Projection-specific show, feature-coding,
-  transcript-comparison, and audit-generation routes remain registry-only until
-  a dedicated `uniprot_projection.exists` fact is promoted.
+  `sequence.exists(SEQ_ID)` and can verify a supplied deterministic
+  `PROJECTION_ID`. `uniprot projection-list` is ready without project
+  preconditions. Projection-specific show, feature-coding, Ensembl-link
+  resolution, transcript-accounting, Ensembl-comparison, and audit-generation
+  routes require the projection fact. Persisted UniProt projection audit and
+  audit-parity reports still project as `report.exists(REPORT_ID)` facts, so
+  their show/export routes can be readiness-checked.
 - Reference/helper genome extraction routes are fact-aware for the project
   sequence they create, not for prepared-cache existence. `genomes|helpers
   extract-region`, `extract-gene`, and `extract-promoter`, the raw

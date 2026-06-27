@@ -1981,6 +1981,14 @@ const PROJECT_FACT_TYPE_SPECS: &[ProjectFactTypeSpec] = &[
         description: "A stored UniProt entry with this id exists in current project metadata.",
     },
     ProjectFactTypeSpec {
+        name: "uniprot_projection.exists",
+        domain: ProjectFactDomain::Project,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Other,
+        description: "A stored UniProt-to-sequence genome projection with this id exists in current project metadata.",
+    },
+    ProjectFactTypeSpec {
         name: "ensembl_gene_entry.exists",
         domain: ProjectFactDomain::Project,
         world: ProjectFactWorld::ClosedWorld,

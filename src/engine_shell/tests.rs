@@ -24590,9 +24590,55 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
                     && descriptor["reads"][0]["subject"]["arg"].as_str() == Some("ENTRY_ID")
                     && descriptor["reads"][1]["fact"].as_str() == Some("sequence.exists")
                     && descriptor["reads"][1]["subject"]["arg"].as_str() == Some("SEQ_ID")
-                    && descriptor["effects"][0]["effect_kind"].as_str() == Some("may_on_success")
+                    && descriptor["effects"][0]["fact"].as_str()
+                        == Some("uniprot_projection.exists")
+                    && descriptor["effects"][0]["subject"]["arg"].as_str() == Some("PROJECTION_ID")
+                    && descriptor["effects"][0]["effect_kind"].as_str() == Some("must_on_success")
             }),
             "{id} should have a fact-annotated UniProt projection descriptor"
+        );
+    }
+    for id in [
+        "uniprot projection-show",
+        "uniprot feature-coding-dna",
+        "uniprot resolve-ensembl-links",
+        "uniprot transcript-accounting",
+        "uniprot compare-ensembl-exons",
+        "uniprot compare-ensembl-peptide",
+    ] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"][0]["fact"].as_str() == Some("uniprot_projection.exists")
+                    && descriptor["reads"][0]["subject"]["arg"].as_str() == Some("PROJECTION_ID")
+                    && descriptor["effects"].as_array().map(Vec::len) == Some(0)
+            }),
+            "{id} should have a fact-annotated UniProt projection read descriptor"
+        );
+    }
+    for (id, report_kind) in [
+        ("uniprot audit-projection", "uniprot_projection_audit"),
+        (
+            "AuditUniprotProjectionConsistency",
+            "uniprot_projection_audit",
+        ),
+        ("uniprot audit-parity", "uniprot_projection_audit_parity"),
+        (
+            "AuditUniprotProjectionParity",
+            "uniprot_projection_audit_parity",
+        ),
+    ] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"][0]["fact"].as_str() == Some("uniprot_projection.exists")
+                    && descriptor["effects"][0]["fact"].as_str() == Some("report.exists")
+                    && descriptor["effects"][0]["equals"].as_str() == Some(report_kind)
+                    && descriptor["effects"][0]["effect_kind"].as_str() == Some("must_on_success")
+            }),
+            "{id} should have a fact-annotated UniProt projection audit descriptor"
         );
     }
     for (id, report_kind) in [
@@ -33369,6 +33415,42 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
             transcript_id: None,
         })
         .expect("map projection");
+    let projection_id = "PTEST1@seq_u";
+    for capability_id in [
+        "uniprot projection-show",
+        "uniprot feature-coding-dna",
+        "uniprot resolve-ensembl-links",
+        "uniprot transcript-accounting",
+        "uniprot compare-ensembl-exons",
+        "uniprot compare-ensembl-peptide",
+        "uniprot audit-projection",
+        "uniprot audit-parity",
+        "AuditUniprotProjectionConsistency",
+        "AuditUniprotProjectionParity",
+    ] {
+        let ready = execute_shell_command(
+            &mut engine,
+            &parse_shell_line(&format!(
+                "introspect readiness {capability_id} --arg PROJECTION_ID={projection_id}"
+            ))
+            .expect("parse UniProt projection readiness"),
+        )
+        .expect("execute UniProt projection readiness");
+        assert_eq!(
+            ready.output["readiness"][0]["readiness"].as_str(),
+            Some("ready"),
+            "{capability_id} should be ready once the projection exists"
+        );
+    }
+    let verify_projection = execute_shell_command(
+        &mut engine,
+        &parse_shell_line(&format!(
+            "introspect verify-effects ProjectUniprotToGenome --arg PROJECTION_ID={projection_id}"
+        ))
+        .expect("parse UniProt projection verify"),
+    )
+    .expect("execute UniProt projection verify");
+    assert_eq!(verify_projection.output["verified"].as_bool(), Some(true));
     engine.state_mut().metadata.insert(
         "ensembl_protein_entries".to_string(),
         serde_json::json!({
@@ -33383,7 +33465,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
     let resolved = execute_shell_command(
         &mut engine,
         &ShellCommand::UniprotResolveEnsemblLinks {
-            projection_id: "PTEST1@seq_u".to_string(),
+            projection_id: projection_id.to_string(),
             transcript_id: Some("TX1".to_string()),
         },
     )
@@ -33398,7 +33480,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
     let accounting = execute_shell_command(
         &mut engine,
         &ShellCommand::UniprotTranscriptAccounting {
-            projection_id: "PTEST1@seq_u".to_string(),
+            projection_id: projection_id.to_string(),
             transcript_id: Some("TX1".to_string()),
         },
     )
@@ -33411,7 +33493,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
     let exon_compare = execute_shell_command(
         &mut engine,
         &ShellCommand::UniprotCompareEnsemblExons {
-            projection_id: "PTEST1@seq_u".to_string(),
+            projection_id: projection_id.to_string(),
             transcript_id: Some("TX1".to_string()),
             ensembl_entry_id: Some("ENSPTOY1".to_string()),
         },
@@ -33425,7 +33507,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
     let peptide_compare = execute_shell_command(
         &mut engine,
         &ShellCommand::UniprotCompareEnsemblPeptide {
-            projection_id: "PTEST1@seq_u".to_string(),
+            projection_id: projection_id.to_string(),
             transcript_id: Some("TX1".to_string()),
             ensembl_entry_id: Some("ENSPTOY1".to_string()),
         },
@@ -33439,7 +33521,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
     let audit = execute_shell_command(
         &mut engine,
         &ShellCommand::UniprotAuditProjection {
-            projection_id: "PTEST1@seq_u".to_string(),
+            projection_id: projection_id.to_string(),
             transcript_id: Some("TX1".to_string()),
             ensembl_entry_id: Some("ENSPTOY1".to_string()),
             report_id: Some("toy_audit".to_string()),
@@ -33513,7 +33595,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
     let parity = execute_shell_command(
         &mut engine,
         &ShellCommand::UniprotAuditParity {
-            projection_id: "PTEST1@seq_u".to_string(),
+            projection_id: projection_id.to_string(),
             transcript_id: Some("TX1".to_string()),
             ensembl_entry_id: Some("ENSPTOY1".to_string()),
             report_id: Some("toy_audit_parity".to_string()),
@@ -33545,6 +33627,12 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
     let project_facts = facts.output["facts"]["project"]["facts"]
         .as_array()
         .expect("project facts");
+    assert!(project_facts.iter().any(|fact| {
+        fact["fact"].as_str() == Some("uniprot_projection.exists")
+            && fact["subject"]["id"].as_str() == Some(projection_id)
+            && fact["value"]["entry_id"].as_str() == Some("PTEST1")
+            && fact["value"]["seq_id"].as_str() == Some("seq_u")
+    }));
     assert!(project_facts.iter().any(|fact| {
         fact["fact"].as_str() == Some("report.exists")
             && fact["subject"]["id"].as_str() == Some("toy_audit")

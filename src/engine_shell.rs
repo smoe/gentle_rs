@@ -16555,6 +16555,62 @@ fn container_transform_descriptor(id: &str, description: &str) -> Value {
     })
 }
 
+fn uniprot_projection_read_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "false",
+        "requires_confirmation": false,
+        "args": [
+            {"name": "PROJECTION_ID", "required": true, "subject_kind": "other", "detail": "persisted UniProt genome projection id"}
+        ],
+        "reads": [
+            {"fact": "uniprot_projection.exists", "subject": {"arg": "PROJECTION_ID"}}
+        ],
+        "effects": [],
+        "precondition_expr": {
+            "all": [
+                {"fact": "uniprot_projection.exists", "subject": {"arg": "PROJECTION_ID"}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn uniprot_projection_audit_descriptor(id: &str, report_kind: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": false,
+        "args": [
+            {"name": "PROJECTION_ID", "required": true, "subject_kind": "other", "detail": "persisted UniProt genome projection id"},
+            {"name": "REPORT_ID", "required": false, "subject_kind": "report", "detail": "explicit report id; required for deterministic effect verification"}
+        ],
+        "reads": [
+            {"fact": "uniprot_projection.exists", "subject": {"arg": "PROJECTION_ID"}}
+        ],
+        "effects": [
+            {
+                "fact": "report.exists",
+                "subject": {"arg": "REPORT_ID"},
+                "equals": report_kind,
+                "effect_kind": "must_on_success"
+            }
+        ],
+        "precondition_expr": {
+            "all": [
+                {"fact": "uniprot_projection.exists", "subject": {"arg": "PROJECTION_ID"}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
 fn arrangement_create_descriptor(id: &str, description: &str) -> Value {
     json!({
         "id": id,
@@ -17518,8 +17574,9 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             ],
             "effects": [
                 {
-                    "effect_kind": "may_on_success",
-                    "description": "Stores a UniProt genome projection; a dedicated uniprot_projection.exists fact is not projected yet."
+                    "fact": "uniprot_projection.exists",
+                    "subject": {"arg": "PROJECTION_ID"},
+                    "effect_kind": "must_on_success"
                 }
             ],
             "precondition_expr": {
@@ -17549,8 +17606,9 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             ],
             "effects": [
                 {
-                    "effect_kind": "may_on_success",
-                    "description": "Stores a UniProt genome projection; a dedicated uniprot_projection.exists fact is not projected yet."
+                    "fact": "uniprot_projection.exists",
+                    "subject": {"arg": "PROJECTION_ID"},
+                    "effect_kind": "must_on_success"
                 }
             ],
             "precondition_expr": {
@@ -17569,6 +17627,50 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             vec![
                 json!({"name": "--seq", "required": false, "subject_kind": "sequence", "detail": "optional sequence id filter; it is not a readiness precondition"}),
             ],
+        ),
+        uniprot_projection_read_descriptor(
+            "uniprot projection-show",
+            "Inspect one stored UniProt genome projection by id.",
+        ),
+        uniprot_projection_read_descriptor(
+            "uniprot feature-coding-dna",
+            "Resolve coding DNA for one UniProt feature query against a stored genome projection.",
+        ),
+        uniprot_projection_read_descriptor(
+            "uniprot resolve-ensembl-links",
+            "Resolve Ensembl cross-reference links for one stored UniProt genome projection.",
+        ),
+        uniprot_projection_read_descriptor(
+            "uniprot transcript-accounting",
+            "Summarize transcript/protein accounting for one stored UniProt genome projection.",
+        ),
+        uniprot_projection_read_descriptor(
+            "uniprot compare-ensembl-exons",
+            "Compare projected UniProt transcript exons against an optional stored Ensembl protein entry.",
+        ),
+        uniprot_projection_read_descriptor(
+            "uniprot compare-ensembl-peptide",
+            "Compare projected UniProt peptide sequence against an optional stored Ensembl protein entry.",
+        ),
+        uniprot_projection_audit_descriptor(
+            "uniprot audit-projection",
+            "uniprot_projection_audit",
+            "Create a UniProt projection consistency audit report from one stored genome projection.",
+        ),
+        uniprot_projection_audit_descriptor(
+            "AuditUniprotProjectionConsistency",
+            "uniprot_projection_audit",
+            "Create a UniProt projection consistency audit report through the shared engine operation.",
+        ),
+        uniprot_projection_audit_descriptor(
+            "uniprot audit-parity",
+            "uniprot_projection_audit_parity",
+            "Create a UniProt projection parity audit report from one stored genome projection.",
+        ),
+        uniprot_projection_audit_descriptor(
+            "AuditUniprotProjectionParity",
+            "uniprot_projection_audit_parity",
+            "Create a UniProt projection parity audit report through the shared engine operation.",
         ),
         metadata_entry_read_descriptor(
             "ensembl-gene show",
@@ -22710,6 +22812,18 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         "uniprot map" | "ProjectUniprotToGenome" => Some(vec![
             json!({"fact": "uniprot_entry.exists", "subject": {"arg": "ENTRY_ID"}}),
             json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
+        ]),
+        "uniprot projection-show"
+        | "uniprot feature-coding-dna"
+        | "uniprot resolve-ensembl-links"
+        | "uniprot transcript-accounting"
+        | "uniprot compare-ensembl-exons"
+        | "uniprot compare-ensembl-peptide"
+        | "uniprot audit-projection"
+        | "uniprot audit-parity"
+        | "AuditUniprotProjectionConsistency"
+        | "AuditUniprotProjectionParity" => Some(vec![
+            json!({"fact": "uniprot_projection.exists", "subject": {"arg": "PROJECTION_ID"}}),
         ]),
         "features restriction-scan"
         | "FindRestrictionSites"
