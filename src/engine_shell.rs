@@ -20778,6 +20778,43 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "QUERY_SEQUENCE", "required": true, "subject_kind": "other", "detail": "query sequence text"}),
             ],
         ),
+        no_project_inspection_operation_descriptor(
+            "tracks tracked list",
+            "List configured tracked genome signal-file subscriptions without project-state preconditions.",
+            vec![],
+        ),
+        project_state_may_change_descriptor(
+            "tracks tracked add",
+            "Add one tracked genome signal-file subscription; path/source validation happens during execution and feature materialization is deferred until apply/sync.",
+            "true",
+            vec![
+                json!({"name": "PATH", "required": true, "subject_kind": "other", "detail": "tracked BED, BigWig, or VCF input path"}),
+                json!({"name": "--source|--name|--min-score|--max-score|--clear-existing", "required": false, "subject_kind": "other", "detail": "track source, label, filtering, and replacement options"}),
+            ],
+        ),
+        project_state_may_change_descriptor(
+            "tracks tracked remove",
+            "Remove one tracked genome signal-file subscription by list index.",
+            "true",
+            vec![
+                json!({"name": "INDEX", "required": true, "subject_kind": "other", "detail": "zero-based tracked subscription index"}),
+            ],
+        ),
+        project_state_may_change_descriptor(
+            "tracks tracked clear",
+            "Clear all tracked genome signal-file subscriptions.",
+            "true",
+            vec![],
+        ),
+        project_state_may_change_descriptor(
+            "tracks tracked apply",
+            "Apply one or all tracked genome signal-file subscriptions to currently anchored sequences; imported feature changes are execution-dependent and are not yet projected as hard track-update facts.",
+            "true",
+            vec![
+                json!({"name": "--index", "required": false, "subject_kind": "other", "detail": "optional zero-based subscription index; absent means apply/sync all tracked subscriptions"}),
+                json!({"name": "--only-new-anchors", "required": false, "subject_kind": "other", "detail": "skip anchored sequences that already have imported track features"}),
+            ],
+        ),
         sequence_read_operation_descriptor(
             "arrays project-microarray-track",
             "SEQ_ID",

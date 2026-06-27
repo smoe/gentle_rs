@@ -868,6 +868,8 @@ on semantic glyphs.
    `ImportGenomeBigWigTrack`,
    `tracks import-vcf`, `import_genome_vcf_track`, `ImportGenomeVcfTrack`,
    `ImportBlastHitsTrack`, `genomes blast-track`, `helpers blast-track`,
+   `tracks tracked list`, `tracks tracked add`, `tracks tracked remove`,
+   `tracks tracked clear`, `tracks tracked apply`,
    `arrays project-microarray-track`, `ProjectMicroarrayTrack`,
    `arrays project-probe-region-output`,
    `FindRestrictionSites`, `features tfbs-score-tracks-svg`,

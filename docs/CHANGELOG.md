@@ -51,6 +51,10 @@ Maintenance rule:
   gene/protein entry sequence import routes. These routes have no project-state
   preconditions, and post-run verification checks `sequence.exists(OUTPUT_ID)`
   when a deterministic id was supplied.
+- Added fact-aware introspection for tracked genome signal-file subscription
+  routes: `tracks tracked list`, `tracks tracked add`,
+  `tracks tracked remove`, `tracks tracked clear`, and
+  `tracks tracked apply`.
 - Added fact-aware introspection for raw core sequence operation rows:
   `SaveFile`, `Digest`, `Pcr`, `PcrAdvanced`, `PcrMutagenesis`, and
   `PcrOverlapExtensionMutagenesis`. PCR rows require a loaded template and can

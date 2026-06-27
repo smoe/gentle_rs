@@ -22047,6 +22047,78 @@ fn execute_introspect_readiness_treats_external_inspection_routes_as_catalog_rea
 }
 
 #[test]
+fn execute_introspect_readiness_tracks_tracked_routes_are_project_config_ready() {
+    let mut engine = GentleEngine::default();
+
+    let capabilities = execute_shell_command(
+        &mut engine,
+        &parse_shell_line("introspect capabilities").expect("parse capabilities"),
+    )
+    .expect("execute capabilities");
+    let descriptors = capabilities.output["capabilities"]
+        .as_array()
+        .expect("capabilities array");
+
+    let list_descriptor = descriptors
+        .iter()
+        .find(|descriptor| descriptor["id"].as_str() == Some("tracks tracked list"))
+        .expect("tracks tracked list descriptor");
+    assert_eq!(
+        list_descriptor["annotation_status"].as_str(),
+        Some("fact_annotated")
+    );
+    assert_eq!(list_descriptor["reads"].as_array().map(Vec::len), Some(0));
+    assert_eq!(list_descriptor["effects"].as_array().map(Vec::len), Some(0));
+
+    for capability_id in [
+        "tracks tracked add",
+        "tracks tracked remove",
+        "tracks tracked clear",
+        "tracks tracked apply",
+    ] {
+        let descriptor = descriptors
+            .iter()
+            .find(|descriptor| descriptor["id"].as_str() == Some(capability_id))
+            .unwrap_or_else(|| panic!("missing descriptor for {capability_id}"));
+        assert_eq!(
+            descriptor["annotation_status"].as_str(),
+            Some("fact_annotated"),
+            "{capability_id} should be fact annotated"
+        );
+        assert_eq!(
+            descriptor["reads"].as_array().map(Vec::len),
+            Some(0),
+            "{capability_id} should not require loaded sequence state"
+        );
+        assert_eq!(
+            descriptor["effects"][0]["effect_kind"].as_str(),
+            Some("may_on_success"),
+            "{capability_id} should declare only a non-verifiable project-state effect"
+        );
+    }
+
+    for capability_id in [
+        "tracks tracked list",
+        "tracks tracked add",
+        "tracks tracked remove",
+        "tracks tracked clear",
+        "tracks tracked apply",
+    ] {
+        let out = execute_shell_command(
+            &mut engine,
+            &parse_shell_line(&format!("introspect readiness {capability_id}"))
+                .expect("parse tracked route readiness"),
+        )
+        .expect("execute tracked route readiness");
+        assert_eq!(
+            out.output["readiness"][0]["readiness"].as_str(),
+            Some("ready"),
+            "{capability_id} should be ready without project facts"
+        );
+    }
+}
+
+#[test]
 fn execute_introspect_readiness_checks_genome_track_projection_sequence_inputs() {
     let mut engine = GentleEngine::default();
     let seq_id_capabilities = [

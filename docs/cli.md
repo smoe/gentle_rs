@@ -2301,6 +2301,11 @@ Shared shell command:
         `arrays project-probe-region-output`) require the loaded target
         sequence fact. They currently remain readiness-only because feature
         freshness/track-update facts are not projected yet
+      - tracked genome signal-file subscription routes
+        (`tracks tracked list|add|remove|clear|apply`) have no project-fact
+        preconditions. List is read-only; add/remove/clear/apply declare only a
+        non-verifiable `may_on_success` project-state effect because imported
+        features depend on current anchors and external file validation
       - sequence-scan reporting/rendering rows (`FindRestrictionSites`,
         `features tfbs-score-tracks-svg`, `RenderTfbsScoreTracksSvg`,
         `SummarizeTfbsScoreTracks`, `features tfbs-track-similarity`, and
