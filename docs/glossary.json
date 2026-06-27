@@ -56,6 +56,83 @@
          "engine_operations": [],
          "interfaces": [
             "cli-shell",
+            "gui-shell"
+         ],
+         "path": "facts graph",
+         "summary": "Return the deterministic project fact graph, optionally enriched with explicit evidence files.",
+         "usage": "facts graph [--evidence SCAN.json ...]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "facts eval",
+         "summary": "Evaluate a project fact expression against the current fact graph.",
+         "usage": "facts eval FACT_EXPR_JSON_OR_@FILE [--evidence SCAN.json ...]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "introspect facts",
+         "summary": "Inspect typed project, view, host, and configuration facts for adapter readiness.",
+         "usage": "introspect facts [--domain project|view|host|config] [--seq-id ID] [--ui-host true|false] [--evidence SCAN.json ...]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "introspect capabilities",
+         "summary": "Inspect annotated capability metadata and fact-readiness contracts.",
+         "usage": "introspect capabilities [--kind KIND]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "introspect readiness",
+         "summary": "Evaluate whether one capability is ready for supplied argument bindings.",
+         "usage": "introspect readiness CAPABILITY_ID [--arg NAME=VALUE ...] [--evidence SCAN.json ...]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "introspect verify-effects",
+         "summary": "Compare declared capability effects with before-and-after fact graphs.",
+         "usage": "introspect verify-effects CAPABILITY_ID [--arg NAME=VALUE ...] [--seq-id ID] [--evidence SCAN.json ...] [--ui-host true|false]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "introspect all",
+         "summary": "Emit the complete deterministic introspection bundle for adapters and agents.",
+         "usage": "introspect all [--ui-host true|false] [--evidence SCAN.json ...]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
             "gui-shell",
             "gui-menu"
          ],

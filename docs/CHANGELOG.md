@@ -39,6 +39,11 @@ Maintenance rule:
   `rack.exists` introspection for persisted wet-lab container/rack authoring,
   including readiness/effect descriptors for arrangement creation, rack
   placement/mutation, and rack SVG/OpenSCAD/simulation exports.
+- Tightened construct-reasoning repeat-family wording so rmsk-backed Alu-like
+  evidence uses curated-family support language while rmsk-absent heuristic
+  calls retain the soft-catalog caveat.
+- Extended fact/introspection projection with report, view, and configuration
+  facts plus glossary/parity metadata for `facts` and `introspect` shell routes.
 
 ## 2026-06-26
 

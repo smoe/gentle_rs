@@ -41701,11 +41701,27 @@ fn build_construct_reasoning_graph_detects_alu_like_mobile_element_candidates() 
         .build_construct_reasoning_graph("alu_like_demo", None, None)
         .expect("build graph");
 
-    assert!(graph.evidence.iter().any(|row| {
-        row.role == ConstructRole::MobileElement
-            && row.label == "Alu-like SINE candidate"
-            && row.evidence_class == EvidenceClass::SoftHypothesis
-    }));
+    let alu_evidence = graph
+        .evidence
+        .iter()
+        .find(|row| {
+            row.role == ConstructRole::MobileElement
+                && row.label == "Alu-like SINE candidate"
+                && row.evidence_class == EvidenceClass::SoftHypothesis
+        })
+        .expect("soft Alu-like evidence");
+    assert!(
+        alu_evidence
+            .rationale
+            .contains(CONSTRUCT_REASONING_ALU_LIKE_SOFT_CATALOG_CAVEAT),
+        "rmsk-absent Alu-like evidence should retain the curated-catalog caveat"
+    );
+    assert!(
+        alu_evidence
+            .notes
+            .iter()
+            .any(|note| note == "family_assignment=soft_heuristic")
+    );
     let mobile_fact = graph
         .facts
         .iter()
@@ -41813,6 +41829,35 @@ fn build_construct_reasoning_graph_upgrades_alu_like_with_overlapping_rmsk_famil
         .iter()
         .find(|row| row.label == "Alu-like SINE candidate")
         .expect("Alu-like evidence");
+    assert!(
+        !alu_evidence
+            .rationale
+            .contains(CONSTRUCT_REASONING_ALU_LIKE_SOFT_CATALOG_CAVEAT),
+        "family-backed Alu-like evidence should not retain the curated-catalog caveat"
+    );
+    assert!(
+        alu_evidence.rationale.contains(
+            "overlapping curated repeat-family annotation supports the family assignment"
+        )
+    );
+    assert!(
+        alu_evidence
+            .notes
+            .iter()
+            .any(|note| note == "family_assignment=curated_repeat_family_supported")
+    );
+    assert!(
+        alu_evidence
+            .notes
+            .iter()
+            .any(|note| note == "curated_repeat_support=AluY (SINE/Alu)")
+    );
+    assert!(
+        !alu_evidence
+            .notes
+            .iter()
+            .any(|note| note == "family_assignment=soft_heuristic")
+    );
     let curated_rows = graph
         .evidence
         .iter()
@@ -41906,6 +41951,19 @@ fn build_construct_reasoning_graph_upgrades_alu_like_with_overlapping_rmsk_famil
         })
         .expect("mobile-element fact should recommend a forward dotplot action");
     assert_eq!(mobile_action.focus_start_0based, alu_evidence.start_0based);
+    assert!(mobile_action.driving_evidence_ids.iter().all(|id| {
+        graph
+            .evidence
+            .iter()
+            .find(|row| row.evidence_id == *id)
+            .map(|row| {
+                !row.context_tags.iter().any(|tag| tag == "alu_like")
+                    || !row
+                        .rationale
+                        .contains(CONSTRUCT_REASONING_ALU_LIKE_SOFT_CATALOG_CAVEAT)
+            })
+            .unwrap_or(true)
+    }));
     let provenance = mobile_action
         .repeat_family_provenance
         .as_ref()
@@ -41936,6 +41994,17 @@ fn build_construct_reasoning_graph_does_not_upgrade_alu_like_for_non_overlapping
         .build_construct_reasoning_graph("alu_like_rmsk_nonoverlap", None, None)
         .expect("build graph");
 
+    let alu_evidence = graph
+        .evidence
+        .iter()
+        .find(|row| row.label == "Alu-like SINE candidate")
+        .expect("Alu-like evidence");
+    assert!(
+        alu_evidence
+            .rationale
+            .contains(CONSTRUCT_REASONING_ALU_LIKE_SOFT_CATALOG_CAVEAT),
+        "non-overlapping rmsk rows should leave the Alu-like call as a soft catalog-unconfirmed hypothesis"
+    );
     assert!(
         graph
             .evidence

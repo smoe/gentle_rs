@@ -138,6 +138,10 @@ impl ConstructReasoningCuratedRepeatSupport {
     }
 }
 
+#[cfg(test)]
+const CONSTRUCT_REASONING_ALU_LIKE_SOFT_CATALOG_CAVEAT: &str =
+    "until a curated repeat-family catalog";
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum RepeatFamilyClassKind {
     Alu,
@@ -17889,6 +17893,85 @@ impl GentleEngine {
             .collect()
     }
 
+    fn construct_reasoning_apply_curated_repeat_support_to_evidence(
+        evidence: &mut [DesignEvidence],
+        facts: &[DesignFact],
+    ) {
+        let Some(mobile_fact) = facts
+            .iter()
+            .find(|fact| fact.fact_type == "mobile_element_context")
+        else {
+            return;
+        };
+        if mobile_fact
+            .value_json
+            .get("curated_repeat_support_count")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+            == 0
+        {
+            return;
+        }
+        let support_labels = mobile_fact
+            .value_json
+            .get("curated_repeat_family_labels")
+            .and_then(serde_json::Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        let support_label_text = if support_labels.is_empty() {
+            "curated repeat-family annotation".to_string()
+        } else {
+            support_labels.join(", ")
+        };
+        let supported_internal_ids = mobile_fact
+            .value_json
+            .get("curated_repeat_support")
+            .and_then(serde_json::Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|support| {
+                support
+                    .get("internal_evidence_ids")
+                    .and_then(serde_json::Value::as_array)
+            })
+            .flatten()
+            .filter_map(serde_json::Value::as_str)
+            .map(str::to_string)
+            .collect::<BTreeSet<_>>();
+        if supported_internal_ids.is_empty() {
+            return;
+        }
+
+        for row in evidence {
+            if !supported_internal_ids.contains(&row.evidence_id)
+                || row.role != ConstructRole::MobileElement
+                || !Self::construct_reasoning_evidence_has_tag(row, "alu_like")
+                || Self::construct_reasoning_evidence_is_curated_repeat_annotation(row)
+            {
+                continue;
+            }
+            row.rationale = format!(
+                "Region shows a two-arm repeat structure with an A-rich tail consistent with a cautious Alu-like SINE heuristic, and overlapping curated repeat-family annotation supports the family assignment: {support_label_text}. This remains sequence evidence for inspection rather than a functional or validation verdict."
+            );
+            for note in &mut row.notes {
+                if note == "family_assignment=soft_heuristic" {
+                    *note = "family_assignment=curated_repeat_family_supported".to_string();
+                }
+            }
+            let support_note = format!("curated_repeat_support={support_label_text}");
+            if !row.notes.iter().any(|note| note == &support_note) {
+                row.notes.push(support_note);
+            }
+        }
+    }
+
     fn construct_reasoning_repeat_family_provenance_for_evidence_rows(
         rows: &[&DesignEvidence],
     ) -> Option<ConstructReasoningRepeatFamilyProvenance> {
@@ -24870,6 +24953,7 @@ impl GentleEngine {
             &evidence,
             helper_interpretation.as_ref(),
         );
+        Self::construct_reasoning_apply_curated_repeat_support_to_evidence(&mut evidence, &facts);
         let mut annotation_candidates = Self::construct_reasoning_build_annotation_candidates(
             seq_id, &evidence, &facts, &decisions,
         );

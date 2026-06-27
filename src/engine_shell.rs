@@ -45,9 +45,9 @@ use crate::{
         DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP,
         DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP, DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP,
         DOTPLOT_ANALYSIS_METADATA_KEY, DisplayTarget, DotplotMode, DotplotOverlayAnchorExonRef,
-        DotplotOverlayQuerySpec, DotplotOverlayXAxisMode, EditableStatus, Engine,
-        ExonSkipReturnKind, ExonSkipSelectionCriterion, FactAtom, FactExpression, FactSubject,
-        FactSubjectKind, FactTruth, FeatureBedCoordinateMode, FeatureExpertTarget,
+        DotplotOverlayQuerySpec, DotplotOverlayXAxisMode, EditableStatus, Engine, EvidenceClass,
+        ExonSkipReturnKind, ExonSkipSelectionCriterion, FactAtom, FactBasis, FactExpression,
+        FactSubject, FactSubjectKind, FactTruth, FeatureBedCoordinateMode, FeatureExpertTarget,
         FeatureExpertView, FlexibilityModel, GUIDE_DESIGN_METADATA_KEY, GeneSetCohortRelationship,
         GeneSetProducerFilter, GeneSetPromoterCohortReport, GeneSetRequest,
         GeneSetResolutionReport, GeneSetResolutionReviewStatus, GenomeAnchorSide,
@@ -67,8 +67,9 @@ use crate::{
         PlanningObjective, PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus,
         PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignReport,
         PrimerDesignSideConstraint, PrimerSpecificityPolicy, ProbeRegionRequest, ProjectFact,
-        ProjectFactDomain, ProjectFactGraph, ProjectState, PromoterArtifactManifestEntry,
-        PromoterCohortKind, PromoterExpressionEvidenceInput, PromoterTfbsGeneQuery,
+        ProjectFactDomain, ProjectFactGraph, ProjectFactTypeSpec, ProjectState,
+        PromoterArtifactManifestEntry, PromoterCohortKind, PromoterExpressionEvidenceInput,
+        PromoterTfbsGeneQuery,
         PromoterWindowCollapseMode, ProteinExpressionCdsAssessment,
         ProteinExpressionFeatureSummary, ProteinExpressionHandoffReport,
         ProteinExpressionHostChassisCandidate, ProteinExpressionProductDefinition,
@@ -14503,19 +14504,141 @@ fn load_restriction_site_scan_evidence(
     Ok(reports)
 }
 
+fn introspection_fact_domains() -> [ProjectFactDomain; 4] {
+    [
+        ProjectFactDomain::Project,
+        ProjectFactDomain::View,
+        ProjectFactDomain::Host,
+        ProjectFactDomain::Config,
+    ]
+}
+
+fn introspection_fact_subject(kind: FactSubjectKind, id: impl Into<String>) -> FactSubject {
+    FactSubject {
+        kind,
+        id: id.into(),
+    }
+}
+
+fn introspection_report_fact(report_id: impl Into<String>, report_kind: &str) -> ProjectFact {
+    let report_id = report_id.into();
+    ProjectFact {
+        fact: "report.exists".to_string(),
+        domain: ProjectFactDomain::Project,
+        subject: introspection_fact_subject(FactSubjectKind::Report, report_id.clone()),
+        value: Some(json!(report_kind)),
+        basis: Some(FactBasis {
+            report_id,
+            report_kind: report_kind.to_string(),
+            evidence_class: EvidenceClass::HardFact,
+            op_id: None,
+            run_id: None,
+        }),
+        ..ProjectFact::default()
+    }
+}
+
+fn push_introspection_report_facts(graph: &mut ProjectFactGraph, engine: &GentleEngine) {
+    graph.facts.extend(
+        engine
+            .list_primer_design_reports()
+            .into_iter()
+            .map(|row| introspection_report_fact(row.report_id, "primer_design")),
+    );
+    graph.facts.extend(
+        engine
+            .list_qpcr_design_reports()
+            .into_iter()
+            .map(|row| introspection_report_fact(row.report_id, "qpcr_design")),
+    );
+    graph.facts.extend(
+        engine
+            .list_restriction_cloning_pcr_handoffs()
+            .into_iter()
+            .map(|row| introspection_report_fact(row.report_id, "restriction_cloning_pcr_handoff")),
+    );
+    graph.facts.extend(
+        engine
+            .list_reverse_translation_reports(None)
+            .into_iter()
+            .map(|row| introspection_report_fact(row.report_id, "reverse_translation")),
+    );
+    graph.facts.extend(
+        engine
+            .list_sequencing_confirmation_reports(None)
+            .into_iter()
+            .map(|row| introspection_report_fact(row.report_id, "sequencing_confirmation")),
+    );
+    graph.facts.extend(
+        engine
+            .list_cutrun_read_reports(None)
+            .into_iter()
+            .map(|row| introspection_report_fact(row.report_id, "cutrun_read")),
+    );
+    graph.facts.extend(
+        engine
+            .list_rna_read_reports(None)
+            .into_iter()
+            .map(|row| introspection_report_fact(row.report_id, "rna_read")),
+    );
+}
+
+fn push_introspection_config_facts(graph: &mut ProjectFactGraph, engine: &GentleEngine) {
+    graph.facts.push(ProjectFact {
+        fact: "config.param".to_string(),
+        domain: ProjectFactDomain::Config,
+        subject: introspection_fact_subject(FactSubjectKind::Other, "max_fragments_per_container"),
+        value: Some(json!(engine.state().parameters.max_fragments_per_container)),
+        ..ProjectFact::default()
+    });
+}
+
+fn push_introspection_view_facts(graph: &mut ProjectFactGraph, engine: &GentleEngine) {
+    let display = &engine.state().display;
+    graph.facts.push(ProjectFact {
+        fact: "view.viewport".to_string(),
+        domain: ProjectFactDomain::View,
+        subject: introspection_fact_subject(FactSubjectKind::Ui, "linear_sequence"),
+        value: Some(json!({
+            "start_bp": display.linear_view_start_bp,
+            "span_bp": display.linear_view_span_bp,
+        })),
+        ..ProjectFact::default()
+    });
+    graph.facts.push(ProjectFact {
+        fact: "view.visible_tracks".to_string(),
+        domain: ProjectFactDomain::View,
+        subject: introspection_fact_subject(FactSubjectKind::Ui, "host"),
+        value: Some(json!({
+            "features": display.show_features,
+            "cds": display.show_cds_features,
+            "gene": display.show_gene_features,
+            "mrna": display.show_mrna_features,
+            "repeat_features": display.show_repeat_features,
+            "array_features": display.show_array_features,
+            "tfbs": display.show_tfbs,
+            "restriction_enzymes": display.show_restriction_enzymes,
+            "gc_contents": display.show_gc_contents,
+            "open_reading_frames": display.show_open_reading_frames,
+            "methylation_sites": display.show_methylation_sites,
+        })),
+        ..ProjectFact::default()
+    });
+}
+
 fn introspection_project_graph(
     engine: &GentleEngine,
     restriction_reports: &[RestrictionSiteScanReport],
     ui_host_available: bool,
 ) -> ProjectFactGraph {
     let mut graph = engine.project_fact_graph_with_restriction_evidence(restriction_reports);
+    push_introspection_report_facts(&mut graph, engine);
+    push_introspection_config_facts(&mut graph, engine);
+    push_introspection_view_facts(&mut graph, engine);
     graph.facts.push(ProjectFact {
         fact: "ui.host_available".to_string(),
         domain: ProjectFactDomain::View,
-        subject: FactSubject {
-            kind: FactSubjectKind::Ui,
-            id: "host".to_string(),
-        },
+        subject: introspection_fact_subject(FactSubjectKind::Ui, "host"),
         value: Some(json!(ui_host_available)),
         ..ProjectFact::default()
     });
@@ -14525,10 +14648,7 @@ fn introspection_project_graph(
             graph.facts.push(ProjectFact {
                 fact: "host.tool_available".to_string(),
                 domain: ProjectFactDomain::Host,
-                subject: FactSubject {
-                    kind: FactSubjectKind::Other,
-                    id: system.id,
-                },
+                subject: introspection_fact_subject(FactSubjectKind::Other, system.id),
                 value: Some(json!(availability.available)),
                 ..ProjectFact::default()
             });
@@ -14541,6 +14661,14 @@ fn domain_matches_filter(domain: ProjectFactDomain, filter: Option<&str>) -> boo
     filter
         .map(|filter| domain.as_str() == filter)
         .unwrap_or(true)
+}
+
+fn introspection_fact_output_value(fact: &ProjectFact) -> Value {
+    serde_json::to_value(fact).unwrap_or_else(|_| json!({}))
+}
+
+fn introspection_fact_spec_output_value(spec: &ProjectFactTypeSpec) -> Value {
+    serde_json::to_value(spec).unwrap_or_else(|_| json!({}))
 }
 
 fn fact_matches_seq_id_filter(fact: &ProjectFact, seq_id_filter: Option<&str>) -> bool {
@@ -14558,12 +14686,7 @@ fn introspection_facts_payload(
 ) -> Value {
     let graph = introspection_project_graph(engine, evidence, ui_host_available);
     let mut grouped: BTreeMap<String, Value> = BTreeMap::new();
-    for domain in [
-        ProjectFactDomain::Project,
-        ProjectFactDomain::View,
-        ProjectFactDomain::Host,
-        ProjectFactDomain::Config,
-    ] {
+    for domain in introspection_fact_domains() {
         if !domain_matches_filter(domain, domain_filter) {
             continue;
         }
@@ -14572,7 +14695,7 @@ fn introspection_facts_payload(
             .iter()
             .filter(|fact| fact.domain == domain)
             .filter(|fact| fact_matches_seq_id_filter(fact, seq_id_filter))
-            .cloned()
+            .map(introspection_fact_output_value)
             .collect::<Vec<_>>();
         let mut entry = json!({ "facts": facts });
         if domain == ProjectFactDomain::Project {
@@ -14586,6 +14709,7 @@ fn introspection_facts_payload(
     let specs = project_fact_type_specs()
         .iter()
         .filter(|spec| domain_matches_filter(spec.domain, domain_filter))
+        .map(introspection_fact_spec_output_value)
         .collect::<Vec<_>>();
     json!({
         "schema": "gentle.introspection.v1",
