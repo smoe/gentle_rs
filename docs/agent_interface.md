@@ -303,6 +303,7 @@ an agent has selected a deterministic operation.
 - `cutrun show-read-report`
 - `cutrun status`
 - `dbsnp fetch`
+- `display`
 - `dotplot compute`
 - `dotplot list`
 - `dotplot overlay-compute`
@@ -328,6 +329,8 @@ an agent has selected a deterministic operation.
 - `flex compute`
 - `flex list`
 - `flex show`
+- `facts eval`
+- `facts graph`
 - `genbank fetch`
 - `gene-groups doctor`
 - `gene-groups draft`
@@ -391,6 +394,11 @@ an agent has selected a deterministic operation.
 - `history undo`
 - `import-pool`
 - `inspect-feature-expert`
+- `introspect all`
+- `introspect capabilities`
+- `introspect facts`
+- `introspect readiness`
+- `introspect verify-effects`
 - `ladders export`
 - `ladders list`
 - `load-project`
@@ -569,6 +577,7 @@ an agent has selected a deterministic operation.
 - `tracks tracked remove`
 - `transcripts derive`
 - `transcripts residue-genomic-coordinates`
+- `ui selection`
 - `uniprot audit-export`
 - `uniprot audit-list`
 - `uniprot audit-parity`

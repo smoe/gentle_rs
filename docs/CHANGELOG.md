@@ -62,6 +62,11 @@ Maintenance rule:
   fetch/import routes can verify explicit entry ids, show/import-sequence
   routes require stored metadata facts, and metadata-backed sequence imports can
   still verify deterministic `sequence.exists(OUTPUT_ID)` products.
+- Tightened construct-reasoning repeat-family wording so rmsk-backed Alu-like
+  evidence uses curated-family support language while rmsk-absent heuristic
+  calls retain the soft-catalog caveat.
+- Extended fact/introspection projection with report, view, and configuration
+  facts plus glossary/parity metadata for `facts` and `introspect` shell routes.
 
 ## 2026-06-26
 

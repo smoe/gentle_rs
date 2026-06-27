@@ -17,11 +17,11 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 
 | Adapter | prominent | shell-only | gap |
 |---|---:|---:|---:|
-| GUI | 21 | 565 | 0 |
-| gentle_cli | 345 | 266 | 0 |
-| MCP | 71 | 413 | 29 |
-| JS | 78 | 396 | 29 |
-| Lua | 77 | 397 | 29 |
+| GUI | 21 | 575 | 0 |
+| gentle_cli | 347 | 274 | 0 |
+| MCP | 72 | 414 | 37 |
+| JS | 78 | 397 | 38 |
+| Lua | 77 | 398 | 38 |
 | ClawBio | 0 | 0 | 0 |
 
 ## Glossary Commands
@@ -32,6 +32,13 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | capabilities | glossary-command | shell-only | prominent | prominent | prominent | prominent | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | state-summary | glossary-command | shell-only | prominent | prominent | n/a | n/a | n/a | JS: Local shell workflow without a portable engine operation; intentionally not projected on this adapter.<br>Lua: Local shell workflow without a portable engine operation; intentionally not projected on this adapter.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | history status | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Undo/redo history is session-local state management, not a portable adapter route.<br>JS: Undo/redo history is session-local state management, not a portable adapter route.<br>Lua: Undo/redo history is session-local state management, not a portable adapter route.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| facts graph | glossary-command | shell-only | shell-only | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| facts eval | glossary-command | shell-only | shell-only | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| introspect facts | glossary-command | shell-only | shell-only | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| introspect capabilities | glossary-command | shell-only | shell-only | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| introspect readiness | glossary-command | shell-only | shell-only | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| introspect verify-effects | glossary-command | shell-only | shell-only | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| introspect all | glossary-command | shell-only | shell-only | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | history undo | glossary-command | prominent | shell-only | n/a | n/a | n/a | n/a | MCP: Undo/redo history is session-local state management, not a portable adapter route.<br>JS: Undo/redo history is session-local state management, not a portable adapter route.<br>Lua: Undo/redo history is session-local state management, not a portable adapter route.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | history redo | glossary-command | prominent | shell-only | n/a | n/a | n/a | n/a | MCP: Undo/redo history is session-local state management, not a portable adapter route.<br>JS: Undo/redo history is session-local state management, not a portable adapter route.<br>Lua: Undo/redo history is session-local state management, not a portable adapter route.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | load-project | glossary-command | prominent | prominent | n/a | n/a | n/a | n/a | MCP: Project/file load-save helpers are local adapter I/O, not shared engine operations.<br>JS: Project/file load-save helpers are local adapter I/O, not shared engine operations.<br>Lua: Project/file load-save helpers are local adapter I/O, not shared engine operations.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
@@ -98,6 +105,8 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | ui intents | glossary-command | shell-only | prominent | prominent | n/a | n/a | n/a | JS: GUI open/focus routing is local window state, not a JS/Lua headless operation.<br>Lua: GUI open/focus routing is local window state, not a JS/Lua headless operation.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | ui open | glossary-command | shell-only | prominent | prominent | n/a | n/a | n/a | JS: GUI open/focus routing is local window state, not a JS/Lua headless operation.<br>Lua: GUI open/focus routing is local window state, not a JS/Lua headless operation.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | ui focus | glossary-command | shell-only | prominent | prominent | n/a | n/a | n/a | JS: GUI open/focus routing is local window state, not a JS/Lua headless operation.<br>Lua: GUI open/focus routing is local window state, not a JS/Lua headless operation.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| ui close | glossary-command | shell-only | prominent | prominent | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| ui selection | glossary-command | shell-only | prominent | gap | gap | gap | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | ui prepared-genomes | glossary-command | shell-only | prominent | prominent | n/a | n/a | n/a | JS: GUI open/focus routing is local window state, not a JS/Lua headless operation.<br>Lua: GUI open/focus routing is local window state, not a JS/Lua headless operation.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | ui latest-prepared | glossary-command | shell-only | prominent | prominent | n/a | n/a | n/a | JS: GUI open/focus routing is local window state, not a JS/Lua headless operation.<br>Lua: GUI open/focus routing is local window state, not a JS/Lua headless operation.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | genbank fetch | glossary-command | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
@@ -397,6 +406,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | candidates template-delete | glossary-command | shell-only | prominent | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | candidates template-run | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Local shell workflow without a portable engine operation; intentionally not projected on this adapter.<br>JS: Local shell workflow without a portable engine operation; intentionally not projected on this adapter.<br>Lua: Local shell workflow without a portable engine operation; intentionally not projected on this adapter.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | set-param | glossary-command | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
+| display | glossary-command | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | op | glossary-command | shell-only | prominent | prominent | n/a | n/a | n/a | JS: Local shell workflow without a portable engine operation; intentionally not projected on this adapter.<br>Lua: Local shell workflow without a portable engine operation; intentionally not projected on this adapter.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | workflow | glossary-command | shell-only | prominent | prominent | n/a | n/a | n/a | JS: Local shell workflow without a portable engine operation; intentionally not projected on this adapter.<br>Lua: Local shell workflow without a portable engine operation; intentionally not projected on this adapter.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
 | batch plan | glossary-command | shell-only | prominent | n/a | n/a | n/a | n/a | MCP: Local shell workflow without a portable engine operation; intentionally not projected on this adapter.<br>JS: Local shell workflow without a portable engine operation; intentionally not projected on this adapter.<br>Lua: Local shell workflow without a portable engine operation; intentionally not projected on this adapter.<br>ClawBio: ClawBio exposes curated skill intents rather than raw glossary command rows. |
@@ -745,7 +755,14 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | JS | ensembl-gene show | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | ensembl-protein list | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | ensembl-protein show | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| JS | facts eval | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| JS | facts graph | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | gibson preview | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| JS | introspect all | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| JS | introspect capabilities | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| JS | introspect facts | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| JS | introspect readiness | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| JS | introspect verify-effects | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | planning consult cloning | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | planning protein-expression-handoff | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | primers export-qpcr-report | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
@@ -763,6 +780,8 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | JS | rna-reads show-report | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | services delivery-route | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | services route-project-source | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| JS | ui close | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| JS | ui selection | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | uniprot projection-list | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | uniprot projection-show | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | JS | uniprot show | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
@@ -774,7 +793,14 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | Lua | ensembl-gene show | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | ensembl-protein list | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | ensembl-protein show | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| Lua | facts eval | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| Lua | facts graph | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | gibson preview | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| Lua | introspect all | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| Lua | introspect capabilities | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| Lua | introspect facts | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| Lua | introspect readiness | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| Lua | introspect verify-effects | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | planning consult cloning | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | planning protein-expression-handoff | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | primers export-qpcr-report | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
@@ -792,6 +818,8 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | Lua | rna-reads show-report | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | services delivery-route | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | services route-project-source | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| Lua | ui close | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| Lua | ui selection | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | uniprot projection-list | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | uniprot projection-show | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | Lua | uniprot show | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
@@ -803,7 +831,14 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | MCP | ensembl-gene show | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | ensembl-protein list | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | ensembl-protein show | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| MCP | facts eval | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| MCP | facts graph | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | gibson preview | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| MCP | introspect all | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| MCP | introspect capabilities | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| MCP | introspect facts | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| MCP | introspect readiness | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| MCP | introspect verify-effects | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | planning consult cloning | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | planning protein-expression-handoff | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | primers export-qpcr-report | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
@@ -821,6 +856,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | MCP | rna-reads show-report | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | services delivery-route | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | services route-project-source | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
+| MCP | ui selection | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | uniprot projection-list | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | uniprot projection-show | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
 | MCP | uniprot show | glossary-command | needs operation work | No portable engine operation or curated local-only override is declared. |
