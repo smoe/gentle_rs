@@ -15306,6 +15306,37 @@ fn agent_execute_plan_descriptor(id: &str, description: &str) -> Value {
     })
 }
 
+fn read_acquire_operation_descriptor(
+    id: &str,
+    description: &str,
+    args: Vec<Value>,
+    writes_external_state: bool,
+) -> Value {
+    let effects = if writes_external_state {
+        vec![json!({
+            "fact": "artifact.written",
+            "subject": {"arg": "WORK_DIR"},
+            "effect_kind": "external_handoff",
+            "description": "The read-acquisition route writes or updates external acquisition state under the supplied work/cache paths."
+        })]
+    } else {
+        vec![]
+    };
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "external",
+        "requires_confirmation": false,
+        "args": args,
+        "reads": [],
+        "effects": effects,
+        "precondition_expr": {"all": []},
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
 fn external_artifact_catalog_operation_descriptor(
     id: &str,
     output_detail: &str,
@@ -20146,6 +20177,87 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "agent_execute_plan",
             "Execute one candidate from a supplied agent plan through the shared MCP/tool route.",
         ),
+        read_acquire_operation_descriptor(
+            "reads acquire status",
+            "Inspect external SRA/read-acquisition status for a manifest and cache/work directories.",
+            vec![
+                json!({"name": "MANIFEST_PATH", "required": true, "subject_kind": "other", "detail": "external acquisition manifest TSV path"}),
+                json!({"name": "CACHE_DIR", "required": true, "subject_kind": "other", "detail": "external read-acquisition cache directory"}),
+                json!({"name": "WORK_DIR", "required": true, "subject_kind": "other", "detail": "external read-acquisition work directory"}),
+            ],
+            false,
+        ),
+        read_acquire_operation_descriptor(
+            "reads acquire prepare",
+            "Prepare external SRA/read-acquisition inputs for a manifest using cache/work directories and optional SRA Toolkit execution.",
+            vec![
+                json!({"name": "MANIFEST_PATH", "required": true, "subject_kind": "other", "detail": "external acquisition manifest TSV path"}),
+                json!({"name": "CACHE_DIR", "required": true, "subject_kind": "other", "detail": "external read-acquisition cache directory"}),
+                json!({"name": "WORK_DIR", "required": true, "subject_kind": "other", "detail": "external read-acquisition work directory"}),
+                json!({"name": "THREADS", "required": false, "subject_kind": "other", "detail": "optional worker/thread count"}),
+            ],
+            true,
+        ),
+        read_acquire_operation_descriptor(
+            "reads acquire inspect",
+            "Inspect one external SRA/read-acquisition run accession in the cache/work directories.",
+            vec![
+                json!({"name": "SRA_ACCESSION", "required": true, "subject_kind": "other", "detail": "SRA run accession"}),
+                json!({"name": "CACHE_DIR", "required": true, "subject_kind": "other", "detail": "external read-acquisition cache directory"}),
+                json!({"name": "WORK_DIR", "required": true, "subject_kind": "other", "detail": "external read-acquisition work directory"}),
+            ],
+            false,
+        ),
+        read_acquire_operation_descriptor(
+            "reads acquire cancel",
+            "Request cancellation for one external SRA/read-acquisition run by writing its cancel marker.",
+            vec![
+                json!({"name": "SRA_ACCESSION", "required": true, "subject_kind": "other", "detail": "SRA run accession"}),
+                json!({"name": "CACHE_DIR", "required": true, "subject_kind": "other", "detail": "external read-acquisition cache directory"}),
+                json!({"name": "WORK_DIR", "required": true, "subject_kind": "other", "detail": "external read-acquisition work directory"}),
+            ],
+            true,
+        ),
+        read_acquire_operation_descriptor(
+            "ReadAcquireStatus",
+            "Inspect external SRA/read-acquisition status through the raw engine operation row.",
+            vec![
+                json!({"name": "MANIFEST_PATH", "required": true, "subject_kind": "other", "detail": "external acquisition manifest TSV path carried by manifest_path"}),
+                json!({"name": "CACHE_DIR", "required": true, "subject_kind": "other", "detail": "external read-acquisition cache directory carried by cache_dir"}),
+                json!({"name": "WORK_DIR", "required": true, "subject_kind": "other", "detail": "external read-acquisition work directory carried by work_dir"}),
+            ],
+            false,
+        ),
+        read_acquire_operation_descriptor(
+            "ReadAcquirePrepare",
+            "Prepare external SRA/read-acquisition inputs through the raw engine operation row.",
+            vec![
+                json!({"name": "MANIFEST_PATH", "required": true, "subject_kind": "other", "detail": "external acquisition manifest TSV path carried by manifest_path"}),
+                json!({"name": "CACHE_DIR", "required": true, "subject_kind": "other", "detail": "external read-acquisition cache directory carried by cache_dir"}),
+                json!({"name": "WORK_DIR", "required": true, "subject_kind": "other", "detail": "external read-acquisition work directory carried by work_dir"}),
+            ],
+            true,
+        ),
+        read_acquire_operation_descriptor(
+            "ReadAcquireInspect",
+            "Inspect one external SRA/read-acquisition run through the raw engine operation row.",
+            vec![
+                json!({"name": "SRA_ACCESSION", "required": true, "subject_kind": "other", "detail": "SRA run accession carried by sra_accession"}),
+                json!({"name": "CACHE_DIR", "required": true, "subject_kind": "other", "detail": "external read-acquisition cache directory carried by cache_dir"}),
+                json!({"name": "WORK_DIR", "required": true, "subject_kind": "other", "detail": "external read-acquisition work directory carried by work_dir"}),
+            ],
+            false,
+        ),
+        read_acquire_operation_descriptor(
+            "ReadAcquireCancel",
+            "Request cancellation for one external SRA/read-acquisition run through the raw engine operation row.",
+            vec![
+                json!({"name": "SRA_ACCESSION", "required": true, "subject_kind": "other", "detail": "SRA run accession carried by sra_accession"}),
+                json!({"name": "CACHE_DIR", "required": true, "subject_kind": "other", "detail": "external read-acquisition cache directory carried by cache_dir"}),
+                json!({"name": "WORK_DIR", "required": true, "subject_kind": "other", "detail": "external read-acquisition work directory carried by work_dir"}),
+            ],
+            true,
+        ),
         catalog_read_operation_descriptor(
             "protocol-cartoon list",
             "List built-in protocol-cartoon templates without project-state preconditions.",
@@ -21834,6 +21946,14 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
                 json!({"fact": "host.tool_available", "subject": {"arg": "SYSTEM_ID"}, "equals": true}),
             ])
         }
+        "reads acquire status"
+        | "reads acquire prepare"
+        | "reads acquire inspect"
+        | "reads acquire cancel"
+        | "ReadAcquireStatus"
+        | "ReadAcquirePrepare"
+        | "ReadAcquireInspect"
+        | "ReadAcquireCancel" => Some(vec![]),
         _ => None,
     }
 }

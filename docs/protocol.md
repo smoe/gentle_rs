@@ -4884,6 +4884,13 @@ Shared-shell routes:
     without project facts because readiness depends on the supplied plan JSON
     and candidate id; concrete project effects are command-dependent and are
     advertised only as `may_on_success`.
+  - Read-acquisition routes (`reads acquire status`, `reads acquire prepare`,
+    `reads acquire inspect`, `reads acquire cancel`, and raw `ReadAcquire*`
+    rows) are fact-annotated as payload/path-ready without project facts.
+    Prepare and cancel declare `artifact.written(WORK_DIR)` as an external
+    handoff because they update external acquisition state. Introspection
+    readiness does not validate manifest contents, SRA accessions, tools, or
+    filesystem paths; those checks remain execution-time behavior.
   - Adapter parity aliases `state_summary`, `reference_catalog_entries`,
     `ui_intents`, `ui_prepared_genomes`, and `ui_latest_prepared` are
     fact-annotated with the same no-project readiness as their shared shell

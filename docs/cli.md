@@ -2135,6 +2135,13 @@ Shared shell command:
         their real precondition is a valid supplied agent-plan payload and
         candidate id; command-dependent project effects are advertised only as
         `may_on_success`.
+      - read-acquisition routes `reads acquire status`, `reads acquire prepare`,
+        `reads acquire inspect`, `reads acquire cancel`, and raw
+        `ReadAcquire*` rows are payload/path-ready without project facts.
+        Prepare and cancel rows model the external work/cache updates as
+        `artifact.written(WORK_DIR)` external handoffs; readiness does not
+        assert that the manifest, SRA accession, SRA Toolkit, or paths are
+        valid until execution.
       - persisted-report export commands such as
         `reverse-translate export-report`, `primers export-report`, and
         `primers export-qpcr-report`, and

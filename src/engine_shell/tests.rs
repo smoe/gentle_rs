@@ -24723,6 +24723,44 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
             "{id} should have a fact-annotated agent-plan execution descriptor"
         );
     }
+    for id in [
+        "reads acquire status",
+        "reads acquire inspect",
+        "ReadAcquireStatus",
+        "ReadAcquireInspect",
+    ] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["kind"].as_str() == Some("operation")
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["mutating"].as_str() == Some("external")
+                    && descriptor["reads"].as_array().map(Vec::len) == Some(0)
+                    && descriptor["effects"].as_array().map(Vec::len) == Some(0)
+            }),
+            "{id} should have a fact-annotated read-acquisition inspection descriptor"
+        );
+    }
+    for id in [
+        "reads acquire prepare",
+        "reads acquire cancel",
+        "ReadAcquirePrepare",
+        "ReadAcquireCancel",
+    ] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["kind"].as_str() == Some("operation")
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["mutating"].as_str() == Some("external")
+                    && descriptor["reads"].as_array().map(Vec::len) == Some(0)
+                    && descriptor["effects"][0]["fact"].as_str() == Some("artifact.written")
+                    && descriptor["effects"][0]["subject"]["arg"].as_str() == Some("WORK_DIR")
+                    && descriptor["effects"][0]["effect_kind"].as_str() == Some("external_handoff")
+            }),
+            "{id} should have a fact-annotated read-acquisition external-write descriptor"
+        );
+    }
 }
 
 #[test]
@@ -24885,6 +24923,32 @@ fn execute_introspect_readiness_uses_projected_agent_host_tool_availability() {
             ready.output["readiness"][0]["readiness"].as_str(),
             Some("ready"),
             "{capability_id} should be payload-ready without project facts"
+        );
+    }
+}
+
+#[test]
+fn execute_introspect_readiness_treats_read_acquire_routes_as_payload_ready() {
+    let mut engine = GentleEngine::default();
+
+    for capability_id in [
+        "reads acquire status",
+        "reads acquire prepare",
+        "reads acquire inspect",
+        "reads acquire cancel",
+        "ReadAcquireStatus",
+        "ReadAcquirePrepare",
+        "ReadAcquireInspect",
+        "ReadAcquireCancel",
+    ] {
+        let ready_cmd = parse_shell_line(&format!("introspect readiness {capability_id}"))
+            .expect("parse read-acquire readiness");
+        let ready =
+            execute_shell_command(&mut engine, &ready_cmd).expect("execute read-acquire readiness");
+        assert_eq!(
+            ready.output["readiness"][0]["readiness"].as_str(),
+            Some("ready"),
+            "{capability_id} should be ready without project facts"
         );
     }
 }
