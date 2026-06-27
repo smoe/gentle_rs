@@ -15246,6 +15246,66 @@ fn catalog_read_operation_descriptor(id: &str, description: &str) -> Value {
     })
 }
 
+fn agent_system_host_readiness_descriptor(
+    id: &str,
+    mutating: &str,
+    requires_confirmation: bool,
+    description: &str,
+    extra_args: Vec<Value>,
+) -> Value {
+    let mut args = vec![json!({
+        "name": "SYSTEM_ID",
+        "required": true,
+        "subject_kind": "other",
+        "detail": "configured agent-system id"
+    })];
+    args.extend(extra_args);
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": mutating,
+        "requires_confirmation": requires_confirmation,
+        "args": args,
+        "reads": [
+            {"fact": "host.tool_available", "subject": {"arg": "SYSTEM_ID"}, "equals": true}
+        ],
+        "effects": [],
+        "precondition_expr": {
+            "all": [
+                {"fact": "host.tool_available", "subject": {"arg": "SYSTEM_ID"}, "equals": true}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn agent_execute_plan_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": true,
+        "args": [
+            {"name": "PLAN_INPUT", "required": true, "subject_kind": "other", "detail": "agent-plan JSON payload or @file path"},
+            {"name": "CANDIDATE_ID", "required": true, "subject_kind": "other", "detail": "candidate id inside the supplied agent plan"},
+            {"name": "CONFIRM", "required": false, "subject_kind": "other", "detail": "explicit execution confirmation flag"}
+        ],
+        "reads": [],
+        "effects": [
+            {
+                "effect_kind": "may_on_success",
+                "description": "Executing an agent-plan candidate may run shared-shell commands and therefore may change project state according to the selected candidate; concrete effects are command-dependent."
+            }
+        ],
+        "precondition_expr": {"all": []},
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
 fn external_artifact_catalog_operation_descriptor(
     id: &str,
     output_detail: &str,
@@ -20040,6 +20100,52 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "list_agent_systems",
             "List configured external and builtin agent systems through JS/Lua helper adapters.",
         ),
+        agent_system_host_readiness_descriptor(
+            "agents ask",
+            "external",
+            false,
+            "Ask a configured agent system for chat support and optional command suggestions; adapter availability is checked before dispatch.",
+            vec![
+                json!({"name": "PROMPT", "required": true, "subject_kind": "other", "detail": "user prompt sent to the configured agent system"}),
+                json!({"name": "--allow-auto-exec", "required": false, "subject_kind": "other", "detail": "whether auto-executable suggested commands may run"}),
+            ],
+        ),
+        agent_system_host_readiness_descriptor(
+            "ask_agent_system",
+            "false",
+            false,
+            "Ask a configured agent system through JS/Lua helper adapters.",
+            vec![
+                json!({"name": "PROMPT", "required": true, "subject_kind": "other", "detail": "user prompt sent to the configured agent system"}),
+            ],
+        ),
+        agent_system_host_readiness_descriptor(
+            "agents plan",
+            "external",
+            false,
+            "Ask a configured agent system to compile prose into typed plan candidates.",
+            vec![
+                json!({"name": "PROMPT", "required": true, "subject_kind": "other", "detail": "planning prompt sent to the configured agent system"}),
+                json!({"name": "--max-candidates", "required": false, "subject_kind": "other", "detail": "maximum number of plan candidates requested"}),
+            ],
+        ),
+        agent_system_host_readiness_descriptor(
+            "agent_plan",
+            "external",
+            false,
+            "Ask a configured agent system to compile prose into typed plan candidates through the shared MCP/tool route.",
+            vec![
+                json!({"name": "PROMPT", "required": true, "subject_kind": "other", "detail": "planning prompt sent to the configured agent system"}),
+            ],
+        ),
+        agent_execute_plan_descriptor(
+            "agents execute-plan",
+            "Execute one candidate from a supplied agent plan through the shared shell executor.",
+        ),
+        agent_execute_plan_descriptor(
+            "agent_execute_plan",
+            "Execute one candidate from a supplied agent plan through the shared MCP/tool route.",
+        ),
         catalog_read_operation_descriptor(
             "protocol-cartoon list",
             "List built-in protocol-cartoon templates without project-state preconditions.",
@@ -21719,6 +21825,10 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
             json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
         ]),
         "set-param" | "SetParameter" => Some(vec![]),
+        "agents execute-plan" | "agent_execute_plan" => Some(vec![]),
+        "agents ask" | "ask_agent_system" | "agents plan" | "agent_plan" => Some(vec![
+            json!({"fact": "host.tool_available", "subject": {"arg": "SYSTEM_ID"}, "equals": true}),
+        ]),
         "agents preflight" | "agents discover-models" | "agent_preflight" | "agent_models" => {
             Some(vec![
                 json!({"fact": "host.tool_available", "subject": {"arg": "SYSTEM_ID"}, "equals": true}),

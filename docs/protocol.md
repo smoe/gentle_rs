@@ -4878,8 +4878,12 @@ Shared-shell routes:
     `agent_models` are fact-annotated host-config routes that require
     `host.tool_available(SYSTEM_ID) == true`. Preflight may emit an
     external-handoff report; model discovery declares no project effects.
-    Asking, planning, and plan execution remain separate adapter/transport
-    operations.
+    Asking and planning (`agents ask`, `ask_agent_system`, `agents plan`, and
+    `agent_plan`) use the same host-tool availability precondition. Plan
+    execution (`agents execute-plan`, `agent_execute_plan`) is payload-ready
+    without project facts because readiness depends on the supplied plan JSON
+    and candidate id; concrete project effects are command-dependent and are
+    advertised only as `may_on_success`.
   - Adapter parity aliases `state_summary`, `reference_catalog_entries`,
     `ui_intents`, `ui_prepared_genomes`, and `ui_latest_prepared` are
     fact-annotated with the same no-project readiness as their shared shell

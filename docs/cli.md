@@ -2127,6 +2127,14 @@ Shared shell command:
         `SuggestSequencingPrimers` require the expected construct sequence.
         Optional primer sequence ids and sequencing-confirmation reports are
         declared as readable inputs so bound clients can check them explicitly.
+      - agent dispatch rows `agents ask`, `ask_agent_system`, `agents plan`,
+        and `agent_plan` require
+        `host.tool_available(SYSTEM_ID) == true`, matching the same host fact
+        used by `agents preflight`. `agents execute-plan` and
+        `agent_execute_plan` are payload-ready without project facts because
+        their real precondition is a valid supplied agent-plan payload and
+        candidate id; command-dependent project effects are advertised only as
+        `may_on_success`.
       - persisted-report export commands such as
         `reverse-translate export-report`, `primers export-report`, and
         `primers export-qpcr-report`, and

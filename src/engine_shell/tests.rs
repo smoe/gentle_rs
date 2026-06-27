@@ -24692,6 +24692,37 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
             "{id} should have a fact-annotated agent model-discovery descriptor"
         );
     }
+    for id in [
+        "agents ask",
+        "ask_agent_system",
+        "agents plan",
+        "agent_plan",
+    ] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["kind"].as_str() == Some("operation")
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"][0]["fact"].as_str() == Some("host.tool_available")
+                    && descriptor["reads"][0]["subject"]["arg"].as_str() == Some("SYSTEM_ID")
+                    && descriptor["reads"][0]["equals"].as_bool() == Some(true)
+                    && descriptor["effects"].as_array().map(Vec::len) == Some(0)
+            }),
+            "{id} should have a fact-annotated agent dispatch descriptor"
+        );
+    }
+    for id in ["agents execute-plan", "agent_execute_plan"] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["kind"].as_str() == Some("operation")
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"].as_array().map(Vec::len) == Some(0)
+                    && descriptor["effects"][0]["effect_kind"].as_str() == Some("may_on_success")
+            }),
+            "{id} should have a fact-annotated agent-plan execution descriptor"
+        );
+    }
 }
 
 #[test]
@@ -24811,6 +24842,10 @@ fn execute_introspect_readiness_uses_projected_agent_host_tool_availability() {
         "agent_preflight",
         "agents discover-models",
         "agent_models",
+        "agents ask",
+        "ask_agent_system",
+        "agents plan",
+        "agent_plan",
     ] {
         let ready_cmd = parse_shell_line(&format!(
             "introspect readiness {capability_id} --arg SYSTEM_ID=builtin_echo"
@@ -24838,6 +24873,18 @@ fn execute_introspect_readiness_uses_projected_agent_host_tool_availability() {
         assert_eq!(
             blocked.output["readiness"][0]["unmet_atoms"][0]["fact"].as_str(),
             Some("host.tool_available")
+        );
+    }
+
+    for capability_id in ["agents execute-plan", "agent_execute_plan"] {
+        let ready_cmd = parse_shell_line(&format!("introspect readiness {capability_id}"))
+            .expect("parse agent execute-plan readiness");
+        let ready = execute_shell_command(&mut engine, &ready_cmd)
+            .expect("execute agent execute-plan readiness");
+        assert_eq!(
+            ready.output["readiness"][0]["readiness"].as_str(),
+            Some("ready"),
+            "{capability_id} should be payload-ready without project facts"
         );
     }
 }

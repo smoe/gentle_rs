@@ -844,6 +844,8 @@ on semantic glyphs.
    `export_dna_ladders`, `export_rna_ladders`,
    `ExportDnaLadders`, `ExportRnaLadders`,
    `agents list`, `agent_systems`, `list_agent_systems`,
+   `agents ask`, `ask_agent_system`, `agents plan`, `agent_plan`,
+   `agents execute-plan`, `agent_execute_plan`,
    `protocol-cartoon list`, `protocol-cartoon render-svg`,
    `protocol-cartoon render-template-svg`,
    `protocol-cartoon render-with-bindings`,

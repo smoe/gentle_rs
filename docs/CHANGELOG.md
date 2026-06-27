@@ -314,6 +314,11 @@ Maintenance rule:
   `services project-quote`, `services handoff`, and `services guide`, while
   keeping `services route-project-source` separate until conditional
   project-object preconditions are modeled.
+- Added fact-aware introspection for agent dispatch rows: `agents ask`,
+  `ask_agent_system`, `agents plan`, and `agent_plan` now use
+  `host.tool_available(SYSTEM_ID)` readiness, while `agents execute-plan` and
+  `agent_execute_plan` model supplied-plan execution as payload-ready with
+  command-dependent `may_on_success` effects.
 - Added closed-world `sequencing_trace.exists` introspection for imported
   sequencing-trace evidence records, including readiness/effect descriptors for
   trace import/list/show shell routes and raw operation rows.
