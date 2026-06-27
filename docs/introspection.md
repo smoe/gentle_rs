@@ -706,9 +706,11 @@ on semantic glyphs.
 3. Attach engine-owned bound self-description (`args`, `reads`, `effects` with
    `effect_kind`, `precondition_expr`) to the first fact-annotated capabilities:
    `help`, `capabilities`, `state-summary`, `state_summary`,
-   `history status`, `facts graph`,
+   `history status`, `history undo`, `history redo`,
+   `load-project`, `load_project`, `save-project`, `save_project`,
+   `facts graph`,
    `facts eval`, `sequence create`,
-   `LoadFile`, `genbank fetch`, `FetchGenBankAccession`,
+   `LoadFile`, `load_dna`, `genbank fetch`, `FetchGenBankAccession`,
    `ensembl-region fetch`, `FetchEnsemblRegion`,
    `dbsnp fetch`, `FetchDbSnpRegion`, `FetchUniprotLinkedGenBank`,
    `ImportUniprotEntrySequence`, `ensembl-gene import-sequence`,

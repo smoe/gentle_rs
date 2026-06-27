@@ -14956,6 +14956,56 @@ fn save_file_operation_descriptor() -> Value {
     })
 }
 
+fn project_state_may_change_descriptor(
+    id: &str,
+    description: &str,
+    mutating: &str,
+    args: Vec<Value>,
+) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": mutating,
+        "requires_confirmation": false,
+        "args": args,
+        "reads": [],
+        "effects": [
+            {
+                "effect_kind": "may_on_success",
+                "description": "This adapter/session command may replace or mutate project state; concrete changed facts depend on the supplied file or current undo/redo stack."
+            }
+        ],
+        "precondition_expr": {"all": []},
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn project_state_save_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "external",
+        "requires_confirmation": false,
+        "args": [
+            {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external project-state JSON output path"}
+        ],
+        "reads": [],
+        "effects": [
+            {
+                "fact": "artifact.written",
+                "subject": {"arg": "OUTPUT_PATH"},
+                "effect_kind": "external_handoff"
+            }
+        ],
+        "precondition_expr": {"all": []},
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
 fn metadata_entry_create_descriptor(
     id: &str,
     fact_name: &str,
@@ -16932,6 +16982,42 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("history status")
         }),
+        project_state_may_change_descriptor(
+            "history undo",
+            "Undo the most recent session-local operation-level state change when the undo stack allows it.",
+            "true",
+            vec![],
+        ),
+        project_state_may_change_descriptor(
+            "history redo",
+            "Redo the most recently undone session-local operation-level state change when the redo stack allows it.",
+            "true",
+            vec![],
+        ),
+        project_state_may_change_descriptor(
+            "load-project",
+            "Load an external project-state JSON file and replace the current project state; path and schema validation happen during execution.",
+            "true",
+            vec![
+                json!({"name": "PATH", "required": true, "subject_kind": "other", "detail": "external project-state JSON input path"}),
+            ],
+        ),
+        project_state_may_change_descriptor(
+            "load_project",
+            "Load an external project-state JSON file through JS/Lua helper adapters and replace the current project state.",
+            "true",
+            vec![
+                json!({"name": "PATH", "required": true, "subject_kind": "other", "detail": "external project-state JSON input path"}),
+            ],
+        ),
+        project_state_save_descriptor(
+            "save-project",
+            "Save the current project state to an external project-state JSON file.",
+        ),
+        project_state_save_descriptor(
+            "save_project",
+            "Save the current project state through JS/Lua helper adapters to an external project-state JSON file.",
+        ),
         json!({
             "id": "facts graph",
             "kind": "operation",
@@ -17079,6 +17165,14 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "explicit sequence id supplied as as_id; required for deterministic effect verification",
             vec![
                 json!({"name": "PATH", "required": true, "subject_kind": "other", "detail": "external sequence file path carried by the operation payload"}),
+            ],
+        ),
+        external_sequence_create_descriptor(
+            "load_dna",
+            "Load one user-provided sequence file through JS/Lua helper adapters; parsing and path validation happen at execution time.",
+            "explicit sequence id returned by the adapter; required for deterministic effect verification when known",
+            vec![
+                json!({"name": "PATH", "required": true, "subject_kind": "other", "detail": "external sequence file path"}),
             ],
         ),
         external_sequence_create_descriptor(
@@ -21763,7 +21857,8 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         "help" => Some(vec![]),
         "capabilities" => Some(vec![]),
         "state-summary" => Some(vec![]),
-        "history status" => Some(vec![]),
+        "history status" | "history undo" | "history redo" | "load-project" | "load_project"
+        | "save-project" | "save_project" | "load_dna" => Some(vec![]),
         "facts graph" => Some(vec![]),
         "facts eval" => Some(vec![]),
         "introspect facts"

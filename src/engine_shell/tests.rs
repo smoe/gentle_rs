@@ -1468,6 +1468,88 @@ fn execute_history_commands_report_and_transition_state() {
 }
 
 #[test]
+fn execute_introspect_readiness_covers_project_session_utility_routes() {
+    let mut engine = GentleEngine::default();
+
+    for capability_id in [
+        "history undo",
+        "history redo",
+        "load-project",
+        "load_project",
+        "save-project",
+        "save_project",
+        "load_dna",
+    ] {
+        let ready_cmd = parse_shell_line(&format!("introspect readiness {capability_id}"))
+            .expect("parse project utility readiness");
+        let ready = execute_shell_command(&mut engine, &ready_cmd)
+            .expect("execute project utility readiness");
+        assert_eq!(
+            ready.output["readiness"][0]["readiness"].as_str(),
+            Some("ready"),
+            "{capability_id} should be ready without project facts"
+        );
+    }
+
+    let capabilities = execute_shell_command(
+        &mut engine,
+        &parse_shell_line("introspect capabilities").expect("parse capabilities"),
+    )
+    .expect("execute capabilities");
+    let descriptors = capabilities.output["capabilities"]
+        .as_array()
+        .expect("capabilities array");
+
+    for capability_id in [
+        "history undo",
+        "history redo",
+        "load-project",
+        "load_project",
+    ] {
+        let descriptor = descriptors
+            .iter()
+            .find(|descriptor| descriptor["id"].as_str() == Some(capability_id))
+            .unwrap_or_else(|| panic!("missing descriptor for {capability_id}"));
+        assert_eq!(
+            descriptor["annotation_status"].as_str(),
+            Some("fact_annotated")
+        );
+        assert_eq!(
+            descriptor["effects"][0]["effect_kind"].as_str(),
+            Some("may_on_success")
+        );
+    }
+
+    for capability_id in ["save-project", "save_project"] {
+        let descriptor = descriptors
+            .iter()
+            .find(|descriptor| descriptor["id"].as_str() == Some(capability_id))
+            .unwrap_or_else(|| panic!("missing descriptor for {capability_id}"));
+        assert_eq!(
+            descriptor["effects"][0]["fact"].as_str(),
+            Some("artifact.written")
+        );
+        assert_eq!(
+            descriptor["effects"][0]["subject"]["arg"].as_str(),
+            Some("OUTPUT_PATH")
+        );
+    }
+
+    let load_dna = descriptors
+        .iter()
+        .find(|descriptor| descriptor["id"].as_str() == Some("load_dna"))
+        .expect("load_dna descriptor");
+    assert_eq!(
+        load_dna["effects"][0]["fact"].as_str(),
+        Some("sequence.exists")
+    );
+    assert_eq!(
+        load_dna["effects"][0]["subject"]["arg"].as_str(),
+        Some("OUTPUT_ID")
+    );
+}
+
+#[test]
 fn parse_cache_inspect_command() {
     let cmd = parse_shell_line(
         "cache inspect --both --cache-dir data/genomes --cache-dir data/helper_genomes",

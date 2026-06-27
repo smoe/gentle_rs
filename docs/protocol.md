@@ -4728,9 +4728,17 @@ Shared-shell routes:
     `sequence.exists(INPUT_SEQ_ID)`, and hard-effect verification checks
     `sequence.exists(OUTPUT_ID)` when the caller supplies the deterministic
     output id that execution created.
+  - Project/session utility rows are fact-annotated without existing project
+    facts. `history undo`, `history redo`, `load-project`, and `load_project`
+    declare `may_on_success` effects because concrete fact changes depend on
+    the undo/redo stack or loaded project file. `save-project` and
+    `save_project` model external project-state output as
+    `artifact.written(OUTPUT_PATH)`. `load_dna` mirrors `LoadFile` for JS/Lua
+    adapters and can verify `sequence.exists(OUTPUT_ID)` only when a stable
+    adapter output id is bound.
   - External sequence creation routes are fact-annotated for shell and raw
-    operation callers: `LoadFile`, `genbank fetch`, `FetchGenBankAccession`,
-    `ensembl-region fetch`, `FetchEnsemblRegion`,
+    operation callers: `LoadFile`, `load_dna`, `genbank fetch`,
+    `FetchGenBankAccession`, `ensembl-region fetch`, `FetchEnsemblRegion`,
     `dbsnp fetch`, `FetchDbSnpRegion`, `FetchUniprotLinkedGenBank`,
     `ImportUniprotEntrySequence`, `ensembl-gene import-sequence`,
     `ImportEnsemblGeneSequence`, `ensembl-protein import-sequence`, and

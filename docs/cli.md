@@ -2414,8 +2414,17 @@ Shared shell command:
         deterministic template names. Template show/delete/run require the
         matching template fact; delete routes do not yet declare absence
         effects. `macros instance-show` requires a recorded macro-instance fact
+      - project/session utility routes are fact-annotated without existing
+        project facts: `history undo`, `history redo`, `load-project`, and
+        `load_project` declare `may_on_success` effects because the concrete
+        state changes depend on the undo/redo stack or loaded project file.
+        `save-project` and `save_project` model their external project-state
+        output as `artifact.written(OUTPUT_PATH)`. `load_dna` mirrors
+        `LoadFile` for JS/Lua adapters and can verify
+        `sequence.exists(OUTPUT_ID)` only when the adapter supplies a stable
+        output id.
       - external sequence creation routes are fact-annotated for both shell and
-        raw operation callers: `LoadFile`, `genbank fetch`,
+        raw operation callers: `LoadFile`, `load_dna`, `genbank fetch`,
         `FetchGenBankAccession`, `ensembl-region fetch`,
         `FetchEnsemblRegion`, `dbsnp fetch`, `FetchDbSnpRegion`,
         and `FetchUniprotLinkedGenBank`. These fetch/import routes have no
