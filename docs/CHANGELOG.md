@@ -55,6 +55,9 @@ Maintenance rule:
   routes: `tracks tracked list`, `tracks tracked add`,
   `tracks tracked remove`, `tracks tracked clear`, and
   `tracks tracked apply`.
+- Added fact-aware introspection for planning consultation, protein-expression
+  handoff, planning profile/objective mutation, suggestion resolution, and
+  sync status/pull/push routes.
 - Added fact-aware introspection for raw core sequence operation rows:
   `SaveFile`, `Digest`, `Pcr`, `PcrAdvanced`, `PcrMutagenesis`, and
   `PcrOverlapExtensionMutagenesis`. PCR rows require a loaded template and can

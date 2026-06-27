@@ -22812,18 +22812,77 @@ fn execute_introspect_readiness_treats_planning_readback_routes_as_ready() {
     let mut engine = GentleEngine::default();
 
     for capability_id in [
+        "planning consult cloning",
+        "planning protein-expression-handoff",
         "planning profile show",
         "planning objective show",
         "planning suggestions list",
+        "planning sync status",
     ] {
         let cmd = parse_shell_line(&format!("introspect readiness {capability_id}"))
-            .expect("parse planning readback readiness");
+            .expect("parse planning read-only readiness");
         let out =
-            execute_shell_command(&mut engine, &cmd).expect("execute planning readback readiness");
+            execute_shell_command(&mut engine, &cmd).expect("execute planning read-only readiness");
         assert_eq!(
             out.output["readiness"][0]["readiness"].as_str(),
             Some("ready"),
             "{capability_id} should be ready without project state"
+        );
+    }
+}
+
+#[test]
+fn execute_introspect_readiness_treats_planning_state_routes_as_ready_may_change() {
+    let mut engine = GentleEngine::default();
+    let capabilities = execute_shell_command(
+        &mut engine,
+        &parse_shell_line("introspect capabilities").expect("parse capabilities"),
+    )
+    .expect("execute capabilities");
+    let descriptors = capabilities.output["capabilities"]
+        .as_array()
+        .expect("capabilities array");
+
+    for capability_id in [
+        "planning profile set",
+        "planning profile clear",
+        "planning objective set",
+        "planning objective clear",
+        "planning suggestions accept",
+        "planning suggestions reject",
+        "planning sync pull",
+        "planning sync push",
+    ] {
+        let descriptor = descriptors
+            .iter()
+            .find(|descriptor| descriptor["id"].as_str() == Some(capability_id))
+            .unwrap_or_else(|| panic!("missing descriptor for {capability_id}"));
+        assert_eq!(
+            descriptor["annotation_status"].as_str(),
+            Some("fact_annotated"),
+            "{capability_id} should be fact annotated"
+        );
+        assert_eq!(
+            descriptor["reads"].as_array().map(Vec::len),
+            Some(0),
+            "{capability_id} should not depend on project facts"
+        );
+        assert_eq!(
+            descriptor["effects"][0]["effect_kind"].as_str(),
+            Some("may_on_success"),
+            "{capability_id} should declare only a non-verifiable planning-state effect"
+        );
+
+        let out = execute_shell_command(
+            &mut engine,
+            &parse_shell_line(&format!("introspect readiness {capability_id}"))
+                .expect("parse planning state readiness"),
+        )
+        .expect("execute planning state readiness");
+        assert_eq!(
+            out.output["readiness"][0]["readiness"].as_str(),
+            Some("ready"),
+            "{capability_id} should be ready without project facts"
         );
     }
 }
@@ -24342,9 +24401,12 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
         );
     }
     for id in [
+        "planning consult cloning",
+        "planning protein-expression-handoff",
         "planning profile show",
         "planning objective show",
         "planning suggestions list",
+        "planning sync status",
     ] {
         assert!(
             capabilities.iter().any(|descriptor| {
@@ -24355,6 +24417,27 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
                     && descriptor["effects"].as_array().map(Vec::len) == Some(0)
             }),
             "{id} should have a fact-annotated no-project planning readback descriptor"
+        );
+    }
+    for id in [
+        "planning profile set",
+        "planning profile clear",
+        "planning objective set",
+        "planning objective clear",
+        "planning suggestions accept",
+        "planning suggestions reject",
+        "planning sync pull",
+        "planning sync push",
+    ] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["registry"]["source"].as_str() == Some("glossary_command")
+                    && descriptor["reads"].as_array().map(Vec::len) == Some(0)
+                    && descriptor["effects"][0]["effect_kind"].as_str() == Some("may_on_success")
+            }),
+            "{id} should have a fact-annotated planning-state descriptor"
         );
     }
     for id in [

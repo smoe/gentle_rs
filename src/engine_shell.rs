@@ -20135,10 +20135,47 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             ],
         ),
         no_project_inspection_operation_descriptor(
+            "planning consult cloning",
+            "Build a read-only cloning planning consultation without project-state preconditions; objective payload, local routine catalog, and profile scope are validated during execution.",
+            vec![
+                json!({"name": "--seq-id", "required": false, "subject_kind": "sequence", "detail": "optional sequence id recorded for traceability in v1; it is not a readiness precondition"}),
+                json!({"name": "--objective", "required": false, "subject_kind": "other", "detail": "optional planning objective JSON payload or @file"}),
+                json!({"name": "--profile-scope", "required": false, "subject_kind": "other", "detail": "currently effective only"}),
+                json!({"name": "--format", "required": false, "subject_kind": "other", "detail": "json or text output"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "planning protein-expression-handoff",
+            "Build a read-only protein-expression planning handoff without project-state preconditions; any supplied sequence id is used opportunistically and missing product context remains a report finding.",
+            vec![
+                json!({"name": "--seq-id", "required": false, "subject_kind": "sequence", "detail": "optional sequence id for product-context inspection; absence does not block handoff generation"}),
+                json!({"name": "--objective", "required": false, "subject_kind": "other", "detail": "optional planning objective JSON payload or @file"}),
+                json!({"name": "--profile-scope", "required": false, "subject_kind": "other", "detail": "currently effective only"}),
+                json!({"name": "--format", "required": false, "subject_kind": "other", "detail": "json or text output"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
             "planning profile show",
             "Inspect one planning profile scope or the merged effective planning profile without project-state preconditions.",
             vec![
                 json!({"name": "--scope", "required": false, "subject_kind": "other", "detail": "global, project_override, confirmed_agent_overlay, or effective"}),
+            ],
+        ),
+        project_state_may_change_descriptor(
+            "planning profile set",
+            "Set or replace one planning profile scope; schema and scope validation happen during execution.",
+            "true",
+            vec![
+                json!({"name": "JSON_OR_@FILE", "required": true, "subject_kind": "other", "detail": "planning profile JSON payload or @file"}),
+                json!({"name": "--scope", "required": false, "subject_kind": "other", "detail": "global, project_override, or confirmed_agent_overlay"}),
+            ],
+        ),
+        project_state_may_change_descriptor(
+            "planning profile clear",
+            "Clear one planning profile scope; scope validation happens during execution.",
+            "true",
+            vec![
+                json!({"name": "--scope", "required": false, "subject_kind": "other", "detail": "global, project_override, or confirmed_agent_overlay"}),
             ],
         ),
         no_project_inspection_operation_descriptor(
@@ -20146,11 +20183,69 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "Inspect current planning objective weights and guardrails without project-state preconditions.",
             vec![],
         ),
+        project_state_may_change_descriptor(
+            "planning objective set",
+            "Set or replace the current planning objective; schema validation happens during execution.",
+            "true",
+            vec![
+                json!({"name": "JSON_OR_@FILE", "required": true, "subject_kind": "other", "detail": "planning objective JSON payload or @file"}),
+            ],
+        ),
+        project_state_may_change_descriptor(
+            "planning objective clear",
+            "Clear the current planning objective so engine defaults apply.",
+            "true",
+            vec![],
+        ),
         no_project_inspection_operation_descriptor(
             "planning suggestions list",
             "List planning sync suggestions without project-state preconditions.",
             vec![
                 json!({"name": "--status", "required": false, "subject_kind": "other", "detail": "pending, accepted, or rejected suggestion status filter"}),
+            ],
+        ),
+        project_state_may_change_descriptor(
+            "planning suggestions accept",
+            "Accept one pending planning sync suggestion and merge its confirmed overlay/objective changes.",
+            "true",
+            vec![
+                json!({"name": "SUGGESTION_ID", "required": true, "subject_kind": "other", "detail": "planning suggestion id"}),
+            ],
+        ),
+        project_state_may_change_descriptor(
+            "planning suggestions reject",
+            "Reject one pending planning sync suggestion with an optional reason.",
+            "true",
+            vec![
+                json!({"name": "SUGGESTION_ID", "required": true, "subject_kind": "other", "detail": "planning suggestion id"}),
+                json!({"name": "--reason", "required": false, "subject_kind": "other", "detail": "optional rejection reason"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "planning sync status",
+            "Inspect planning sync lifecycle metadata without project-state preconditions.",
+            vec![],
+        ),
+        project_state_may_change_descriptor(
+            "planning sync pull",
+            "Record a pull-side planning sync suggestion as pending user-review state; payload, confidence, and schema validation happen during execution.",
+            "true",
+            vec![
+                json!({"name": "JSON_OR_@FILE", "required": true, "subject_kind": "other", "detail": "planning sync suggestion payload JSON or @file"}),
+                json!({"name": "--source", "required": false, "subject_kind": "other", "detail": "optional suggestion source id"}),
+                json!({"name": "--confidence", "required": false, "subject_kind": "other", "detail": "optional source confidence 0.0..=1.0"}),
+                json!({"name": "--snapshot-id", "required": false, "subject_kind": "other", "detail": "optional external snapshot id"}),
+            ],
+        ),
+        project_state_may_change_descriptor(
+            "planning sync push",
+            "Record a push-side planning sync suggestion as pending user-review state; payload, confidence, and schema validation happen during execution.",
+            "true",
+            vec![
+                json!({"name": "JSON_OR_@FILE", "required": true, "subject_kind": "other", "detail": "planning sync suggestion payload JSON or @file"}),
+                json!({"name": "--source", "required": false, "subject_kind": "other", "detail": "optional suggestion source id"}),
+                json!({"name": "--confidence", "required": false, "subject_kind": "other", "detail": "optional source confidence 0.0..=1.0"}),
+                json!({"name": "--snapshot-id", "required": false, "subject_kind": "other", "detail": "optional external snapshot id"}),
             ],
         ),
         optional_artifact_inspection_operation_descriptor(
@@ -22133,9 +22228,20 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "services project-quote"
         | "services handoff"
         | "services guide"
+        | "planning consult cloning"
+        | "planning protein-expression-handoff"
         | "planning profile show"
+        | "planning profile set"
+        | "planning profile clear"
         | "planning objective show"
+        | "planning objective set"
+        | "planning objective clear"
         | "planning suggestions list"
+        | "planning suggestions accept"
+        | "planning suggestions reject"
+        | "planning sync status"
+        | "planning sync pull"
+        | "planning sync push"
         | "resources summarize-jaspar"
         | "resources status"
         | "resources suggest-ucsc-rmsk-index"

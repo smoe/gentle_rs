@@ -4842,11 +4842,14 @@ Shared-shell routes:
     they do not submit vendor orders. `services route-project-source` remains
     separate because its preconditions depend on the selected project object
     kind.
-  - Planning read-back routes (`planning profile show`,
-    `planning objective show`, `planning suggestions list`) are fact-annotated
-    as ready without project state and declare no side effects. Profile/
-    objective set/clear and suggestion resolution remain separate mutating
-    routes.
+  - Planning read-only routes (`planning consult cloning`,
+    `planning protein-expression-handoff`, `planning profile show`,
+    `planning objective show`, `planning suggestions list`, and
+    `planning sync status`) are fact-annotated as ready without project state
+    and declare no side effects. Planning profile/objective set/clear,
+    suggestion accept/reject, and sync pull/push are also ready without project
+    facts, but declare only a non-verifiable `may_on_success` planning-state
+    effect because profile/objective/suggestion facts are not projected yet.
   - Shell-level resource/catalog inspection routes such as
     `resources summarize-jaspar`, `resources status`,
     `resources suggest-ucsc-rmsk-index`, `resources list-jaspar`,
