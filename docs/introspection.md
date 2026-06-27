@@ -942,7 +942,9 @@ on semantic glyphs.
    `ui open`, `ui focus`, `ui close`, `ui_intent`,
    `ui_prepared_genomes`, `ui_latest_prepared`, `ui prepared-genomes`,
    `ui latest-prepared`, `ui selection`, `set-param`, `set_parameter`,
-   `SetTopology`, `RecomputeFeatures`, `agents preflight`,
+   `SetTopology`, `RecomputeFeatures`,
+   `DigestContainer`, `LigationContainer`,
+   `FilterContainerByMolecularWeight`, `agents preflight`,
    `agents discover-models`, `agent_preflight`, and `agent_models`
    (implemented).
 4. Add readiness tests proving the **same descriptor** resolves correctly in both

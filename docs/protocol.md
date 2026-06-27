@@ -4572,7 +4572,11 @@ restriction-site scan evidence:
   rack creation can verify a deterministic rack id when supplied. Rack
   move/profile/template/block commands require and preserve `rack.exists`, while
   rack SVG/OpenSCAD/simulation exports model output paths as `artifact.written`
-  external handoffs.
+  external handoffs. Single-container transform operations (`DigestContainer`,
+  `LigationContainer`, and `FilterContainerByMolecularWeight`) require
+  `container.exists(CONTAINER_ID)` and declare `may_on_success` product effects
+  because concrete product ids are derived from execution parameters rather than
+  a single deterministic output binding.
 - Macro-template routes project closed-world
   `workflow_macro_template.exists(TEMPLATE_NAME)`,
   `candidate_macro_template.exists(TEMPLATE_NAME)`, and

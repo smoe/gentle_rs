@@ -21,6 +21,11 @@ Maintenance rule:
   anchor extension/verification routes. Extraction effects verify loaded
   `sequence.exists(OUTPUT_ID)` results while prepared-cache validation remains
   execution-time behavior.
+- Added fact-aware introspection for raw single-container transform operation
+  rows: `DigestContainer`, `LigationContainer`, and
+  `FilterContainerByMolecularWeight`. These rows require
+  `container.exists(CONTAINER_ID)` and model product creation as
+  `may_on_success` because product ids are execution-derived.
 
 ## 2026-06-27
 

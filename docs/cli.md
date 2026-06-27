@@ -2439,7 +2439,11 @@ Shared shell command:
         container fact. Serial arrangement and rack creation can verify supplied
         deterministic ids. Rack move/profile/template/block commands require
         and preserve `rack.exists`; rack SVG/OpenSCAD/simulation exports require
-        the rack and model files as `artifact.written` external handoffs
+        the rack and model files as `artifact.written` external handoffs.
+        Single-container transform operations (`DigestContainer`,
+        `LigationContainer`, and `FilterContainerByMolecularWeight`) require
+        `container.exists(CONTAINER_ID)` and declare `may_on_success` product
+        effects because concrete product ids are derived during execution
       - macro-template routes project
         `workflow_macro_template.exists(TEMPLATE_NAME)`,
         `candidate_macro_template.exists(TEMPLATE_NAME)`, and

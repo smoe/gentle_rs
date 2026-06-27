@@ -20713,6 +20713,19 @@ fn execute_introspect_readiness_and_effects_cover_arrangements_and_racks() {
         missing_rack.output["readiness"][0]["unmet_atoms"][0]["fact"].as_str(),
         Some("rack.exists")
     );
+    let missing_container =
+        parse_shell_line("introspect readiness DigestContainer --arg CONTAINER_ID=container-1")
+            .expect("parse missing container readiness");
+    let missing_container = execute_shell_command(&mut empty, &missing_container)
+        .expect("execute missing container readiness");
+    assert_eq!(
+        missing_container.output["readiness"][0]["readiness"].as_str(),
+        Some("blocked")
+    );
+    assert_eq!(
+        missing_container.output["readiness"][0]["unmet_atoms"][0]["fact"].as_str(),
+        Some("container.exists")
+    );
 
     let mut state = ProjectState::default();
     state.sequences.insert(
@@ -20743,6 +20756,28 @@ fn execute_introspect_readiness_and_effects_cover_arrangements_and_racks() {
         container_ready.output["readiness"][0]["readiness"].as_str(),
         Some("ready")
     );
+    for operation_id in [
+        "DigestContainer",
+        "LigationContainer",
+        "FilterContainerByMolecularWeight",
+    ] {
+        let ready = parse_shell_line(&format!(
+            "introspect readiness {operation_id} --arg CONTAINER_ID=container-1"
+        ))
+        .expect("parse single-container operation readiness");
+        let ready = execute_shell_command(&mut engine, &ready)
+            .expect("execute single-container operation readiness");
+        assert_eq!(
+            ready.output["readiness"][0]["readiness"].as_str(),
+            Some("ready"),
+            "{operation_id} should be ready for an existing container"
+        );
+        assert_eq!(
+            ready.output["readiness"][0]["truth"].as_str(),
+            Some("satisfied"),
+            "{operation_id} should bind container.exists(CONTAINER_ID)"
+        );
+    }
 
     let arrange = execute_shell_command(
         &mut engine,
@@ -23621,6 +23656,22 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
             && descriptor["reads"].as_array().map(Vec::len) == Some(0)
             && descriptor["effects"].as_array().map(Vec::len) == Some(0)
     }));
+    for id in [
+        "DigestContainer",
+        "LigationContainer",
+        "FilterContainerByMolecularWeight",
+    ] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"][0]["fact"].as_str() == Some("container.exists")
+                    && descriptor["reads"][0]["subject"]["arg"].as_str() == Some("CONTAINER_ID")
+                    && descriptor["effects"][0]["effect_kind"].as_str() == Some("may_on_success")
+            }),
+            "{id} should have a fact-annotated single-container descriptor"
+        );
+    }
     assert!(capabilities.iter().any(|descriptor| {
         descriptor["id"].as_str() == Some("features restriction-scan")
             && descriptor["annotation_status"].as_str() == Some("fact_annotated")

@@ -16479,6 +16479,35 @@ fn container_update_descriptor(id: &str, description: &str) -> Value {
     })
 }
 
+fn container_transform_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": false,
+        "args": [
+            container_arg("CONTAINER_ID", "persisted input container id")
+        ],
+        "reads": [
+            {"fact": "container.exists", "subject": {"arg": "CONTAINER_ID"}}
+        ],
+        "effects": [
+            {
+                "effect_kind": "may_on_success",
+                "description": "May create product sequences or containers; concrete product ids are derived from execution parameters."
+            }
+        ],
+        "precondition_expr": {
+            "all": [
+                {"fact": "container.exists", "subject": {"arg": "CONTAINER_ID"}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
 fn arrangement_create_descriptor(id: &str, description: &str) -> Value {
     json!({
         "id": id,
@@ -16935,6 +16964,18 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
         container_update_descriptor(
             "SetContainerDeclaredContentsExclusive",
             "Update container contents exclusivity through the shared engine operation.",
+        ),
+        container_transform_descriptor(
+            "DigestContainer",
+            "Digest one persisted wet-lab container with one or more restriction enzymes.",
+        ),
+        container_transform_descriptor(
+            "LigationContainer",
+            "Ligate compatible molecules from one persisted wet-lab container.",
+        ),
+        container_transform_descriptor(
+            "FilterContainerByMolecularWeight",
+            "Filter one persisted wet-lab container by molecular-weight or base-pair bounds.",
         ),
         arrangement_create_descriptor(
             "arrange-serial",
@@ -22559,6 +22600,9 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "introspect verify-effects"
         | "introspect all" => Some(vec![]),
         "sequence create" => Some(vec![]),
+        "DigestContainer" | "LigationContainer" | "FilterContainerByMolecularWeight" => Some(vec![
+            json!({"fact": "container.exists", "subject": {"arg": "CONTAINER_ID"}}),
+        ]),
         "Reverse" | "Complement" | "ReverseComplement" | "Branch" | "ExtractRegion" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "INPUT_SEQ_ID"}}),
         ]),
