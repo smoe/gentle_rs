@@ -1187,6 +1187,21 @@ impl GentleEngine {
                 ..ProjectFact::default()
             });
         }
+        for report in self.list_protein_derivation_reports(None) {
+            facts.push(ProjectFact {
+                fact: "report.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Report, report.report_id.clone()),
+                value: Some(serde_json::json!("protein_derivation")),
+                basis: Some(FactBasis {
+                    report_id: report.report_id,
+                    report_kind: "protein_derivation".to_string(),
+                    evidence_class: EvidenceClass::HardFact,
+                    op_id: report.op_id,
+                    run_id: report.run_id,
+                }),
+                ..ProjectFact::default()
+            });
+        }
         for report in self.list_sequencing_confirmation_reports(None) {
             facts.push(ProjectFact {
                 fact: "report.exists".to_string(),
@@ -1309,6 +1324,141 @@ impl GentleEngine {
                     "columns": rack.profile.columns,
                     "placement_count": rack.placements.len(),
                     "blocked_count": rack.profile.blocked_coordinates.len(),
+                })),
+                ..ProjectFact::default()
+            });
+        }
+        for template in self.list_workflow_macro_templates() {
+            facts.push(ProjectFact {
+                fact: "workflow_macro_template.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Other, template.name),
+                value: Some(serde_json::json!({
+                    "description": template.description,
+                    "details_url": template.details_url,
+                    "parameter_count": template.parameter_count,
+                    "created_at_unix_ms": template.created_at_unix_ms,
+                    "updated_at_unix_ms": template.updated_at_unix_ms,
+                })),
+                ..ProjectFact::default()
+            });
+        }
+        for template in self.list_candidate_macro_templates() {
+            facts.push(ProjectFact {
+                fact: "candidate_macro_template.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Other, template.name),
+                value: Some(serde_json::json!({
+                    "description": template.description,
+                    "details_url": template.details_url,
+                    "parameter_count": template.parameter_count,
+                    "created_at_unix_ms": template.created_at_unix_ms,
+                    "updated_at_unix_ms": template.updated_at_unix_ms,
+                })),
+                ..ProjectFact::default()
+            });
+        }
+        for instance in &self.state.lineage.macro_instances {
+            facts.push(ProjectFact {
+                fact: "macro_instance.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Other, instance.macro_instance_id.clone()),
+                value: Some(serde_json::json!({
+                    "routine_id": instance.routine_id,
+                    "template_name": instance.template_name,
+                    "run_id": instance.run_id,
+                    "status": instance.status,
+                    "status_message": instance.status_message,
+                    "expanded_op_count": instance.expanded_op_ids.len(),
+                    "input_count": instance.bound_inputs.len(),
+                    "output_count": instance.bound_outputs.len(),
+                })),
+                ..ProjectFact::default()
+            });
+        }
+        for graph in self.list_construct_reasoning_graph_summaries(None) {
+            facts.push(ProjectFact {
+                fact: "construct_reasoning_graph.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Other, graph.graph_id),
+                value: Some(serde_json::json!({
+                    "seq_id": graph.seq_id,
+                    "objective_id": graph.objective_id,
+                    "objective_title": graph.objective_title,
+                    "objective_goal": graph.objective_goal,
+                    "evidence_count": graph.evidence_count,
+                    "decision_count": graph.decision_count,
+                    "candidate_count": graph.candidate_count,
+                    "contains_protein_to_dna_handoff": graph.contains_protein_to_dna_handoff,
+                    "protein_to_dna_handoff_candidate_count": graph.protein_to_dna_handoff_candidate_count,
+                    "protein_to_dna_source_protein_seq_ids": graph.protein_to_dna_source_protein_seq_ids,
+                    "op_id": graph.op_id,
+                    "run_id": graph.run_id,
+                    "generated_at_unix_ms": graph.generated_at_unix_ms,
+                })),
+                ..ProjectFact::default()
+            });
+        }
+        for trace in self.list_sequencing_traces(None) {
+            facts.push(ProjectFact {
+                fact: "sequencing_trace.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Other, trace.trace_id),
+                value: Some(serde_json::json!({
+                    "seq_id": trace.seq_id,
+                    "format": serde_json::to_value(trace.format).unwrap_or(serde_json::Value::Null),
+                    "called_base_count": trace.called_base_count,
+                    "confidence_value_count": trace.confidence_value_count,
+                    "peak_location_count": trace.peak_location_count,
+                    "source_path": trace.source_path,
+                    "imported_at_unix_ms": trace.imported_at_unix_ms,
+                })),
+                ..ProjectFact::default()
+            });
+        }
+        for entry in self.list_uniprot_entries() {
+            facts.push(ProjectFact {
+                fact: "uniprot_entry.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Other, entry.entry_id),
+                value: Some(serde_json::json!({
+                    "accession": entry.accession,
+                    "primary_id": entry.primary_id,
+                    "sequence_length": entry.sequence_length,
+                    "feature_count": entry.feature_count,
+                    "ensembl_xref_count": entry.ensembl_xref_count,
+                    "nucleotide_xref_count": entry.nucleotide_xref_count,
+                    "source": entry.source,
+                    "imported_at_unix_ms": entry.imported_at_unix_ms,
+                })),
+                ..ProjectFact::default()
+            });
+        }
+        for entry in self.list_ensembl_gene_entries() {
+            facts.push(ProjectFact {
+                fact: "ensembl_gene_entry.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Other, entry.entry_id),
+                value: Some(serde_json::json!({
+                    "gene_id": entry.gene_id,
+                    "gene_symbol": entry.gene_symbol,
+                    "species": entry.species,
+                    "seq_region_name": entry.seq_region_name,
+                    "genomic_start_1based": entry.genomic_start_1based,
+                    "genomic_end_1based": entry.genomic_end_1based,
+                    "transcript_count": entry.transcript_count,
+                    "sequence_length": entry.sequence_length,
+                    "source_query": entry.source_query,
+                    "imported_at_unix_ms": entry.imported_at_unix_ms,
+                })),
+                ..ProjectFact::default()
+            });
+        }
+        for entry in self.list_ensembl_protein_entries() {
+            facts.push(ProjectFact {
+                fact: "ensembl_protein_entry.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Other, entry.entry_id),
+                value: Some(serde_json::json!({
+                    "protein_id": entry.protein_id,
+                    "transcript_id": entry.transcript_id,
+                    "gene_symbol": entry.gene_symbol,
+                    "sequence_length": entry.sequence_length,
+                    "feature_count": entry.feature_count,
+                    "source_query": entry.source_query,
+                    "imported_at_unix_ms": entry.imported_at_unix_ms,
                 })),
                 ..ProjectFact::default()
             });

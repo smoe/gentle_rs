@@ -4466,9 +4466,11 @@ GENtle's `state-summary` remains the compact project snapshot for humans,
 adapters, and LLM context. The engine also exposes
 `gentle.project_fact_graph.v1`, a deterministic typed projection for planning
 and readiness checks. The current slice covers loaded sequence facts,
-persisted reverse-translation, primer/qPCR, restriction-cloning handoff,
-sequencing-confirmation, CUT&RUN read, and RNA-read interpretation report
-facts, plus explicit restriction-site scan evidence:
+persisted reverse-translation, protein-derivation, primer/qPCR,
+restriction-cloning handoff, sequencing-confirmation, CUT&RUN read, and
+RNA-read interpretation report facts, persisted sequencing-trace evidence
+records, plus explicit
+restriction-site scan evidence:
 
 - `sequence.exists`, `sequence.kind`, `sequence.length`, `sequence.circular`
   are closed-world facts over the loaded project state. `sequence.kind` uses
@@ -4477,6 +4479,8 @@ facts, plus explicit restriction-site scan evidence:
   are open-world facts and require a proof basis. Persisted primer-pair design
   reports project as `report.exists` with `value: "primer_design"`, persisted
   reverse-translation reports project with `value: "reverse_translation"`,
+  persisted protein-derivation reports project with
+  `value: "protein_derivation"`,
   persisted qPCR design reports project with `value: "qpcr_design"`,
   persisted restriction-cloning PCR handoff reports project with
   `value: "restriction_cloning_pcr_handoff"`, persisted
@@ -4489,6 +4493,12 @@ facts, plus explicit restriction-site scan evidence:
   Read-only report inspection commands use the same values for readiness, so a
   planner can prove whether a specific persisted report id is inspectable before
   issuing `show-*` commands.
+- `sequencing_trace.exists` is a closed-world fact over imported sequencing
+  trace evidence records stored in project metadata. `seq-trace list` and
+  `ListSequencingTraces` are catalog-ready; `seq-trace show` and
+  `ShowSequencingTrace` require `sequencing_trace.exists(TRACE_ID)`;
+  `seq-trace import` and `ImportSequencingTrace` can verify the same fact when
+  the caller supplied an explicit `TRACE_ID`.
 - `introspect readiness` evaluates fact-annotated descriptors through their
   full `precondition_expr`, including `any` branches. This allows shared raw
   operation rows such as `ExportPrimerDesignReport` to express that either a
@@ -4503,6 +4513,19 @@ facts, plus explicit restriction-site scan evidence:
   engine-owned semantics as `reverse-translate run`: the input sequence must
   exist and be protein-kind, and a deterministic `OUTPUT_ID` can be verified as
   the generated coding-DNA sequence.
+- Protease catalog and digest routes are fact-annotated where existing facts
+  can express readiness. `proteases list` and `proteases show` are
+  no-precondition catalog reads. `proteases digest`,
+  `ProteaseDigestProteinSequence`, and `proteases digest-gel-svg` require the
+  input sequence to exist and have `sequence.kind == "protein"`. Digest
+  materialization declares only a `may_on_success` sequence effect because
+  peptide ids are prefix/index-derived. `RenderProteaseDigestGelSvg` can be
+  ready from either an explicit protein sequence or a persisted
+  `protein_derivation` report, and SVG render operations model output paths as
+  `artifact.written` external handoffs. `RenderProteinGelSvg`,
+  `RenderProteinGelReportsSvg`, and `RenderProtein2dGelSvg` require
+  `report.exists(REPORT_ID) == protein_derivation`; grouped report rendering
+  should repeat readiness checks for every report id in the payload.
 - `MaterializeVariantAllele` is fact-annotated with the same engine-owned
   semantics as `variant materialize-allele`: the input sequence must exist, and
   a deterministic `OUTPUT_ID` can be verified as the generated allele sequence.
@@ -4543,6 +4566,23 @@ facts, plus explicit restriction-site scan evidence:
   move/profile/template/block commands require and preserve `rack.exists`, while
   rack SVG/OpenSCAD/simulation exports model output paths as `artifact.written`
   external handoffs.
+- Macro-template routes project closed-world
+  `workflow_macro_template.exists(TEMPLATE_NAME)`,
+  `candidate_macro_template.exists(TEMPLATE_NAME)`, and
+  `macro_instance.exists(MACRO_INSTANCE_ID)` facts from persisted project
+  metadata and lineage state. Candidate/workflow template upsert verifies the
+  corresponding template fact. Template show/delete/run routes require the
+  corresponding template fact; deletes do not yet declare a positive absence
+  effect. Workflow template runs may record a macro-instance lineage row, and
+  `macros instance-show` requires the `macro_instance.exists` fact.
+- Protein/gene metadata routes project closed-world
+  `uniprot_entry.exists(ENTRY_ID)`,
+  `ensembl_gene_entry.exists(ENTRY_ID)`, and
+  `ensembl_protein_entry.exists(ENTRY_ID)` facts from stored UniProt and
+  Ensembl metadata entries. Fetch/import routes can verify explicit entry ids;
+  show routes and metadata-backed sequence imports require the matching stored
+  metadata fact. Metadata-backed sequence imports can also verify
+  `sequence.exists(OUTPUT_ID)` when a deterministic output id was supplied.
 - Raw persisted-report operation rows mirror the shell report readiness model
   where the report kind is unambiguous. `ListSequencingConfirmationReports`,
   `ListCutRunReadReports`, and `ListRnaReadReports` are catalog-ready with no
@@ -4681,6 +4721,25 @@ Shared-shell routes:
     `sequence.exists(INPUT_SEQ_ID)`, and hard-effect verification checks
     `sequence.exists(OUTPUT_ID)` when the caller supplies the deterministic
     output id that execution created.
+  - External sequence creation routes are fact-annotated for shell and raw
+    operation callers: `LoadFile`, `genbank fetch`, `FetchGenBankAccession`,
+    `ensembl-region fetch`, `FetchEnsemblRegion`,
+    `dbsnp fetch`, `FetchDbSnpRegion`, `FetchUniprotLinkedGenBank`,
+    `ImportUniprotEntrySequence`, `ensembl-gene import-sequence`,
+    `ImportEnsemblGeneSequence`, `ensembl-protein import-sequence`, and
+    `ImportEnsemblProteinSequence`. These routes have no project-state
+    preconditions; effect verification checks `sequence.exists(OUTPUT_ID)` only
+    when the caller binds the deterministic `as_id`/`output_id` used during
+    execution.
+  - Raw core sequence operation rows are fact-annotated where their state
+    contracts are discrete. `SaveFile` requires `sequence.exists(SEQ_ID)` and
+    models the output path as an `artifact.written` external handoff. `Digest`
+    requires `sequence.exists(INPUT_SEQ_ID)` but declares no hard effect because
+    fragment ids are prefix/index-derived. `Pcr`, `PcrAdvanced`, and
+    `PcrMutagenesis` require `sequence.exists(TEMPLATE_SEQ_ID)` and verify
+    `sequence.exists(OUTPUT_ID)` when execution used a deterministic product
+    id. `PcrOverlapExtensionMutagenesis` currently models template readiness
+    only because candidate ids are prefix/rank-derived.
   - `SetTopology` is fact-annotated over raw operation payload fields. Its
     bound readiness requires `sequence.exists(SEQ_ID)`, and hard-effect
     verification checks the closed-world `sequence.circular(SEQ_ID)` fact
@@ -4708,6 +4767,10 @@ Shared-shell routes:
   - Sequencing-confirmation report commands project
     `report.exists == sequencing_confirmation`; `seq-confirm list-reports` is
     catalog-ready with no project preconditions.
+  - Sequencing-trace evidence commands project
+    `sequencing_trace.exists(TRACE_ID)`; trace listing is catalog-ready, trace
+    show requires the trace fact, and explicit-id trace import can verify the
+    same fact after execution.
   - Report-list routes such as `cutrun list-read-reports` and
     `rna-reads list-reports` are fact-annotated as no-precondition catalog
     reads. `cutrun show-read-report`, `cutrun export-coverage`,
@@ -4746,10 +4809,15 @@ Shared-shell routes:
     also catalog-ready and model their required JSON/JSONL output path as an
     `artifact.written` external handoff.
   - Service status/provider catalog routes (`services status`,
-    `services providers list`, `services providers doctor`) are
-    fact-annotated as ready without project state. The doctor route models its
-    optional JSON report path as an external artifact handoff; provider catalog
-    path validation remains an execution-time concern.
+    `services providers list`, `services providers doctor`,
+    `services delivery-route`, `services project-preflight`,
+    `services project-quote`, `services handoff`, and `services guide`) are
+    fact-annotated as ready without project state. Doctor, quote, and handoff
+    output paths are modeled as external artifact handoffs. These routes
+    prepare local classification, validation, guide, or handoff records only;
+    they do not submit vendor orders. `services route-project-source` remains
+    separate because its preconditions depend on the selected project object
+    kind.
   - Planning read-back routes (`planning profile show`,
     `planning objective show`, `planning suggestions list`) are fact-annotated
     as ready without project state and declare no side effects. Profile/
@@ -4801,6 +4869,11 @@ Shared-shell routes:
     fact-annotated with the same no-project readiness as their shared shell
     contracts (`state-summary`, reference catalog listing, and deterministic UI
     catalog/prepared-genome query routes).
+  - Generic GUI intent requests (`ui open`, `ui focus`, `ui close`, and
+    `ui_intent`) are fact-annotated as view intents that require
+    `ui.host_available == true`. A headless adapter may still receive the
+    structured intent payload, but readiness remains blocked until an attached
+    GUI host can apply it.
   - Protocol-cartoon catalog/render/template rows are fact-annotated as ready
     without project state. Render/export rows model SVG or JSON outputs as
     `artifact.written` external handoffs; template input path validation remains
@@ -4810,6 +4883,20 @@ Shared-shell routes:
     file/directory/catalog validation remains an execution-time concern;
     `arrays render-probe-region-output-svg` additionally models its SVG output
     as an `artifact.written` external handoff.
+  - Genome-track import and array projection rows (`tracks import-bed`,
+    `tracks import-bigwig`, `tracks import-vcf`, their raw/MCP operation rows,
+    `genomes|helpers blast-track`, `arrays project-microarray-track`,
+    `ProjectMicroarrayTrack`, and `arrays project-probe-region-output`)
+    require `sequence.exists` for the loaded target sequence. They currently
+    remain readiness-only because feature freshness/track-update facts are not
+    projected yet.
+  - Sequence-scan reporting/rendering rows (`FindRestrictionSites`,
+    `features tfbs-score-tracks-svg`, `RenderTfbsScoreTracksSvg`,
+    `SummarizeTfbsScoreTracks`, `features tfbs-track-similarity`, and
+    `SummarizeTfbsTrackSimilarity`) require `sequence.exists(SEQ_ID)` when the
+    scan target is a loaded project sequence. Inline sequence text and
+    motif/enzyme validation remain execution-time checks; JSON/SVG output paths
+    are modeled as `artifact.written` external handoffs where present.
   - Catalog/list routes for candidate sets, guide sets, workflow macros,
     candidate macro templates, and routine catalogs are ready without project
     state. Routes that inspect a named persisted set/template remain
@@ -4817,8 +4904,10 @@ Shared-shell routes:
   - Construct-reasoning graph list routes (`construct-reasoning list-graphs`,
     `construct_reasoning_graphs`) are ready without project state; optional
     `SEQ_ID` is a filter, not a readiness precondition. Named graph
-    inspection/action routes remain registry-only until graph-existence facts
-    are projected.
+    inspection/action routes require
+    `construct_reasoning_graph.exists(GRAPH_ID)`. Status/writeback actions
+    verify that the graph remains present, and graph export models the JSON
+    output as an `artifact.written` external handoff.
   - Persisted analysis-payload list routes (`dotplot list`, `flex list`) are
     ready without project state; optional `SEQ_ID` is a filter, not a readiness
     precondition. Show/render-by-id routes remain registry-only until

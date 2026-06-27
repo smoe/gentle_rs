@@ -15,8 +15,9 @@ use crate::engine::{
     AdapterCaptureProtectionMode, AdapterCaptureStyle, AdapterRestrictionCapturePlan, Arrangement,
     ArrangementMode, AttractPwmMappingPolicy, AttractSplicingEvidenceSettings,
     BIGWIG_TO_BEDGRAPH_ENV_BIN, CdnaAssayTranscriptMapCoordinateMode, CdnaAssayTranscriptOrder,
-    ConstructObjective, ConstructRole, Container, ContainerKind, CutRunAlignConfig,
-    CutRunCoverageKind, CutRunInputFormat, CutRunReadLayout, CutRunSeedFilterConfig, DisplayTarget,
+    ConstructCandidate, ConstructObjective, ConstructReasoningGraph, ConstructRole, Container,
+    ContainerKind, CutRunAlignConfig, CutRunCoverageKind, CutRunInputFormat, CutRunReadLayout,
+    CutRunSeedFilterConfig, DesignDecisionNode, DesignEvidence, DesignFact, DisplayTarget,
     EditableStatus, ExonSkipReturnKind, GeneSetCohortRelationship, GeneSetResolutionReviewStatus,
     InlineSequenceTopology, OrthologAmbiguityPolicy, PrimerDesignProgress, PromoterCohortKind,
     PromoterTfbsGeneQuery, ProteinExternalOpinionSource, ProteinFeatureFilter,
@@ -2403,6 +2404,136 @@ fn execute_reverse_translate_commands_store_list_show_and_export_reports() {
         Some(report_id.as_str())
     );
     assert!(export_path.exists());
+}
+
+#[test]
+fn execute_introspect_readiness_covers_protease_and_protein_gel_operations() {
+    let mut empty = GentleEngine::default();
+    let blocked_digest = execute_shell_command(
+        &mut empty,
+        &parse_shell_line("introspect readiness proteases digest --arg PROTEIN_SEQ_ID=prot")
+            .expect("parse blocked protease readiness"),
+    )
+    .expect("execute blocked protease readiness");
+    assert_eq!(
+        blocked_digest.output["readiness"][0]["readiness"].as_str(),
+        Some("blocked")
+    );
+    assert_eq!(
+        blocked_digest.output["readiness"][0]["unmet_atoms"][0]["fact"].as_str(),
+        Some("sequence.exists")
+    );
+
+    let mut protein = DNAsequence::from_sequence("MKPQR").expect("protein");
+    protein.set_name("Toy protein");
+    protein.set_molecule_type("protein");
+    let mut state = ProjectState::default();
+    state.sequences.insert("prot".to_string(), protein);
+
+    let mut dna = DNAsequence::from_sequence("ATGAAANNNNCCCTAA").expect("synthetic CDS");
+    dna.set_name("annotated_transcript");
+    dna.features_mut().push(Feature {
+        kind: "source".into(),
+        location: Location::simple_range(0, 16),
+        qualifiers: vec![("organism".into(), Some("Escherichia coli".to_string()))],
+    });
+    let joined_location = Location::Join(vec![
+        Location::simple_range(0, 6),
+        Location::simple_range(10, 16),
+    ]);
+    dna.features_mut().push(Feature {
+        kind: "mRNA".into(),
+        location: joined_location.clone(),
+        qualifiers: vec![
+            ("gene".into(), Some("toyA".to_string())),
+            ("transcript_id".into(), Some("TX_TOY".to_string())),
+            ("label".into(), Some("TX_TOY".to_string())),
+        ],
+    });
+    dna.features_mut().push(Feature {
+        kind: "CDS".into(),
+        location: joined_location,
+        qualifiers: vec![
+            ("transcript_id".into(), Some("TX_TOY".to_string())),
+            ("product".into(), Some("Toy enzyme".to_string())),
+            ("protein_id".into(), Some("PROT_TOY".to_string())),
+            ("transl_table".into(), Some("1".to_string())),
+        ],
+    });
+    state.sequences.insert("cds".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    let ready_digest = execute_shell_command(
+        &mut engine,
+        &parse_shell_line("introspect readiness proteases digest --arg PROTEIN_SEQ_ID=prot")
+            .expect("parse ready protease readiness"),
+    )
+    .expect("execute ready protease readiness");
+    assert_eq!(
+        ready_digest.output["readiness"][0]["readiness"].as_str(),
+        Some("ready")
+    );
+
+    let derived = engine
+        .apply(Operation::DeriveProteinSequences {
+            seq_id: "cds".to_string(),
+            feature_ids: vec![1],
+            feature_query: None,
+            scope: None,
+            output_prefix: Some("cds_protein".to_string()),
+            report_id: Some("cds_protein_report".to_string()),
+        })
+        .expect("derive protein report");
+    assert_eq!(
+        derived
+            .protein_derivation_report
+            .as_ref()
+            .map(|report| report.report_id.as_str()),
+        Some("cds_protein_report")
+    );
+
+    let facts = execute_shell_command(
+        &mut engine,
+        &parse_shell_line("introspect facts --domain project").expect("parse facts"),
+    )
+    .expect("execute facts");
+    let project_facts = facts.output["facts"]["project"]["facts"]
+        .as_array()
+        .expect("project facts");
+    assert!(project_facts.iter().any(|fact| {
+        fact["fact"].as_str() == Some("report.exists")
+            && fact["subject"]["id"].as_str() == Some("cds_protein_report")
+            && fact["value"].as_str() == Some("protein_derivation")
+    }));
+
+    for command in [
+        "introspect readiness RenderProteinGelSvg --arg REPORT_ID=cds_protein_report",
+        "introspect readiness RenderProtein2dGelSvg --arg REPORT_ID=cds_protein_report",
+        "introspect readiness RenderProteaseDigestGelSvg --arg REPORT_ID=cds_protein_report",
+    ] {
+        let ready = execute_shell_command(
+            &mut engine,
+            &parse_shell_line(command).expect("parse protein gel readiness"),
+        )
+        .expect("execute protein gel readiness");
+        assert_eq!(
+            ready.output["readiness"][0]["readiness"].as_str(),
+            Some("ready"),
+            "{command} should be ready once the protein-derivation report exists"
+        );
+    }
+    let ready_digest_gel = execute_shell_command(
+        &mut engine,
+        &parse_shell_line(
+            "introspect readiness RenderProteaseDigestGelSvg --arg PROTEIN_SEQ_ID=prot",
+        )
+        .expect("parse digest gel readiness"),
+    )
+    .expect("execute digest gel readiness");
+    assert_eq!(
+        ready_digest_gel.output["readiness"][0]["readiness"].as_str(),
+        Some("ready")
+    );
 }
 
 #[test]
@@ -19013,6 +19144,257 @@ fn execute_introspect_verify_effects_accepts_created_sequence() {
 }
 
 #[test]
+fn execute_introspect_readiness_and_effects_cover_external_sequence_imports() {
+    let mut engine = GentleEngine::default();
+    let capability_ids = [
+        "LoadFile",
+        "genbank fetch",
+        "FetchGenBankAccession",
+        "ensembl-region fetch",
+        "FetchEnsemblRegion",
+        "dbsnp fetch",
+        "FetchDbSnpRegion",
+        "FetchUniprotLinkedGenBank",
+    ];
+
+    let capabilities = execute_shell_command(
+        &mut engine,
+        &parse_shell_line("introspect capabilities").expect("parse capabilities"),
+    )
+    .expect("execute capabilities");
+    let descriptors = capabilities.output["capabilities"]
+        .as_array()
+        .expect("capabilities array");
+    for capability_id in capability_ids {
+        let descriptor = descriptors
+            .iter()
+            .find(|descriptor| descriptor["id"].as_str() == Some(capability_id))
+            .unwrap_or_else(|| panic!("missing capability descriptor for {capability_id}"));
+        assert_eq!(
+            descriptor["annotation_status"].as_str(),
+            Some("fact_annotated"),
+            "{capability_id} should be fact annotated"
+        );
+        assert_eq!(
+            descriptor["effects"][0]["fact"].as_str(),
+            Some("sequence.exists"),
+            "{capability_id} should declare a sequence creation effect"
+        );
+        assert_eq!(
+            descriptor["effects"][0]["subject"]["arg"].as_str(),
+            Some("OUTPUT_ID"),
+            "{capability_id} should bind deterministic effects through OUTPUT_ID"
+        );
+        let readiness = execute_shell_command(
+            &mut engine,
+            &parse_shell_line(&format!("introspect readiness {capability_id}"))
+                .expect("parse readiness"),
+        )
+        .expect("execute readiness");
+        assert_eq!(
+            readiness.output["readiness"][0]["readiness"].as_str(),
+            Some("ready"),
+            "{capability_id} should not require an existing project fact"
+        );
+    }
+
+    let before = execute_shell_command(
+        &mut engine,
+        &parse_shell_line("introspect verify-effects LoadFile --arg OUTPUT_ID=pgex_fixture")
+            .expect("parse pre-import verify"),
+    )
+    .expect("execute pre-import verify");
+    assert_eq!(before.output["verified"].as_bool(), Some(false));
+
+    let imported = execute_shell_command(
+        &mut engine,
+        &parse_shell_line("/import file test_files/pGEX-3X.gb --id pgex_fixture")
+            .expect("parse import fixture"),
+    )
+    .expect("execute import fixture");
+    assert!(imported.state_changed);
+
+    let after = execute_shell_command(
+        &mut engine,
+        &parse_shell_line("introspect verify-effects LoadFile --arg OUTPUT_ID=pgex_fixture")
+            .expect("parse post-import verify"),
+    )
+    .expect("execute post-import verify");
+    assert_eq!(after.output["verified"].as_bool(), Some(true));
+    assert_eq!(after.output["status"].as_str(), Some("verified"));
+    assert_eq!(after.output["truth"].as_str(), Some("satisfied"));
+}
+
+#[test]
+fn execute_introspect_readiness_and_effects_cover_protein_metadata_entries() {
+    let td = tempdir().expect("tempdir");
+    let swiss_path = td.path().join("toy_uniprot_introspection.txt");
+    let swiss_text = r#"ID   TOY1_HUMAN              Reviewed;         30 AA.
+AC   PTEST1;
+DE   RecName: Full=Toy DNA-binding protein;
+GN   Name=TOY1;
+OS   Homo sapiens (Human).
+DR   Ensembl; TX1; ENSPTOY1; ENSGTOY1.
+FT   DOMAIN          2..8
+FT                   /note="toy domain"
+SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
+     MEEPQSDPSV EPPLSQETFSDLWKLLPENA
+//
+"#;
+    fs::write(&swiss_path, swiss_text).expect("write swiss file");
+
+    let mut engine = GentleEngine::default();
+    let capability_ids = [
+        "uniprot fetch",
+        "FetchUniprotSwissProt",
+        "uniprot import-swissprot",
+        "ImportUniprotSwissProt",
+        "uniprot list",
+        "uniprot show",
+        "ensembl-gene fetch",
+        "FetchEnsemblGene",
+        "ensembl-gene show",
+        "ensembl-gene import-sequence",
+        "ImportEnsemblGeneSequence",
+        "ensembl-protein fetch",
+        "FetchEnsemblProtein",
+        "ensembl-protein show",
+        "ensembl-protein import-sequence",
+        "ImportEnsemblProteinSequence",
+        "ImportUniprotEntrySequence",
+    ];
+    let capabilities = execute_shell_command(
+        &mut engine,
+        &parse_shell_line("introspect capabilities").expect("parse capabilities"),
+    )
+    .expect("execute capabilities");
+    let descriptors = capabilities.output["capabilities"]
+        .as_array()
+        .expect("capabilities array");
+    for capability_id in capability_ids {
+        let descriptor = descriptors
+            .iter()
+            .find(|descriptor| descriptor["id"].as_str() == Some(capability_id))
+            .unwrap_or_else(|| panic!("missing capability descriptor for {capability_id}"));
+        assert_eq!(
+            descriptor["annotation_status"].as_str(),
+            Some("fact_annotated"),
+            "{capability_id} should be fact annotated"
+        );
+    }
+
+    let missing = execute_shell_command(
+        &mut engine,
+        &parse_shell_line("introspect readiness uniprot show --arg ENTRY_ID=PTEST1")
+            .expect("parse missing uniprot readiness"),
+    )
+    .expect("execute missing uniprot readiness");
+    assert_eq!(
+        missing.output["readiness"][0]["readiness"].as_str(),
+        Some("blocked")
+    );
+    assert_eq!(
+        missing.output["readiness"][0]["unmet_atoms"][0]["fact"].as_str(),
+        Some("uniprot_entry.exists")
+    );
+
+    let imported = execute_shell_command(
+        &mut engine,
+        &ShellCommand::UniprotImportSwissProt {
+            path: swiss_path.to_string_lossy().to_string(),
+            entry_id: Some("PTEST1".to_string()),
+        },
+    )
+    .expect("import swiss-prot");
+    assert!(imported.state_changed);
+    let verify_uniprot = execute_shell_command(
+        &mut engine,
+        &parse_shell_line(
+            "introspect verify-effects uniprot import-swissprot --arg ENTRY_ID=PTEST1",
+        )
+        .expect("parse uniprot import verification"),
+    )
+    .expect("execute uniprot import verification");
+    assert_eq!(verify_uniprot.output["verified"].as_bool(), Some(true));
+
+    let ready = execute_shell_command(
+        &mut engine,
+        &parse_shell_line("introspect readiness uniprot show --arg ENTRY_ID=PTEST1")
+            .expect("parse ready uniprot readiness"),
+    )
+    .expect("execute ready uniprot readiness");
+    assert_eq!(
+        ready.output["readiness"][0]["readiness"].as_str(),
+        Some("ready")
+    );
+
+    engine
+        .upsert_ensembl_gene_entry(synthetic_ensembl_gene_entry())
+        .expect("upsert Ensembl gene entry");
+    engine
+        .upsert_ensembl_protein_entry(synthetic_ensembl_entry())
+        .expect("upsert Ensembl protein entry");
+
+    for command in [
+        "introspect readiness ensembl-gene show --arg ENTRY_ID=tp53_gene",
+        "introspect readiness ensembl-gene import-sequence --arg ENTRY_ID=tp53_gene",
+        "introspect readiness ensembl-protein show --arg ENTRY_ID=ENSPTOY1",
+        "introspect readiness ensembl-protein import-sequence --arg ENTRY_ID=ENSPTOY1",
+        "introspect readiness ImportUniprotEntrySequence --arg ENTRY_ID=PTEST1",
+    ] {
+        let ready = execute_shell_command(
+            &mut engine,
+            &parse_shell_line(command).expect("parse ready"),
+        )
+        .expect("execute metadata readiness");
+        assert_eq!(
+            ready.output["readiness"][0]["readiness"].as_str(),
+            Some("ready"),
+            "{command} should be ready once the metadata entry exists"
+        );
+    }
+
+    execute_shell_command(
+        &mut engine,
+        &ShellCommand::EnsemblProteinImportSequence {
+            entry_id: "ENSPTOY1".to_string(),
+            output_id: Some("ens_protein_seq".to_string()),
+        },
+    )
+    .expect("import Ensembl protein sequence");
+    let verify_sequence = execute_shell_command(
+        &mut engine,
+        &parse_shell_line(
+            "introspect verify-effects ensembl-protein import-sequence --arg ENTRY_ID=ENSPTOY1 --arg OUTPUT_ID=ens_protein_seq",
+        )
+        .expect("parse Ensembl protein import verification"),
+    )
+    .expect("execute Ensembl protein import verification");
+    assert_eq!(verify_sequence.output["verified"].as_bool(), Some(true));
+
+    let facts = execute_shell_command(
+        &mut engine,
+        &parse_shell_line("introspect facts --domain project").expect("parse facts"),
+    )
+    .expect("execute facts");
+    let project_facts = facts.output["facts"]["project"]["facts"]
+        .as_array()
+        .expect("project facts");
+    assert!(project_facts.iter().any(|fact| {
+        fact["fact"].as_str() == Some("uniprot_entry.exists")
+            && fact["subject"]["id"].as_str() == Some("PTEST1")
+    }));
+    assert!(project_facts.iter().any(|fact| {
+        fact["fact"].as_str() == Some("ensembl_gene_entry.exists")
+            && fact["subject"]["id"].as_str() == Some("tp53_gene")
+    }));
+    assert!(project_facts.iter().any(|fact| {
+        fact["fact"].as_str() == Some("ensembl_protein_entry.exists")
+            && fact["subject"]["id"].as_str() == Some("ENSPTOY1")
+    }));
+}
+
+#[test]
 fn execute_introspect_readiness_checks_sequence_derivation_input_sequence() {
     let mut empty = GentleEngine::default();
     let blocked = parse_shell_line("introspect readiness Reverse --arg INPUT_SEQ_ID=demo")
@@ -19066,6 +19448,129 @@ fn execute_introspect_readiness_checks_sequence_derivation_input_sequence() {
             "{capability} should be ready for an existing input sequence"
         );
     }
+}
+
+#[test]
+fn execute_introspect_readiness_and_effects_cover_core_sequence_operations() {
+    let mut engine = GentleEngine::default();
+    let capability_ids = [
+        "SaveFile",
+        "Digest",
+        "Pcr",
+        "PcrAdvanced",
+        "PcrMutagenesis",
+        "PcrOverlapExtensionMutagenesis",
+    ];
+
+    let capabilities = execute_shell_command(
+        &mut engine,
+        &parse_shell_line("introspect capabilities").expect("parse capabilities"),
+    )
+    .expect("execute capabilities");
+    let descriptors = capabilities.output["capabilities"]
+        .as_array()
+        .expect("capabilities array");
+    for capability_id in capability_ids {
+        let descriptor = descriptors
+            .iter()
+            .find(|descriptor| descriptor["id"].as_str() == Some(capability_id))
+            .unwrap_or_else(|| panic!("missing capability descriptor for {capability_id}"));
+        assert_eq!(
+            descriptor["annotation_status"].as_str(),
+            Some("fact_annotated"),
+            "{capability_id} should be fact annotated"
+        );
+    }
+    for capability_id in ["Pcr", "PcrAdvanced", "PcrMutagenesis"] {
+        let descriptor = descriptors
+            .iter()
+            .find(|descriptor| descriptor["id"].as_str() == Some(capability_id))
+            .expect("PCR descriptor");
+        assert_eq!(
+            descriptor["effects"][0]["fact"].as_str(),
+            Some("sequence.exists")
+        );
+        assert_eq!(
+            descriptor["effects"][0]["subject"]["arg"].as_str(),
+            Some("OUTPUT_ID")
+        );
+    }
+    let save_file = descriptors
+        .iter()
+        .find(|descriptor| descriptor["id"].as_str() == Some("SaveFile"))
+        .expect("SaveFile descriptor");
+    assert_eq!(
+        save_file["effects"][0]["fact"].as_str(),
+        Some("artifact.written")
+    );
+
+    for command in [
+        "introspect readiness SaveFile --arg SEQ_ID=tpl",
+        "introspect readiness Digest --arg INPUT_SEQ_ID=tpl",
+        "introspect readiness Pcr --arg TEMPLATE_SEQ_ID=tpl",
+        "introspect readiness PcrOverlapExtensionMutagenesis --arg TEMPLATE_SEQ_ID=tpl",
+    ] {
+        let blocked = execute_shell_command(
+            &mut engine,
+            &parse_shell_line(command).expect("parse blocked"),
+        )
+        .expect("execute blocked readiness");
+        assert_eq!(
+            blocked.output["readiness"][0]["readiness"].as_str(),
+            Some("blocked"),
+            "{command} should be blocked without the template sequence"
+        );
+    }
+
+    engine.state_mut().sequences.insert(
+        "tpl".to_string(),
+        DNAsequence::from_sequence("ATGAAACCCGGGTTT").expect("template sequence"),
+    );
+    for command in [
+        "introspect readiness SaveFile --arg SEQ_ID=tpl",
+        "introspect readiness Digest --arg INPUT_SEQ_ID=tpl",
+        "introspect readiness Pcr --arg TEMPLATE_SEQ_ID=tpl",
+        "introspect readiness PcrOverlapExtensionMutagenesis --arg TEMPLATE_SEQ_ID=tpl",
+    ] {
+        let ready = execute_shell_command(
+            &mut engine,
+            &parse_shell_line(command).expect("parse ready"),
+        )
+        .expect("execute ready readiness");
+        assert_eq!(
+            ready.output["readiness"][0]["readiness"].as_str(),
+            Some("ready"),
+            "{command} should be ready with the template sequence"
+        );
+    }
+
+    let before = execute_shell_command(
+        &mut engine,
+        &parse_shell_line("introspect verify-effects Pcr --arg OUTPUT_ID=amp")
+            .expect("parse pre-PCR verify"),
+    )
+    .expect("execute pre-PCR verify");
+    assert_eq!(before.output["verified"].as_bool(), Some(false));
+
+    engine
+        .apply(Operation::Pcr {
+            template: "tpl".to_string(),
+            forward_primer: "ATGAAA".to_string(),
+            reverse_primer: "AAACCC".to_string(),
+            output_id: Some("amp".to_string()),
+            unique: Some(true),
+        })
+        .expect("PCR should create deterministic product");
+
+    let after = execute_shell_command(
+        &mut engine,
+        &parse_shell_line("introspect verify-effects Pcr --arg OUTPUT_ID=amp")
+            .expect("parse post-PCR verify"),
+    )
+    .expect("execute post-PCR verify");
+    assert_eq!(after.output["verified"].as_bool(), Some(true));
+    assert_eq!(after.output["status"].as_str(), Some("verified"));
+    assert_eq!(after.output["truth"].as_str(), Some("satisfied"));
 }
 
 #[test]
@@ -19684,6 +20189,169 @@ fn execute_introspect_readiness_and_effects_cover_candidate_sets() {
     assert!(project_facts.iter().any(|fact| {
         fact["fact"].as_str() == Some("candidate_set.exists")
             && fact["subject"]["id"].as_str() == Some("top")
+    }));
+}
+
+#[test]
+fn execute_introspect_readiness_and_effects_cover_macro_templates() {
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+
+    let missing_candidate =
+        parse_shell_line("introspect readiness candidates template-show --arg TEMPLATE_NAME=scan")
+            .expect("parse missing candidate template readiness");
+    let missing_candidate = execute_shell_command(&mut engine, &missing_candidate)
+        .expect("execute missing candidate template readiness");
+    assert_eq!(
+        missing_candidate.output["readiness"][0]["readiness"].as_str(),
+        Some("blocked")
+    );
+    assert_eq!(
+        missing_candidate.output["readiness"][0]["unmet_atoms"][0]["fact"].as_str(),
+        Some("candidate_macro_template.exists")
+    );
+
+    let candidate_put = execute_shell_command(
+        &mut engine,
+        &ShellCommand::CandidatesTemplateUpsert {
+            name: "scan".to_string(),
+            description: Some("scan template".to_string()),
+            details_url: Some("https://example.org/candidates/scan".to_string()),
+            parameters: vec![CandidateMacroTemplateParam {
+                name: "set_name".to_string(),
+                default_value: None,
+                required: true,
+            }],
+            script: "generate ${set_name} seqA --length 4 --step 2".to_string(),
+        },
+    )
+    .expect("upsert candidate template");
+    assert!(candidate_put.state_changed);
+
+    let verify_candidate = parse_shell_line(
+        "introspect verify-effects candidates template-put --arg TEMPLATE_NAME=scan",
+    )
+    .expect("parse candidate template verify");
+    let verify_candidate = execute_shell_command(&mut engine, &verify_candidate)
+        .expect("execute candidate template verify");
+    assert_eq!(verify_candidate.output["verified"].as_bool(), Some(true));
+
+    let candidate_ready =
+        parse_shell_line("introspect readiness candidates template-run --arg TEMPLATE_NAME=scan")
+            .expect("parse candidate template-run readiness");
+    let candidate_ready = execute_shell_command(&mut engine, &candidate_ready)
+        .expect("execute candidate template-run readiness");
+    assert_eq!(
+        candidate_ready.output["readiness"][0]["readiness"].as_str(),
+        Some("ready")
+    );
+
+    let missing_workflow =
+        parse_shell_line("introspect readiness macros template-run --arg TEMPLATE_NAME=clone")
+            .expect("parse missing workflow template readiness");
+    let missing_workflow = execute_shell_command(&mut engine, &missing_workflow)
+        .expect("execute missing workflow template readiness");
+    assert_eq!(
+        missing_workflow.output["readiness"][0]["readiness"].as_str(),
+        Some("blocked")
+    );
+    assert_eq!(
+        missing_workflow.output["readiness"][0]["unmet_atoms"][0]["fact"].as_str(),
+        Some("workflow_macro_template.exists")
+    );
+
+    engine.state_mut().sequences.insert(
+        "seqA".to_string(),
+        DNAsequence::from_sequence("ACGTACGTACGT").expect("sequence"),
+    );
+    let workflow_put = execute_shell_command(
+        &mut engine,
+        &ShellCommand::MacrosTemplateUpsert {
+            name: "clone".to_string(),
+            description: Some("reverse helper".to_string()),
+            details_url: Some("https://example.org/macros/clone".to_string()),
+            parameters: vec![
+                WorkflowMacroTemplateParam {
+                    name: "seq_id".to_string(),
+                    default_value: None,
+                    required: true,
+                },
+                WorkflowMacroTemplateParam {
+                    name: "out_id".to_string(),
+                    default_value: Some("seqA_rev".to_string()),
+                    required: false,
+                },
+            ],
+            input_ports: vec![],
+            output_ports: vec![],
+            script: r#"op {"Reverse":{"input":"${seq_id}","output_id":"${out_id}"}}"#.to_string(),
+        },
+    )
+    .expect("upsert workflow template");
+    assert!(workflow_put.state_changed);
+
+    let verify_workflow =
+        parse_shell_line("introspect verify-effects macros template-put --arg TEMPLATE_NAME=clone")
+            .expect("parse workflow template verify");
+    let verify_workflow =
+        execute_shell_command(&mut engine, &verify_workflow).expect("execute workflow verify");
+    assert_eq!(verify_workflow.output["verified"].as_bool(), Some(true));
+
+    let workflow_ready =
+        parse_shell_line("introspect readiness macros template-run --arg TEMPLATE_NAME=clone")
+            .expect("parse workflow template-run readiness");
+    let workflow_ready =
+        execute_shell_command(&mut engine, &workflow_ready).expect("execute workflow readiness");
+    assert_eq!(
+        workflow_ready.output["readiness"][0]["readiness"].as_str(),
+        Some("ready")
+    );
+
+    let run = execute_shell_command(
+        &mut engine,
+        &ShellCommand::MacrosTemplateRun {
+            name: "clone".to_string(),
+            bindings: HashMap::from([("seq_id".to_string(), "seqA".to_string())]),
+            transactional: false,
+            validate_only: false,
+        },
+    )
+    .expect("run workflow template");
+    assert!(run.state_changed);
+    let macro_instance_id = run.output["macro_instance_id"]
+        .as_str()
+        .expect("macro instance id")
+        .to_string();
+
+    let instance_ready = parse_shell_line(&format!(
+        "introspect readiness macros instance-show --arg MACRO_INSTANCE_ID={macro_instance_id}"
+    ))
+    .expect("parse macro instance readiness");
+    let instance_ready =
+        execute_shell_command(&mut engine, &instance_ready).expect("execute instance readiness");
+    assert_eq!(
+        instance_ready.output["readiness"][0]["readiness"].as_str(),
+        Some("ready")
+    );
+
+    let facts = parse_shell_line("introspect facts --domain project").expect("parse facts");
+    let facts = execute_shell_command(&mut engine, &facts).expect("execute facts");
+    let project_facts = facts.output["facts"]["project"]["facts"]
+        .as_array()
+        .expect("project facts");
+    assert!(project_facts.iter().any(|fact| {
+        fact["fact"].as_str() == Some("candidate_macro_template.exists")
+            && fact["subject"]["id"].as_str() == Some("scan")
+            && fact["value"]["parameter_count"].as_u64() == Some(1)
+    }));
+    assert!(project_facts.iter().any(|fact| {
+        fact["fact"].as_str() == Some("workflow_macro_template.exists")
+            && fact["subject"]["id"].as_str() == Some("clone")
+            && fact["value"]["parameter_count"].as_u64() == Some(2)
+    }));
+    assert!(project_facts.iter().any(|fact| {
+        fact["fact"].as_str() == Some("macro_instance.exists")
+            && fact["subject"]["id"].as_str() == Some(macro_instance_id.as_str())
+            && fact["value"]["expanded_op_count"].as_u64().unwrap_or(0) > 0
     }));
 }
 
@@ -21189,6 +21857,214 @@ fn execute_introspect_readiness_treats_external_inspection_routes_as_catalog_rea
 }
 
 #[test]
+fn execute_introspect_readiness_checks_genome_track_projection_sequence_inputs() {
+    let mut engine = GentleEngine::default();
+    let seq_id_capabilities = [
+        "tracks import-bed",
+        "import_genome_bed_track",
+        "ImportGenomeBedTrack",
+        "tracks import-bigwig",
+        "import_genome_bigwig_track",
+        "ImportGenomeBigWigTrack",
+        "tracks import-vcf",
+        "import_genome_vcf_track",
+        "ImportGenomeVcfTrack",
+        "ImportBlastHitsTrack",
+        "arrays project-microarray-track",
+        "ProjectMicroarrayTrack",
+        "arrays project-probe-region-output",
+    ];
+    let target_seq_id_capabilities = ["genomes blast-track", "helpers blast-track"];
+
+    let capabilities = execute_shell_command(
+        &mut engine,
+        &parse_shell_line("introspect capabilities").expect("parse capabilities"),
+    )
+    .expect("execute capabilities");
+    let descriptors = capabilities.output["capabilities"]
+        .as_array()
+        .expect("capabilities array");
+    for capability_id in seq_id_capabilities
+        .iter()
+        .chain(target_seq_id_capabilities.iter())
+    {
+        let descriptor = descriptors
+            .iter()
+            .find(|descriptor| descriptor["id"].as_str() == Some(*capability_id))
+            .unwrap_or_else(|| panic!("missing capability descriptor for {capability_id}"));
+        assert_eq!(
+            descriptor["annotation_status"].as_str(),
+            Some("fact_annotated"),
+            "{capability_id} should be fact annotated"
+        );
+        assert_eq!(
+            descriptor["reads"][0]["fact"].as_str(),
+            Some("sequence.exists"),
+            "{capability_id} should read a loaded target sequence"
+        );
+        assert_eq!(
+            descriptor["effects"].as_array().map(Vec::len),
+            Some(0),
+            "{capability_id} should not declare a hard feature/track effect yet"
+        );
+    }
+
+    for capability_id in seq_id_capabilities {
+        let blocked = execute_shell_command(
+            &mut engine,
+            &parse_shell_line(&format!(
+                "introspect readiness {capability_id} --arg SEQ_ID=track_target"
+            ))
+            .expect("parse blocked track readiness"),
+        )
+        .expect("execute blocked track readiness");
+        assert_eq!(
+            blocked.output["readiness"][0]["readiness"].as_str(),
+            Some("blocked"),
+            "{capability_id} should be blocked without the target sequence"
+        );
+        assert_eq!(
+            blocked.output["readiness"][0]["unmet_atoms"][0]["fact"].as_str(),
+            Some("sequence.exists")
+        );
+    }
+    for capability_id in target_seq_id_capabilities {
+        let blocked = execute_shell_command(
+            &mut engine,
+            &parse_shell_line(&format!(
+                "introspect readiness {capability_id} --arg TARGET_SEQ_ID=track_target"
+            ))
+            .expect("parse blocked blast-track readiness"),
+        )
+        .expect("execute blocked blast-track readiness");
+        assert_eq!(
+            blocked.output["readiness"][0]["readiness"].as_str(),
+            Some("blocked"),
+            "{capability_id} should be blocked without the target sequence"
+        );
+        assert_eq!(
+            blocked.output["readiness"][0]["unmet_atoms"][0]["fact"].as_str(),
+            Some("sequence.exists")
+        );
+    }
+
+    engine.state_mut().sequences.insert(
+        "track_target".to_string(),
+        DNAsequence::from_sequence("ACGTACGTACGT").expect("target sequence"),
+    );
+
+    for capability_id in seq_id_capabilities {
+        let ready = execute_shell_command(
+            &mut engine,
+            &parse_shell_line(&format!(
+                "introspect readiness {capability_id} --arg SEQ_ID=track_target"
+            ))
+            .expect("parse ready track readiness"),
+        )
+        .expect("execute ready track readiness");
+        assert_eq!(
+            ready.output["readiness"][0]["readiness"].as_str(),
+            Some("ready"),
+            "{capability_id} should be ready once the target sequence exists"
+        );
+    }
+    for capability_id in target_seq_id_capabilities {
+        let ready = execute_shell_command(
+            &mut engine,
+            &parse_shell_line(&format!(
+                "introspect readiness {capability_id} --arg TARGET_SEQ_ID=track_target"
+            ))
+            .expect("parse ready blast-track readiness"),
+        )
+        .expect("execute ready blast-track readiness");
+        assert_eq!(
+            ready.output["readiness"][0]["readiness"].as_str(),
+            Some("ready"),
+            "{capability_id} should be ready once the target sequence exists"
+        );
+    }
+}
+
+#[test]
+fn execute_introspect_readiness_checks_sequence_scan_report_and_render_routes() {
+    let mut engine = GentleEngine::default();
+    let scan_capabilities = [
+        "FindRestrictionSites",
+        "features tfbs-score-tracks-svg",
+        "RenderTfbsScoreTracksSvg",
+        "SummarizeTfbsScoreTracks",
+        "features tfbs-track-similarity",
+        "SummarizeTfbsTrackSimilarity",
+    ];
+
+    let capabilities = execute_shell_command(
+        &mut engine,
+        &parse_shell_line("introspect capabilities").expect("parse capabilities"),
+    )
+    .expect("execute capabilities");
+    let descriptors = capabilities.output["capabilities"]
+        .as_array()
+        .expect("capabilities array");
+    for capability_id in scan_capabilities {
+        let descriptor = descriptors
+            .iter()
+            .find(|descriptor| descriptor["id"].as_str() == Some(capability_id))
+            .unwrap_or_else(|| panic!("missing descriptor for {capability_id}"));
+        assert_eq!(
+            descriptor["annotation_status"].as_str(),
+            Some("fact_annotated"),
+            "{capability_id} should be fact annotated"
+        );
+        assert_eq!(
+            descriptor["reads"][0]["fact"].as_str(),
+            Some("sequence.exists"),
+            "{capability_id} should read the scan target sequence"
+        );
+    }
+
+    for capability_id in scan_capabilities {
+        let blocked = execute_shell_command(
+            &mut engine,
+            &parse_shell_line(&format!(
+                "introspect readiness {capability_id} --arg SEQ_ID=scan_target"
+            ))
+            .expect("parse blocked scan readiness"),
+        )
+        .expect("execute blocked scan readiness");
+        assert_eq!(
+            blocked.output["readiness"][0]["readiness"].as_str(),
+            Some("blocked"),
+            "{capability_id} should be blocked without the scan target sequence"
+        );
+        assert_eq!(
+            blocked.output["readiness"][0]["unmet_atoms"][0]["fact"].as_str(),
+            Some("sequence.exists")
+        );
+    }
+
+    engine.state_mut().sequences.insert(
+        "scan_target".to_string(),
+        DNAsequence::from_sequence("ACGTACGTACGTACGT").expect("target sequence"),
+    );
+
+    for capability_id in scan_capabilities {
+        let ready = execute_shell_command(
+            &mut engine,
+            &parse_shell_line(&format!(
+                "introspect readiness {capability_id} --arg SEQ_ID=scan_target"
+            ))
+            .expect("parse ready scan readiness"),
+        )
+        .expect("execute ready scan readiness");
+        assert_eq!(
+            ready.output["readiness"][0]["readiness"].as_str(),
+            Some("ready"),
+            "{capability_id} should be ready once the scan target sequence exists"
+        );
+    }
+}
+
+#[test]
 fn execute_introspect_readiness_treats_catalog_list_routes_as_catalog_ready() {
     let mut engine = GentleEngine::default();
 
@@ -21243,6 +22119,145 @@ fn execute_introspect_readiness_treats_construct_reasoning_graph_lists_as_catalo
             "{capability_id} should treat SEQ_ID as an optional filter, not a precondition"
         );
     }
+}
+
+#[test]
+fn execute_introspect_readiness_checks_construct_reasoning_graph_routes() {
+    let mut empty = GentleEngine::default();
+    let missing = execute_shell_command(
+        &mut empty,
+        &parse_shell_line(
+            "introspect readiness construct-reasoning show-graph --arg GRAPH_ID=graph_demo",
+        )
+        .expect("parse missing graph readiness"),
+    )
+    .expect("execute missing graph readiness");
+    assert_eq!(
+        missing.output["readiness"][0]["readiness"].as_str(),
+        Some("blocked")
+    );
+    assert_eq!(
+        missing.output["readiness"][0]["unmet_atoms"][0]["fact"].as_str(),
+        Some("construct_reasoning_graph.exists")
+    );
+
+    let mut engine = GentleEngine::default();
+    engine
+        .upsert_construct_reasoning_graph(ConstructReasoningGraph {
+            graph_id: "graph_demo".to_string(),
+            seq_id: "seq_demo".to_string(),
+            objective: ConstructObjective {
+                objective_id: "obj_demo".to_string(),
+                title: "Demo objective".to_string(),
+                goal: "Inspect graph introspection".to_string(),
+                ..ConstructObjective::default()
+            },
+            evidence: vec![DesignEvidence {
+                seq_id: "seq_demo".to_string(),
+                label: "Demo evidence".to_string(),
+                ..DesignEvidence::default()
+            }],
+            facts: vec![DesignFact {
+                fact_type: "selection_context".to_string(),
+                label: "Selection context".to_string(),
+                ..DesignFact::default()
+            }],
+            decisions: vec![DesignDecisionNode {
+                decision_type: "routine_family".to_string(),
+                title: "Review route".to_string(),
+                ..DesignDecisionNode::default()
+            }],
+            candidates: vec![ConstructCandidate {
+                candidate_id: "candidate_demo".to_string(),
+                title: "Candidate demo".to_string(),
+                ..ConstructCandidate::default()
+            }],
+            ..ConstructReasoningGraph::default()
+        })
+        .expect("upsert construct-reasoning graph");
+
+    let capabilities = execute_shell_command(
+        &mut engine,
+        &parse_shell_line("introspect capabilities").expect("parse capabilities"),
+    )
+    .expect("execute capabilities");
+    let descriptors = capabilities.output["capabilities"]
+        .as_array()
+        .expect("capabilities array");
+    for capability_id in [
+        "construct-reasoning show-graph",
+        "construct_reasoning_graph",
+        "construct-reasoning list-inspection-actions",
+        "construct_reasoning_inspection_actions",
+        "construct-reasoning run-inspection-action",
+        "construct_reasoning_run_inspection_action",
+        "construct-reasoning set-annotation-status",
+        "construct_reasoning_set_annotation_status",
+        "construct-reasoning write-annotation",
+        "construct_reasoning_write_annotation",
+        "construct-reasoning export-graph",
+    ] {
+        let descriptor = descriptors
+            .iter()
+            .find(|descriptor| descriptor["id"].as_str() == Some(capability_id))
+            .unwrap_or_else(|| panic!("missing descriptor for {capability_id}"));
+        assert_eq!(
+            descriptor["annotation_status"].as_str(),
+            Some("fact_annotated"),
+            "{capability_id} should be fact annotated"
+        );
+        assert_eq!(
+            descriptor["reads"][0]["fact"].as_str(),
+            Some("construct_reasoning_graph.exists"),
+            "{capability_id} should read the graph fact"
+        );
+    }
+
+    for capability_id in [
+        "construct-reasoning show-graph",
+        "construct_reasoning_graph",
+        "construct-reasoning list-inspection-actions",
+        "construct_reasoning_inspection_actions",
+        "construct-reasoning set-annotation-status",
+        "construct_reasoning_set_annotation_status",
+        "construct-reasoning write-annotation",
+        "construct_reasoning_write_annotation",
+        "construct-reasoning export-graph",
+    ] {
+        let ready = execute_shell_command(
+            &mut engine,
+            &parse_shell_line(&format!(
+                "introspect readiness {capability_id} --arg GRAPH_ID=graph_demo"
+            ))
+            .expect("parse graph readiness"),
+        )
+        .expect("execute graph readiness");
+        assert_eq!(
+            ready.output["readiness"][0]["readiness"].as_str(),
+            Some("ready"),
+            "{capability_id} should be ready when the graph exists"
+        );
+    }
+
+    let facts = execute_shell_command(
+        &mut engine,
+        &parse_shell_line("introspect facts --domain project").expect("parse graph facts"),
+    )
+    .expect("execute graph facts");
+    let project_facts = facts.output["facts"]["project"]["facts"]
+        .as_array()
+        .expect("project facts");
+    let graph_fact = project_facts
+        .iter()
+        .find(|fact| {
+            fact["fact"].as_str() == Some("construct_reasoning_graph.exists")
+                && fact["subject"]["id"].as_str() == Some("graph_demo")
+        })
+        .expect("projected construct-reasoning graph fact");
+    assert_eq!(graph_fact["value"]["seq_id"].as_str(), Some("seq_demo"));
+    assert_eq!(graph_fact["value"]["evidence_count"].as_u64(), Some(1));
+    assert_eq!(graph_fact["value"]["decision_count"].as_u64(), Some(1));
+    assert_eq!(graph_fact["value"]["candidate_count"].as_u64(), Some(1));
 }
 
 #[test]
@@ -21397,6 +22412,106 @@ fn execute_introspect_readiness_treats_reporter_catalog_routes_as_ready() {
 }
 
 #[test]
+fn execute_introspect_readiness_and_effects_cover_sequencing_traces() {
+    let fixture = sequencing_confirmation_fixture_path("3100.ab1");
+    let mut engine = GentleEngine::default();
+
+    for capability_id in ["seq-trace list", "ListSequencingTraces"] {
+        let cmd = parse_shell_line(&format!("introspect readiness {capability_id}"))
+            .expect("parse trace-list readiness");
+        let out = execute_shell_command(&mut engine, &cmd).expect("execute trace-list readiness");
+        assert_eq!(
+            out.output["readiness"][0]["readiness"].as_str(),
+            Some("ready"),
+            "{capability_id} should be ready without project state"
+        );
+    }
+
+    for capability_id in ["seq-trace show", "ShowSequencingTrace"] {
+        let missing = execute_shell_command(
+            &mut engine,
+            &parse_shell_line(&format!(
+                "introspect readiness {capability_id} --arg TRACE_ID=abi_trace"
+            ))
+            .expect("parse missing trace readiness"),
+        )
+        .expect("execute missing trace readiness");
+        assert_eq!(
+            missing.output["readiness"][0]["readiness"].as_str(),
+            Some("blocked"),
+            "{capability_id} should be blocked until the trace exists"
+        );
+        assert_eq!(
+            missing.output["readiness"][0]["unmet_atoms"][0]["fact"].as_str(),
+            Some("sequencing_trace.exists")
+        );
+    }
+
+    let imported = execute_shell_command(
+        &mut engine,
+        &ShellCommand::SeqTraceImport {
+            path: fixture,
+            trace_id: Some("abi_trace".to_string()),
+            seq_id: None,
+        },
+    )
+    .expect("import trace");
+    assert!(imported.state_changed);
+
+    for capability_id in ["seq-trace import", "ImportSequencingTrace"] {
+        let verify = execute_shell_command(
+            &mut engine,
+            &parse_shell_line(&format!(
+                "introspect verify-effects {capability_id} --arg TRACE_ID=abi_trace"
+            ))
+            .expect("parse trace import verify"),
+        )
+        .expect("execute trace import verify");
+        assert_eq!(
+            verify.output["verified"].as_bool(),
+            Some(true),
+            "{capability_id} should verify explicit trace id import effects"
+        );
+    }
+
+    for capability_id in ["seq-trace show", "ShowSequencingTrace"] {
+        let ready = execute_shell_command(
+            &mut engine,
+            &parse_shell_line(&format!(
+                "introspect readiness {capability_id} --arg TRACE_ID=abi_trace"
+            ))
+            .expect("parse ready trace readiness"),
+        )
+        .expect("execute ready trace readiness");
+        assert_eq!(
+            ready.output["readiness"][0]["readiness"].as_str(),
+            Some("ready"),
+            "{capability_id} should be ready once the trace exists"
+        );
+    }
+
+    let facts = execute_shell_command(
+        &mut engine,
+        &parse_shell_line("introspect facts --domain project").expect("parse trace facts"),
+    )
+    .expect("execute trace facts");
+    let project_facts = facts.output["facts"]["project"]["facts"]
+        .as_array()
+        .expect("project facts");
+    let trace_fact = project_facts
+        .iter()
+        .find(|fact| {
+            fact["fact"].as_str() == Some("sequencing_trace.exists")
+                && fact["subject"]["id"].as_str() == Some("abi_trace")
+        })
+        .expect("projected sequencing trace fact");
+    assert_eq!(
+        trace_fact["value"]["called_base_count"].as_u64(),
+        imported.output["import_report"]["called_base_count"].as_u64()
+    );
+}
+
+#[test]
 fn execute_introspect_readiness_treats_service_catalog_routes_as_ready() {
     let mut engine = GentleEngine::default();
 
@@ -21404,6 +22519,11 @@ fn execute_introspect_readiness_treats_service_catalog_routes_as_ready() {
         "services status",
         "services providers list",
         "services providers doctor",
+        "services delivery-route",
+        "services project-preflight",
+        "services project-quote",
+        "services handoff",
+        "services guide",
     ] {
         let cmd = parse_shell_line(&format!("introspect readiness {capability_id}"))
             .expect("parse service catalog readiness");
@@ -21868,6 +22988,23 @@ fn execute_introspect_capabilities_filters_first_slice_by_kind() {
     );
     assert_eq!(ui_intents["reads"].as_array().map(Vec::len), Some(0));
     assert_eq!(ui_intents["effects"].as_array().map(Vec::len), Some(0));
+    for id in ["ui open", "ui focus", "ui close", "ui_intent"] {
+        let descriptor = capabilities
+            .iter()
+            .find(|descriptor| descriptor["id"].as_str() == Some(id))
+            .unwrap_or_else(|| panic!("{id} descriptor"));
+        assert_eq!(descriptor["kind"].as_str(), Some("view_intent"));
+        assert_eq!(
+            descriptor["annotation_status"].as_str(),
+            Some("fact_annotated")
+        );
+        assert_eq!(
+            descriptor["reads"][0]["fact"].as_str(),
+            Some("ui.host_available"),
+            "{id} should be gated by GUI host availability"
+        );
+        assert_eq!(descriptor["effects"].as_array().map(Vec::len), Some(0));
+    }
     for id in ["ui_intents", "ui_prepared_genomes", "ui_latest_prepared"] {
         let descriptor = capabilities
             .iter()
@@ -22434,6 +23571,71 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
             && descriptor["reads"].as_array().map(Vec::len) == Some(0)
             && descriptor["effects"].as_array().map(Vec::len) == Some(0)
     }));
+    for id in ["proteases list", "proteases show"] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"].as_array().map(Vec::len) == Some(0)
+            }),
+            "{id} should have a fact-annotated catalog descriptor"
+        );
+    }
+    for id in ["proteases digest", "ProteaseDigestProteinSequence"] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"].as_array().map(Vec::len) == Some(2)
+                    && descriptor["reads"][0]["fact"].as_str() == Some("sequence.exists")
+                    && descriptor["reads"][0]["subject"]["arg"].as_str() == Some("PROTEIN_SEQ_ID")
+                    && descriptor["reads"][1]["fact"].as_str() == Some("sequence.kind")
+                    && descriptor["reads"][1]["equals"].as_str() == Some("protein")
+                    && descriptor["effects"][0]["fact"].as_str() == Some("sequence.exists")
+                    && descriptor["effects"][0]["effect_kind"].as_str() == Some("may_on_success")
+            }),
+            "{id} should have a fact-annotated protease-digest descriptor"
+        );
+    }
+    assert!(capabilities.iter().any(|descriptor| {
+        descriptor["id"].as_str() == Some("proteases digest-gel-svg")
+            && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+            && descriptor["reads"][1]["fact"].as_str() == Some("sequence.kind")
+            && descriptor["reads"][1]["equals"].as_str() == Some("protein")
+            && descriptor["effects"][0]["fact"].as_str() == Some("artifact.written")
+            && descriptor["effects"][0]["effect_kind"].as_str() == Some("external_handoff")
+    }));
+    assert!(capabilities.iter().any(|descriptor| {
+        descriptor["id"].as_str() == Some("RenderProteaseDigestGelSvg")
+            && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+            && descriptor["reads"].as_array().map(Vec::len) == Some(3)
+            && descriptor["reads"][0]["fact"].as_str() == Some("sequence.exists")
+            && descriptor["reads"][1]["fact"].as_str() == Some("sequence.kind")
+            && descriptor["reads"][2]["fact"].as_str() == Some("report.exists")
+            && descriptor["reads"][2]["equals"].as_str() == Some("protein_derivation")
+            && descriptor["precondition_expr"]["any"]
+                .as_array()
+                .map(Vec::len)
+                == Some(2)
+            && descriptor["effects"][0]["fact"].as_str() == Some("artifact.written")
+    }));
+    for id in [
+        "RenderProteinGelSvg",
+        "RenderProteinGelReportsSvg",
+        "RenderProtein2dGelSvg",
+    ] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"][0]["fact"].as_str() == Some("report.exists")
+                    && descriptor["reads"][0]["equals"].as_str() == Some("protein_derivation")
+                    && descriptor["effects"][0]["fact"].as_str() == Some("artifact.written")
+                    && descriptor["effects"][0]["effect_kind"].as_str() == Some("external_handoff")
+            }),
+            "{id} should have a fact-annotated protein-gel descriptor"
+        );
+    }
     assert!(capabilities.iter().any(|descriptor| {
         descriptor["id"].as_str() == Some("primers design")
             && descriptor["annotation_status"].as_str() == Some("fact_annotated")
@@ -22559,6 +23761,42 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
             && descriptor["effects"][0]["fact"].as_str() == Some("artifact.written")
             && descriptor["effects"][0]["effect_kind"].as_str() == Some("external_handoff")
     }));
+    for id in ["seq-trace import", "ImportSequencingTrace"] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"].as_array().map(Vec::len) == Some(0)
+                    && descriptor["effects"][0]["fact"].as_str() == Some("sequencing_trace.exists")
+                    && descriptor["effects"][0]["subject"]["arg"].as_str() == Some("TRACE_ID")
+                    && descriptor["effects"][0]["effect_kind"].as_str() == Some("must_on_success")
+            }),
+            "{id} should have a fact-annotated sequencing-trace import descriptor"
+        );
+    }
+    for id in ["seq-trace list", "ListSequencingTraces"] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"].as_array().map(Vec::len) == Some(0)
+                    && descriptor["effects"].as_array().map(Vec::len) == Some(0)
+            }),
+            "{id} should have a fact-annotated sequencing-trace list descriptor"
+        );
+    }
+    for id in ["seq-trace show", "ShowSequencingTrace"] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"][0]["fact"].as_str() == Some("sequencing_trace.exists")
+                    && descriptor["reads"][0]["subject"]["arg"].as_str() == Some("TRACE_ID")
+                    && descriptor["effects"].as_array().map(Vec::len) == Some(0)
+            }),
+            "{id} should have a fact-annotated sequencing-trace show descriptor"
+        );
+    }
     assert!(capabilities.iter().any(|descriptor| {
         descriptor["id"].as_str() == Some("seq-confirm list-reports")
             && descriptor["annotation_status"].as_str() == Some("fact_annotated")
@@ -22743,7 +23981,13 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
             "{id} should have a fact-annotated required-artifact descriptor"
         );
     }
-    for id in ["services status", "services providers list"] {
+    for id in [
+        "services status",
+        "services providers list",
+        "services delivery-route",
+        "services project-preflight",
+        "services guide",
+    ] {
         assert!(
             capabilities.iter().any(|descriptor| {
                 descriptor["id"].as_str() == Some(id)
@@ -22755,15 +23999,24 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
             "{id} should have a fact-annotated no-project service descriptor"
         );
     }
-    assert!(capabilities.iter().any(|descriptor| {
-        descriptor["id"].as_str() == Some("services providers doctor")
-            && descriptor["annotation_status"].as_str() == Some("fact_annotated")
-            && descriptor["registry"]["source"].as_str() == Some("glossary_command")
-            && descriptor["reads"].as_array().map(Vec::len) == Some(0)
-            && descriptor["effects"][0]["fact"].as_str() == Some("artifact.written")
-            && descriptor["effects"][0]["subject"]["arg"].as_str() == Some("OUTPUT_PATH")
-            && descriptor["effects"][0]["effect_kind"].as_str() == Some("external_handoff")
-    }));
+    for id in [
+        "services providers doctor",
+        "services project-quote",
+        "services handoff",
+    ] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["registry"]["source"].as_str() == Some("glossary_command")
+                    && descriptor["reads"].as_array().map(Vec::len) == Some(0)
+                    && descriptor["effects"][0]["fact"].as_str() == Some("artifact.written")
+                    && descriptor["effects"][0]["subject"]["arg"].as_str() == Some("OUTPUT_PATH")
+                    && descriptor["effects"][0]["effect_kind"].as_str() == Some("external_handoff")
+            }),
+            "{id} should have a fact-annotated service artifact descriptor"
+        );
+    }
     for id in [
         "planning profile show",
         "planning objective show",
@@ -23331,6 +24584,36 @@ fn execute_introspect_readiness_distinguishes_headless_and_attached_ui() {
         attached.output["readiness"][0]["readiness"].as_str(),
         Some("ready")
     );
+
+    for capability_id in ["ui open", "ui focus", "ui close", "ui_intent"] {
+        let headless_cmd = parse_shell_line(&format!(
+            "introspect readiness {capability_id} --ui-host false"
+        ))
+        .expect("parse headless generic ui readiness");
+        let headless = execute_shell_command(&mut engine, &headless_cmd)
+            .expect("execute headless generic ui readiness");
+        assert_eq!(
+            headless.output["readiness"][0]["readiness"].as_str(),
+            Some("blocked"),
+            "{capability_id} should be blocked without a GUI host"
+        );
+        assert_eq!(
+            headless.output["readiness"][0]["unmet_atoms"][0]["fact"].as_str(),
+            Some("ui.host_available")
+        );
+
+        let attached_cmd = parse_shell_line(&format!(
+            "introspect readiness {capability_id} --ui-host true"
+        ))
+        .expect("parse attached generic ui readiness");
+        let attached = execute_shell_command(&mut engine, &attached_cmd)
+            .expect("execute attached generic ui readiness");
+        assert_eq!(
+            attached.output["readiness"][0]["readiness"].as_str(),
+            Some("ready"),
+            "{capability_id} should be ready with a GUI host"
+        );
+    }
 }
 
 #[test]

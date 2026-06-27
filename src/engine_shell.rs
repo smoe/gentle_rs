@@ -14646,6 +14646,39 @@ fn registry_metadata_for_introspection(id: &str) -> Option<Value> {
         .map(|descriptor| introspection_registry_descriptor(descriptor)["registry"].clone())
 }
 
+fn external_sequence_create_descriptor(
+    id: &str,
+    description: &str,
+    output_detail: &str,
+    mut extra_args: Vec<Value>,
+) -> Value {
+    extra_args.push(json!({
+        "name": "OUTPUT_ID",
+        "required": false,
+        "subject_kind": "sequence",
+        "detail": output_detail
+    }));
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": false,
+        "args": extra_args,
+        "reads": [],
+        "effects": [
+            {
+                "fact": "sequence.exists",
+                "subject": {"arg": "OUTPUT_ID"},
+                "effect_kind": "must_on_success"
+            }
+        ],
+        "precondition_expr": {"all": []},
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
 fn sequence_derivation_operation_descriptor(
     id: &str,
     description: &str,
@@ -14689,6 +14722,282 @@ fn sequence_derivation_operation_descriptor(
         "annotation_status": "fact_annotated",
         "registry": registry_metadata_for_introspection(id)
     })
+}
+
+fn sequence_read_operation_descriptor(
+    id: &str,
+    seq_arg_name: &str,
+    seq_detail: &str,
+    description: &str,
+    mut extra_args: Vec<Value>,
+) -> Value {
+    let seq_arg = json!({
+        "name": seq_arg_name,
+        "required": true,
+        "subject_kind": "sequence",
+        "detail": seq_detail
+    });
+    let mut args = vec![seq_arg.clone()];
+    args.append(&mut extra_args);
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": false,
+        "args": args,
+        "reads": [
+            {"fact": "sequence.exists", "subject": {"arg": seq_arg_name}}
+        ],
+        "effects": [],
+        "precondition_expr": {
+            "all": [
+                {"fact": "sequence.exists", "subject": {"arg": seq_arg_name}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn pcr_sequence_create_descriptor(id: &str, description: &str, extra_args: Vec<Value>) -> Value {
+    let mut args = vec![json!({
+        "name": "TEMPLATE_SEQ_ID",
+        "required": true,
+        "subject_kind": "sequence",
+        "detail": "loaded PCR template sequence id carried by template"
+    })];
+    args.extend(extra_args);
+    args.push(json!({
+        "name": "OUTPUT_ID",
+        "required": false,
+        "subject_kind": "sequence",
+        "detail": "requested PCR product sequence id; required for deterministic effect verification and may be uniquified if already present"
+    }));
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": false,
+        "args": args,
+        "reads": [
+            {"fact": "sequence.exists", "subject": {"arg": "TEMPLATE_SEQ_ID"}}
+        ],
+        "effects": [
+            {
+                "fact": "sequence.exists",
+                "subject": {"arg": "OUTPUT_ID"},
+                "effect_kind": "must_on_success"
+            }
+        ],
+        "precondition_expr": {
+            "all": [
+                {"fact": "sequence.exists", "subject": {"arg": "TEMPLATE_SEQ_ID"}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn save_file_operation_descriptor() -> Value {
+    json!({
+        "id": "SaveFile",
+        "kind": "operation",
+        "mutating": "false",
+        "requires_confirmation": false,
+        "args": [
+            {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id carried by seq_id"},
+            {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external sequence file output path carried by path"},
+            {"name": "FORMAT", "required": true, "subject_kind": "other", "detail": "sequence export format carried by format"}
+        ],
+        "reads": [
+            {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+        ],
+        "effects": [
+            {
+                "fact": "artifact.written",
+                "subject": {"arg": "OUTPUT_PATH"},
+                "effect_kind": "external_handoff"
+            }
+        ],
+        "precondition_expr": {
+            "all": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ]
+        },
+        "description": "Write one loaded sequence to an external sequence file through the shared engine operation.",
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection("SaveFile")
+    })
+}
+
+fn metadata_entry_create_descriptor(
+    id: &str,
+    fact_name: &str,
+    description: &str,
+    mut args: Vec<Value>,
+) -> Value {
+    args.push(json!({
+        "name": "ENTRY_ID",
+        "required": false,
+        "subject_kind": "other",
+        "detail": "explicit metadata entry id; required for deterministic effect verification and may be normalized by execution"
+    }));
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": false,
+        "args": args,
+        "reads": [],
+        "effects": [
+            {
+                "fact": fact_name,
+                "subject": {"arg": "ENTRY_ID"},
+                "effect_kind": "must_on_success"
+            }
+        ],
+        "precondition_expr": {"all": []},
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn metadata_entry_read_descriptor(id: &str, fact_name: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "false",
+        "requires_confirmation": false,
+        "args": [
+            {"name": "ENTRY_ID", "required": true, "subject_kind": "other", "detail": "stored metadata entry id"}
+        ],
+        "reads": [
+            {"fact": fact_name, "subject": {"arg": "ENTRY_ID"}}
+        ],
+        "effects": [],
+        "precondition_expr": {
+            "all": [
+                {"fact": fact_name, "subject": {"arg": "ENTRY_ID"}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn metadata_entry_sequence_import_descriptor(
+    id: &str,
+    fact_name: &str,
+    description: &str,
+    output_detail: &str,
+) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": false,
+        "args": [
+            {"name": "ENTRY_ID", "required": true, "subject_kind": "other", "detail": "stored metadata entry id"},
+            {"name": "OUTPUT_ID", "required": false, "subject_kind": "sequence", "detail": output_detail}
+        ],
+        "reads": [
+            {"fact": fact_name, "subject": {"arg": "ENTRY_ID"}}
+        ],
+        "effects": [
+            {
+                "fact": "sequence.exists",
+                "subject": {"arg": "OUTPUT_ID"},
+                "effect_kind": "must_on_success"
+            }
+        ],
+        "precondition_expr": {
+            "all": [
+                {"fact": fact_name, "subject": {"arg": "ENTRY_ID"}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn construct_reasoning_graph_read_descriptor(
+    id: &str,
+    description: &str,
+    mut extra_args: Vec<Value>,
+) -> Value {
+    let mut args = vec![json!({
+        "name": "GRAPH_ID",
+        "required": true,
+        "subject_kind": "other",
+        "detail": "persisted construct-reasoning graph id"
+    })];
+    args.append(&mut extra_args);
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "false",
+        "requires_confirmation": false,
+        "args": args,
+        "reads": [
+            {"fact": "construct_reasoning_graph.exists", "subject": {"arg": "GRAPH_ID"}}
+        ],
+        "effects": [],
+        "precondition_expr": {
+            "all": [
+                {"fact": "construct_reasoning_graph.exists", "subject": {"arg": "GRAPH_ID"}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn construct_reasoning_graph_preserve_descriptor(
+    id: &str,
+    description: &str,
+    mut extra_args: Vec<Value>,
+) -> Value {
+    let mut descriptor = construct_reasoning_graph_read_descriptor(id, description, Vec::new());
+    if let Some(args) = descriptor["args"].as_array_mut() {
+        args.append(&mut extra_args);
+    }
+    descriptor["mutating"] = json!("true");
+    descriptor["effects"] = json!([
+        {
+            "fact": "construct_reasoning_graph.exists",
+            "subject": {"arg": "GRAPH_ID"},
+            "effect_kind": "must_on_success"
+        }
+    ]);
+    descriptor
+}
+
+fn construct_reasoning_graph_export_descriptor(id: &str, description: &str) -> Value {
+    let mut descriptor = construct_reasoning_graph_read_descriptor(
+        id,
+        description,
+        vec![json!({
+            "name": "OUTPUT_PATH",
+            "required": true,
+            "subject_kind": "other",
+            "detail": "external construct-reasoning graph JSON output path"
+        })],
+    );
+    descriptor["effects"] = json!([
+        {
+            "fact": "artifact.written",
+            "subject": {"arg": "OUTPUT_PATH"},
+            "effect_kind": "external_handoff"
+        }
+    ]);
+    descriptor
 }
 
 fn report_list_operation_descriptor(
@@ -15018,6 +15327,113 @@ fn optional_artifact_inspection_operation_descriptor(
             }
         ],
         "precondition_expr": {"all": []},
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn protease_digest_sequence_reads(subject_arg: &str) -> Vec<Value> {
+    vec![
+        json!({"fact": "sequence.exists", "subject": {"arg": subject_arg}}),
+        json!({"fact": "sequence.kind", "subject": {"arg": subject_arg}, "equals": "protein"}),
+    ]
+}
+
+fn protease_digest_sequence_precondition(subject_arg: &str) -> Value {
+    json!({
+        "all": protease_digest_sequence_reads(subject_arg)
+    })
+}
+
+fn protease_digest_operation_descriptor(
+    id: &str,
+    description: &str,
+    output_prefix_detail: &str,
+) -> Value {
+    let reads = protease_digest_sequence_reads("PROTEIN_SEQ_ID");
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": false,
+        "args": [
+            {"name": "PROTEIN_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded protein or peptide sequence id"},
+            {"name": "PROTEASES", "required": true, "subject_kind": "other", "detail": "one or more protease names, aliases, or catalog queries"},
+            {"name": "OUTPUT_PREFIX", "required": false, "subject_kind": "other", "detail": output_prefix_detail},
+            {"name": "MIN_LENGTH_AA", "required": false, "detail": "optional minimum peptide length"},
+            {"name": "MATERIALIZE", "required": false, "detail": "whether peptide products are materialized as first-class peptide sequences"}
+        ],
+        "reads": reads,
+        "effects": [
+            {
+                "fact": "sequence.exists",
+                "effect_kind": "may_on_success",
+                "description": "When materialization is enabled, digest peptide products are created as first-class peptide sequences with deterministic ids derived from the source sequence or output prefix."
+            }
+        ],
+        "precondition_expr": protease_digest_sequence_precondition("PROTEIN_SEQ_ID"),
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn protease_digest_gel_sequence_descriptor(id: &str, description: &str) -> Value {
+    let reads = protease_digest_sequence_reads("PROTEIN_SEQ_ID");
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "false",
+        "requires_confirmation": false,
+        "args": [
+            {"name": "PROTEIN_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded protein or peptide sequence id"},
+            {"name": "PROTEASES", "required": true, "subject_kind": "other", "detail": "one or more protease names, aliases, or catalog queries"},
+            {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external SVG output path"},
+            {"name": "MIN_LENGTH_AA", "required": false, "detail": "optional minimum peptide length"},
+            {"name": "LADDERS", "required": false, "subject_kind": "other", "detail": "optional protein ladder names"}
+        ],
+        "reads": reads,
+        "effects": [
+            {
+                "fact": "artifact.written",
+                "subject": {"arg": "OUTPUT_PATH"},
+                "effect_kind": "external_handoff"
+            }
+        ],
+        "precondition_expr": protease_digest_sequence_precondition("PROTEIN_SEQ_ID"),
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn protein_derivation_report_svg_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "false",
+        "requires_confirmation": false,
+        "args": [
+            {"name": "REPORT_ID", "required": true, "subject_kind": "report", "detail": "persisted protein-derivation report id; for plural report operations, repeat readiness checks for every report id"},
+            {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external SVG output path"},
+            {"name": "LADDERS", "required": false, "subject_kind": "other", "detail": "optional protein ladder names"}
+        ],
+        "reads": [
+            {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "protein_derivation"}
+        ],
+        "effects": [
+            {
+                "fact": "artifact.written",
+                "subject": {"arg": "OUTPUT_PATH"},
+                "effect_kind": "external_handoff"
+            }
+        ],
+        "precondition_expr": {
+            "all": [
+                {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "protein_derivation"}
+            ]
+        },
         "description": description,
         "annotation_status": "fact_annotated",
         "registry": registry_metadata_for_introspection(id)
@@ -15760,6 +16176,180 @@ fn rack_export_descriptor(id: &str, description: &str) -> Value {
     })
 }
 
+fn persisted_other_arg(name: &str, required: bool, detail: &str) -> Value {
+    json!({
+        "name": name,
+        "required": required,
+        "subject_kind": "other",
+        "detail": detail
+    })
+}
+
+fn workflow_macro_template_descriptor(
+    id: &str,
+    description: &str,
+    mutating: bool,
+    effect_exists: bool,
+) -> Value {
+    let reads = if effect_exists {
+        vec![]
+    } else {
+        vec![json!({
+            "fact": "workflow_macro_template.exists",
+            "subject": {"arg": "TEMPLATE_NAME"}
+        })]
+    };
+    let effects = if effect_exists {
+        vec![json!({
+            "fact": "workflow_macro_template.exists",
+            "subject": {"arg": "TEMPLATE_NAME"},
+            "effect_kind": "must_on_success"
+        })]
+    } else {
+        vec![]
+    };
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": if mutating { "true" } else { "false" },
+        "requires_confirmation": false,
+        "args": [
+            persisted_other_arg("TEMPLATE_NAME", true, "persisted workflow macro template name")
+        ],
+        "reads": reads,
+        "effects": effects,
+        "precondition_expr": if effect_exists {
+            json!({"all": []})
+        } else {
+            json!({"all": [
+                {"fact": "workflow_macro_template.exists", "subject": {"arg": "TEMPLATE_NAME"}}
+            ]})
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn workflow_macro_template_import_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": false,
+        "args": [
+            persisted_other_arg("INPUT_PATH", true, "external macro-template JSON file or directory path")
+        ],
+        "reads": [],
+        "effects": [],
+        "precondition_expr": {"all": []},
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn workflow_macro_template_run_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": false,
+        "args": [
+            persisted_other_arg("TEMPLATE_NAME", true, "persisted workflow macro template name"),
+            persisted_other_arg("MACRO_INSTANCE_ID", false, "macro instance id returned by execution; optional for post-run verification")
+        ],
+        "reads": [
+            {"fact": "workflow_macro_template.exists", "subject": {"arg": "TEMPLATE_NAME"}}
+        ],
+        "effects": [
+            {
+                "fact": "macro_instance.exists",
+                "subject": {"arg": "MACRO_INSTANCE_ID"},
+                "effect_kind": "may_on_success"
+            }
+        ],
+        "precondition_expr": {
+            "all": [
+                {"fact": "workflow_macro_template.exists", "subject": {"arg": "TEMPLATE_NAME"}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn macro_instance_read_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "false",
+        "requires_confirmation": false,
+        "args": [
+            persisted_other_arg("MACRO_INSTANCE_ID", true, "recorded workflow macro-instance id")
+        ],
+        "reads": [
+            {"fact": "macro_instance.exists", "subject": {"arg": "MACRO_INSTANCE_ID"}}
+        ],
+        "effects": [],
+        "precondition_expr": {
+            "all": [
+                {"fact": "macro_instance.exists", "subject": {"arg": "MACRO_INSTANCE_ID"}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn candidate_macro_template_descriptor(
+    id: &str,
+    description: &str,
+    mutating: bool,
+    effect_exists: bool,
+) -> Value {
+    let reads = if effect_exists {
+        vec![]
+    } else {
+        vec![json!({
+            "fact": "candidate_macro_template.exists",
+            "subject": {"arg": "TEMPLATE_NAME"}
+        })]
+    };
+    let effects = if effect_exists {
+        vec![json!({
+            "fact": "candidate_macro_template.exists",
+            "subject": {"arg": "TEMPLATE_NAME"},
+            "effect_kind": "must_on_success"
+        })]
+    } else {
+        vec![]
+    };
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": if mutating { "true" } else { "false" },
+        "requires_confirmation": false,
+        "args": [
+            persisted_other_arg("TEMPLATE_NAME", true, "persisted candidate macro template name")
+        ],
+        "reads": reads,
+        "effects": effects,
+        "precondition_expr": if effect_exists {
+            json!({"all": []})
+        } else {
+            json!({"all": [
+                {"fact": "candidate_macro_template.exists", "subject": {"arg": "TEMPLATE_NAME"}}
+            ]})
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
 fn annotated_introspection_capability_descriptors() -> Vec<Value> {
     vec![
         json!({
@@ -16136,6 +16726,203 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("sequence create")
         }),
+        external_sequence_create_descriptor(
+            "LoadFile",
+            "Load one user-provided sequence file into project state; parsing and path validation happen at execution time.",
+            "explicit sequence id supplied as as_id; required for deterministic effect verification",
+            vec![
+                json!({"name": "PATH", "required": true, "subject_kind": "other", "detail": "external sequence file path carried by the operation payload"}),
+            ],
+        ),
+        external_sequence_create_descriptor(
+            "genbank fetch",
+            "Fetch one GenBank accession and load it as a project sequence; network and accession validation happen at execution time.",
+            "explicit sequence id supplied with --as-id; required for deterministic effect verification",
+            vec![
+                json!({"name": "ACCESSION", "required": true, "subject_kind": "other", "detail": "GenBank accession to fetch"}),
+            ],
+        ),
+        external_sequence_create_descriptor(
+            "FetchGenBankAccession",
+            "Fetch one GenBank accession through the shared engine operation and load it as a project sequence.",
+            "explicit sequence id supplied as as_id; required for deterministic effect verification",
+            vec![
+                json!({"name": "ACCESSION", "required": true, "subject_kind": "other", "detail": "GenBank accession carried by the operation payload"}),
+            ],
+        ),
+        external_sequence_create_descriptor(
+            "ensembl-region fetch",
+            "Fetch one Ensembl genomic interval and load it as a project sequence; network and coordinate validation happen at execution time.",
+            "explicit sequence id supplied with --output-id; required for deterministic effect verification",
+            vec![
+                json!({"name": "SPECIES", "required": true, "subject_kind": "other", "detail": "Ensembl species name"}),
+                json!({"name": "CHROMOSOME", "required": true, "subject_kind": "other", "detail": "Ensembl chromosome or region name"}),
+                json!({"name": "START_1BASED", "required": true, "subject_kind": "other", "detail": "1-based inclusive start coordinate"}),
+                json!({"name": "END_1BASED", "required": true, "subject_kind": "other", "detail": "1-based inclusive end coordinate"}),
+                json!({"name": "STRAND", "required": false, "subject_kind": "other", "detail": "optional strand selector"}),
+                json!({"name": "COORD_SYSTEM_VERSION", "required": false, "subject_kind": "other", "detail": "optional assembly/coordinate-system version"}),
+            ],
+        ),
+        external_sequence_create_descriptor(
+            "FetchEnsemblRegion",
+            "Fetch one Ensembl genomic interval through the shared engine operation and load it as a project sequence.",
+            "explicit sequence id supplied as output_id; required for deterministic effect verification",
+            vec![
+                json!({"name": "SPECIES", "required": true, "subject_kind": "other", "detail": "Ensembl species name carried by the operation payload"}),
+                json!({"name": "CHROMOSOME", "required": true, "subject_kind": "other", "detail": "Ensembl chromosome or region name carried by the operation payload"}),
+                json!({"name": "START_1BASED", "required": true, "subject_kind": "other", "detail": "1-based inclusive start coordinate carried by the operation payload"}),
+                json!({"name": "END_1BASED", "required": true, "subject_kind": "other", "detail": "1-based inclusive end coordinate carried by the operation payload"}),
+                json!({"name": "STRAND", "required": false, "subject_kind": "other", "detail": "optional strand selector carried by the operation payload"}),
+                json!({"name": "COORD_SYSTEM_VERSION", "required": false, "subject_kind": "other", "detail": "optional assembly/coordinate-system version carried by the operation payload"}),
+            ],
+        ),
+        external_sequence_create_descriptor(
+            "dbsnp fetch",
+            "Fetch one dbSNP-centered reference region and load it as a project sequence; genome preparation and variant lookup happen at execution time.",
+            "explicit sequence id supplied with --output-id; required for deterministic effect verification",
+            vec![
+                json!({"name": "RS_ID", "required": true, "subject_kind": "other", "detail": "dbSNP rs identifier"}),
+                json!({"name": "GENOME_ID", "required": true, "subject_kind": "other", "detail": "prepared reference genome id"}),
+                json!({"name": "FLANK_BP", "required": false, "subject_kind": "other", "detail": "optional variant flank length"}),
+            ],
+        ),
+        external_sequence_create_descriptor(
+            "FetchDbSnpRegion",
+            "Fetch one dbSNP-centered reference region through the shared engine operation and load it as a project sequence.",
+            "explicit sequence id supplied as output_id; required for deterministic effect verification",
+            vec![
+                json!({"name": "RS_ID", "required": true, "subject_kind": "other", "detail": "dbSNP rs identifier carried by the operation payload"}),
+                json!({"name": "GENOME_ID", "required": true, "subject_kind": "other", "detail": "prepared reference genome id carried by the operation payload"}),
+                json!({"name": "FLANK_BP", "required": false, "subject_kind": "other", "detail": "optional variant flank length carried by the operation payload"}),
+                json!({"name": "CATALOG_PATH", "required": false, "subject_kind": "other", "detail": "optional reference genome catalog path"}),
+                json!({"name": "CACHE_DIR", "required": false, "subject_kind": "other", "detail": "optional prepared reference cache directory"}),
+            ],
+        ),
+        external_sequence_create_descriptor(
+            "FetchUniprotLinkedGenBank",
+            "Fetch a GenBank accession linked from one stored UniProt entry through the shared engine operation and load it as a project sequence.",
+            "explicit sequence id supplied as as_id; required for deterministic effect verification",
+            vec![
+                json!({"name": "ENTRY_ID", "required": true, "subject_kind": "other", "detail": "stored UniProt entry id carried by the operation payload"}),
+                json!({"name": "ACCESSION", "required": false, "subject_kind": "other", "detail": "optional linked GenBank accession override"}),
+            ],
+        ),
+        metadata_entry_create_descriptor(
+            "uniprot fetch",
+            "uniprot_entry.exists",
+            "Fetch one UniProt SWISS-PROT entry and store it in project metadata; network/query validation happens at execution time.",
+            vec![
+                json!({"name": "QUERY", "required": true, "subject_kind": "other", "detail": "UniProt accession, entry name, or query"}),
+            ],
+        ),
+        metadata_entry_create_descriptor(
+            "FetchUniprotSwissProt",
+            "uniprot_entry.exists",
+            "Fetch one UniProt SWISS-PROT entry through the shared engine operation and store it in project metadata.",
+            vec![
+                json!({"name": "QUERY", "required": true, "subject_kind": "other", "detail": "UniProt accession, entry name, or query carried by query"}),
+            ],
+        ),
+        metadata_entry_create_descriptor(
+            "uniprot import-swissprot",
+            "uniprot_entry.exists",
+            "Import one local UniProt SWISS-PROT text file into project metadata.",
+            vec![
+                json!({"name": "PATH", "required": true, "subject_kind": "other", "detail": "external SWISS-PROT text file path"}),
+            ],
+        ),
+        metadata_entry_create_descriptor(
+            "ImportUniprotSwissProt",
+            "uniprot_entry.exists",
+            "Import one local UniProt SWISS-PROT text file through the shared engine operation into project metadata.",
+            vec![
+                json!({"name": "PATH", "required": true, "subject_kind": "other", "detail": "external SWISS-PROT text file path carried by path"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "uniprot list",
+            "List stored UniProt metadata entries without project-state preconditions.",
+            vec![],
+        ),
+        metadata_entry_read_descriptor(
+            "uniprot show",
+            "uniprot_entry.exists",
+            "Inspect one stored UniProt metadata entry by id.",
+        ),
+        metadata_entry_read_descriptor(
+            "ensembl-gene show",
+            "ensembl_gene_entry.exists",
+            "Inspect one stored Ensembl gene metadata entry by id.",
+        ),
+        metadata_entry_read_descriptor(
+            "ensembl-protein show",
+            "ensembl_protein_entry.exists",
+            "Inspect one stored Ensembl protein metadata entry by id.",
+        ),
+        metadata_entry_create_descriptor(
+            "ensembl-gene fetch",
+            "ensembl_gene_entry.exists",
+            "Fetch one Ensembl gene entry and store it in project metadata; network/query validation happens at execution time.",
+            vec![
+                json!({"name": "QUERY", "required": true, "subject_kind": "other", "detail": "Ensembl gene id or symbol"}),
+                json!({"name": "SPECIES", "required": false, "subject_kind": "other", "detail": "optional Ensembl species name"}),
+            ],
+        ),
+        metadata_entry_create_descriptor(
+            "FetchEnsemblGene",
+            "ensembl_gene_entry.exists",
+            "Fetch one Ensembl gene entry through the shared engine operation and store it in project metadata.",
+            vec![
+                json!({"name": "QUERY", "required": true, "subject_kind": "other", "detail": "Ensembl gene id or symbol carried by query"}),
+                json!({"name": "SPECIES", "required": false, "subject_kind": "other", "detail": "optional Ensembl species name carried by species"}),
+            ],
+        ),
+        metadata_entry_create_descriptor(
+            "ensembl-protein fetch",
+            "ensembl_protein_entry.exists",
+            "Fetch one Ensembl protein entry and store it in project metadata; network/query validation happens at execution time.",
+            vec![
+                json!({"name": "QUERY", "required": true, "subject_kind": "other", "detail": "Ensembl protein or transcript id"}),
+            ],
+        ),
+        metadata_entry_create_descriptor(
+            "FetchEnsemblProtein",
+            "ensembl_protein_entry.exists",
+            "Fetch one Ensembl protein entry through the shared engine operation and store it in project metadata.",
+            vec![
+                json!({"name": "QUERY", "required": true, "subject_kind": "other", "detail": "Ensembl protein or transcript id carried by query"}),
+            ],
+        ),
+        metadata_entry_sequence_import_descriptor(
+            "ImportUniprotEntrySequence",
+            "uniprot_entry.exists",
+            "Materialize one stored UniProt entry as a first-class project protein sequence.",
+            "explicit sequence id supplied as output_id; required for deterministic effect verification",
+        ),
+        metadata_entry_sequence_import_descriptor(
+            "ensembl-gene import-sequence",
+            "ensembl_gene_entry.exists",
+            "Materialize one stored Ensembl gene entry as a first-class project DNA sequence.",
+            "explicit sequence id supplied with --output-id; required for deterministic effect verification",
+        ),
+        metadata_entry_sequence_import_descriptor(
+            "ImportEnsemblGeneSequence",
+            "ensembl_gene_entry.exists",
+            "Materialize one stored Ensembl gene entry through the shared engine operation as a first-class project DNA sequence.",
+            "explicit sequence id supplied as output_id; required for deterministic effect verification",
+        ),
+        metadata_entry_sequence_import_descriptor(
+            "ensembl-protein import-sequence",
+            "ensembl_protein_entry.exists",
+            "Materialize one stored Ensembl protein entry as a first-class project protein sequence.",
+            "explicit sequence id supplied with --output-id; required for deterministic effect verification",
+        ),
+        metadata_entry_sequence_import_descriptor(
+            "ImportEnsemblProteinSequence",
+            "ensembl_protein_entry.exists",
+            "Materialize one stored Ensembl protein entry through the shared engine operation as a first-class project protein sequence.",
+            "explicit sequence id supplied as output_id; required for deterministic effect verification",
+        ),
         sequence_derivation_operation_descriptor(
             "Reverse",
             "Create a new sequence by reversing the stored input sequence.",
@@ -16162,6 +16949,58 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             vec![
                 json!({"name": "FROM", "required": true, "detail": "0-based start coordinate carried by the operation payload"}),
                 json!({"name": "TO", "required": true, "detail": "0-based end coordinate carried by the operation payload"}),
+            ],
+        ),
+        save_file_operation_descriptor(),
+        sequence_read_operation_descriptor(
+            "Digest",
+            "INPUT_SEQ_ID",
+            "loaded sequence id carried by input",
+            "Digest one loaded sequence with named restriction enzymes. Created fragment ids are prefix/index-derived and are not currently modeled as hard introspection effects.",
+            vec![
+                json!({"name": "ENZYMES", "required": true, "subject_kind": "other", "detail": "restriction enzyme names carried by enzymes"}),
+                json!({"name": "OUTPUT_PREFIX", "required": false, "subject_kind": "other", "detail": "fragment id prefix carried by output_prefix"}),
+            ],
+        ),
+        pcr_sequence_create_descriptor(
+            "Pcr",
+            "Amplify one loaded linear template with exact forward/reverse primers through the shared engine operation.",
+            vec![
+                json!({"name": "FORWARD_PRIMER", "required": true, "subject_kind": "other", "detail": "forward primer sequence carried by forward_primer"}),
+                json!({"name": "REVERSE_PRIMER", "required": true, "subject_kind": "other", "detail": "reverse primer sequence carried by reverse_primer"}),
+                json!({"name": "UNIQUE", "required": false, "subject_kind": "other", "detail": "optional unique-amplicon requirement carried by unique"}),
+            ],
+        ),
+        pcr_sequence_create_descriptor(
+            "PcrAdvanced",
+            "Amplify one loaded linear template with primer specs that may include 5-prime tails, mismatch allowance, and library expansion.",
+            vec![
+                json!({"name": "FORWARD_PRIMER_SPEC", "required": true, "subject_kind": "other", "detail": "advanced forward primer spec carried by forward_primer"}),
+                json!({"name": "REVERSE_PRIMER_SPEC", "required": true, "subject_kind": "other", "detail": "advanced reverse primer spec carried by reverse_primer"}),
+                json!({"name": "UNIQUE", "required": false, "subject_kind": "other", "detail": "optional unique-amplicon requirement carried by unique"}),
+            ],
+        ),
+        pcr_sequence_create_descriptor(
+            "PcrMutagenesis",
+            "Amplify one loaded linear template with advanced primers and requested SNP edits.",
+            vec![
+                json!({"name": "FORWARD_PRIMER_SPEC", "required": true, "subject_kind": "other", "detail": "advanced forward primer spec carried by forward_primer"}),
+                json!({"name": "REVERSE_PRIMER_SPEC", "required": true, "subject_kind": "other", "detail": "advanced reverse primer spec carried by reverse_primer"}),
+                json!({"name": "MUTATIONS", "required": true, "subject_kind": "other", "detail": "requested SNP edits carried by mutations"}),
+                json!({"name": "UNIQUE", "required": false, "subject_kind": "other", "detail": "optional unique-amplicon requirement carried by unique"}),
+                json!({"name": "REQUIRE_ALL_MUTATIONS", "required": false, "subject_kind": "other", "detail": "optional mutation-completeness requirement carried by require_all_mutations"}),
+            ],
+        ),
+        sequence_read_operation_descriptor(
+            "PcrOverlapExtensionMutagenesis",
+            "TEMPLATE_SEQ_ID",
+            "loaded PCR template sequence id carried by template",
+            "Generate overlap-extension mutagenesis candidates from one loaded template. Output ids are prefix/rank-derived and are not currently modeled as hard introspection effects.",
+            vec![
+                json!({"name": "EDIT_START_0BASED", "required": true, "subject_kind": "other", "detail": "0-based edit start coordinate"}),
+                json!({"name": "EDIT_END_0BASED_EXCLUSIVE", "required": true, "subject_kind": "other", "detail": "0-based exclusive edit end coordinate"}),
+                json!({"name": "INSERT_SEQUENCE", "required": false, "subject_kind": "other", "detail": "inserted replacement sequence"}),
+                json!({"name": "OUTPUT_PREFIX", "required": false, "subject_kind": "other", "detail": "candidate output id prefix carried by output_prefix"}),
             ],
         ),
         json!({
@@ -16243,6 +17082,20 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("features restriction-scan")
         }),
+        sequence_optional_artifact_operation_descriptor(
+            "FindRestrictionSites",
+            "false",
+            false,
+            "SEQ_ID",
+            "loaded sequence id carried by target.seq_id when target.kind is seq_id",
+            "optional external restriction-site JSON output path carried by path",
+            "Scan one sequence-scan target for restriction-enzyme sites through the shared engine operation.",
+            vec![
+                json!({"name": "ENZYMES", "required": false, "subject_kind": "other", "detail": "optional enzyme names carried by enzymes"}),
+                json!({"name": "MAX_SITES_PER_ENZYME", "required": false, "subject_kind": "other", "detail": "optional max-sites-per-enzyme limit"}),
+                json!({"name": "INCLUDE_CUT_GEOMETRY", "required": false, "subject_kind": "other", "detail": "whether cut/opening geometry is included"}),
+            ],
+        ),
         json!({
             "id": "features query",
             "kind": "operation",
@@ -16446,6 +17299,107 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("features tfbs-summary")
         }),
+        json!({
+            "id": "features tfbs-score-tracks-svg",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id when the target is not inline sequence text"},
+                {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external SVG output path"},
+                {"name": "--motif|--motifs", "required": true, "subject_kind": "other", "detail": "one or more motif query tokens"},
+                {"name": "--range", "required": false, "subject_kind": "other", "detail": "optional scan interval START..END"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_PATH"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Render TFBS/PSSM score tracks for one loaded or inline sequence-scan target to an external SVG file.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("features tfbs-score-tracks-svg")
+        }),
+        json!({
+            "id": "RenderTfbsScoreTracksSvg",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id carried by target.seq_id when target.kind is seq_id"},
+                {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external SVG output path carried by path"},
+                {"name": "MOTIFS", "required": true, "subject_kind": "other", "detail": "motif query tokens carried by motifs"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_PATH"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Render TFBS/PSSM score tracks through the shared engine operation.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("RenderTfbsScoreTracksSvg")
+        }),
+        sequence_optional_artifact_operation_descriptor(
+            "SummarizeTfbsScoreTracks",
+            "false",
+            false,
+            "SEQ_ID",
+            "loaded sequence id carried by target.seq_id when target.kind is seq_id",
+            "optional external TFBS score-track JSON output path carried by path",
+            "Summarize TFBS/PSSM score tracks through the shared engine operation.",
+            vec![
+                json!({"name": "MOTIFS", "required": true, "subject_kind": "other", "detail": "motif query tokens carried by motifs"}),
+                json!({"name": "SCORE_KIND", "required": false, "subject_kind": "other", "detail": "score-track value kind"}),
+                json!({"name": "CLIP_NEGATIVE", "required": false, "subject_kind": "other", "detail": "whether negative scores are clipped"}),
+            ],
+        ),
+        sequence_optional_artifact_operation_descriptor(
+            "features tfbs-track-similarity",
+            "false",
+            false,
+            "SEQ_ID",
+            "loaded sequence id when the target is not inline sequence text",
+            "optional external TFBS similarity JSON output path",
+            "Rank TFBS/PSSM score-track similarity for one loaded or inline sequence-scan target.",
+            vec![
+                json!({"name": "--anchor-motif", "required": true, "subject_kind": "other", "detail": "anchor motif token"}),
+                json!({"name": "--candidate-motif|--candidate-motifs", "required": false, "subject_kind": "other", "detail": "candidate motif tokens or ALL"}),
+                json!({"name": "--range", "required": false, "subject_kind": "other", "detail": "optional scan interval START..END"}),
+            ],
+        ),
+        sequence_optional_artifact_operation_descriptor(
+            "SummarizeTfbsTrackSimilarity",
+            "false",
+            false,
+            "SEQ_ID",
+            "loaded sequence id carried by target.seq_id when target.kind is seq_id",
+            "optional external TFBS similarity JSON output path carried by path",
+            "Summarize TFBS/PSSM score-track similarity through the shared engine operation.",
+            vec![
+                json!({"name": "ANCHOR_MOTIF", "required": true, "subject_kind": "other", "detail": "anchor motif token carried by anchor_motif"}),
+                json!({"name": "CANDIDATE_MOTIFS", "required": false, "subject_kind": "other", "detail": "candidate motif tokens carried by candidate_motifs"}),
+                json!({"name": "RANKING_METRIC", "required": false, "subject_kind": "other", "detail": "similarity ranking metric"}),
+            ],
+        ),
         json!({
             "id": "SummarizeTfbsRegion",
             "kind": "operation",
@@ -17510,6 +18464,84 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("reverse-translate export-report")
         }),
+        optional_artifact_inspection_operation_descriptor(
+            "proteases list",
+            "optional external protease-catalog JSON output path",
+            "List deterministic built-in protease catalog entries without project-state preconditions.",
+            vec![
+                json!({"name": "--filter", "required": false, "subject_kind": "other", "detail": "optional protease-catalog text filter"}),
+            ],
+        ),
+        optional_artifact_inspection_operation_descriptor(
+            "proteases show",
+            "optional external protease-entry JSON output path",
+            "Inspect one deterministic built-in protease catalog entry without project-state preconditions.",
+            vec![
+                json!({"name": "QUERY", "required": true, "subject_kind": "other", "detail": "protease name, alias, cleavage notation, or catalog query"}),
+            ],
+        ),
+        protease_digest_operation_descriptor(
+            "proteases digest",
+            "Predict and optionally materialize protease peptide products from one loaded protein or peptide sequence.",
+            "optional peptide seq_id prefix supplied with --output-prefix",
+        ),
+        protease_digest_operation_descriptor(
+            "ProteaseDigestProteinSequence",
+            "Predict and optionally materialize protease peptide products through the shared engine operation.",
+            "optional peptide seq_id prefix carried by the operation payload",
+        ),
+        protease_digest_gel_sequence_descriptor(
+            "proteases digest-gel-svg",
+            "Render a protease peptide digest from one loaded protein or peptide sequence to an external SVG file.",
+        ),
+        json!({
+            "id": "RenderProteaseDigestGelSvg",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "PROTEIN_SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "loaded protein or peptide sequence id carried by seq_id"},
+                {"name": "REPORT_ID", "required": false, "subject_kind": "report", "detail": "persisted protein-derivation report id used to resolve a source protein"},
+                {"name": "TRANSCRIPT_ID", "required": false, "subject_kind": "other", "detail": "optional transcript id within the protein-derivation report"},
+                {"name": "PROTEASES", "required": true, "subject_kind": "other", "detail": "one or more protease names, aliases, or catalog queries"},
+                {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external SVG output path"},
+                {"name": "MIN_LENGTH_AA", "required": false, "detail": "optional minimum peptide length"},
+                {"name": "LADDERS", "required": false, "subject_kind": "other", "detail": "optional protein ladder names"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "PROTEIN_SEQ_ID"}},
+                {"fact": "sequence.kind", "subject": {"arg": "PROTEIN_SEQ_ID"}, "equals": "protein"},
+                {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "protein_derivation"}
+            ],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_PATH"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {
+                "any": [
+                    protease_digest_sequence_precondition("PROTEIN_SEQ_ID"),
+                    {"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "protein_derivation"}
+                ]
+            },
+            "description": "Render a protease peptide digest to SVG from either an explicit loaded protein/peptide sequence or a persisted protein-derivation report.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("RenderProteaseDigestGelSvg")
+        }),
+        protein_derivation_report_svg_descriptor(
+            "RenderProteinGelSvg",
+            "Render one persisted protein-derivation report as a protein gel SVG.",
+        ),
+        protein_derivation_report_svg_descriptor(
+            "RenderProteinGelReportsSvg",
+            "Render one or more persisted protein-derivation reports as a grouped protein gel SVG; repeat readiness checks for every report id in report_ids.",
+        ),
+        protein_derivation_report_svg_descriptor(
+            "RenderProtein2dGelSvg",
+            "Render one persisted protein-derivation report as a two-dimensional protein gel SVG.",
+        ),
         json!({
             "id": "primers design",
             "kind": "operation",
@@ -17913,6 +18945,124 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "description": "Export one persisted restriction-site cloning PCR handoff report to an external JSON file.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("primers export-restriction-cloning-handoff")
+        }),
+        json!({
+            "id": "seq-trace import",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "PATH", "required": true, "subject_kind": "other", "detail": "ABI/AB1 or SCF trace file path"},
+                {"name": "TRACE_ID", "required": false, "subject_kind": "other", "detail": "explicit trace id; required for deterministic effect verification"},
+                {"name": "SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "optional associated sequence id"}
+            ],
+            "reads": [],
+            "effects": [
+                {
+                    "fact": "sequencing_trace.exists",
+                    "subject": {"arg": "TRACE_ID"},
+                    "effect_kind": "must_on_success"
+                }
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Import one ABI/AB1 or SCF sequencing trace into the project evidence store.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("seq-trace import")
+        }),
+        json!({
+            "id": "ImportSequencingTrace",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "PATH", "required": true, "subject_kind": "other", "detail": "ABI/AB1 or SCF trace file path carried by path"},
+                {"name": "TRACE_ID", "required": false, "subject_kind": "other", "detail": "explicit trace id carried by trace_id; required for deterministic effect verification"},
+                {"name": "SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "optional associated sequence id carried by seq_id"}
+            ],
+            "reads": [],
+            "effects": [
+                {
+                    "fact": "sequencing_trace.exists",
+                    "subject": {"arg": "TRACE_ID"},
+                    "effect_kind": "must_on_success"
+                }
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Import one ABI/AB1 or SCF sequencing trace through the shared engine operation.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("ImportSequencingTrace")
+        }),
+        json!({
+            "id": "seq-trace list",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "optional associated sequence id filter"}
+            ],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "List persisted sequencing traces, optionally filtered by associated sequence id.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("seq-trace list")
+        }),
+        json!({
+            "id": "ListSequencingTraces",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "optional associated sequence id filter carried by seq_id"}
+            ],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "List persisted sequencing traces through the shared engine operation.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("ListSequencingTraces")
+        }),
+        json!({
+            "id": "seq-trace show",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "TRACE_ID", "required": true, "subject_kind": "other", "detail": "persisted sequencing trace id"}
+            ],
+            "reads": [
+                {"fact": "sequencing_trace.exists", "subject": {"arg": "TRACE_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequencing_trace.exists", "subject": {"arg": "TRACE_ID"}}
+                ]
+            },
+            "description": "Inspect one persisted sequencing trace.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("seq-trace show")
+        }),
+        json!({
+            "id": "ShowSequencingTrace",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "TRACE_ID", "required": true, "subject_kind": "other", "detail": "persisted sequencing trace id carried by trace_id"}
+            ],
+            "reads": [
+                {"fact": "sequencing_trace.exists", "subject": {"arg": "TRACE_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequencing_trace.exists", "subject": {"arg": "TRACE_ID"}}
+                ]
+            },
+            "description": "Inspect one persisted sequencing trace through the shared engine operation.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("ShowSequencingTrace")
         }),
         json!({
             "id": "seq-confirm list-reports",
@@ -18450,6 +19600,45 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             ],
         ),
         no_project_inspection_operation_descriptor(
+            "services delivery-route",
+            "Classify a provider-neutral delivery-route request without project-state preconditions.",
+            vec![
+                json!({"name": "REQUEST_JSON_OR_@FILE", "required": true, "subject_kind": "other", "detail": "external-service delivery-route request JSON payload or @file"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "services project-preflight",
+            "Validate one provider-neutral external-service request without project-state preconditions.",
+            vec![
+                json!({"name": "REQUEST_JSON_OR_@FILE", "required": true, "subject_kind": "other", "detail": "external-service request JSON payload or @file"}),
+            ],
+        ),
+        external_artifact_catalog_operation_descriptor(
+            "services project-quote",
+            "optional external service quote bundle output directory",
+            "Build a review-only external-service quote handoff bundle without submitting an order.",
+            vec![
+                json!({"name": "REQUEST_JSON_OR_@FILE", "required": true, "subject_kind": "other", "detail": "external-service request JSON payload or @file"}),
+            ],
+        ),
+        optional_artifact_inspection_operation_descriptor(
+            "services handoff",
+            "optional external service handoff JSON output path",
+            "Build an operator/agent service handoff report without project-state preconditions.",
+            vec![
+                json!({"name": "--scope", "required": false, "subject_kind": "other", "detail": "optional handoff scope such as clawbio"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
+            "services guide",
+            "Build a compact bench-user service guide without project-state preconditions.",
+            vec![
+                json!({"name": "--channel", "required": false, "subject_kind": "other", "detail": "optional guide channel such as telegram"}),
+                json!({"name": "--section", "required": false, "subject_kind": "other", "detail": "optional guide section"}),
+                json!({"name": "--gene", "required": false, "subject_kind": "other", "detail": "optional gene symbol used for personalized examples"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
             "planning profile show",
             "Inspect one planning profile scope or the merged effective planning profile without project-state preconditions.",
             vec![
@@ -18853,6 +20042,148 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "OUTPUT_DIR", "required": true, "subject_kind": "other", "detail": "external probe-region helper output directory"}),
             ],
         ),
+        sequence_read_operation_descriptor(
+            "tracks import-bed",
+            "SEQ_ID",
+            "loaded genome-anchored target sequence id",
+            "Import BED intervals onto one loaded genome-anchored sequence.",
+            vec![
+                json!({"name": "PATH", "required": true, "subject_kind": "other", "detail": "BED or BED.GZ input path"}),
+                json!({"name": "--name|--min-score|--max-score|--clear-existing", "required": false, "subject_kind": "other", "detail": "track-label and filtering options"}),
+            ],
+        ),
+        sequence_read_operation_descriptor(
+            "import_genome_bed_track",
+            "SEQ_ID",
+            "loaded genome-anchored target sequence id",
+            "Import BED intervals through the shared MCP/tool operation row.",
+            vec![
+                json!({"name": "PATH", "required": true, "subject_kind": "other", "detail": "BED or BED.GZ input path"}),
+            ],
+        ),
+        sequence_read_operation_descriptor(
+            "ImportGenomeBedTrack",
+            "SEQ_ID",
+            "loaded genome-anchored target sequence id carried by seq_id",
+            "Import BED intervals through the shared engine operation.",
+            vec![
+                json!({"name": "PATH", "required": true, "subject_kind": "other", "detail": "BED or BED.GZ input path carried by path"}),
+            ],
+        ),
+        sequence_read_operation_descriptor(
+            "tracks import-bigwig",
+            "SEQ_ID",
+            "loaded genome-anchored target sequence id",
+            "Import BigWig signal intervals onto one loaded genome-anchored sequence.",
+            vec![
+                json!({"name": "PATH", "required": true, "subject_kind": "other", "detail": "BigWig input path"}),
+                json!({"name": "--name|--min-score|--max-score|--clear-existing", "required": false, "subject_kind": "other", "detail": "track-label and filtering options"}),
+            ],
+        ),
+        sequence_read_operation_descriptor(
+            "import_genome_bigwig_track",
+            "SEQ_ID",
+            "loaded genome-anchored target sequence id",
+            "Import BigWig signal intervals through the shared MCP/tool operation row.",
+            vec![
+                json!({"name": "PATH", "required": true, "subject_kind": "other", "detail": "BigWig input path"}),
+            ],
+        ),
+        sequence_read_operation_descriptor(
+            "ImportGenomeBigWigTrack",
+            "SEQ_ID",
+            "loaded genome-anchored target sequence id carried by seq_id",
+            "Import BigWig signal intervals through the shared engine operation.",
+            vec![
+                json!({"name": "PATH", "required": true, "subject_kind": "other", "detail": "BigWig input path carried by path"}),
+            ],
+        ),
+        sequence_read_operation_descriptor(
+            "tracks import-vcf",
+            "SEQ_ID",
+            "loaded genome-anchored target sequence id",
+            "Import VCF variants onto one loaded genome-anchored sequence.",
+            vec![
+                json!({"name": "PATH", "required": true, "subject_kind": "other", "detail": "VCF or VCF.GZ input path"}),
+                json!({"name": "--name|--min-score|--max-score|--clear-existing", "required": false, "subject_kind": "other", "detail": "track-label and filtering options"}),
+            ],
+        ),
+        sequence_read_operation_descriptor(
+            "import_genome_vcf_track",
+            "SEQ_ID",
+            "loaded genome-anchored target sequence id",
+            "Import VCF variants through the shared MCP/tool operation row.",
+            vec![
+                json!({"name": "PATH", "required": true, "subject_kind": "other", "detail": "VCF or VCF.GZ input path"}),
+            ],
+        ),
+        sequence_read_operation_descriptor(
+            "ImportGenomeVcfTrack",
+            "SEQ_ID",
+            "loaded genome-anchored target sequence id carried by seq_id",
+            "Import VCF variants through the shared engine operation.",
+            vec![
+                json!({"name": "PATH", "required": true, "subject_kind": "other", "detail": "VCF or VCF.GZ input path carried by path"}),
+            ],
+        ),
+        sequence_read_operation_descriptor(
+            "ImportBlastHitsTrack",
+            "SEQ_ID",
+            "loaded target sequence id carried by seq_id",
+            "Import BLAST hits as features on one loaded sequence through the shared engine operation.",
+            vec![
+                json!({"name": "HITS", "required": true, "subject_kind": "other", "detail": "non-empty BLAST hit list carried by hits"}),
+            ],
+        ),
+        sequence_read_operation_descriptor(
+            "genomes blast-track",
+            "TARGET_SEQ_ID",
+            "loaded target sequence id receiving BLAST hit features",
+            "Run BLAST against a prepared reference genome and import hits as features on one loaded target sequence.",
+            vec![
+                json!({"name": "GENOME_ID", "required": true, "subject_kind": "other", "detail": "prepared reference genome id"}),
+                json!({"name": "QUERY_SEQUENCE", "required": true, "subject_kind": "other", "detail": "query sequence text"}),
+            ],
+        ),
+        sequence_read_operation_descriptor(
+            "helpers blast-track",
+            "TARGET_SEQ_ID",
+            "loaded target sequence id receiving BLAST hit features",
+            "Run BLAST against a prepared helper reference and import hits as features on one loaded target sequence.",
+            vec![
+                json!({"name": "HELPER_ID", "required": true, "subject_kind": "other", "detail": "prepared helper reference id"}),
+                json!({"name": "QUERY_SEQUENCE", "required": true, "subject_kind": "other", "detail": "query sequence text"}),
+            ],
+        ),
+        sequence_read_operation_descriptor(
+            "arrays project-microarray-track",
+            "SEQ_ID",
+            "loaded genome-anchored target sequence id",
+            "Project prepared microarray contrast rows onto one loaded genome-anchored sequence.",
+            vec![
+                json!({"name": "MANIFEST", "required": true, "subject_kind": "other", "detail": "microarray track manifest path"}),
+                json!({"name": "--contrasts|--level|--min-abs-logfc|--max-adj-p|--max-features|--clear-existing", "required": false, "subject_kind": "other", "detail": "projection filters and limits"}),
+            ],
+        ),
+        sequence_read_operation_descriptor(
+            "ProjectMicroarrayTrack",
+            "SEQ_ID",
+            "loaded genome-anchored target sequence id carried by seq_id",
+            "Project prepared microarray contrast rows through the shared engine operation.",
+            vec![
+                json!({"name": "MANIFEST_PATH", "required": true, "subject_kind": "other", "detail": "microarray track manifest path carried by manifest_path"}),
+            ],
+        ),
+        sequence_read_operation_descriptor(
+            "arrays project-probe-region-output",
+            "SEQ_ID",
+            "loaded genome-anchored target sequence id",
+            "Project probe-region helper output onto one loaded genome-anchored sequence.",
+            vec![
+                json!({"name": "OUTPUT_DIR", "required": true, "subject_kind": "other", "detail": "probe-region helper output directory"}),
+                json!({"name": "--contrasts|--level|--min-abs-logfc|--max-features|--clear-existing", "required": false, "subject_kind": "other", "detail": "projection filters and limits"}),
+            ],
+        ),
         no_project_inspection_operation_descriptor(
             "candidates list",
             "List persisted candidate sets without project-state preconditions.",
@@ -18862,6 +20193,42 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "candidates template-list",
             "List persisted candidate macro templates without project-state preconditions.",
             vec![],
+        ),
+        candidate_macro_template_descriptor(
+            "candidates template-show",
+            "Inspect one persisted candidate macro template by name.",
+            false,
+            false,
+        ),
+        candidate_macro_template_descriptor(
+            "candidates template-put",
+            "Create or replace one persisted candidate macro template.",
+            true,
+            true,
+        ),
+        candidate_macro_template_descriptor(
+            "UpsertCandidateMacroTemplate",
+            "Create or replace a candidate macro template through the shared engine operation.",
+            true,
+            true,
+        ),
+        candidate_macro_template_descriptor(
+            "candidates template-delete",
+            "Delete one persisted candidate macro template by name.",
+            true,
+            false,
+        ),
+        candidate_macro_template_descriptor(
+            "DeleteCandidateMacroTemplate",
+            "Delete a candidate macro template through the shared engine operation.",
+            true,
+            false,
+        ),
+        candidate_macro_template_descriptor(
+            "candidates template-run",
+            "Run one persisted candidate macro template with bindings.",
+            true,
+            false,
         ),
         no_project_inspection_operation_descriptor(
             "guides list",
@@ -18873,10 +20240,52 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "List recorded macro-instance lineage rows without project-state preconditions.",
             vec![],
         ),
+        macro_instance_read_descriptor(
+            "macros instance-show",
+            "Inspect one recorded workflow macro-instance lineage row.",
+        ),
         no_project_inspection_operation_descriptor(
             "macros template-list",
             "List persisted workflow macro templates without project-state preconditions.",
             vec![],
+        ),
+        workflow_macro_template_descriptor(
+            "macros template-show",
+            "Inspect one persisted workflow macro template by name.",
+            false,
+            false,
+        ),
+        workflow_macro_template_descriptor(
+            "macros template-put",
+            "Create or replace one persisted workflow macro template.",
+            true,
+            true,
+        ),
+        workflow_macro_template_descriptor(
+            "UpsertWorkflowMacroTemplate",
+            "Create or replace a workflow macro template through the shared engine operation.",
+            true,
+            true,
+        ),
+        workflow_macro_template_descriptor(
+            "macros template-delete",
+            "Delete one persisted workflow macro template by name.",
+            true,
+            false,
+        ),
+        workflow_macro_template_descriptor(
+            "DeleteWorkflowMacroTemplate",
+            "Delete a workflow macro template through the shared engine operation.",
+            true,
+            false,
+        ),
+        workflow_macro_template_import_descriptor(
+            "macros template-import",
+            "Import workflow macro templates from an external JSON pattern file or directory.",
+        ),
+        workflow_macro_template_run_descriptor(
+            "macros template-run",
+            "Run one persisted workflow macro template with bindings.",
         ),
         no_project_inspection_operation_descriptor(
             "routines list",
@@ -18916,6 +20325,82 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "List persisted construct-reasoning graph summaries through the shared MCP/tool operation row.",
             vec![
                 json!({"name": "SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "optional sequence id filter; it is not a readiness precondition"}),
+            ],
+        ),
+        construct_reasoning_graph_read_descriptor(
+            "construct-reasoning show-graph",
+            "Inspect one persisted construct-reasoning graph by id.",
+            vec![],
+        ),
+        construct_reasoning_graph_read_descriptor(
+            "construct_reasoning_graph",
+            "Inspect one persisted construct-reasoning graph by id through the shared MCP/tool operation row.",
+            vec![],
+        ),
+        construct_reasoning_graph_read_descriptor(
+            "construct-reasoning list-inspection-actions",
+            "List recommended inspection actions for one persisted construct-reasoning graph.",
+            vec![
+                json!({"name": "--fact-id|--annotation-id|--candidate-id|--evidence-id|--seq-id|--action-kind|--summary-id", "required": false, "subject_kind": "other", "detail": "optional action filters; they are execution filters, not readiness preconditions"}),
+            ],
+        ),
+        construct_reasoning_graph_read_descriptor(
+            "construct_reasoning_inspection_actions",
+            "List recommended inspection actions for one persisted construct-reasoning graph through the shared MCP/tool operation row.",
+            vec![
+                json!({"name": "FILTERS", "required": false, "subject_kind": "other", "detail": "optional action filters; they are execution filters, not readiness preconditions"}),
+            ],
+        ),
+        construct_reasoning_graph_preserve_descriptor(
+            "construct-reasoning set-annotation-status",
+            "Update one construct-reasoning annotation candidate status while preserving the graph.",
+            vec![
+                json!({"name": "ANNOTATION_ID", "required": true, "subject_kind": "other", "detail": "annotation candidate id inside the graph"}),
+                json!({"name": "STATUS", "required": true, "subject_kind": "other", "detail": "new editable status"}),
+            ],
+        ),
+        construct_reasoning_graph_preserve_descriptor(
+            "construct_reasoning_set_annotation_status",
+            "Update one construct-reasoning annotation candidate status through the shared MCP/tool operation row.",
+            vec![
+                json!({"name": "ANNOTATION_ID", "required": true, "subject_kind": "other", "detail": "annotation candidate id inside the graph"}),
+                json!({"name": "STATUS", "required": true, "subject_kind": "other", "detail": "new editable status"}),
+            ],
+        ),
+        construct_reasoning_graph_preserve_descriptor(
+            "construct-reasoning write-annotation",
+            "Write one accepted/locked construct-reasoning annotation candidate back to the loaded sequence.",
+            vec![
+                json!({"name": "ANNOTATION_ID", "required": true, "subject_kind": "other", "detail": "annotation candidate id inside the graph"}),
+            ],
+        ),
+        construct_reasoning_graph_preserve_descriptor(
+            "construct_reasoning_write_annotation",
+            "Write one accepted/locked construct-reasoning annotation candidate through the shared MCP/tool operation row.",
+            vec![
+                json!({"name": "ANNOTATION_ID", "required": true, "subject_kind": "other", "detail": "annotation candidate id inside the graph"}),
+            ],
+        ),
+        construct_reasoning_graph_export_descriptor(
+            "construct-reasoning export-graph",
+            "Export one persisted construct-reasoning graph to an external JSON file.",
+        ),
+        construct_reasoning_graph_read_descriptor(
+            "construct-reasoning run-inspection-action",
+            "Run one inspection action from a persisted construct-reasoning graph.",
+            vec![
+                json!({"name": "ACTION_ID", "required": true, "subject_kind": "other", "detail": "inspection action id inside the graph"}),
+                json!({"name": "--id", "required": false, "subject_kind": "other", "detail": "optional dotplot id when the action creates a dotplot payload"}),
+                json!({"name": "--render-svg", "required": false, "subject_kind": "other", "detail": "optional external SVG output path"}),
+            ],
+        ),
+        construct_reasoning_graph_read_descriptor(
+            "construct_reasoning_run_inspection_action",
+            "Run one inspection action from a persisted construct-reasoning graph through the shared MCP/tool operation row.",
+            vec![
+                json!({"name": "ACTION_ID", "required": true, "subject_kind": "other", "detail": "inspection action id inside the graph"}),
+                json!({"name": "DOTPLOT_ID", "required": false, "subject_kind": "other", "detail": "optional dotplot id when the action creates a dotplot payload"}),
+                json!({"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external SVG output path"}),
             ],
         ),
         no_project_inspection_operation_descriptor(
@@ -19347,6 +20832,97 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "registry": registry_metadata_for_introspection("ui_intents")
         }),
         json!({
+            "id": "ui open",
+            "kind": "view_intent",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "TARGET", "required": true, "subject_kind": "other", "detail": "UI target such as sequence-window, pcr-design, prepared-references, or agent-assistant"},
+                {"name": "SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "loaded sequence id when TARGET is sequence-window"},
+                {"name": "--genome-id|--helpers|--catalog|--cache-dir|--filter|--species|--latest", "required": false, "subject_kind": "other", "detail": "prepared-reference selection options"}
+            ],
+            "reads": [
+                {"fact": "ui.host_available", "equals": true}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "ui.host_available", "equals": true}
+                ]
+            },
+            "description": "Request that the GUI host open one UI target.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("ui open")
+        }),
+        json!({
+            "id": "ui focus",
+            "kind": "view_intent",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "TARGET", "required": true, "subject_kind": "other", "detail": "UI target such as sequence-window, pcr-design, prepared-references, or agent-assistant"},
+                {"name": "SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "loaded sequence id when TARGET is sequence-window"},
+                {"name": "--genome-id|--helpers|--catalog|--cache-dir|--filter|--species|--latest", "required": false, "subject_kind": "other", "detail": "prepared-reference selection options"}
+            ],
+            "reads": [
+                {"fact": "ui.host_available", "equals": true}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "ui.host_available", "equals": true}
+                ]
+            },
+            "description": "Request that the GUI host focus one UI target.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("ui focus")
+        }),
+        json!({
+            "id": "ui close",
+            "kind": "view_intent",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "TARGET", "required": true, "subject_kind": "other", "detail": "UI target such as sequence-window, pcr-design, prepared-references, or agent-assistant"},
+                {"name": "SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "loaded sequence id when TARGET is sequence-window"}
+            ],
+            "reads": [
+                {"fact": "ui.host_available", "equals": true}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "ui.host_available", "equals": true}
+                ]
+            },
+            "description": "Request that the GUI host close one UI target without deleting project data.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("ui close")
+        }),
+        json!({
+            "id": "ui_intent",
+            "kind": "view_intent",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "ACTION", "required": true, "subject_kind": "other", "detail": "open, focus, or close"},
+                {"name": "TARGET", "required": true, "subject_kind": "other", "detail": "UI target"},
+                {"name": "SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "loaded sequence id when TARGET is sequence-window"}
+            ],
+            "reads": [
+                {"fact": "ui.host_available", "equals": true}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "ui.host_available", "equals": true}
+                ]
+            },
+            "description": "Resolve one GUI intent through the shared MCP/tool route.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("ui_intent")
+        }),
+        json!({
             "id": "ui_prepared_genomes",
             "kind": "view_intent",
             "mutating": "false",
@@ -19622,7 +21198,31 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         "RecomputeFeatures" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
         ]),
-        "features restriction-scan" => Some(vec![
+        "tracks import-bed"
+        | "import_genome_bed_track"
+        | "ImportGenomeBedTrack"
+        | "tracks import-bigwig"
+        | "import_genome_bigwig_track"
+        | "ImportGenomeBigWigTrack"
+        | "tracks import-vcf"
+        | "import_genome_vcf_track"
+        | "ImportGenomeVcfTrack"
+        | "ImportBlastHitsTrack"
+        | "arrays project-microarray-track"
+        | "ProjectMicroarrayTrack"
+        | "arrays project-probe-region-output" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
+        ]),
+        "genomes blast-track" | "helpers blast-track" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "TARGET_SEQ_ID"}}),
+        ]),
+        "features restriction-scan"
+        | "FindRestrictionSites"
+        | "features tfbs-score-tracks-svg"
+        | "RenderTfbsScoreTracksSvg"
+        | "SummarizeTfbsScoreTracks"
+        | "features tfbs-track-similarity"
+        | "SummarizeTfbsTrackSimilarity" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
         ]),
         "features query" => Some(vec![
@@ -19675,6 +21275,22 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         "reverse-translate export-report" => Some(vec![
             json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "reverse_translation"}),
         ]),
+        "proteases digest" | "ProteaseDigestProteinSequence" | "proteases digest-gel-svg" => {
+            Some(vec![
+                json!({"fact": "sequence.exists", "subject": {"arg": "PROTEIN_SEQ_ID"}}),
+                json!({"fact": "sequence.kind", "subject": {"arg": "PROTEIN_SEQ_ID"}, "equals": "protein"}),
+            ])
+        }
+        "RenderProteaseDigestGelSvg" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "PROTEIN_SEQ_ID"}}),
+            json!({"fact": "sequence.kind", "subject": {"arg": "PROTEIN_SEQ_ID"}, "equals": "protein"}),
+            json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "protein_derivation"}),
+        ]),
+        "RenderProteinGelSvg" | "RenderProteinGelReportsSvg" | "RenderProtein2dGelSvg" => {
+            Some(vec![
+                json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "protein_derivation"}),
+            ])
+        }
         "primers design" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "TEMPLATE_SEQ_ID"}}),
         ]),
@@ -19716,6 +21332,13 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         ]),
         "primers export-restriction-cloning-handoff" => Some(vec![
             json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "restriction_cloning_pcr_handoff"}),
+        ]),
+        "seq-trace import"
+        | "ImportSequencingTrace"
+        | "seq-trace list"
+        | "ListSequencingTraces" => Some(vec![]),
+        "seq-trace show" | "ShowSequencingTrace" => Some(vec![
+            json!({"fact": "sequencing_trace.exists", "subject": {"arg": "TRACE_ID"}}),
         ]),
         "seq-confirm list-reports" => Some(vec![]),
         "seq-confirm show-report" => Some(vec![
@@ -19779,6 +21402,11 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "state_summary"
         | "services providers list"
         | "services providers doctor"
+        | "services delivery-route"
+        | "services project-preflight"
+        | "services project-quote"
+        | "services handoff"
+        | "services guide"
         | "planning profile show"
         | "planning objective show"
         | "planning suggestions list"
@@ -19875,6 +21503,19 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "export_rna_ladders"
         | "ExportDnaLadders"
         | "ExportRnaLadders" => Some(vec![]),
+        "construct-reasoning show-graph"
+        | "construct_reasoning_graph"
+        | "construct-reasoning list-inspection-actions"
+        | "construct_reasoning_inspection_actions"
+        | "construct-reasoning run-inspection-action"
+        | "construct_reasoning_run_inspection_action"
+        | "construct-reasoning set-annotation-status"
+        | "construct_reasoning_set_annotation_status"
+        | "construct-reasoning write-annotation"
+        | "construct_reasoning_write_annotation"
+        | "construct-reasoning export-graph" => Some(vec![
+            json!({"fact": "construct_reasoning_graph.exists", "subject": {"arg": "GRAPH_ID"}}),
+        ]),
         "ShowRnaReadReport"
         | "AlignRnaReadReport"
         | "ExportRnaReadReport"
@@ -19897,6 +21538,9 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         "display" | "SetDisplayVisibility" => Some(vec![]),
         "SetLinearViewport" => Some(vec![]),
         "ui intents" => Some(vec![]),
+        "ui open" | "ui focus" | "ui close" | "ui_intent" => {
+            Some(vec![json!({"fact": "ui.host_available", "equals": true})])
+        }
         "ui selection" => Some(vec![
             json!({"fact": "ui.host_available", "equals": true}),
             json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
@@ -19948,6 +21592,7 @@ fn subject_kind_for_arg(arg_name: &str) -> FactSubjectKind {
         | "TEMPLATE_SEQ_ID"
         | "DESTINATION_VECTOR_SEQ_ID" => FactSubjectKind::Sequence,
         "REPORT_ID" | "PRIMER_REPORT_ID" => FactSubjectKind::Report,
+        "TRACE_ID" => FactSubjectKind::Other,
         "PARAM_NAME" => FactSubjectKind::Other,
         _ => FactSubjectKind::Other,
     }
@@ -20055,17 +21700,36 @@ fn instantiate_introspection_expression(
     unknown_atoms: &mut Vec<Value>,
 ) -> Option<FactExpression> {
     if let Some(children) = value.get("all").and_then(Value::as_array) {
+        let mut local_unknown_atoms = vec![];
         let all = children
             .iter()
-            .filter_map(|child| instantiate_introspection_expression(child, args, unknown_atoms))
+            .filter_map(|child| {
+                instantiate_introspection_expression(child, args, &mut local_unknown_atoms)
+            })
             .collect::<Vec<_>>();
+        if !children.is_empty() && all.is_empty() && !local_unknown_atoms.is_empty() {
+            unknown_atoms.extend(local_unknown_atoms);
+            return None;
+        }
+        unknown_atoms.extend(local_unknown_atoms);
         return Some(FactExpression::All { all });
     }
     if let Some(children) = value.get("any").and_then(Value::as_array) {
-        let any = children
-            .iter()
-            .filter_map(|child| instantiate_introspection_expression(child, args, unknown_atoms))
-            .collect::<Vec<_>>();
+        let mut any = vec![];
+        let mut branch_unknown_atoms = vec![];
+        for child in children {
+            let mut local_unknown_atoms = vec![];
+            if let Some(expression) =
+                instantiate_introspection_expression(child, args, &mut local_unknown_atoms)
+            {
+                any.push(expression);
+            } else {
+                branch_unknown_atoms.extend(local_unknown_atoms);
+            }
+        }
+        if any.is_empty() {
+            unknown_atoms.extend(branch_unknown_atoms);
+        }
         return Some(FactExpression::Any { any });
     }
     if let Some(child) = value.get("not") {

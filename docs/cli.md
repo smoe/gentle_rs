@@ -2073,11 +2073,12 @@ Shared shell command:
     - `facts eval FACT_EXPR_JSON_OR_@FILE [--evidence SCAN.json ...]`
       - evaluates `gentle.fact_expression.v1`-style preconditions against the
         deterministic `gentle.project_fact_graph.v1`; persisted
-        reverse-translation, primer/qPCR design, restriction-cloning handoff,
-        sequencing-confirmation, CUT&RUN read, and RNA-read interpretation
-        reports are projected as `report.exists`, while
-        restriction-site absence requires explicit scan evidence rather than
-        missing hits in state
+        reverse-translation, protein-derivation, primer/qPCR design,
+        restriction-cloning handoff, sequencing-confirmation, CUT&RUN read,
+        and RNA-read interpretation reports are projected as `report.exists`;
+        imported sequencing traces are projected as `sequencing_trace.exists`;
+        and restriction-site absence requires explicit scan evidence rather
+        than missing hits in state
     - `introspect facts [--domain project|view|host|config] [--seq-id SEQ_ID] [--evidence SCAN.json ...] [--ui-host true|false]`
       - returns `gentle.introspection.v1` fact read-back grouped by domain
       - `--seq-id` filters facts to one concrete loaded sequence subject
@@ -2109,6 +2110,11 @@ Shared shell command:
         `ShowSequencingConfirmationReport`, `ShowCutRunReadReport`, and
         `ShowRnaReadReport` mirror their shell `show-*` routes: they require
         the matching `report.exists` fact and declare no side effects
+      - sequencing-trace commands project `sequencing_trace.exists(TRACE_ID)`;
+        `seq-trace list` / `ListSequencingTraces` are catalog-ready,
+        `seq-trace show` / `ShowSequencingTrace` require the trace fact, and
+        `seq-trace import` / `ImportSequencingTrace` can verify the same fact
+        when the caller supplied an explicit `TRACE_ID`
       - persisted-report export commands such as
         `reverse-translate export-report`, `primers export-report`, and
         `primers export-qpcr-report`, and
@@ -2168,10 +2174,15 @@ Shared shell command:
         `ExportReporterCorpus` are also catalog-ready and model their required
         JSON/JSONL output path as an `artifact.written` external handoff
       - service status/provider catalog routes `services status`,
-        `services providers list`, and `services providers doctor` are
-        fact-annotated as ready without project state. The doctor route models
-        its optional JSON report path as an `artifact.written` external
-        handoff; provider catalog path validation remains part of execution.
+        `services providers list`, `services providers doctor`,
+        `services delivery-route`, `services project-preflight`,
+        `services project-quote`, `services handoff`, and `services guide` are
+        fact-annotated as ready without project state. Doctor, quote, and
+        handoff output paths are modeled as `artifact.written` external
+        handoffs. These routes prepare local classification, validation, guide,
+        or handoff records only; they do not submit vendor orders.
+        `services route-project-source` remains separate because its
+        preconditions depend on the selected project object kind.
       - planning read-back routes `planning profile show`,
         `planning objective show`, and `planning suggestions list` are
         fact-annotated as ready without project state and declare no side
@@ -2233,6 +2244,11 @@ Shared shell command:
         fact-annotated with the same no-project readiness as their shared shell
         contracts (`state-summary`, reference catalog listing, and deterministic
         UI catalog/prepared-genome query routes).
+      - generic GUI intent requests (`ui open`, `ui focus`, `ui close`, and
+        `ui_intent`) are fact-annotated as view intents that require
+        `ui.host_available == true`. In headless command-line use they can
+        still resolve to a structured intent payload, but readiness reports that
+        the intent cannot be applied until a GUI host is attached.
       - protocol-cartoon catalog/render/template routes are ready without
         project state; render/export rows model SVG or JSON outputs as
         `artifact.written` external handoffs, while template input path
@@ -2242,6 +2258,21 @@ Shared shell command:
         external file/directory/catalog validation remains part of execution,
         and `arrays render-probe-region-output-svg` models its SVG output as an
         `artifact.written` external handoff
+      - genome-track import and array projection routes (`tracks import-bed`,
+        `tracks import-bigwig`, `tracks import-vcf`, their raw/MCP operation
+        rows, `genomes|helpers blast-track`,
+        `arrays project-microarray-track`, `ProjectMicroarrayTrack`, and
+        `arrays project-probe-region-output`) require the loaded target
+        sequence fact. They currently remain readiness-only because feature
+        freshness/track-update facts are not projected yet
+      - sequence-scan reporting/rendering rows (`FindRestrictionSites`,
+        `features tfbs-score-tracks-svg`, `RenderTfbsScoreTracksSvg`,
+        `SummarizeTfbsScoreTracks`, `features tfbs-track-similarity`, and
+        `SummarizeTfbsTrackSimilarity`) require
+        `sequence.exists(SEQ_ID)` when the scan target is a loaded project
+        sequence. Inline sequence text and motif/enzyme validation remain
+        execution-time checks; JSON/SVG output paths are modeled as
+        `artifact.written` external handoffs where present
       - catalog/list routes for candidate sets, guide sets, workflow macros,
         candidate macro templates, and routine catalogs are ready without
         project state; routes that inspect a named persisted set/template still
@@ -2249,8 +2280,10 @@ Shared shell command:
       - construct-reasoning graph list routes
         `construct-reasoning list-graphs` and `construct_reasoning_graphs` are
         ready without project state; their optional `SEQ_ID` is treated as a
-        filter, while named graph inspection/action routes remain registry-only
-        until graph-existence facts are projected
+        filter. Named graph inspection/action routes require
+        `construct_reasoning_graph.exists(GRAPH_ID)`; status/writeback actions
+        verify that the graph remains present, and graph export models the JSON
+        output as an `artifact.written` external handoff
       - persisted analysis-payload list routes `dotplot list` and `flex list`
         are ready without project state; optional `SEQ_ID` is treated as a
         filter, while show/render-by-id routes remain registry-only until
@@ -2338,10 +2371,55 @@ Shared shell command:
         deterministic ids. Rack move/profile/template/block commands require
         and preserve `rack.exists`; rack SVG/OpenSCAD/simulation exports require
         the rack and model files as `artifact.written` external handoffs
+      - macro-template routes project
+        `workflow_macro_template.exists(TEMPLATE_NAME)`,
+        `candidate_macro_template.exists(TEMPLATE_NAME)`, and
+        `macro_instance.exists(MACRO_INSTANCE_ID)`. Template upsert can verify
+        deterministic template names. Template show/delete/run require the
+        matching template fact; delete routes do not yet declare absence
+        effects. `macros instance-show` requires a recorded macro-instance fact
+      - external sequence creation routes are fact-annotated for both shell and
+        raw operation callers: `LoadFile`, `genbank fetch`,
+        `FetchGenBankAccession`, `ensembl-region fetch`,
+        `FetchEnsemblRegion`, `dbsnp fetch`, `FetchDbSnpRegion`,
+        and `FetchUniprotLinkedGenBank`. These fetch/import routes have no
+        existing-project preconditions; `introspect verify-effects` can verify
+        `sequence.exists(OUTPUT_ID)` only when the caller supplied the explicit
+        `--as-id`, `as_id`, `--output-id`, or `output_id` that execution created
+      - protein/gene metadata routes project
+        `uniprot_entry.exists(ENTRY_ID)`,
+        `ensembl_gene_entry.exists(ENTRY_ID)`, and
+        `ensembl_protein_entry.exists(ENTRY_ID)`. UniProt and Ensembl
+        fetch/import routes can verify explicit entry ids; show routes and
+        metadata-backed sequence imports require the matching stored metadata
+        fact. `ImportUniprotEntrySequence`, `ensembl-gene import-sequence`,
+        `ImportEnsemblGeneSequence`, `ensembl-protein import-sequence`, and
+        `ImportEnsemblProteinSequence` can also verify
+        `sequence.exists(OUTPUT_ID)` when a deterministic output id was supplied
+      - raw core sequence operation rows are fact-annotated where the state
+        contract is deterministic: `SaveFile` requires `sequence.exists(SEQ_ID)`
+        and declares an `artifact.written(OUTPUT_PATH)` external handoff;
+        `Digest` requires `sequence.exists(INPUT_SEQ_ID)` but is
+        readiness-only because fragment ids are prefix/index-derived; `Pcr`,
+        `PcrAdvanced`, and `PcrMutagenesis` require
+        `sequence.exists(TEMPLATE_SEQ_ID)` and can verify
+        `sequence.exists(OUTPUT_ID)` for deterministic product ids; and
+        `PcrOverlapExtensionMutagenesis` requires the template sequence but is
+        readiness-only until generated candidate ids are projected as facts
       - `ReverseTranslateProteinSequence` mirrors `reverse-translate run`:
         the input sequence must exist and have `sequence.kind == protein`, and
         a deterministic `OUTPUT_ID` can be verified as the generated coding-DNA
         sequence
+      - protease catalog and digest routes are fact-annotated:
+        `proteases list` and `proteases show` are no-precondition catalog
+        reads; `proteases digest`, `ProteaseDigestProteinSequence`, and
+        `proteases digest-gel-svg` require an existing protein-kind sequence.
+        Digest materialization advertises only a `may_on_success` sequence
+        effect because peptide ids are prefix/index-derived. Protein gel SVG
+        routes require `report.exists(REPORT_ID) == protein_derivation`, while
+        `RenderProteaseDigestGelSvg` can also be ready from an explicit
+        protein sequence. SVG outputs are modeled as `artifact.written`
+        external handoffs.
       - `SetTopology` is fact-annotated through its raw operation row: it
         requires `sequence.exists(SEQ_ID)` and verifies
         `sequence.circular(SEQ_ID) == CIRCULAR`

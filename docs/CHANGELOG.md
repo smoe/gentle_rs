@@ -39,6 +39,29 @@ Maintenance rule:
   `rack.exists` introspection for persisted wet-lab container/rack authoring,
   including readiness/effect descriptors for arrangement creation, rack
   placement/mutation, and rack SVG/OpenSCAD/simulation exports.
+- Added closed-world `workflow_macro_template.exists`,
+  `candidate_macro_template.exists`, and `macro_instance.exists`
+  introspection for persisted macro templates and recorded macro lineage rows,
+  including readiness/effect descriptors for template show/upsert/delete/run
+  and macro-instance inspection.
+- Added fact-aware external sequence creation introspection for `LoadFile`,
+  `genbank fetch`, `FetchGenBankAccession`, `ensembl-region fetch`,
+  `FetchEnsemblRegion`, `dbsnp fetch`, `FetchDbSnpRegion`,
+  `FetchUniprotLinkedGenBank`, `ImportUniprotEntrySequence`, and Ensembl
+  gene/protein entry sequence import routes. These routes have no project-state
+  preconditions, and post-run verification checks `sequence.exists(OUTPUT_ID)`
+  when a deterministic id was supplied.
+- Added fact-aware introspection for raw core sequence operation rows:
+  `SaveFile`, `Digest`, `Pcr`, `PcrAdvanced`, `PcrMutagenesis`, and
+  `PcrOverlapExtensionMutagenesis`. PCR rows require a loaded template and can
+  verify deterministic product ids; digest and overlap-extension rows are
+  readiness-only until prefix/rank-derived products are projected as facts.
+- Added closed-world `uniprot_entry.exists`,
+  `ensembl_gene_entry.exists`, and `ensembl_protein_entry.exists`
+  introspection for stored protein/gene metadata entries. UniProt and Ensembl
+  fetch/import routes can verify explicit entry ids, show/import-sequence
+  routes require stored metadata facts, and metadata-backed sequence imports can
+  still verify deterministic `sequence.exists(OUTPUT_ID)` products.
 
 ## 2026-06-26
 
@@ -219,12 +242,20 @@ Maintenance rule:
   prepared-cache inspection, CUT&RUN dataset catalog/status inspection, and
   array helper inspection/rendering, with SVG artifact handoff modeling where
   applicable.
+- Added fact-aware readiness descriptors for genome-track imports, BLAST-track
+  imports, and array projection routes. These rows require the loaded target
+  sequence and intentionally remain readiness-only until feature
+  freshness/track-update facts are projected.
 - Added fact-aware introspection for no-project catalog/list routes covering
   candidate sets, candidate macro templates, guide sets, workflow macro
   instances/templates, and routine catalog list/explain/compare operations.
 - Added fact-aware introspection for construct-reasoning graph list routes,
   treating optional sequence ids as filters rather than readiness
   preconditions.
+- Added closed-world `construct_reasoning_graph.exists` introspection for
+  persisted construct-reasoning graphs, including readiness/effect descriptors
+  for named graph inspection, inspection-action listing/running, annotation
+  status/writeback routes, and graph JSON export.
 - Added fact-aware introspection for persisted dotplot and flexibility-track
   list routes, treating optional sequence ids as filters rather than readiness
   preconditions.
@@ -271,6 +302,26 @@ Maintenance rule:
 - Added fact-aware introspection for adapter parity aliases:
   `state_summary`, `reference_catalog_entries`, `ui_intents`,
   `ui_prepared_genomes`, and `ui_latest_prepared`.
+- Added fact-aware introspection for generic GUI intent requests:
+  `ui open`, `ui focus`, `ui close`, and `ui_intent`, with readiness gated by
+  `ui.host_available`.
+- Added fact-aware introspection for sequence-scan report/render routes:
+  `FindRestrictionSites`, `features tfbs-score-tracks-svg`,
+  `RenderTfbsScoreTracksSvg`, `SummarizeTfbsScoreTracks`,
+  `features tfbs-track-similarity`, and `SummarizeTfbsTrackSimilarity`.
+- Added fact-aware introspection for local external-service handoff routes:
+  `services delivery-route`, `services project-preflight`,
+  `services project-quote`, `services handoff`, and `services guide`, while
+  keeping `services route-project-source` separate until conditional
+  project-object preconditions are modeled.
+- Added closed-world `sequencing_trace.exists` introspection for imported
+  sequencing-trace evidence records, including readiness/effect descriptors for
+  trace import/list/show shell routes and raw operation rows.
+- Added fact-aware introspection for protease catalog/digest and protein-gel
+  rendering routes. Protease digest readiness now requires an existing
+  protein-kind sequence, persisted protein-derivation reports project as
+  `report.exists == protein_derivation`, and SVG render routes model their
+  output paths as `artifact.written` handoffs.
 - Added fact-aware introspection for non-mutating primer helper readbacks:
   Primer3/backend preflight, feature/splicing ROI seed helpers, restriction
   cloning vector suggestions, and restriction-cloning handoff request seeding.
