@@ -1622,6 +1622,7 @@ impl GentleEngine {
             if matching_hits.is_empty() {
                 facts.push(ProjectFact {
                     fact: "restriction_site.absent".to_string(),
+                    domain: ProjectFactDomain::Project,
                     subject: subject.clone(),
                     enzyme: Some(enzyme.clone()),
                     range: Some(range.clone()),
@@ -1633,6 +1634,7 @@ impl GentleEngine {
                 for hit in matching_hits {
                     facts.push(ProjectFact {
                         fact: "restriction_site.present".to_string(),
+                        domain: ProjectFactDomain::Project,
                         subject: subject.clone(),
                         enzyme: Some(hit.enzyme_name.clone()),
                         range: Some(FactRange::Span {

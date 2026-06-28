@@ -172,6 +172,10 @@ Maintenance rule:
   calls retain the soft-catalog caveat.
 - Extended fact/introspection projection with report, view, and configuration
   facts plus glossary/parity metadata for `facts` and `introspect` shell routes.
+- Added Agent Assistant hover help for prompt templates, project-state context,
+  and auto-run suggestions, and fixed External Services window routing so
+  native child viewports render directly instead of appearing as nested hosted
+  windows.
 
 ## 2026-06-26
 

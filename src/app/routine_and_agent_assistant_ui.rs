@@ -3376,8 +3376,10 @@ impl GENtleApp {
             ui.checkbox(
                 &mut self.agent_include_state_summary,
                 include_state_summary_label,
-            );
-            ui.checkbox(&mut self.agent_allow_auto_exec, auto_run_suggestions_label);
+            )
+            .on_hover_text(self.tr("agent.include_state_summary.tooltip"));
+            ui.checkbox(&mut self.agent_allow_auto_exec, auto_run_suggestions_label)
+                .on_hover_text(self.tr("agent.auto_run_suggestions.tooltip"));
         });
         if !agent_prompt_template_options()
             .iter()
@@ -3386,8 +3388,9 @@ impl GENtleApp {
             self.agent_prompt_template_id = AGENT_PROMPT_TEMPLATE_DEFAULT_ID.to_string();
         }
         ui.horizontal(|ui| {
-            ui.label(self.tr("agent.prompt_template"));
-            egui::ComboBox::from_id_salt("agent_prompt_template_combo")
+            ui.label(self.tr("agent.prompt_template"))
+                .on_hover_text(self.tr("agent.prompt_template.tooltip"));
+            let template_response = egui::ComboBox::from_id_salt("agent_prompt_template_combo")
                 .selected_text(agent_prompt_template_label(&self.agent_prompt_template_id))
                 .show_ui(ui, |ui| {
                     for (id, label) in agent_prompt_template_options() {
@@ -3398,6 +3401,9 @@ impl GENtleApp {
                         );
                     }
                 });
+            template_response
+                .response
+                .on_hover_text(self.tr("agent.prompt_template.tooltip"));
             if ui
                 .button(self.tr("agent.insert"))
                 .on_hover_text(

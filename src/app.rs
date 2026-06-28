@@ -2853,6 +2853,13 @@ impl GENtleApp {
         ViewportId::from_hash_of("GENtle External Services Viewport")
     }
 
+    fn hosted_external_services_window_id() -> egui::Id {
+        egui::Id::new((
+            "hosted_external_services_window",
+            Self::external_services_viewport_id(),
+        ))
+    }
+
     fn clawbio_viewport_id() -> ViewportId {
         ViewportId::from_hash_of("GENtle ClawBio Viewport")
     }
