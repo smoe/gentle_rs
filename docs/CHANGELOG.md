@@ -14,6 +14,10 @@ Maintenance rule:
 
 ## 2026-06-28
 
+- Added fact-aware introspection for explicit cloning/handoff rows, including
+  Gibson preview/apply payload routes, protein-to-DNA construct-reasoning
+  handoffs, reporter construct handoffs, and the raw restriction-cloning PCR
+  handoff operation.
 - Added fact-aware introspection for gene-group/gene-set resource rows,
   including draft gene-group reports, gene-set resolution/producer routes, and
   promoter-cohort construction.

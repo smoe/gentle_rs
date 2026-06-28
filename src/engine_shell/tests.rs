@@ -21275,6 +21275,56 @@ fn execute_introspect_readiness_requires_reverse_translate_protein_sequence() {
 }
 
 #[test]
+fn execute_introspect_readiness_checks_protein_to_dna_handoff_inputs() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "dna".to_string(),
+        DNAsequence::from_sequence("ATGAAACCGTAG").expect("dna"),
+    );
+    let mut protein = DNAsequence::from_sequence("MKP").expect("protein");
+    protein.set_molecule_type("protein");
+    state.sequences.insert("protein".to_string(), protein);
+    state.sequences.insert(
+        "not_protein".to_string(),
+        DNAsequence::from_sequence("ATGAAACCG").expect("dna"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+
+    for capability_id in [
+        "construct-reasoning build-protein-dna-handoff",
+        "BuildProteinToDnaHandoffReasoning",
+    ] {
+        let wrong_kind = parse_shell_line(&format!(
+            "introspect readiness {capability_id} --arg SEQ_ID=dna --arg PROTEIN_SEQ_ID=not_protein"
+        ))
+        .expect("parse wrong-kind protein handoff readiness");
+        let wrong_kind = execute_shell_command(&mut engine, &wrong_kind)
+            .expect("execute wrong-kind protein handoff readiness");
+        assert_eq!(
+            wrong_kind.output["readiness"][0]["readiness"].as_str(),
+            Some("blocked"),
+            "{capability_id} should require a protein input sequence"
+        );
+        assert_eq!(
+            wrong_kind.output["readiness"][0]["unmet_atoms"][0]["fact"].as_str(),
+            Some("sequence.kind")
+        );
+
+        let ready = parse_shell_line(&format!(
+            "introspect readiness {capability_id} --arg SEQ_ID=dna --arg PROTEIN_SEQ_ID=protein"
+        ))
+        .expect("parse ready protein handoff readiness");
+        let ready = execute_shell_command(&mut engine, &ready)
+            .expect("execute ready protein handoff readiness");
+        assert_eq!(
+            ready.output["readiness"][0]["readiness"].as_str(),
+            Some("ready"),
+            "{capability_id} should be ready for loaded DNA/protein inputs"
+        );
+    }
+}
+
+#[test]
 fn execute_introspect_verify_effects_accepts_reverse_translated_output_sequence() {
     let mut engine = reverse_translate_demo_engine();
 
@@ -21897,32 +21947,44 @@ fn execute_introspect_verify_effects_accepts_qpcr_design_report_fact() {
 
 #[test]
 fn execute_introspect_readiness_checks_restriction_cloning_handoff_inputs() {
-    let mut missing_report = GentleEngine::from_state(restriction_cloning_demo_state());
-    let blocked = parse_shell_line(
-        "introspect readiness primers prepare-restriction-cloning --arg TEMPLATE_SEQ_ID=tpl --arg PRIMER_REPORT_ID=shell_handoff_pairs --arg DESTINATION_VECTOR_SEQ_ID=vec",
-    )
-    .expect("parse blocked restriction-cloning readiness");
-    let blocked =
-        execute_shell_command(&mut missing_report, &blocked).expect("execute blocked readiness");
-    assert_eq!(
-        blocked.output["readiness"][0]["readiness"].as_str(),
-        Some("unknown")
-    );
-    assert_eq!(
-        blocked.output["readiness"][0]["evaluation_unknown_atoms"][0]["fact"].as_str(),
-        Some("report.exists")
-    );
+    for capability_id in [
+        "primers prepare-restriction-cloning",
+        "PrepareRestrictionCloningPcrHandoff",
+    ] {
+        let mut missing_report = GentleEngine::from_state(restriction_cloning_demo_state());
+        let blocked = parse_shell_line(&format!(
+            "introspect readiness {capability_id} --arg TEMPLATE_SEQ_ID=tpl --arg PRIMER_REPORT_ID=shell_handoff_pairs --arg DESTINATION_VECTOR_SEQ_ID=vec"
+        ))
+        .expect("parse blocked restriction-cloning readiness");
+        let blocked = execute_shell_command(&mut missing_report, &blocked)
+            .expect("execute blocked readiness");
+        assert_eq!(
+            blocked.output["readiness"][0]["readiness"].as_str(),
+            Some("unknown"),
+            "{capability_id} should not be ready before the primer report exists"
+        );
+        assert_eq!(
+            blocked.output["readiness"][0]["evaluation_unknown_atoms"][0]["fact"].as_str(),
+            Some("report.exists")
+        );
+    }
 
     let (mut engine, _) = restriction_cloning_demo_engine_and_request();
-    let ready = parse_shell_line(
-        "introspect readiness primers prepare-restriction-cloning --arg TEMPLATE_SEQ_ID=tpl --arg PRIMER_REPORT_ID=shell_handoff_pairs --arg DESTINATION_VECTOR_SEQ_ID=vec",
-    )
-    .expect("parse ready restriction-cloning readiness");
-    let ready = execute_shell_command(&mut engine, &ready).expect("execute ready readiness");
-    assert_eq!(
-        ready.output["readiness"][0]["readiness"].as_str(),
-        Some("ready")
-    );
+    for capability_id in [
+        "primers prepare-restriction-cloning",
+        "PrepareRestrictionCloningPcrHandoff",
+    ] {
+        let ready = parse_shell_line(&format!(
+            "introspect readiness {capability_id} --arg TEMPLATE_SEQ_ID=tpl --arg PRIMER_REPORT_ID=shell_handoff_pairs --arg DESTINATION_VECTOR_SEQ_ID=vec"
+        ))
+        .expect("parse ready restriction-cloning readiness");
+        let ready = execute_shell_command(&mut engine, &ready).expect("execute ready readiness");
+        assert_eq!(
+            ready.output["readiness"][0]["readiness"].as_str(),
+            Some("ready"),
+            "{capability_id} should be ready for loaded template/report/vector inputs"
+        );
+    }
 }
 
 #[test]
@@ -23779,6 +23841,10 @@ fn execute_introspect_readiness_checks_render_svg_sequence_input() {
         "workflow",
         "macros run",
         "candidates macro",
+        "gibson preview",
+        "gibson apply",
+        "ApplyGibsonAssemblyPlan",
+        "PlanReporterConstructHandoff",
         "facts graph",
         "facts eval",
         "introspect facts",
@@ -24905,6 +24971,18 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
                 == Some("restriction_cloning_pcr_handoff")
     }));
     assert!(capabilities.iter().any(|descriptor| {
+        descriptor["id"].as_str() == Some("PrepareRestrictionCloningPcrHandoff")
+            && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+            && descriptor["registry"]["source"].as_str() == Some("engine_operation")
+            && descriptor["reads"].as_array().map(Vec::len) == Some(3)
+            && descriptor["reads"][0]["fact"].as_str() == Some("sequence.exists")
+            && descriptor["reads"][1]["fact"].as_str() == Some("report.exists")
+            && descriptor["reads"][1]["equals"].as_str() == Some("primer_design")
+            && descriptor["effects"][0]["equals"].as_str()
+                == Some("restriction_cloning_pcr_handoff")
+            && descriptor["effects"][0]["effect_kind"].as_str() == Some("may_on_success")
+    }));
+    assert!(capabilities.iter().any(|descriptor| {
         descriptor["id"].as_str() == Some("primers list-restriction-cloning-handoffs")
             && descriptor["annotation_status"].as_str() == Some("fact_annotated")
             && descriptor["reads"].as_array().map(Vec::len) == Some(0)
@@ -24922,6 +25000,52 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
             && descriptor["annotation_status"].as_str() == Some("fact_annotated")
             && descriptor["reads"][0]["fact"].as_str() == Some("report.exists")
             && descriptor["reads"][0]["equals"].as_str() == Some("restriction_cloning_pcr_handoff")
+            && descriptor["effects"][0]["fact"].as_str() == Some("artifact.written")
+            && descriptor["effects"][0]["effect_kind"].as_str() == Some("external_handoff")
+    }));
+    for id in [
+        "construct-reasoning build-protein-dna-handoff",
+        "BuildProteinToDnaHandoffReasoning",
+    ] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"].as_array().map(Vec::len) == Some(3)
+                    && descriptor["reads"][0]["fact"].as_str() == Some("sequence.exists")
+                    && descriptor["reads"][1]["fact"].as_str() == Some("sequence.exists")
+                    && descriptor["reads"][2]["fact"].as_str() == Some("sequence.kind")
+                    && descriptor["reads"][2]["equals"].as_str() == Some("protein")
+                    && descriptor["effects"][0]["fact"].as_str()
+                        == Some("construct_reasoning_graph.exists")
+                    && descriptor["effects"][0]["effect_kind"].as_str() == Some("may_on_success")
+            }),
+            "{id} should have a fact-annotated protein-to-DNA handoff descriptor"
+        );
+    }
+    assert!(capabilities.iter().any(|descriptor| {
+        descriptor["id"].as_str() == Some("gibson preview")
+            && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+            && descriptor["reads"].as_array().map(Vec::len) == Some(0)
+            && descriptor["effects"][0]["fact"].as_str() == Some("artifact.written")
+            && descriptor["effects"][0]["effect_kind"].as_str() == Some("external_handoff")
+    }));
+    for id in ["gibson apply", "ApplyGibsonAssemblyPlan"] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"].as_array().map(Vec::len) == Some(0)
+                    && descriptor["effects"][0]["fact"].as_str() == Some("sequence.exists")
+                    && descriptor["effects"][0]["effect_kind"].as_str() == Some("may_on_success")
+            }),
+            "{id} should have a fact-annotated Gibson apply descriptor"
+        );
+    }
+    assert!(capabilities.iter().any(|descriptor| {
+        descriptor["id"].as_str() == Some("PlanReporterConstructHandoff")
+            && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+            && descriptor["reads"].as_array().map(Vec::len) == Some(0)
             && descriptor["effects"][0]["fact"].as_str() == Some("artifact.written")
             && descriptor["effects"][0]["effect_kind"].as_str() == Some("external_handoff")
     }));
