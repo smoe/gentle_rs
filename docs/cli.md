@@ -734,6 +734,9 @@ Dotplot/flexibility capability status:
     - phase 1 stores `gentle.exon_skip_selection_plan.v1`; phase 2 consumes the
       stored plan and creates both a genomic annotation product and retained
       exon cDNA/mRNA sequence
+    - introspection exposes stored plans as `exon_skip_plan.exists(PLAN_ID)`;
+      materialization readiness requires that fact, while planning can verify it
+      after a deterministic `--plan-id` is supplied
     - phase-1 candidate rows include exon position (`ordinal`,
       `transcript_exon_count`, `transcript_position`), support frequency
       (`support_transcript_count`, `support_transcript_total`,

@@ -34,6 +34,11 @@ Maintenance rule:
   introspection facts for imported curated isoform panels. Panel import,
   inspect, render, validation, and raw render operation rows now expose
   fact-aware readiness/effect descriptors that preserve the sequence binding.
+- Added closed-world `exon_skip_plan.exists` introspection for persisted
+  exon-skip selection plans. Transcript derivation aliases, splicing-reference
+  derivation, residue-coordinate lookup, exon-skip planning/materialization,
+  and raw exon-skip operation rows now expose fact-aware readiness/effect
+  descriptors.
 
 ## 2026-06-27
 

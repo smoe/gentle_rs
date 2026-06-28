@@ -16722,6 +16722,69 @@ fn isoform_panel_validate_descriptor(id: &str, description: &str) -> Value {
     })
 }
 
+fn exon_skip_plan_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": false,
+        "args": [
+            {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id containing the source transcript feature"},
+            {"name": "TRANSCRIPT_FEATURE_ID", "required": true, "subject_kind": "other", "detail": "0-based transcript feature id carried by raw operations; shell input displays feature numbers as 1-based"},
+            {"name": "PLAN_ID", "required": false, "subject_kind": "other", "detail": "explicit exon-skip plan id; required for deterministic effect verification when supplied by the caller"}
+        ],
+        "reads": [
+            {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+        ],
+        "effects": [
+            {
+                "fact": "exon_skip_plan.exists",
+                "subject": {"arg": "PLAN_ID"},
+                "effect_kind": "must_on_success"
+            }
+        ],
+        "precondition_expr": {
+            "all": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn exon_skip_materialize_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": false,
+        "args": [
+            {"name": "PLAN_ID", "required": true, "subject_kind": "other", "detail": "persisted exon-skip selection plan id"},
+            {"name": "OUTPUT_PREFIX", "required": false, "subject_kind": "other", "detail": "optional derived sequence id prefix"}
+        ],
+        "reads": [
+            {"fact": "exon_skip_plan.exists", "subject": {"arg": "PLAN_ID"}}
+        ],
+        "effects": [
+            {
+                "fact": "sequence.exists",
+                "effect_kind": "may_on_success",
+                "description": "Materialization creates retained-exon cDNA and genomic annotation products with ids derived from the plan, selected candidates, output prefix, and uniqueness rules."
+            }
+        ],
+        "precondition_expr": {
+            "all": [
+                {"fact": "exon_skip_plan.exists", "subject": {"arg": "PLAN_ID"}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
 fn arrangement_create_descriptor(id: &str, description: &str) -> Value {
     json!({
         "id": id,
@@ -19299,6 +19362,16 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "registry": registry_metadata_for_introspection("rna-info")
         }),
         sequence_derivation_may_create_descriptor(
+            "transcripts derive",
+            "Derive transcript/cDNA sequences from mRNA or transcript features on one loaded sequence through the shared shell route.",
+            vec![
+                json!({"name": "FEATURE_IDS", "required": false, "subject_kind": "other", "detail": "optional transcript feature ids supplied by --feature-id"}),
+                json!({"name": "SCOPE", "required": false, "subject_kind": "other", "detail": "optional splicing scope preset"}),
+                json!({"name": "OUTPUT_PREFIX", "required": false, "subject_kind": "other", "detail": "optional derived transcript sequence id prefix"}),
+            ],
+            vec![],
+        ),
+        sequence_derivation_may_create_descriptor(
             "DeriveTranscriptSequences",
             "Derive transcript/cDNA sequences from mRNA or transcript features on one loaded sequence.",
             vec![
@@ -19324,6 +19397,53 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 "equals": "protein_derivation",
                 "effect_kind": "must_on_success"
             })],
+        ),
+        exon_skip_plan_descriptor(
+            "transcripts exon-skip-plan",
+            "Plan exon-skipped isoform candidates from one loaded sequence transcript feature.",
+        ),
+        exon_skip_plan_descriptor(
+            "exon_skip_plan",
+            "Plan exon-skipped isoform candidates through the shared adapter alias.",
+        ),
+        exon_skip_plan_descriptor(
+            "PlanExonSkippedIsoform",
+            "Plan exon-skipped isoform candidates through the shared engine operation.",
+        ),
+        exon_skip_materialize_descriptor(
+            "transcripts exon-skip-materialize",
+            "Materialize products from a persisted exon-skip selection plan.",
+        ),
+        exon_skip_materialize_descriptor(
+            "exon_skip_materialize",
+            "Materialize products from a persisted exon-skip plan through the shared adapter alias.",
+        ),
+        exon_skip_materialize_descriptor(
+            "MaterializeExonSkippedIsoform",
+            "Materialize products from a persisted exon-skip plan through the shared engine operation.",
+        ),
+        sequence_read_operation_descriptor(
+            "transcripts residue-genomic-coordinates",
+            "SEQ_ID",
+            "loaded sequence id containing the transcript/protein feature context",
+            "Map protein residue coordinates back to genomic coordinates through the transcript shell route.",
+            vec![
+                json!({"name": "RESIDUE_START_1BASED", "required": true, "detail": "1-based residue start"}),
+                json!({"name": "RESIDUE_END_1BASED", "required": false, "detail": "optional 1-based residue end"}),
+                json!({"name": "TRANSCRIPT_ID", "required": false, "subject_kind": "other", "detail": "optional transcript id filter"}),
+            ],
+        ),
+        sequence_derivation_may_create_descriptor(
+            "splicing-refs derive",
+            "Derive a DNA window, transcript isoforms, and exon-reference sequences from one loaded sequence span through the shared shell route.",
+            vec![
+                json!({"name": "SPAN_START_0BASED", "required": true, "detail": "0-based inclusive span start"}),
+                json!({"name": "SPAN_END_0BASED", "required": true, "detail": "0-based exclusive span end"}),
+                json!({"name": "SEED_FEATURE_ID", "required": false, "subject_kind": "other", "detail": "optional seed mRNA feature id"}),
+                json!({"name": "SCOPE", "required": false, "subject_kind": "other", "detail": "optional splicing scope preset"}),
+                json!({"name": "OUTPUT_PREFIX", "required": false, "subject_kind": "other", "detail": "optional derived reference sequence id prefix"}),
+            ],
+            vec![],
         ),
         sequence_derivation_may_create_descriptor(
             "DeriveSplicingReferences",
@@ -23015,11 +23135,22 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         "rna-info" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
         ]),
-        "DeriveTranscriptSequences" | "DeriveProteinSequences" | "DeriveSplicingReferences" => {
-            Some(vec![
-                json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
-            ])
-        }
+        "transcripts derive"
+        | "transcripts residue-genomic-coordinates"
+        | "splicing-refs derive"
+        | "DeriveTranscriptSequences"
+        | "DeriveProteinSequences"
+        | "DeriveSplicingReferences" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
+        ]),
+        "transcripts exon-skip-plan" | "exon_skip_plan" | "PlanExonSkippedIsoform" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
+        ]),
+        "transcripts exon-skip-materialize"
+        | "exon_skip_materialize"
+        | "MaterializeExonSkippedIsoform" => Some(vec![
+            json!({"fact": "exon_skip_plan.exists", "subject": {"arg": "PLAN_ID"}}),
+        ]),
         "reverse-translate run" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "PROTEIN_SEQ_ID"}}),
             json!({"fact": "sequence.kind", "subject": {"arg": "PROTEIN_SEQ_ID"}, "equals": "protein"}),

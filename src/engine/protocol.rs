@@ -1925,6 +1925,14 @@ const PROJECT_FACT_TYPE_SPECS: &[ProjectFactTypeSpec] = &[
         description: "A curated isoform-panel id is bound to the loaded sequence id stored as the scalar value.",
     },
     ProjectFactTypeSpec {
+        name: "exon_skip_plan.exists",
+        domain: ProjectFactDomain::Project,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Other,
+        description: "A persisted exon-skip selection plan with this id exists in current project metadata.",
+    },
+    ProjectFactTypeSpec {
         name: "container.exists",
         domain: ProjectFactDomain::Project,
         world: ProjectFactWorld::ClosedWorld,

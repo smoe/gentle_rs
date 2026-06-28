@@ -1312,6 +1312,28 @@ impl GentleEngine {
                 ..ProjectFact::default()
             });
         }
+        if let Some(value) = self.state.metadata.get(EXON_SKIP_PLANS_METADATA_KEY) {
+            let plans_value = value.get("plans").cloned().unwrap_or_else(|| value.clone());
+            if let Ok(plans) = serde_json::from_value::<
+                std::collections::BTreeMap<String, ExonSkipSelectionPlan>,
+            >(plans_value)
+            {
+                for plan in plans.values() {
+                    facts.push(ProjectFact {
+                        fact: "exon_skip_plan.exists".to_string(),
+                        subject: fact_subject(FactSubjectKind::Other, plan.plan_id.clone()),
+                        value: Some(serde_json::json!({
+                            "seq_id": plan.seq_id,
+                            "transcript_feature_id": plan.transcript_feature_id,
+                            "transcript_id": plan.transcript_id,
+                            "candidate_count": plan.candidate_exons.len(),
+                            "selected_candidate_count": plan.selected_candidate_ids.len(),
+                        })),
+                        ..ProjectFact::default()
+                    });
+                }
+            }
+        }
         for (container_id, container) in &self.state.container_state.containers {
             facts.push(ProjectFact {
                 fact: "container.exists".to_string(),

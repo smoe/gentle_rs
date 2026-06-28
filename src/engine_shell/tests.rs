@@ -19561,6 +19561,9 @@ fn execute_introspect_readiness_checks_sequence_derivation_input_sequence() {
         "DeriveTranscriptSequences",
         "DeriveProteinSequences",
         "DeriveSplicingReferences",
+        "transcripts derive",
+        "splicing-refs derive",
+        "transcripts residue-genomic-coordinates",
     ] {
         let blocked = parse_shell_line(&format!(
             "introspect readiness {capability} --arg SEQ_ID=demo"
@@ -19608,6 +19611,9 @@ fn execute_introspect_readiness_checks_sequence_derivation_input_sequence() {
         "DeriveTranscriptSequences",
         "DeriveProteinSequences",
         "DeriveSplicingReferences",
+        "transcripts derive",
+        "splicing-refs derive",
+        "transcripts residue-genomic-coordinates",
     ] {
         let ready = parse_shell_line(&format!(
             "introspect readiness {capability} --arg SEQ_ID=demo"
@@ -19621,6 +19627,122 @@ fn execute_introspect_readiness_checks_sequence_derivation_input_sequence() {
             "{capability} should be ready for an existing source sequence"
         );
     }
+}
+
+#[test]
+fn execute_introspect_readiness_and_effects_cover_exon_skip_plans() {
+    std::thread::Builder::new()
+        .name("execute_introspect_readiness_and_effects_cover_exon_skip_plans".to_string())
+        .stack_size(16 * 1024 * 1024)
+        .spawn(|| {
+            let mut empty = GentleEngine::default();
+            let plan_blocked = parse_shell_line(
+                "introspect readiness transcripts exon-skip-plan --arg SEQ_ID=seq_a --arg PLAN_ID=skip_second",
+            )
+            .expect("parse blocked exon-skip plan readiness");
+            let plan_blocked = execute_shell_command(&mut empty, &plan_blocked)
+                .expect("execute blocked exon-skip plan readiness");
+            assert_eq!(
+                plan_blocked.output["readiness"][0]["readiness"].as_str(),
+                Some("blocked")
+            );
+            assert_eq!(
+                plan_blocked.output["readiness"][0]["unmet_atoms"][0]["fact"].as_str(),
+                Some("sequence.exists")
+            );
+
+            let materialize_blocked = parse_shell_line(
+                "introspect readiness transcripts exon-skip-materialize --arg PLAN_ID=skip_second",
+            )
+            .expect("parse blocked exon-skip materialize readiness");
+            let materialize_blocked = execute_shell_command(&mut empty, &materialize_blocked)
+                .expect("execute blocked exon-skip materialize readiness");
+            assert_eq!(
+                materialize_blocked.output["readiness"][0]["readiness"].as_str(),
+                Some("blocked")
+            );
+            assert_eq!(
+                materialize_blocked.output["readiness"][0]["unmet_atoms"][0]["fact"].as_str(),
+                Some("exon_skip_plan.exists")
+            );
+
+            let mut state = ProjectState::default();
+            state.sequences.insert(
+                "seq_a".to_string(),
+                split_codon_transcript_test_sequence(),
+            );
+            let mut engine = GentleEngine::from_state(state);
+
+            for capability_id in [
+                "transcripts exon-skip-plan",
+                "exon_skip_plan",
+                "PlanExonSkippedIsoform",
+            ] {
+                let ready = parse_shell_line(&format!(
+                    "introspect readiness {capability_id} --arg SEQ_ID=seq_a --arg PLAN_ID=skip_second"
+                ))
+                .expect("parse ready exon-skip plan readiness");
+                let ready = execute_shell_command(&mut engine, &ready)
+                    .expect("execute ready exon-skip plan readiness");
+                assert_eq!(
+                    ready.output["readiness"][0]["readiness"].as_str(),
+                    Some("ready"),
+                    "{capability_id} should be ready when the source sequence exists"
+                );
+            }
+
+            execute_shell_command(
+                &mut engine,
+                &ShellCommand::TranscriptsExonSkipPlan {
+                    seq_id: "seq_a".to_string(),
+                    transcript_feature_id: 1,
+                    criteria: vec![ExonSkipSelectionCriterion::ManualExonIds {
+                        candidate_ids: vec!["exon_2".to_string()],
+                    }],
+                    plan_id: Some("skip_second".to_string()),
+                },
+            )
+            .expect("execute exon-skip plan");
+
+            let verify_plan = parse_shell_line(
+                "introspect verify-effects transcripts exon-skip-plan --arg PLAN_ID=skip_second",
+            )
+            .expect("parse exon-skip plan verify effects");
+            let verify_plan = execute_shell_command(&mut engine, &verify_plan)
+                .expect("execute exon-skip plan verify effects");
+            assert_eq!(verify_plan.output["verified"].as_bool(), Some(true));
+            assert_eq!(verify_plan.output["status"].as_str(), Some("verified"));
+            assert_eq!(
+                verify_plan.output["must_on_success_effects"][0]["fact"].as_str(),
+                Some("exon_skip_plan.exists")
+            );
+
+            for capability_id in [
+                "transcripts exon-skip-materialize",
+                "exon_skip_materialize",
+                "MaterializeExonSkippedIsoform",
+            ] {
+                let ready = parse_shell_line(&format!(
+                    "introspect readiness {capability_id} --arg PLAN_ID=skip_second"
+                ))
+                .expect("parse ready exon-skip materialize readiness");
+                let ready = execute_shell_command(&mut engine, &ready)
+                    .expect("execute ready exon-skip materialize readiness");
+                assert_eq!(
+                    ready.output["readiness"][0]["readiness"].as_str(),
+                    Some("ready"),
+                    "{capability_id} should be ready when the plan exists"
+                );
+            }
+
+            let facts = engine.project_fact_graph().facts;
+            assert!(facts.iter().any(|fact| {
+                fact.fact == "exon_skip_plan.exists" && fact.subject.id == "skip_second"
+            }));
+        })
+        .expect("spawn exon-skip introspection test")
+        .join()
+        .expect("join exon-skip introspection test");
 }
 
 #[test]

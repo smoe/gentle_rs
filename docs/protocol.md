@@ -4469,7 +4469,8 @@ and readiness checks. The current slice covers loaded sequence facts,
 persisted reverse-translation, protein-derivation, primer/qPCR,
 restriction-cloning handoff, sequencing-confirmation, CUT&RUN read, and
 RNA-read interpretation report facts, persisted sequencing-trace evidence
-records, curated isoform-panel bindings, plus explicit
+records, curated isoform-panel bindings, persisted exon-skip selection plans,
+plus explicit
 restriction-site scan evidence:
 
 - `sequence.exists`, `sequence.kind`, `sequence.length`, `sequence.circular`
@@ -4507,6 +4508,12 @@ restriction-site scan evidence:
   `panels render-isoform-svg`, and `RenderIsoformArchitectureSvg` require both
   facts, so agents do not accidentally inspect an identically named panel bound
   to a different sequence.
+- `exon_skip_plan.exists` is a closed-world fact over persisted exon-skip
+  selection plans stored in project metadata. `transcripts exon-skip-plan`,
+  `exon_skip_plan`, and `PlanExonSkippedIsoform` can verify this fact when the
+  caller supplies a deterministic `PLAN_ID`; `transcripts
+  exon-skip-materialize`, `exon_skip_materialize`, and
+  `MaterializeExonSkippedIsoform` require it before consuming the plan.
 - `introspect readiness` evaluates fact-annotated descriptors through their
   full `precondition_expr`, including `any` branches. This allows shared raw
   operation rows such as `ExportPrimerDesignReport` to express that either a
