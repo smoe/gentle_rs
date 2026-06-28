@@ -1286,6 +1286,32 @@ impl GentleEngine {
                 ..ProjectFact::default()
             });
         }
+        for record in self.read_isoform_panel_store().records {
+            let subject = fact_subject(FactSubjectKind::Other, record.panel_id.clone());
+            let seq_id = record.seq_id.clone();
+            facts.push(ProjectFact {
+                fact: "isoform_panel.exists".to_string(),
+                subject: subject.clone(),
+                value: Some(serde_json::json!({
+                    "seq_id": seq_id,
+                    "panel_id": record.panel_id,
+                    "source_path": record.source_path,
+                    "strict": record.strict,
+                    "imported_at_unix_ms": record.imported_at_unix_ms,
+                    "gene_symbol": record.resource.gene_symbol,
+                    "isoform_count": record.resource.isoforms.len(),
+                    "evidence_count": record.resource.evidence.len(),
+                    "evaluation_count": record.resource.evaluations.len(),
+                })),
+                ..ProjectFact::default()
+            });
+            facts.push(ProjectFact {
+                fact: "isoform_panel.seq_id".to_string(),
+                subject,
+                value: Some(serde_json::json!(record.seq_id)),
+                ..ProjectFact::default()
+            });
+        }
         for (container_id, container) in &self.state.container_state.containers {
             facts.push(ProjectFact {
                 fact: "container.exists".to_string(),

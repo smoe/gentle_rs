@@ -20223,6 +20223,137 @@ fn execute_introspect_readiness_and_effects_cover_dotplot_and_flex_payloads() {
 }
 
 #[test]
+fn execute_introspect_readiness_and_effects_cover_isoform_panels() {
+    let mut empty = GentleEngine::default();
+    let validate = parse_shell_line(
+        "introspect readiness panels validate-isoform --arg PANEL_PATH=assets/panels/tp53_isoforms_v1.json",
+    )
+    .expect("parse panel validation readiness");
+    let validate =
+        execute_shell_command(&mut empty, &validate).expect("execute panel validation readiness");
+    assert_eq!(
+        validate.output["readiness"][0]["readiness"].as_str(),
+        Some("ready")
+    );
+
+    let import_blocked = parse_shell_line(
+        "introspect readiness panels import-isoform --arg SEQ_ID=seq_a --arg PANEL_ID=tp53_isoforms_v1",
+    )
+    .expect("parse blocked panel import readiness");
+    let import_blocked =
+        execute_shell_command(&mut empty, &import_blocked).expect("execute blocked panel import");
+    assert_eq!(
+        import_blocked.output["readiness"][0]["readiness"].as_str(),
+        Some("blocked")
+    );
+    assert_eq!(
+        import_blocked.output["readiness"][0]["unmet_atoms"][0]["fact"].as_str(),
+        Some("sequence.exists")
+    );
+
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("seq_a".to_string(), tp53_isoform_test_sequence());
+    state.sequences.insert(
+        "other_seq".to_string(),
+        DNAsequence::from_sequence("ACGTACGTACGT").expect("other sequence"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+
+    let import_ready = parse_shell_line(
+        "introspect readiness ImportIsoformPanel --arg SEQ_ID=seq_a --arg PANEL_ID=tp53_isoforms_v1",
+    )
+    .expect("parse ready panel import readiness");
+    let import_ready =
+        execute_shell_command(&mut engine, &import_ready).expect("execute ready panel import");
+    assert_eq!(
+        import_ready.output["readiness"][0]["readiness"].as_str(),
+        Some("ready")
+    );
+
+    let inspect_missing = parse_shell_line(
+        "introspect readiness panels inspect-isoform --arg SEQ_ID=seq_a --arg PANEL_ID=tp53_isoforms_v1",
+    )
+    .expect("parse missing panel inspect readiness");
+    let inspect_missing =
+        execute_shell_command(&mut engine, &inspect_missing).expect("execute missing inspect");
+    assert_eq!(
+        inspect_missing.output["readiness"][0]["readiness"].as_str(),
+        Some("blocked")
+    );
+    assert_eq!(
+        inspect_missing.output["readiness"][0]["unmet_atoms"][0]["fact"].as_str(),
+        Some("isoform_panel.exists")
+    );
+
+    execute_shell_command(
+        &mut engine,
+        &ShellCommand::PanelsImportIsoform {
+            seq_id: "seq_a".to_string(),
+            panel_path: "assets/panels/tp53_isoforms_v1.json".to_string(),
+            panel_id: Some("tp53_isoforms_v1".to_string()),
+            strict: false,
+        },
+    )
+    .expect("import isoform panel");
+
+    let verify_import = parse_shell_line(
+        "introspect verify-effects panels import-isoform --arg SEQ_ID=seq_a --arg PANEL_ID=tp53_isoforms_v1",
+    )
+    .expect("parse panel import verify effects");
+    let verify_import =
+        execute_shell_command(&mut engine, &verify_import).expect("execute panel verify effects");
+    assert_eq!(verify_import.output["verified"].as_bool(), Some(true));
+    assert_eq!(verify_import.output["status"].as_str(), Some("verified"));
+
+    for capability_id in [
+        "panels inspect-isoform",
+        "panels render-isoform-svg",
+        "RenderIsoformArchitectureSvg",
+    ] {
+        let ready = parse_shell_line(&format!(
+            "introspect readiness {capability_id} --arg SEQ_ID=seq_a --arg PANEL_ID=tp53_isoforms_v1"
+        ))
+        .expect("parse panel readiness");
+        let ready = execute_shell_command(&mut engine, &ready).expect("execute panel readiness");
+        assert_eq!(
+            ready.output["readiness"][0]["readiness"].as_str(),
+            Some("ready"),
+            "{capability_id} should be ready for the sequence-bound panel"
+        );
+    }
+
+    let wrong_sequence = parse_shell_line(
+        "introspect readiness panels inspect-isoform --arg SEQ_ID=other_seq --arg PANEL_ID=tp53_isoforms_v1",
+    )
+    .expect("parse wrong sequence panel readiness");
+    let wrong_sequence =
+        execute_shell_command(&mut engine, &wrong_sequence).expect("execute wrong sequence");
+    assert_eq!(
+        wrong_sequence.output["readiness"][0]["readiness"].as_str(),
+        Some("blocked")
+    );
+    assert!(
+        wrong_sequence.output["readiness"][0]["unmet_atoms"]
+            .as_array()
+            .expect("unmet atoms")
+            .iter()
+            .any(|atom| atom["fact"].as_str() == Some("isoform_panel.seq_id"))
+    );
+
+    let facts = engine.project_fact_graph().facts;
+    assert!(facts.iter().any(|fact| {
+        fact.fact == "isoform_panel.exists" && fact.subject.id == "tp53_isoforms_v1"
+    }));
+    assert!(facts.iter().any(|fact| {
+        fact.fact == "isoform_panel.seq_id"
+            && fact.subject.id == "tp53_isoforms_v1"
+            && fact.value.as_ref().and_then(serde_json::Value::as_str) == Some("seq_a")
+    }));
+}
+
+#[test]
 fn execute_introspect_readiness_and_effects_cover_candidate_sets() {
     let mut empty = GentleEngine::default();
     let show_missing = parse_shell_line("introspect readiness candidates show --arg SET_NAME=cand")

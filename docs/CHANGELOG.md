@@ -30,6 +30,10 @@ Maintenance rule:
   `rna-reads show-alignment`, `rna-reads show-alignments`,
   `rna-reads summarize-gene-support`, `rna-reads inspect-gene-support`,
   `rna-reads inspect-alignments`, and `rna-reads inspect-concatemers`.
+- Added closed-world `isoform_panel.exists` and `isoform_panel.seq_id`
+  introspection facts for imported curated isoform panels. Panel import,
+  inspect, render, validation, and raw render operation rows now expose
+  fact-aware readiness/effect descriptors that preserve the sequence binding.
 
 ## 2026-06-27
 

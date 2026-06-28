@@ -4469,7 +4469,7 @@ and readiness checks. The current slice covers loaded sequence facts,
 persisted reverse-translation, protein-derivation, primer/qPCR,
 restriction-cloning handoff, sequencing-confirmation, CUT&RUN read, and
 RNA-read interpretation report facts, persisted sequencing-trace evidence
-records, plus explicit
+records, curated isoform-panel bindings, plus explicit
 restriction-site scan evidence:
 
 - `sequence.exists`, `sequence.kind`, `sequence.length`, `sequence.circular`
@@ -4499,6 +4499,14 @@ restriction-site scan evidence:
   `ShowSequencingTrace` require `sequencing_trace.exists(TRACE_ID)`;
   `seq-trace import` and `ImportSequencingTrace` can verify the same fact when
   the caller supplied an explicit `TRACE_ID`.
+- `isoform_panel.exists` and `isoform_panel.seq_id` are closed-world facts over
+  imported curated isoform panels stored in project metadata.
+  `isoform_panel.exists(PANEL_ID)` proves that the panel id is present, while
+  `isoform_panel.seq_id(PANEL_ID) == SEQ_ID` proves that the panel was imported
+  for the requested sequence context. `panels inspect-isoform`,
+  `panels render-isoform-svg`, and `RenderIsoformArchitectureSvg` require both
+  facts, so agents do not accidentally inspect an identically named panel bound
+  to a different sequence.
 - `introspect readiness` evaluates fact-annotated descriptors through their
   full `precondition_expr`, including `any` branches. This allows shared raw
   operation rows such as `ExportPrimerDesignReport` to express that either a

@@ -1909,6 +1909,22 @@ const PROJECT_FACT_TYPE_SPECS: &[ProjectFactTypeSpec] = &[
         description: "A persisted candidate-window set with this name exists in current project metadata.",
     },
     ProjectFactTypeSpec {
+        name: "isoform_panel.exists",
+        domain: ProjectFactDomain::Project,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Other,
+        description: "A curated isoform-panel id exists in current project metadata.",
+    },
+    ProjectFactTypeSpec {
+        name: "isoform_panel.seq_id",
+        domain: ProjectFactDomain::Project,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Other,
+        description: "A curated isoform-panel id is bound to the loaded sequence id stored as the scalar value.",
+    },
+    ProjectFactTypeSpec {
         name: "container.exists",
         domain: ProjectFactDomain::Project,
         world: ProjectFactWorld::ClosedWorld,

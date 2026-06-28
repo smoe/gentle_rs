@@ -16611,6 +16611,117 @@ fn uniprot_projection_audit_descriptor(id: &str, report_kind: &str, description:
     })
 }
 
+fn isoform_panel_read_atoms() -> Vec<Value> {
+    vec![
+        json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
+        json!({"fact": "isoform_panel.exists", "subject": {"arg": "PANEL_ID"}}),
+        json!({"fact": "isoform_panel.seq_id", "subject": {"arg": "PANEL_ID"}, "equals": {"arg": "SEQ_ID"}}),
+    ]
+}
+
+fn isoform_panel_import_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": false,
+        "args": [
+            {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id to bind the imported panel to"},
+            {"name": "PANEL_PATH", "required": true, "subject_kind": "other", "detail": "external curated isoform-panel JSON path"},
+            {"name": "PANEL_ID", "required": false, "subject_kind": "other", "detail": "explicit panel id; required for deterministic effect verification when supplied by the caller"}
+        ],
+        "reads": [
+            {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+        ],
+        "effects": [
+            {
+                "fact": "isoform_panel.exists",
+                "subject": {"arg": "PANEL_ID"},
+                "effect_kind": "must_on_success"
+            },
+            {
+                "fact": "isoform_panel.seq_id",
+                "subject": {"arg": "PANEL_ID"},
+                "equals": {"arg": "SEQ_ID"},
+                "effect_kind": "must_on_success"
+            }
+        ],
+        "precondition_expr": {
+            "all": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ]
+        },
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn isoform_panel_inspect_descriptor(id: &str, description: &str) -> Value {
+    let atoms = isoform_panel_read_atoms();
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "false",
+        "requires_confirmation": false,
+        "args": [
+            {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id that owns the imported panel"},
+            {"name": "PANEL_ID", "required": true, "subject_kind": "other", "detail": "imported curated isoform-panel id"}
+        ],
+        "reads": atoms,
+        "effects": [],
+        "precondition_expr": {"all": isoform_panel_read_atoms()},
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn isoform_panel_render_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "false",
+        "requires_confirmation": false,
+        "args": [
+            {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id that owns the imported panel"},
+            {"name": "PANEL_ID", "required": true, "subject_kind": "other", "detail": "imported curated isoform-panel id"},
+            {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external SVG output path"}
+        ],
+        "reads": isoform_panel_read_atoms(),
+        "effects": [
+            {
+                "fact": "artifact.written",
+                "subject": {"arg": "OUTPUT_PATH"},
+                "effect_kind": "external_handoff"
+            }
+        ],
+        "precondition_expr": {"all": isoform_panel_read_atoms()},
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn isoform_panel_validate_descriptor(id: &str, description: &str) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "false",
+        "requires_confirmation": false,
+        "args": [
+            {"name": "PANEL_PATH", "required": true, "subject_kind": "other", "detail": "external curated isoform-panel JSON path"},
+            {"name": "PANEL_ID", "required": false, "subject_kind": "other", "detail": "optional expected panel id"}
+        ],
+        "reads": [],
+        "effects": [],
+        "precondition_expr": {"all": []},
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
 fn arrangement_create_descriptor(id: &str, description: &str) -> Value {
     json!({
         "id": id,
@@ -19065,6 +19176,30 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("RenderFeatureExpertSvg")
         }),
+        isoform_panel_import_descriptor(
+            "panels import-isoform",
+            "Import a curated isoform panel and bind it to one loaded sequence context.",
+        ),
+        isoform_panel_import_descriptor(
+            "ImportIsoformPanel",
+            "Import a curated isoform panel through the shared engine operation.",
+        ),
+        isoform_panel_inspect_descriptor(
+            "panels inspect-isoform",
+            "Inspect a previously imported curated isoform panel for one loaded sequence.",
+        ),
+        isoform_panel_render_descriptor(
+            "panels render-isoform-svg",
+            "Render a previously imported curated isoform panel to an external SVG file.",
+        ),
+        isoform_panel_render_descriptor(
+            "RenderIsoformArchitectureSvg",
+            "Render a curated isoform architecture SVG through the shared engine operation.",
+        ),
+        isoform_panel_validate_descriptor(
+            "panels validate-isoform",
+            "Validate a curated isoform-panel JSON file without mutating project state.",
+        ),
         json!({
             "id": "RenderTfbsScoreTrackCorrelationSvg",
             "kind": "operation",
@@ -22869,6 +23004,13 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         "RenderSequenceSvg" | "RenderFeatureExpertSvg" | "RenderRnaStructureSvg" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
         ]),
+        "panels import-isoform" | "ImportIsoformPanel" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
+        ]),
+        "panels inspect-isoform" | "panels render-isoform-svg" | "RenderIsoformArchitectureSvg" => {
+            Some(isoform_panel_read_atoms())
+        }
+        "panels validate-isoform" => Some(vec![]),
         "RenderLineageSvg" => Some(vec![]),
         "rna-info" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),

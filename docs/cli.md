@@ -3597,6 +3597,7 @@ Isoform architecture panel workflow:
     - `scripts/pancreas_gene_rna_screen.sh run` can call the same fixture
       helper when `--auto-fetch-fixtures` is provided; `--must-pass-gene`,
       `--positive-gene`, and `--control-gene` then resolve to Ensembl cDNA
+
       FASTA fixtures automatically before the RNA-read preflight
     - `scripts/list_ensembl_paralogs.py` queries Ensembl homology records for
       same-species paralogues and prints one target Ensembl gene id per line by
@@ -3632,6 +3633,15 @@ Isoform architecture panel workflow:
     - `uniprot audit-parity ...`
     - `uniprot audit-list|show|export ...`
     - `uniprot audit-parity-list|show|export ...`
+
+Introspection models imported isoform panels as sequence-bound project facts:
+
+- `isoform_panel.exists(PANEL_ID)` proves that a panel id is present.
+- `isoform_panel.seq_id(PANEL_ID) == SEQ_ID` proves that the panel was imported
+  for the sequence currently being inspected or rendered.
+- `panels inspect-isoform`, `panels render-isoform-svg`, and
+  `RenderIsoformArchitectureSvg` require both facts; `panels validate-isoform`
+  validates an external file without mutating project state.
 
 Pool exchange commands:
 
