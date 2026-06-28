@@ -43,6 +43,11 @@ Maintenance rule:
   `SelectCandidate` operation row. Both require
   `sequence.exists(INPUT_SEQ_ID)`; `SelectCandidate` can verify a deterministic
   `sequence.exists(OUTPUT_ID)` result.
+- Added fact-aware introspection for raw `ExtractAnchoredRegion` and the
+  `render-dotplot-svg` shell alias. Anchored extraction is readiness-only
+  because candidate ids are prefix/rank-derived; the dotplot alias requires the
+  loaded sequence and persisted dotplot facts and models SVG output as an
+  external handoff.
 
 ## 2026-06-27
 

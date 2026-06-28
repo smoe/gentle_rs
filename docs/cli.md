@@ -2502,7 +2502,9 @@ Shared shell command:
         and declares an `artifact.written(OUTPUT_PATH)` external handoff;
         `Digest` and the glossary `digest` alias require
         `sequence.exists(INPUT_SEQ_ID)` but are readiness-only because fragment
-        ids are prefix/index-derived; `SelectCandidate` also requires
+        ids are prefix/index-derived; `ExtractAnchoredRegion` requires the same
+        input sequence fact and is readiness-only because candidate ids are
+        output-prefix/rank-derived; `SelectCandidate` also requires
         `sequence.exists(INPUT_SEQ_ID)` and can verify
         `sequence.exists(OUTPUT_ID)` when a deterministic selected-candidate id
         was supplied; `Pcr`, `PcrAdvanced`, and `PcrMutagenesis` require
@@ -2510,6 +2512,10 @@ Shared shell command:
         `sequence.exists(OUTPUT_ID)` for deterministic product ids; and
         `PcrOverlapExtensionMutagenesis` requires the template sequence but is
         readiness-only until generated candidate ids are projected as facts
+      - `render-dotplot-svg` is fact-annotated with the same readiness contract
+        as `RenderDotplotSvg`: it requires `sequence.exists(SEQ_ID)` and
+        `dotplot.exists(DOTPLOT_ID)`, then models the SVG path as an
+        `artifact.written(OUTPUT_PATH)` external handoff
       - `ReverseTranslateProteinSequence` mirrors `reverse-translate run`:
         the input sequence must exist and have `sequence.kind == protein`, and
         a deterministic `OUTPUT_ID` can be verified as the generated coding-DNA
@@ -2589,8 +2595,8 @@ Shared shell command:
         Agent Assistant or external agent can promote a paper/vendor/database
         sequence into the same state used by GUI, GUI Shell, and later commands
     - `render-svg SEQ_ID linear|circular OUTPUT.svg`
-    - `render-dotplot-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp|shared_exon_anchor] [--overlay-anchor-exon START..END]`
-    - `dotplot render-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp|shared_exon_anchor] [--overlay-anchor-exon START..END]`
+    - `render-dotplot-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp|shared_exon_anchor|query_anchor_bp] [--overlay-anchor-exon START..END]`
+    - `dotplot render-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp|shared_exon_anchor|query_anchor_bp] [--overlay-anchor-exon START..END]`
     - `dotplot overlay-compute OWNER_SEQ_ID [--reference-seq REF_SEQ_ID] --query-spec JSON_OR_@FILE [--query-spec JSON_OR_@FILE ...] [--ref-start N] [--ref-end N] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]`
     - `render-rna-svg SEQ_ID OUTPUT.svg`
     - `rna-info SEQ_ID`

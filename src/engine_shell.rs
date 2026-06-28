@@ -17948,6 +17948,19 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "TO", "required": true, "detail": "0-based end coordinate carried by the operation payload"}),
             ],
         ),
+        sequence_read_operation_descriptor(
+            "ExtractAnchoredRegion",
+            "INPUT_SEQ_ID",
+            "loaded input sequence id carried by input",
+            "Generate one or more anchored-region candidate sequences from a loaded input sequence. Created ids are output-prefix/rank-derived and are not currently modeled as hard introspection effects.",
+            vec![
+                json!({"name": "ANCHOR", "required": true, "subject_kind": "other", "detail": "local sequence anchor carried by anchor"}),
+                json!({"name": "DIRECTION", "required": true, "subject_kind": "other", "detail": "upstream/downstream/around direction carried by direction"}),
+                json!({"name": "TARGET_LENGTH_BP", "required": true, "subject_kind": "other", "detail": "target candidate length carried by target_length_bp"}),
+                json!({"name": "LENGTH_TOLERANCE_BP", "required": true, "subject_kind": "other", "detail": "allowed length tolerance carried by length_tolerance_bp"}),
+                json!({"name": "OUTPUT_PREFIX", "required": false, "subject_kind": "other", "detail": "candidate sequence id prefix carried by output_prefix"}),
+            ],
+        ),
         save_file_operation_descriptor(),
         sequence_read_operation_descriptor(
             "Digest",
@@ -18881,6 +18894,38 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "description": "Render one persisted dotplot payload as an external SVG artifact.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("RenderDotplotSvg")
+        }),
+        json!({
+            "id": "render-dotplot-svg",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence id"},
+                {"name": "DOTPLOT_ID", "required": true, "subject_kind": "other", "detail": "persisted dotplot payload id"},
+                {"name": "FLEX_TRACK_ID", "required": false, "subject_kind": "other", "detail": "optional persisted flexibility-track id supplied with --flex-track"},
+                {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external SVG output path"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}},
+                {"fact": "dotplot.exists", "subject": {"arg": "DOTPLOT_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_PATH"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}},
+                    {"fact": "dotplot.exists", "subject": {"arg": "DOTPLOT_ID"}}
+                ]
+            },
+            "description": "Render one persisted dotplot payload as an external SVG artifact through the shell alias.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("render-dotplot-svg")
         }),
         json!({
             "id": "flex compute",
@@ -23054,7 +23099,7 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         "DigestContainer" | "LigationContainer" | "FilterContainerByMolecularWeight" => Some(vec![
             json!({"fact": "container.exists", "subject": {"arg": "CONTAINER_ID"}}),
         ]),
-        "Digest" | "digest" | "SelectCandidate" => Some(vec![
+        "Digest" | "digest" | "ExtractAnchoredRegion" | "SelectCandidate" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "INPUT_SEQ_ID"}}),
         ]),
         "Reverse" | "Complement" | "ReverseComplement" | "Branch" | "ExtractRegion" => Some(vec![
@@ -23133,6 +23178,10 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         "align compute" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "QUERY_SEQ_ID"}}),
             json!({"fact": "sequence.exists", "subject": {"arg": "TARGET_SEQ_ID"}}),
+        ]),
+        "render-dotplot-svg" | "RenderDotplotSvg" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
+            json!({"fact": "dotplot.exists", "subject": {"arg": "DOTPLOT_ID"}}),
         ]),
         "render-svg" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),

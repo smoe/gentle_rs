@@ -4789,7 +4789,9 @@ Shared-shell routes:
     models the output path as an `artifact.written` external handoff. `Digest`
     and the glossary `digest` alias require
     `sequence.exists(INPUT_SEQ_ID)` but declare no hard effect because fragment
-    ids are prefix/index-derived. `SelectCandidate` requires
+    ids are prefix/index-derived. `ExtractAnchoredRegion` requires the same
+    input sequence fact but declares no hard effect because candidate ids are
+    output-prefix/rank-derived. `SelectCandidate` requires
     `sequence.exists(INPUT_SEQ_ID)` and verifies `sequence.exists(OUTPUT_ID)`
     when execution used a deterministic selected-candidate id. `Pcr`,
     `PcrAdvanced`, and `PcrMutagenesis` require
@@ -4797,6 +4799,9 @@ Shared-shell routes:
     when execution used a deterministic product id.
     `PcrOverlapExtensionMutagenesis` currently models template readiness only
     because candidate ids are prefix/rank-derived.
+  - The `render-dotplot-svg` shell alias is fact-annotated with the same
+    sequence/dotplot readiness contract and external SVG handoff effect as the
+    raw `RenderDotplotSvg` operation row.
   - `SetTopology` is fact-annotated over raw operation payload fields. Its
     bound readiness requires `sequence.exists(SEQ_ID)`, and hard-effect
     verification checks the closed-world `sequence.circular(SEQ_ID)` fact

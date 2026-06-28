@@ -19752,6 +19752,7 @@ fn execute_introspect_readiness_and_effects_cover_core_sequence_operations() {
         "SaveFile",
         "Digest",
         "digest",
+        "ExtractAnchoredRegion",
         "SelectCandidate",
         "Pcr",
         "PcrAdvanced",
@@ -19805,6 +19806,7 @@ fn execute_introspect_readiness_and_effects_cover_core_sequence_operations() {
         "introspect readiness SaveFile --arg SEQ_ID=tpl",
         "introspect readiness Digest --arg INPUT_SEQ_ID=tpl",
         "introspect readiness digest --arg INPUT_SEQ_ID=tpl",
+        "introspect readiness ExtractAnchoredRegion --arg INPUT_SEQ_ID=tpl",
         "introspect readiness SelectCandidate --arg INPUT_SEQ_ID=tpl",
         "introspect readiness Pcr --arg TEMPLATE_SEQ_ID=tpl",
         "introspect readiness PcrOverlapExtensionMutagenesis --arg TEMPLATE_SEQ_ID=tpl",
@@ -19829,6 +19831,7 @@ fn execute_introspect_readiness_and_effects_cover_core_sequence_operations() {
         "introspect readiness SaveFile --arg SEQ_ID=tpl",
         "introspect readiness Digest --arg INPUT_SEQ_ID=tpl",
         "introspect readiness digest --arg INPUT_SEQ_ID=tpl",
+        "introspect readiness ExtractAnchoredRegion --arg INPUT_SEQ_ID=tpl",
         "introspect readiness SelectCandidate --arg INPUT_SEQ_ID=tpl",
         "introspect readiness Pcr --arg TEMPLATE_SEQ_ID=tpl",
         "introspect readiness PcrOverlapExtensionMutagenesis --arg TEMPLATE_SEQ_ID=tpl",
@@ -20319,7 +20322,7 @@ fn execute_introspect_readiness_and_effects_cover_dotplot_and_flex_payloads() {
         Some("dotplot.exists")
     );
 
-    for capability_id in ["dotplot show", "RenderDotplotSvg"] {
+    for capability_id in ["dotplot show", "RenderDotplotSvg", "render-dotplot-svg"] {
         let ready = parse_shell_line(&format!(
             "introspect readiness {capability_id} --arg SEQ_ID=demo --arg DOTPLOT_ID=demo_dp"
         ))
@@ -24153,6 +24156,15 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
         descriptor["id"].as_str() == Some("RenderDotplotSvg")
             && descriptor["annotation_status"].as_str() == Some("fact_annotated")
             && descriptor["reads"].as_array().map(Vec::len) == Some(2)
+            && descriptor["effects"][0]["fact"].as_str() == Some("artifact.written")
+            && descriptor["effects"][0]["effect_kind"].as_str() == Some("external_handoff")
+    }));
+    assert!(capabilities.iter().any(|descriptor| {
+        descriptor["id"].as_str() == Some("render-dotplot-svg")
+            && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+            && descriptor["reads"].as_array().map(Vec::len) == Some(2)
+            && descriptor["reads"][0]["fact"].as_str() == Some("sequence.exists")
+            && descriptor["reads"][1]["fact"].as_str() == Some("dotplot.exists")
             && descriptor["effects"][0]["fact"].as_str() == Some("artifact.written")
             && descriptor["effects"][0]["effect_kind"].as_str() == Some("external_handoff")
     }));
