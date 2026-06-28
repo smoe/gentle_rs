@@ -407,4 +407,25 @@ mod tests {
             Some("introspect capabilities [--kind KIND]")
         );
     }
+
+    #[test]
+    fn shell_help_json_projects_capabilities_for_all_builtin_commands() {
+        let catalog = shell_help_json(None).expect("render help catalog");
+        let missing = catalog["commands"]
+            .as_array()
+            .expect("commands")
+            .iter()
+            .filter_map(|command| {
+                if command.get("capability").is_some() {
+                    None
+                } else {
+                    command["path"].as_str().map(ToOwned::to_owned)
+                }
+            })
+            .collect::<Vec<_>>();
+        assert!(
+            missing.is_empty(),
+            "all built-in glossary commands should project protocol capability descriptors: {missing:?}"
+        );
+    }
 }
