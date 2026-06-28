@@ -202,3 +202,19 @@ GUI labels and dialog text may be translated at runtime, but shared shell
 commands, protocol schema fields, saved project records, adapter payloads,
 agent response schemas, and scientific identifiers remain deterministic
 English. Localised text is presentation only.
+
+## DEC-024: Introspection Composes Facts And Capabilities
+
+Status: active
+
+Words-only and agent-facing introspection uses additive fact domains rather
+than renaming existing fact vocabulary. Existing project facts keep their
+`sequence.*`, `report.*`, and related names with `domain: "project"`;
+view/host/config facts use the same registry shape. Headless contexts must
+project `ui.host_available=false` explicitly so GUI/view-intent readiness fails
+with a named unmet fact rather than ambiguous absence. Capability readiness is
+computed by instantiating templated fact atoms from declared arguments and then
+using the shared fact evaluator; unbound catalog readiness reports missing
+argument bindings as `unknown`. Host-domain availability facts must project
+from existing deterministic preflight/probe logic rather than creating a
+parallel detector.

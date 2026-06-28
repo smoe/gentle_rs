@@ -480,6 +480,7 @@ fn usage_text() -> String {
   gentle_cli help [COMMAND ...] [--format text|json|markdown] [--interface all|cli-direct|cli-shell|gui-shell|gui-menu|js|lua|mcp]\n  \
   gentle_cli [--state PATH|--project PATH] [--progress|--progress-stderr|--progress-stdout] COMMAND ...\n\n  \
   gentle_cli [--state PATH|--project PATH] capabilities\n  \
+  gentle_cli [--state PATH|--project PATH] introspect facts|capabilities|readiness|verify-effects|all [...]\n  \
   gentle_cli [--state PATH|--project PATH] doctor --agent\n  \
   gentle_cli [--state PATH|--project PATH] op '<operation-json>'|JSON_FILE\n  \
   gentle_cli [--state PATH|--project PATH] workflow '<workflow-json>'|JSON_FILE\n  \
@@ -1149,6 +1150,13 @@ fn run() -> Result<(), String> {
         "capabilities" => {
             print_json(&GentleEngine::capabilities())?;
             Ok(())
+        }
+        "introspect" => {
+            let line = args[cmd_idx..].join(" ");
+            let command = parse_shell_line(&line)?;
+            let mut engine = GentleEngine::from_state(load_state(&state_path)?);
+            let run = execute_shell_command_with_options(&mut engine, &command, &shell_options)?;
+            print_json(&run.output)
         }
         "doctor" => {
             if args.len() != cmd_idx + 2 || args[cmd_idx + 1] != "--agent" {

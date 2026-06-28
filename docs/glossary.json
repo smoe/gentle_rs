@@ -47,6 +47,90 @@
             "gui-shell",
             "cli-direct"
          ],
+         "path": "facts graph",
+         "summary": "Return the deterministic project fact graph, optionally enriched with explicit evidence files.",
+         "usage": "facts graph [--evidence SCAN.json ...]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "facts eval",
+         "summary": "Evaluate one fact expression against the current project fact graph and explicit evidence files.",
+         "usage": "facts eval FACT_EXPR_JSON_OR_@FILE [--evidence SCAN.json ...]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "introspect facts",
+         "summary": "Return deterministic fact read-back grouped by project, view, host, and config domains.",
+         "usage": "introspect facts [--domain project|view|host|config] [--seq-id SEQ_ID] [--evidence SCAN.json ...] [--ui-host true|false]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "introspect capabilities",
+         "summary": "Return the shared capability registry plus fact-annotated introspection descriptors where available.",
+         "usage": "introspect capabilities [--kind operation|view_intent|host_config]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "introspect readiness",
+         "summary": "Evaluate unbound or bound readiness for one or more introspection-complete capabilities.",
+         "usage": "introspect readiness [CAPABILITY_ID] [--arg NAME=VALUE ...] [--seq-id SEQ_ID] [--readiness ready|blocked|unknown] [--evidence SCAN.json ...] [--ui-host true|false]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "introspect verify-effects",
+         "summary": "Verify fact-annotated must-on-success effects against the current project fact graph and supplied evidence.",
+         "usage": "introspect verify-effects CAPABILITY_ID [--arg NAME=VALUE ...] [--seq-id SEQ_ID] [--evidence SCAN.json ...] [--ui-host true|false]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "introspect all",
+         "summary": "Return fact read-back, registry-backed capability descriptors, and catalog-mode readiness in one payload.",
+         "usage": "introspect all [--evidence SCAN.json ...] [--ui-host true|false]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
          "path": "history status",
          "summary": "Inspect session-local multi-level undo/redo availability.",
          "usage": "history status"

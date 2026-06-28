@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "GENtle"
-version = "0.1.0-internal.9"
+version = "0.1.0-internal.10"
 dependencies = [
  "anyhow",
  "arboard",
@@ -684,8 +684,8 @@ dependencies = [
  "serde",
  "serde_derive",
  "statrs",
- "strum",
- "strum_macros 0.27.2",
+ "strum 0.28.0",
+ "strum_macros 0.28.0",
  "thiserror 2.0.18",
  "triple_accel",
  "vec_map",
@@ -1441,7 +1441,7 @@ dependencies = [
  "proc-macro2 1.0.106",
  "quote 1.0.46",
  "stringcase",
- "strum",
+ "strum 0.27.2",
  "strum_macros 0.27.2",
  "syn 2.0.118",
  "syn-match",
@@ -2329,14 +2329,14 @@ dependencies = [
 
 [[package]]
 name = "gentle-engine"
-version = "0.1.0-internal.9"
+version = "0.1.0-internal.10"
 dependencies = [
  "gentle-protocol",
 ]
 
 [[package]]
 name = "gentle-gui"
-version = "0.1.0-internal.9"
+version = "0.1.0-internal.10"
 dependencies = [
  "egui",
  "serde",
@@ -2346,7 +2346,7 @@ dependencies = [
 
 [[package]]
 name = "gentle-protocol"
-version = "0.1.0-internal.9"
+version = "0.1.0-internal.10"
 dependencies = [
  "serde",
  "serde_json",
@@ -2354,7 +2354,7 @@ dependencies = [
 
 [[package]]
 name = "gentle-render"
-version = "0.1.0-internal.9"
+version = "0.1.0-internal.10"
 dependencies = [
  "gentle-protocol",
  "serde",
@@ -2364,7 +2364,7 @@ dependencies = [
 
 [[package]]
 name = "gentle-shell"
-version = "0.1.0-internal.9"
+version = "0.1.0-internal.10"
 dependencies = [
  "gentle-protocol",
  "serde",
@@ -3566,9 +3566,9 @@ dependencies = [
 
 [[package]]
 name = "ndarray"
-version = "0.16.1"
+version = "0.17.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "882ed72dce9365842bf196bdeedf5055305f11fc8c03dee7bb0194a6cad34841"
+checksum = "520080814a7a6b4a6e9070823bb24b4531daac8c4627e08ba5de8c5ef2f2752d"
 dependencies = [
  "matrixmultiply",
  "num-complex",
@@ -5854,6 +5854,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "strum"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9628de9b8791db39ceda2b119bbe13134770b56c138ec1d3af810d045c04f9bd"
+
+[[package]]
 name = "strum_macros"
 version = "0.26.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5871,6 +5877,18 @@ name = "strum_macros"
 version = "0.27.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7695ce3845ea4b33927c055a39dc438a45b059f7c1b3d91d38d10355fb8cbca7"
+dependencies = [
+ "heck",
+ "proc-macro2 1.0.106",
+ "quote 1.0.46",
+ "syn 2.0.118",
+]
+
+[[package]]
+name = "strum_macros"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ab85eea0270ee17587ed4156089e10b9e6880ee688791d45a905f5b1ca36f664"
 dependencies = [
  "heck",
  "proc-macro2 1.0.106",
