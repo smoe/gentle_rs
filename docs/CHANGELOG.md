@@ -14,6 +14,9 @@ Maintenance rule:
 
 ## 2026-06-28
 
+- Added fact-aware introspection for gene-group/gene-set resource rows,
+  including draft gene-group reports, gene-set resolution/producer routes, and
+  promoter-cohort construction.
 - Added fact-aware introspection for adapter/file utility rows, including
   run-bundle shell export, pool import helpers, RNA-read sample-sheet shell
   export, GenBank writer helpers, and VCF display-filter configuration helpers.

@@ -23090,6 +23090,12 @@ fn execute_introspect_readiness_treats_local_metadata_catalog_routes_as_ready() 
         "gene-groups show",
         "gene-groups resolve",
         "gene-groups doctor",
+        "gene-groups draft",
+        "gene-sets resolve",
+        "gene-sets produce direct-list",
+        "gene-sets produce ontology-assignment",
+        "gene-sets produce co-regulated",
+        "gene-sets promoter-cohort",
     ] {
         let cmd = parse_shell_line(&format!("introspect readiness {capability_id}"))
             .expect("parse local metadata readiness");
@@ -25812,6 +25818,12 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
         "gene-groups show",
         "gene-groups resolve",
         "gene-groups doctor",
+        "gene-groups draft",
+        "gene-sets resolve",
+        "gene-sets produce direct-list",
+        "gene-sets produce ontology-assignment",
+        "gene-sets produce co-regulated",
+        "gene-sets promoter-cohort",
     ] {
         assert!(
             capabilities.iter().any(|descriptor| {

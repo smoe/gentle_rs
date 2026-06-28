@@ -23328,6 +23328,71 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "--catalog", "required": false, "subject_kind": "other", "detail": "optional gene-group catalog path"}),
             ],
         ),
+        optional_artifact_resource_report_descriptor(
+            "gene-groups draft",
+            "optional external draft gene-group JSON output path",
+            "Draft a local gene-group catalog entry from supplied metadata without project-state preconditions; member/candidate validation happens during execution.",
+            vec![
+                json!({"name": "--description", "required": true, "subject_kind": "other", "detail": "draft group description"}),
+                json!({"name": "--member|--members", "required": false, "subject_kind": "other", "detail": "seed member gene symbols"}),
+                json!({"name": "--candidate", "required": false, "subject_kind": "other", "detail": "candidate gene with optional rationale"}),
+                json!({"name": "--go", "required": false, "subject_kind": "other", "detail": "GO term associated with the draft"}),
+            ],
+        ),
+        optional_artifact_resource_report_descriptor(
+            "gene-sets resolve",
+            "optional external gene-set resolution JSON output path",
+            "Resolve a gene set from local gene-group/catalog/cache inputs without project-state preconditions; selectors and genome/catalog paths are validated during execution.",
+            vec![
+                json!({"name": "--group|--go|--genes|--file", "required": false, "subject_kind": "other", "detail": "gene-set selector"}),
+                json!({"name": "--genome", "required": false, "subject_kind": "other", "detail": "optional genome catalog id for synonym/annotation context"}),
+                json!({"name": "--allow-draft", "required": false, "subject_kind": "other", "detail": "whether draft groups may be used"}),
+            ],
+        ),
+        optional_artifact_resource_report_descriptor(
+            "gene-sets produce direct-list",
+            "optional external direct-list gene-set JSON output path",
+            "Produce a direct-list gene-set resolution from a local cache without project-state preconditions; cache/provider metadata are validated during execution.",
+            vec![
+                json!({"name": "--cache", "required": true, "subject_kind": "other", "detail": "local direct-list cache path"}),
+                json!({"name": "--query", "required": false, "subject_kind": "other", "detail": "cache query/list selector"}),
+                json!({"name": "--provider", "required": true, "subject_kind": "other", "detail": "cache provider name"}),
+                json!({"name": "--organism", "required": true, "subject_kind": "other", "detail": "organism label"}),
+            ],
+        ),
+        optional_artifact_resource_report_descriptor(
+            "gene-sets produce ontology-assignment",
+            "optional external ontology-assignment gene-set JSON output path",
+            "Produce an ontology-derived gene-set resolution from a local assignment cache without project-state preconditions; term/cache metadata are validated during execution.",
+            vec![
+                json!({"name": "--cache", "required": true, "subject_kind": "other", "detail": "local ontology-assignment cache path"}),
+                json!({"name": "--term", "required": true, "subject_kind": "other", "detail": "ontology term selector"}),
+                json!({"name": "--provider", "required": true, "subject_kind": "other", "detail": "assignment provider name"}),
+                json!({"name": "--organism", "required": true, "subject_kind": "other", "detail": "organism label"}),
+            ],
+        ),
+        optional_artifact_resource_report_descriptor(
+            "gene-sets produce co-regulated",
+            "optional external co-regulated gene-set JSON output path",
+            "Produce a co-regulated gene-set resolution from a local expression cache without project-state preconditions; dataset/contrast/threshold metadata are validated during execution.",
+            vec![
+                json!({"name": "--cache", "required": true, "subject_kind": "other", "detail": "local expression cache path"}),
+                json!({"name": "--dataset", "required": false, "subject_kind": "other", "detail": "dataset selector; may be repeated"}),
+                json!({"name": "--contrast", "required": true, "subject_kind": "other", "detail": "contrast selector"}),
+                json!({"name": "--threshold", "required": true, "subject_kind": "other", "detail": "score threshold expression"}),
+            ],
+        ),
+        optional_artifact_resource_report_descriptor(
+            "gene-sets promoter-cohort",
+            "optional external gene-set promoter-cohort JSON output path",
+            "Build promoter windows for a resolved gene set without project-state preconditions; genome/gene-set/catalog validation happens during execution.",
+            vec![
+                json!({"name": "GENOME_ID", "required": true, "subject_kind": "other", "detail": "reference/helper genome catalog id"}),
+                json!({"name": "--group|--genes|--neighbors", "required": false, "subject_kind": "other", "detail": "gene-set or neighbor selector"}),
+                json!({"name": "--upstream-bp", "required": false, "subject_kind": "other", "detail": "promoter upstream window length"}),
+                json!({"name": "--downstream-bp", "required": false, "subject_kind": "other", "detail": "promoter downstream window length"}),
+            ],
+        ),
         optional_artifact_operation_descriptor(
             "ladders export",
             "external ladder-catalog JSON output path",
@@ -24404,6 +24469,12 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "gene-groups show"
         | "gene-groups resolve"
         | "gene-groups doctor"
+        | "gene-groups draft"
+        | "gene-sets resolve"
+        | "gene-sets produce direct-list"
+        | "gene-sets produce ontology-assignment"
+        | "gene-sets produce co-regulated"
+        | "gene-sets promoter-cohort"
         | "ladders export"
         | "export_dna_ladders"
         | "export_rna_ladders"
