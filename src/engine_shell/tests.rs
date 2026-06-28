@@ -19904,6 +19904,39 @@ fn execute_introspect_readiness_and_effects_cover_core_sequence_operations() {
 }
 
 #[test]
+fn execute_introspect_readiness_covers_external_projection_operation() {
+    let mut engine = GentleEngine::default();
+    let ready = parse_shell_line(
+        "introspect readiness ProjectGenomeInterval --arg PROJECTION_PATH=projection.tsv",
+    )
+    .expect("parse projection readiness");
+    let ready = execute_shell_command(&mut engine, &ready).expect("execute projection readiness");
+    assert_eq!(
+        ready.output["readiness"][0]["readiness"].as_str(),
+        Some("ready")
+    );
+
+    let capabilities = execute_shell_command(
+        &mut engine,
+        &parse_shell_line("introspect capabilities").expect("parse capabilities"),
+    )
+    .expect("execute capabilities");
+    let capabilities = capabilities.output["capabilities"]
+        .as_array()
+        .expect("capabilities array");
+    let descriptor = capabilities
+        .iter()
+        .find(|descriptor| descriptor["id"].as_str() == Some("ProjectGenomeInterval"))
+        .expect("ProjectGenomeInterval descriptor");
+    assert_eq!(
+        descriptor["annotation_status"].as_str(),
+        Some("fact_annotated")
+    );
+    assert_eq!(descriptor["reads"].as_array().map(Vec::len), Some(0));
+    assert_eq!(descriptor["effects"].as_array().map(Vec::len), Some(0));
+}
+
+#[test]
 fn execute_introspect_verify_effects_accepts_sequence_derivation_output() {
     let mut state = ProjectState::default();
     state.sequences.insert(
@@ -21722,6 +21755,75 @@ fn execute_introspect_readiness_checks_qpcr_design_template_sequence() {
         ready_raw.output["readiness"][0]["readiness"].as_str(),
         Some("ready")
     );
+}
+
+#[test]
+fn execute_introspect_readiness_covers_raw_cdna_assay_tests() {
+    let mut empty = GentleEngine::default();
+    for capability_id in ["TestCdnaPcr", "TestCdnaQpcr"] {
+        let blocked = parse_shell_line(&format!(
+            "introspect readiness {capability_id} --arg SEQ_ID=tpl"
+        ))
+        .expect("parse blocked cDNA assay readiness");
+        let blocked =
+            execute_shell_command(&mut empty, &blocked).expect("execute blocked cDNA assay");
+        assert_eq!(
+            blocked.output["readiness"][0]["readiness"].as_str(),
+            Some("blocked"),
+            "{capability_id} should require a loaded source sequence"
+        );
+        assert_eq!(
+            blocked.output["readiness"][0]["unmet_atoms"][0]["fact"].as_str(),
+            Some("sequence.exists")
+        );
+    }
+    let fasta_ready = parse_shell_line(
+        "introspect readiness TestCdnaQpcrFasta --arg CDNA_FASTA_PATHS=transcripts.fa.gz",
+    )
+    .expect("parse FASTA cDNA assay readiness");
+    let fasta_ready =
+        execute_shell_command(&mut empty, &fasta_ready).expect("execute FASTA cDNA assay");
+    assert_eq!(
+        fasta_ready.output["readiness"][0]["readiness"].as_str(),
+        Some("ready")
+    );
+
+    let (mut engine, _) = primer_design_demo_engine_and_request();
+    for capability_id in ["TestCdnaPcr", "TestCdnaQpcr"] {
+        let ready = parse_shell_line(&format!(
+            "introspect readiness {capability_id} --arg SEQ_ID=tpl"
+        ))
+        .expect("parse ready cDNA assay readiness");
+        let ready = execute_shell_command(&mut engine, &ready).expect("execute ready cDNA assay");
+        assert_eq!(
+            ready.output["readiness"][0]["readiness"].as_str(),
+            Some("ready"),
+            "{capability_id} should be ready when the source sequence exists"
+        );
+    }
+
+    let capabilities = execute_shell_command(
+        &mut engine,
+        &parse_shell_line("introspect capabilities").expect("parse capabilities"),
+    )
+    .expect("execute capabilities");
+    let capabilities = capabilities.output["capabilities"]
+        .as_array()
+        .expect("capabilities array");
+    for capability_id in ["TestCdnaPcr", "TestCdnaQpcr", "TestCdnaQpcrFasta"] {
+        let descriptor = capabilities
+            .iter()
+            .find(|descriptor| descriptor["id"].as_str() == Some(capability_id))
+            .unwrap_or_else(|| panic!("missing descriptor for {capability_id}"));
+        assert_eq!(
+            descriptor["annotation_status"].as_str(),
+            Some("fact_annotated")
+        );
+        assert_eq!(
+            descriptor["effects"][0]["effect_kind"].as_str(),
+            Some("may_on_success")
+        );
+    }
 }
 
 #[test]

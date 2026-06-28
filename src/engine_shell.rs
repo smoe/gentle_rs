@@ -15021,6 +15021,98 @@ fn pcr_sequence_create_descriptor(id: &str, description: &str, extra_args: Vec<V
     })
 }
 
+fn cdna_assay_test_descriptor(
+    id: &str,
+    description: &str,
+    probe_required: bool,
+    fasta_inputs: bool,
+) -> Value {
+    let mut args = if fasta_inputs {
+        vec![json!({
+            "name": "CDNA_FASTA_PATHS",
+            "required": true,
+            "subject_kind": "other",
+            "detail": "one or more external cDNA/ncRNA FASTA or FASTA.gz paths carried by cdna_fasta_paths"
+        })]
+    } else {
+        vec![
+            json!({
+                "name": "SEQ_ID",
+                "required": true,
+                "subject_kind": "sequence",
+                "detail": "loaded source sequence id carried by seq_id"
+            }),
+            json!({
+                "name": "FEATURE_ID",
+                "required": true,
+                "subject_kind": "other",
+                "detail": "source transcript/gene feature index carried by source_feature_id"
+            }),
+        ]
+    };
+    args.extend([
+        json!({"name": "FORWARD_PRIMER", "required": true, "subject_kind": "other", "detail": "forward primer sequence"}),
+        json!({"name": "REVERSE_PRIMER", "required": true, "subject_kind": "other", "detail": "reverse primer sequence"}),
+    ]);
+    if probe_required {
+        args.push(json!({
+            "name": "PROBE",
+            "required": true,
+            "subject_kind": "other",
+            "detail": "internal qPCR probe sequence"
+        }));
+    }
+    args.extend([
+        json!({"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external JSON report path carried by path"}),
+        json!({"name": "SVG_PATH", "required": false, "subject_kind": "other", "detail": "optional external transcript-map SVG path carried by svg_path"}),
+    ]);
+    if !fasta_inputs {
+        args.extend([
+            json!({"name": "MATERIALIZE_PRODUCTS", "required": false, "subject_kind": "other", "detail": "whether matching assay products are materialized as project sequences"}),
+            json!({"name": "PRODUCT_OUTPUT_PREFIX", "required": false, "subject_kind": "other", "detail": "optional product sequence id prefix"}),
+            json!({"name": "PRODUCT_GEL_SVG_PATH", "required": false, "subject_kind": "other", "detail": "optional external product-gel SVG path"}),
+        ]);
+    }
+    let reads = if fasta_inputs {
+        json!([])
+    } else {
+        json!([
+            {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+        ])
+    };
+    let precondition_expr = if fasta_inputs {
+        json!({"all": []})
+    } else {
+        json!({
+            "all": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ]
+        })
+    };
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": if fasta_inputs { "external" } else { "true" },
+        "requires_confirmation": false,
+        "args": args,
+        "reads": reads,
+        "effects": [
+            {
+                "effect_kind": "may_on_success",
+                "description": if fasta_inputs {
+                    "May write optional JSON/SVG artifacts; concrete paths depend on optional payload fields."
+                } else {
+                    "May write optional JSON/SVG artifacts and may materialize assay-product sequences/containers when requested; concrete ids and paths depend on optional payload fields."
+                }
+            }
+        ],
+        "precondition_expr": precondition_expr,
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
 fn save_file_operation_descriptor() -> Value {
     json!({
         "id": "SaveFile",
@@ -17961,6 +18053,27 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "OUTPUT_PREFIX", "required": false, "subject_kind": "other", "detail": "candidate sequence id prefix carried by output_prefix"}),
             ],
         ),
+        json!({
+            "id": "ProjectGenomeInterval",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SOURCE_GENOME_ID", "required": true, "subject_kind": "other", "detail": "source genome/assembly id carried by source_genome_id"},
+                {"name": "TARGET_GENOME_ID", "required": true, "subject_kind": "other", "detail": "target genome/assembly id carried by target_genome_id"},
+                {"name": "PROJECTION_PATH", "required": true, "subject_kind": "other", "detail": "external interval-map TSV path carried by projection_path"},
+                {"name": "CHROM", "required": true, "subject_kind": "other", "detail": "source chromosome/contig name"},
+                {"name": "START_1BASED", "required": true, "subject_kind": "other", "detail": "1-based inclusive source start coordinate"},
+                {"name": "END_1BASED", "required": true, "subject_kind": "other", "detail": "1-based inclusive source end coordinate"},
+                {"name": "STRAND", "required": false, "subject_kind": "other", "detail": "optional + or - strand"}
+            ],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Project one genome interval through an external interval-map file and return a coordinate-projection report.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("ProjectGenomeInterval")
+        }),
         save_file_operation_descriptor(),
         sequence_read_operation_descriptor(
             "Digest",
@@ -19859,6 +19972,24 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "DesignQpcrAssays",
             "qpcr_design",
             "Generate and persist a ranked qPCR assay design report through the shared engine operation.",
+        ),
+        cdna_assay_test_descriptor(
+            "TestCdnaPcr",
+            "Test supplied PCR primers against transcript-derived cDNA templates for one loaded splicing group.",
+            false,
+            false,
+        ),
+        cdna_assay_test_descriptor(
+            "TestCdnaQpcr",
+            "Test supplied qPCR primers and probe against transcript-derived cDNA templates for one loaded splicing group.",
+            true,
+            false,
+        ),
+        cdna_assay_test_descriptor(
+            "TestCdnaQpcrFasta",
+            "Screen supplied qPCR primers and probe across external cDNA/ncRNA FASTA or FASTA.gz transcript catalogs.",
+            true,
+            true,
         ),
         json!({
             "id": "primers list-qpcr-reports",
@@ -23102,6 +23233,7 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         "Digest" | "digest" | "ExtractAnchoredRegion" | "SelectCandidate" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "INPUT_SEQ_ID"}}),
         ]),
+        "ProjectGenomeInterval" => Some(vec![]),
         "Reverse" | "Complement" | "ReverseComplement" | "Branch" | "ExtractRegion" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "INPUT_SEQ_ID"}}),
         ]),
@@ -23260,6 +23392,10 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         "primers design-qpcr" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "TEMPLATE_SEQ_ID"}}),
         ]),
+        "TestCdnaPcr" | "TestCdnaQpcr" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
+        ]),
+        "TestCdnaQpcrFasta" => Some(vec![]),
         "primers list-qpcr-reports" => Some(vec![]),
         "primers show-qpcr-report" => Some(vec![
             json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "qpcr_design"}),

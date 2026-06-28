@@ -4524,6 +4524,15 @@ restriction-site scan evidence:
   the same engine-owned semantics as their shell routes: the template sequence
   must exist, and a deterministic `REPORT_ID` can be verified as the generated
   `report.exists` effect.
+- Raw cDNA assay-test operation rows `TestCdnaPcr` and `TestCdnaQpcr` are
+  fact-annotated over `sequence.exists(SEQ_ID)` and declare conservative
+  `may_on_success` effects because JSON/SVG artifacts, materialized assay
+  products, and product-gel outputs depend on optional payload fields.
+  `TestCdnaQpcrFasta` has no project-state precondition because its transcript
+  catalogs are external FASTA/FASTA.gz paths validated during execution.
+- `ProjectGenomeInterval` is fact-annotated as a no-project-precondition
+  coordinate-projection operation over an external interval-map file; it returns
+  a projection report but does not declare durable project facts.
 - `ReverseTranslateProteinSequence` is fact-annotated with the same
   engine-owned semantics as `reverse-translate run`: the input sequence must
   exist and be protein-kind, and a deterministic `OUTPUT_ID` can be verified as

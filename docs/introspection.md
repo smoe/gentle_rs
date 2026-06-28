@@ -719,6 +719,8 @@ on semantic glyphs.
    `SaveFile`, `Digest`, `digest`, `ExtractAnchoredRegion`,
    `SelectCandidate`, `Pcr`, `PcrAdvanced`, `PcrMutagenesis`,
    `PcrOverlapExtensionMutagenesis`,
+   `ProjectGenomeInterval`, `TestCdnaPcr`, `TestCdnaQpcr`,
+   `TestCdnaQpcrFasta`,
    `uniprot fetch`, `FetchUniprotSwissProt`,
    `uniprot import-swissprot`, `ImportUniprotSwissProt`,
    `uniprot list`, `uniprot show`,

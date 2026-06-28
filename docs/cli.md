@@ -2516,6 +2516,12 @@ Shared shell command:
         as `RenderDotplotSvg`: it requires `sequence.exists(SEQ_ID)` and
         `dotplot.exists(DOTPLOT_ID)`, then models the SVG path as an
         `artifact.written(OUTPUT_PATH)` external handoff
+      - raw cDNA assay-test rows `TestCdnaPcr` and `TestCdnaQpcr` are
+        fact-annotated over `sequence.exists(SEQ_ID)` and advertise only
+        conservative optional-output effects; `TestCdnaQpcrFasta` and
+        `ProjectGenomeInterval` have no project-state preconditions because
+        their FASTA/projection-map paths are external files validated during
+        execution
       - `ReverseTranslateProteinSequence` mirrors `reverse-translate run`:
         the input sequence must exist and have `sequence.kind == protein`, and
         a deterministic `OUTPUT_ID` can be verified as the generated coding-DNA

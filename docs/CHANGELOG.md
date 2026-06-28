@@ -48,6 +48,11 @@ Maintenance rule:
   because candidate ids are prefix/rank-derived; the dotplot alias requires the
   loaded sequence and persisted dotplot facts and models SVG output as an
   external handoff.
+- Added fact-aware introspection for raw `ProjectGenomeInterval`,
+  `TestCdnaPcr`, `TestCdnaQpcr`, and `TestCdnaQpcrFasta`. Genome interval
+  projection and FASTA screening remain execution-time external-file reads,
+  while transcript-derived cDNA assay tests require `sequence.exists(SEQ_ID)`
+  and declare conservative optional-output effects.
 
 ## 2026-06-27
 
