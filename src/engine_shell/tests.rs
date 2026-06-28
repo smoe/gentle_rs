@@ -23796,6 +23796,16 @@ fn execute_introspect_readiness_checks_render_svg_sequence_input() {
         "QueryRepeatOverlaps",
         "features materialize-repeats",
         "MaterializeRepeatFeatures",
+        "cutrun project",
+        "ProjectCutRunDataset",
+        "cutrun interpret",
+        "InterpretCutRunReads",
+        "cutrun inspect-regulatory-support",
+        "InspectCutRunRegulatorySupport",
+        "rna-reads interpret",
+        "InterpretRnaReads",
+        "rna-reads batch-map",
+        "RunRnaReadBatchMap",
     ] {
         let cmd = parse_shell_line(&format!(
             "introspect readiness {capability_id} --arg SEQ_ID=demo"
@@ -23864,6 +23874,9 @@ fn execute_introspect_readiness_checks_render_svg_sequence_input() {
         "primers list-reports",
         "primers list-qpcr-reports",
         "primers list-restriction-cloning-handoffs",
+        "cutrun prepare",
+        "PrepareCutRunDataset",
+        "cutrun gene-set-regulatory-support",
         "cutrun list-read-reports",
         "rna-reads list-reports",
         "ListSequencingConfirmationReports",
@@ -25151,6 +25164,100 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
                     && descriptor["effects"].as_array().map(Vec::len) == Some(0)
             }),
             "{id} should have a fact-annotated sequencing-primer suggestion descriptor"
+        );
+    }
+    for id in ["cutrun prepare", "PrepareCutRunDataset"] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"].as_array().map(Vec::len) == Some(0)
+                    && descriptor["effects"][0]["fact"].as_str() == Some("artifact.written")
+                    && descriptor["effects"][0]["effect_kind"].as_str() == Some("external_handoff")
+            }),
+            "{id} should have a fact-annotated CUT&RUN preparation descriptor"
+        );
+    }
+    for id in ["cutrun project", "ProjectCutRunDataset"] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"][0]["fact"].as_str() == Some("sequence.exists")
+                    && descriptor["reads"][0]["subject"]["arg"].as_str() == Some("SEQ_ID")
+                    && descriptor["effects"][0]["fact"].as_str() == Some("sequence.exists")
+                    && descriptor["effects"][0]["subject"]["arg"].as_str() == Some("SEQ_ID")
+                    && descriptor["effects"][0]["effect_kind"].as_str() == Some("may_on_success")
+            }),
+            "{id} should have a fact-annotated CUT&RUN projection descriptor"
+        );
+    }
+    for id in ["cutrun interpret", "InterpretCutRunReads"] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"][0]["fact"].as_str() == Some("sequence.exists")
+                    && descriptor["reads"][0]["subject"]["arg"].as_str() == Some("SEQ_ID")
+                    && descriptor["effects"][0]["fact"].as_str() == Some("report.exists")
+                    && descriptor["effects"][0]["equals"].as_str() == Some("cutrun_read")
+                    && descriptor["effects"][0]["effect_kind"].as_str() == Some("may_on_success")
+            }),
+            "{id} should have a fact-annotated CUT&RUN read-interpretation descriptor"
+        );
+    }
+    for id in [
+        "cutrun inspect-regulatory-support",
+        "InspectCutRunRegulatorySupport",
+    ] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"][0]["fact"].as_str() == Some("sequence.exists")
+                    && descriptor["reads"][0]["subject"]["arg"].as_str() == Some("SEQ_ID")
+                    && descriptor["effects"][0]["fact"].as_str() == Some("artifact.written")
+                    && descriptor["effects"][0]["effect_kind"].as_str() == Some("external_handoff")
+            }),
+            "{id} should have a fact-annotated CUT&RUN regulatory-support descriptor"
+        );
+    }
+    assert!(
+        capabilities.iter().any(|descriptor| {
+            descriptor["id"].as_str() == Some("cutrun gene-set-regulatory-support")
+                && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                && descriptor["reads"].as_array().map(Vec::len) == Some(0)
+                && descriptor["effects"][0]["fact"].as_str() == Some("artifact.written")
+                && descriptor["effects"][0]["effect_kind"].as_str() == Some("external_handoff")
+        }),
+        "cutrun gene-set-regulatory-support should have a fact-annotated external report descriptor"
+    );
+    for id in ["rna-reads interpret", "InterpretRnaReads"] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"][0]["fact"].as_str() == Some("sequence.exists")
+                    && descriptor["reads"][0]["subject"]["arg"].as_str() == Some("SEQ_ID")
+                    && descriptor["effects"][0]["fact"].as_str() == Some("report.exists")
+                    && descriptor["effects"][0]["equals"].as_str() == Some("rna_read")
+                    && descriptor["effects"][0]["effect_kind"].as_str() == Some("may_on_success")
+            }),
+            "{id} should have a fact-annotated RNA-read interpretation descriptor"
+        );
+    }
+    for id in ["rna-reads batch-map", "RunRnaReadBatchMap"] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"][0]["fact"].as_str() == Some("sequence.exists")
+                    && descriptor["reads"][0]["subject"]["arg"].as_str() == Some("SEQ_ID")
+                    && descriptor["effects"][0]["fact"].as_str() == Some("artifact.written")
+                    && descriptor["effects"][0]["subject"]["arg"].as_str() == Some("OUT_DIR")
+                    && descriptor["effects"][0]["effect_kind"].as_str() == Some("external_handoff")
+            }),
+            "{id} should have a fact-annotated RNA-read batch-map descriptor"
         );
     }
     for id in [

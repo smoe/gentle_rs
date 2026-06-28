@@ -14,6 +14,10 @@ Maintenance rule:
 
 ## 2026-06-28
 
+- Added fact-aware introspection for CUT&RUN and RNA-read interpretation
+  routes, including dataset preparation/projection, read interpretation,
+  regulatory-support reports, gene-set regulatory support, and RNA-read
+  batch-map outputs.
 - Added fact-aware introspection for external resource/report routes, including
   array probe-region conversion/planning, ortholog promoter reports, miRNA
   target scans, RNA transcript-index export, service project-source routing,

@@ -22441,6 +22441,340 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "CACHE_DIR", "required": false, "subject_kind": "other", "detail": "optional CUT&RUN prepared-cache root carried by cache_dir"}),
             ],
         ),
+        json!({
+            "id": "cutrun prepare",
+            "kind": "operation",
+            "mutating": "external",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "DATASET_ID", "required": true, "subject_kind": "other", "detail": "configured CUT&RUN dataset id"},
+                {"name": "--catalog", "required": false, "subject_kind": "other", "detail": "optional CUT&RUN dataset catalog path"},
+                {"name": "--cache-dir", "required": false, "subject_kind": "other", "detail": "optional prepared-cache root"}
+            ],
+            "reads": [],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "effect_kind": "external_handoff",
+                    "description": "Preparation writes or refreshes an external CUT&RUN prepared-cache entry selected by dataset/catalog/cache arguments."
+                }
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Prepare/download/cache one configured CUT&RUN dataset without requiring loaded project state.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("cutrun prepare")
+        }),
+        json!({
+            "id": "PrepareCutRunDataset",
+            "kind": "operation",
+            "mutating": "external",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "DATASET_ID", "required": true, "subject_kind": "other", "detail": "configured CUT&RUN dataset id carried by dataset_id"},
+                {"name": "CATALOG_PATH", "required": false, "subject_kind": "other", "detail": "optional CUT&RUN dataset catalog path carried by catalog_path"},
+                {"name": "CACHE_DIR", "required": false, "subject_kind": "other", "detail": "optional prepared-cache root carried by cache_dir"}
+            ],
+            "reads": [],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "effect_kind": "external_handoff",
+                    "description": "Preparation writes or refreshes an external CUT&RUN prepared-cache entry selected by dataset/catalog/cache arguments."
+                }
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Prepare/download/cache one configured CUT&RUN dataset through the shared engine operation.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("PrepareCutRunDataset")
+        }),
+        json!({
+            "id": "cutrun project",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence receiving projected CUT&RUN peak/signal features"},
+                {"name": "DATASET_ID", "required": true, "subject_kind": "other", "detail": "configured CUT&RUN dataset id"},
+                {"name": "--include-peaks|--include-signal|--clear-existing", "required": false, "subject_kind": "other", "detail": "projection controls"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "sequence.exists",
+                    "subject": {"arg": "SEQ_ID"},
+                    "effect_kind": "may_on_success",
+                    "description": "Projection may add or update CUT&RUN feature tracks on the loaded sequence; concrete track changes are execution-derived."
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Project one prepared/configured CUT&RUN dataset onto a loaded genome-anchored sequence.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("cutrun project")
+        }),
+        json!({
+            "id": "ProjectCutRunDataset",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence receiving projected CUT&RUN peak/signal features carried by seq_id"},
+                {"name": "DATASET_ID", "required": true, "subject_kind": "other", "detail": "configured CUT&RUN dataset id carried by dataset_id"},
+                {"name": "INCLUDE_PEAKS", "required": false, "subject_kind": "other", "detail": "whether to project peaks"},
+                {"name": "INCLUDE_SIGNAL", "required": false, "subject_kind": "other", "detail": "whether to project signal"},
+                {"name": "CLEAR_EXISTING", "required": false, "subject_kind": "other", "detail": "whether to clear matching projected tracks before projection"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "sequence.exists",
+                    "subject": {"arg": "SEQ_ID"},
+                    "effect_kind": "may_on_success",
+                    "description": "Projection may add or update CUT&RUN feature tracks on the loaded sequence; concrete track changes are execution-derived."
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Project one prepared/configured CUT&RUN dataset through the shared engine operation.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("ProjectCutRunDataset")
+        }),
+        json!({
+            "id": "cutrun interpret",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence used as the CUT&RUN ROI interpretation target"},
+                {"name": "INPUT_R1_PATH", "required": true, "subject_kind": "other", "detail": "external FASTQ/FASTA read file path"},
+                {"name": "INPUT_R2_PATH", "required": false, "subject_kind": "other", "detail": "optional paired FASTQ/FASTA read file path"},
+                {"name": "--dataset-id", "required": false, "subject_kind": "other", "detail": "optional configured dataset id"},
+                {"name": "REPORT_ID", "required": false, "subject_kind": "report", "detail": "optional persisted CUT&RUN read report id supplied with --report-id"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "report.exists",
+                    "subject": {"arg": "REPORT_ID"},
+                    "equals": "cutrun_read",
+                    "effect_kind": "may_on_success",
+                    "description": "The report id may be supplied explicitly or generated during execution."
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Interpret CUT&RUN reads against a loaded ROI sequence and persist a read-support report.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("cutrun interpret")
+        }),
+        json!({
+            "id": "InterpretCutRunReads",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence used as the CUT&RUN ROI interpretation target carried by seq_id"},
+                {"name": "INPUT_R1_PATH", "required": true, "subject_kind": "other", "detail": "external FASTQ/FASTA read file path carried by input_r1_path"},
+                {"name": "INPUT_R2_PATH", "required": false, "subject_kind": "other", "detail": "optional paired FASTQ/FASTA read file path carried by input_r2_path"},
+                {"name": "REPORT_ID", "required": false, "subject_kind": "report", "detail": "optional persisted CUT&RUN read report id carried by report_id"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "report.exists",
+                    "subject": {"arg": "REPORT_ID"},
+                    "equals": "cutrun_read",
+                    "effect_kind": "may_on_success",
+                    "description": "The report id may be supplied explicitly or generated during execution."
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Interpret CUT&RUN reads through the shared engine operation and persist a read-support report.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("InterpretCutRunReads")
+        }),
+        sequence_optional_artifact_operation_descriptor(
+            "cutrun inspect-regulatory-support",
+            "false",
+            false,
+            "SEQ_ID",
+            "loaded genome-anchored sequence receiving regulatory-support inspection",
+            "optional external CUT&RUN regulatory-support report output path",
+            "Inspect regulatory support for one loaded sequence using configured CUT&RUN datasets and/or read reports.",
+            vec![
+                json!({"name": "--dataset|--read-report", "required": false, "subject_kind": "other", "detail": "configured dataset ids or persisted CUT&RUN read report ids"}),
+                json!({"name": "--promoter-upstream-bp|--promoter-downstream-bp", "required": false, "subject_kind": "other", "detail": "promoter window controls"}),
+                json!({"name": "--species|--target-regulatory-kind", "required": false, "subject_kind": "other", "detail": "optional regulatory-support filters"}),
+            ],
+        ),
+        sequence_optional_artifact_operation_descriptor(
+            "InspectCutRunRegulatorySupport",
+            "false",
+            false,
+            "SEQ_ID",
+            "loaded genome-anchored sequence receiving regulatory-support inspection carried by seq_id",
+            "optional external CUT&RUN regulatory-support report output path carried by path",
+            "Inspect regulatory support through the shared engine operation.",
+            vec![
+                json!({"name": "DATASET_IDS", "required": false, "subject_kind": "other", "detail": "configured dataset ids carried by dataset_ids"}),
+                json!({"name": "READ_REPORT_IDS", "required": false, "subject_kind": "report", "detail": "persisted CUT&RUN read report ids carried by read_report_ids"}),
+            ],
+        ),
+        optional_artifact_resource_report_descriptor(
+            "cutrun gene-set-regulatory-support",
+            "optional external gene-set regulatory-support report output path",
+            "Summarize configured CUT&RUN regulatory support across a gene set; catalog, cache, genome, and gene-set validation happens during execution.",
+            vec![
+                json!({"name": "GENOME_ID", "required": true, "subject_kind": "other", "detail": "prepared reference genome id"}),
+                json!({"name": "--gene|--genes|--gene-set", "required": false, "subject_kind": "other", "detail": "gene selectors or gene-set source"}),
+                json!({"name": "--dataset|--read-report", "required": false, "subject_kind": "other", "detail": "configured CUT&RUN dataset ids or persisted read report ids"}),
+            ],
+        ),
+        json!({
+            "id": "rna-reads interpret",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence used as RNA-read interpretation target"},
+                {"name": "SEED_FEATURE_ID", "required": true, "subject_kind": "other", "detail": "seed feature id used to define candidate transcript support"},
+                {"name": "INPUT_PATH", "required": true, "subject_kind": "other", "detail": "external RNA-read FASTA/FASTQ input path"},
+                {"name": "REPORT_ID", "required": false, "subject_kind": "report", "detail": "optional persisted RNA-read report id supplied with --report-id"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "report.exists",
+                    "subject": {"arg": "REPORT_ID"},
+                    "equals": "rna_read",
+                    "effect_kind": "may_on_success",
+                    "description": "The report id may be supplied explicitly or generated during execution."
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Interpret RNA reads against a loaded sequence and persist an RNA-read support report.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("rna-reads interpret")
+        }),
+        json!({
+            "id": "InterpretRnaReads",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence used as RNA-read interpretation target carried by seq_id"},
+                {"name": "SEED_FEATURE_ID", "required": true, "subject_kind": "other", "detail": "seed feature id carried by seed_feature_id"},
+                {"name": "INPUT_PATH", "required": true, "subject_kind": "other", "detail": "external RNA-read FASTA/FASTQ input path carried by input_path"},
+                {"name": "REPORT_ID", "required": false, "subject_kind": "report", "detail": "optional persisted RNA-read report id carried by report_id"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "report.exists",
+                    "subject": {"arg": "REPORT_ID"},
+                    "equals": "rna_read",
+                    "effect_kind": "may_on_success",
+                    "description": "The report id may be supplied explicitly or generated during execution."
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Interpret RNA reads through the shared engine operation and persist an RNA-read support report.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("InterpretRnaReads")
+        }),
+        json!({
+            "id": "rna-reads batch-map",
+            "kind": "operation",
+            "mutating": "external",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "MANIFEST_PATH", "required": true, "subject_kind": "other", "detail": "external RNA-read batch manifest path"},
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence used as batch RNA-read interpretation target"},
+                {"name": "SEED_FEATURE_ID", "required": true, "subject_kind": "other", "detail": "seed feature id used to define candidate transcript support"},
+                {"name": "OUT_DIR", "required": true, "subject_kind": "other", "detail": "external batch output directory"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUT_DIR"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Run RNA-read interpretation for a manifest-defined batch and write external batch outputs.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("rna-reads batch-map")
+        }),
+        json!({
+            "id": "RunRnaReadBatchMap",
+            "kind": "operation",
+            "mutating": "external",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "MANIFEST_PATH", "required": true, "subject_kind": "other", "detail": "external RNA-read batch manifest path carried by manifest_path"},
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence used as batch RNA-read interpretation target carried by seq_id"},
+                {"name": "SEED_FEATURE_ID", "required": true, "subject_kind": "other", "detail": "seed feature id carried by seed_feature_id"},
+                {"name": "OUT_DIR", "required": true, "subject_kind": "other", "detail": "external batch output directory carried by out_dir"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUT_DIR"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Run RNA-read interpretation for a manifest-defined batch through the shared engine operation.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("RunRnaReadBatchMap")
+        }),
         no_project_inspection_operation_descriptor(
             "arrays inspect-microarray-track",
             "Inspect a prepared microarray-track manifest without project-state preconditions; manifest path validation happens during execution.",
@@ -24540,6 +24874,21 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         ]),
         "seq-primer suggest" | "SuggestSequencingPrimers" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "EXPECTED_SEQ_ID"}}),
+        ]),
+        "cutrun prepare" | "PrepareCutRunDataset" | "cutrun gene-set-regulatory-support" => {
+            Some(vec![])
+        }
+        "cutrun project"
+        | "ProjectCutRunDataset"
+        | "cutrun interpret"
+        | "InterpretCutRunReads"
+        | "cutrun inspect-regulatory-support"
+        | "InspectCutRunRegulatorySupport"
+        | "rna-reads interpret"
+        | "InterpretRnaReads"
+        | "rna-reads batch-map"
+        | "RunRnaReadBatchMap" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
         ]),
         "cutrun list-read-reports" => Some(vec![]),
         "cutrun show-read-report" => Some(vec![
