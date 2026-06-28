@@ -18846,6 +18846,133 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "RANKING_METRIC", "required": false, "subject_kind": "other", "detail": "similarity ranking metric"}),
             ],
         ),
+        sequence_optional_artifact_operation_descriptor(
+            "ScanTfbsHits",
+            "false",
+            false,
+            "SEQ_ID",
+            "loaded sequence id carried by target.seq_id when target.kind is seq_id",
+            "optional external TFBS hit-scan JSON output path carried by path",
+            "Scan one loaded or inline sequence target for TFBS/PSSM hits through the shared engine operation.",
+            vec![
+                json!({"name": "MOTIFS", "required": true, "subject_kind": "other", "detail": "motif query tokens carried by motifs"}),
+                json!({"name": "MIN_LLR_BITS", "required": false, "subject_kind": "other", "detail": "optional minimum log-likelihood-ratio threshold in bits"}),
+                json!({"name": "MIN_LLR_QUANTILE", "required": false, "subject_kind": "other", "detail": "optional quantile threshold"}),
+                json!({"name": "MAX_HITS", "required": false, "subject_kind": "other", "detail": "optional maximum number of hits"}),
+            ],
+        ),
+        optional_artifact_resource_report_descriptor(
+            "features repeat-query",
+            "optional external repeat-annotation query JSON output path",
+            "Query RepeatMasker-style annotation rows from one genome/rmsk source; genome and rmsk path validation happens during execution.",
+            vec![
+                json!({"name": "GENOME_ID", "required": true, "subject_kind": "other", "detail": "reference genome id"}),
+                json!({"name": "RMSK_PATH", "required": true, "subject_kind": "other", "detail": "RepeatMasker/rmsk source path"}),
+                json!({"name": "--filter", "required": false, "subject_kind": "other", "detail": "optional repeat annotation filters"}),
+                json!({"name": "--limit", "required": false, "subject_kind": "other", "detail": "optional maximum returned rows"}),
+            ],
+        ),
+        optional_artifact_resource_report_descriptor(
+            "QueryRepeatAnnotations",
+            "optional external repeat-annotation query JSON output path carried by path",
+            "Query RepeatMasker-style annotation rows through the shared engine operation; genome and rmsk path validation happens during execution.",
+            vec![
+                json!({"name": "GENOME_ID", "required": true, "subject_kind": "other", "detail": "reference genome id carried by genome_id"}),
+                json!({"name": "RMSK_PATH", "required": true, "subject_kind": "other", "detail": "RepeatMasker/rmsk source path carried by rmsk_path"}),
+                json!({"name": "FILTER", "required": false, "subject_kind": "other", "detail": "repeat annotation filters carried by filter"}),
+                json!({"name": "LIMIT", "required": false, "subject_kind": "other", "detail": "optional maximum returned rows"}),
+            ],
+        ),
+        sequence_optional_artifact_operation_descriptor(
+            "features repeat-overlaps",
+            "false",
+            false,
+            "SEQ_ID",
+            "loaded genome-anchored sequence id",
+            "optional external repeat-overlap JSON output path",
+            "Query repeat-index overlaps for one loaded sequence interval.",
+            vec![
+                json!({"name": "RMSK_INDEX_PATH", "required": true, "subject_kind": "other", "detail": "prepared repeat-index path"}),
+                json!({"name": "--range", "required": false, "subject_kind": "other", "detail": "optional sequence interval"}),
+                json!({"name": "--limit", "required": false, "subject_kind": "other", "detail": "optional maximum returned rows"}),
+            ],
+        ),
+        sequence_optional_artifact_operation_descriptor(
+            "QueryRepeatOverlaps",
+            "false",
+            false,
+            "SEQ_ID",
+            "loaded genome-anchored sequence id carried by seq_id",
+            "optional external repeat-overlap JSON output path carried by path",
+            "Query repeat-index overlaps through the shared engine operation.",
+            vec![
+                json!({"name": "RMSK_INDEX_PATH", "required": true, "subject_kind": "other", "detail": "prepared repeat-index path carried by rmsk_index_path"}),
+                json!({"name": "START_0BASED", "required": false, "subject_kind": "other", "detail": "optional zero-based interval start"}),
+                json!({"name": "END_0BASED_EXCLUSIVE", "required": false, "subject_kind": "other", "detail": "optional zero-based exclusive interval end"}),
+                json!({"name": "LIMIT", "required": false, "subject_kind": "other", "detail": "optional maximum returned rows"}),
+            ],
+        ),
+        sequence_optional_artifact_operation_descriptor(
+            "features materialize-repeats",
+            "true",
+            false,
+            "SEQ_ID",
+            "loaded genome-anchored sequence id receiving repeat features",
+            "optional external repeat-materialization JSON output path",
+            "Materialize repeat-index overlaps as features on one loaded sequence; feature changes are execution-derived and are not yet represented as a hard fact effect.",
+            vec![
+                json!({"name": "RMSK_INDEX_PATH", "required": true, "subject_kind": "other", "detail": "prepared repeat-index path"}),
+                json!({"name": "--max-features", "required": false, "subject_kind": "other", "detail": "optional maximum feature count"}),
+                json!({"name": "--clear-existing", "required": false, "subject_kind": "other", "detail": "whether existing repeat features are cleared first"}),
+            ],
+        ),
+        sequence_optional_artifact_operation_descriptor(
+            "MaterializeRepeatFeatures",
+            "true",
+            false,
+            "SEQ_ID",
+            "loaded genome-anchored sequence id carried by seq_id",
+            "optional external repeat-materialization JSON output path carried by path",
+            "Materialize repeat-index overlaps as sequence features through the shared engine operation; feature changes are execution-derived and are not yet represented as a hard fact effect.",
+            vec![
+                json!({"name": "RMSK_INDEX_PATH", "required": true, "subject_kind": "other", "detail": "prepared repeat-index path carried by rmsk_index_path"}),
+                json!({"name": "MAX_FEATURES", "required": false, "subject_kind": "other", "detail": "optional maximum feature count"}),
+                json!({"name": "CLEAR_EXISTING", "required": false, "subject_kind": "other", "detail": "whether existing repeat features are cleared first"}),
+            ],
+        ),
+        optional_artifact_resource_report_descriptor(
+            "features repeat-cohort",
+            "optional external repeat-environment cohort JSON output path",
+            "Build a repeat-centered window cohort from one genome/rmsk source; genome/rmsk and catalog/cache validation happens during execution.",
+            vec![
+                json!({"name": "GENOME_ID", "required": true, "subject_kind": "other", "detail": "reference genome id"}),
+                json!({"name": "RMSK_PATH", "required": true, "subject_kind": "other", "detail": "RepeatMasker/rmsk source path"}),
+                json!({"name": "--filter", "required": false, "subject_kind": "other", "detail": "optional repeat annotation filters"}),
+                json!({"name": "--upstream-bp|--downstream-bp", "required": false, "subject_kind": "other", "detail": "repeat-centered flank lengths"}),
+            ],
+        ),
+        optional_artifact_resource_report_descriptor(
+            "BuildRepeatEnvironmentCohort",
+            "optional external repeat-environment cohort JSON output path carried by path",
+            "Build a repeat-centered window cohort through the shared engine operation; genome/rmsk and catalog/cache validation happens during execution.",
+            vec![
+                json!({"name": "GENOME_ID", "required": true, "subject_kind": "other", "detail": "reference genome id carried by genome_id"}),
+                json!({"name": "RMSK_PATH", "required": true, "subject_kind": "other", "detail": "RepeatMasker/rmsk source path carried by rmsk_path"}),
+                json!({"name": "FILTER", "required": false, "subject_kind": "other", "detail": "repeat annotation filters carried by filter"}),
+                json!({"name": "UPSTREAM_BP", "required": false, "subject_kind": "other", "detail": "upstream flank length"}),
+                json!({"name": "DOWNSTREAM_BP", "required": false, "subject_kind": "other", "detail": "downstream flank length"}),
+            ],
+        ),
+        optional_artifact_resource_report_descriptor(
+            "features window-cohort-tfbs",
+            "optional external window-cohort TFBS JSON output path",
+            "Summarize TFBS scores over an external repeat/window cohort JSON file; cohort and motif validation happens during execution.",
+            vec![
+                json!({"name": "COHORT_PATH", "required": true, "subject_kind": "other", "detail": "external repeat/window cohort JSON path"}),
+                json!({"name": "MOTIFS", "required": true, "subject_kind": "other", "detail": "motif query tokens"}),
+                json!({"name": "--score-kind", "required": false, "subject_kind": "other", "detail": "score-track value kind"}),
+            ],
+        ),
         json!({
             "id": "SummarizeTfbsRegion",
             "kind": "operation",
@@ -23810,9 +23937,19 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "RenderTfbsScoreTracksSvg"
         | "SummarizeTfbsScoreTracks"
         | "features tfbs-track-similarity"
-        | "SummarizeTfbsTrackSimilarity" => Some(vec![
+        | "SummarizeTfbsTrackSimilarity"
+        | "ScanTfbsHits"
+        | "features repeat-overlaps"
+        | "QueryRepeatOverlaps"
+        | "features materialize-repeats"
+        | "MaterializeRepeatFeatures" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
         ]),
+        "features repeat-query"
+        | "QueryRepeatAnnotations"
+        | "features repeat-cohort"
+        | "BuildRepeatEnvironmentCohort"
+        | "features window-cohort-tfbs" => Some(vec![]),
         "features query" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
         ]),

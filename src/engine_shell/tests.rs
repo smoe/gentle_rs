@@ -23723,6 +23723,11 @@ fn execute_introspect_readiness_checks_render_svg_sequence_input() {
         "ExportFeaturesBed",
         "InspectSequenceContextView",
         "ExportSequenceContextBundle",
+        "ScanTfbsHits",
+        "features repeat-overlaps",
+        "QueryRepeatOverlaps",
+        "features materialize-repeats",
+        "MaterializeRepeatFeatures",
     ] {
         let cmd = parse_shell_line(&format!(
             "introspect readiness {capability_id} --arg SEQ_ID=demo"
@@ -23791,6 +23796,11 @@ fn execute_introspect_readiness_checks_render_svg_sequence_input() {
         "ExportRnaReadSampleSheet",
         "SummarizeMultiGenePromoterTfbs",
         "RenderMultiGenePromoterTfbsSvg",
+        "features repeat-query",
+        "QueryRepeatAnnotations",
+        "features repeat-cohort",
+        "BuildRepeatEnvironmentCohort",
+        "features window-cohort-tfbs",
         "SummarizeJasparEntries",
         "BenchmarkJasparRegistry",
         "ListJasparCatalog",
@@ -24231,6 +24241,45 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
             && descriptor["reads"][0]["subject"]["arg"].as_str() == Some("SEQ_ID")
             && descriptor["effects"].as_array().map(Vec::len) == Some(0)
     }));
+    for id in [
+        "ScanTfbsHits",
+        "features repeat-overlaps",
+        "QueryRepeatOverlaps",
+        "features materialize-repeats",
+        "MaterializeRepeatFeatures",
+    ] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"][0]["fact"].as_str() == Some("sequence.exists")
+                    && descriptor["reads"][0]["subject"]["arg"].as_str() == Some("SEQ_ID")
+                    && descriptor["effects"][0]["fact"].as_str() == Some("artifact.written")
+                    && descriptor["effects"][0]["subject"]["arg"].as_str() == Some("OUTPUT_PATH")
+                    && descriptor["effects"][0]["effect_kind"].as_str() == Some("external_handoff")
+            }),
+            "{id} should have a fact-annotated sequence-gated optional-artifact descriptor"
+        );
+    }
+    for id in [
+        "features repeat-query",
+        "QueryRepeatAnnotations",
+        "features repeat-cohort",
+        "BuildRepeatEnvironmentCohort",
+        "features window-cohort-tfbs",
+    ] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"].as_array().map(Vec::len) == Some(0)
+                    && descriptor["effects"][0]["fact"].as_str() == Some("artifact.written")
+                    && descriptor["effects"][0]["subject"]["arg"].as_str() == Some("OUTPUT_PATH")
+                    && descriptor["effects"][0]["effect_kind"].as_str() == Some("external_handoff")
+            }),
+            "{id} should have a fact-annotated external resource report descriptor"
+        );
+    }
     assert!(capabilities.iter().any(|descriptor| {
         descriptor["id"].as_str() == Some("QueryProteinResidueGenomicCoordinates")
             && descriptor["annotation_status"].as_str() == Some("fact_annotated")

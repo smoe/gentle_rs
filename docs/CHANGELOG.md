@@ -14,6 +14,9 @@ Maintenance rule:
 
 ## 2026-06-28
 
+- Added fact-aware introspection for repeat/similarity evidence routes:
+  repeat annotation queries, repeat overlap/materialization reports,
+  repeat-window TFBS summaries, and raw TFBS hit scanning.
 - Added fact-aware introspection for report/export/resource/promoter summary
   operations, including process/lab exports, JASPAR entry inspection, RNA-read
   sample-sheet export, multi-gene promoter TFBS summary/render, and scalar
