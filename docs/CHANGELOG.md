@@ -16,9 +16,9 @@ Maintenance rule:
 
 - Completed fact-aware introspection coverage for the current shared
   capability registry. The last pool/container, primer-specificity, and
-  reserved screenshot rows now have descriptors, with list-valued inputs
-  intentionally modeled as execution-validated until list-bound fact atoms
-  exist.
+  reserved screenshot rows now have descriptors. List-valued pool/container
+  rows now use `foreach_arg` readiness atoms so every supplied sequence or
+  container id is checked before execution when arguments are bound.
 - Added fact-aware introspection for CUT&RUN and RNA-read interpretation
   routes, including dataset preparation/projection, read interpretation,
   regulatory-support reports, gene-set regulatory support, and RNA-read

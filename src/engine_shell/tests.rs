@@ -23682,6 +23682,34 @@ fn execute_introspect_readiness_checks_render_svg_sequence_input() {
         "demo".to_string(),
         DNAsequence::from_sequence("ACGTACGT").expect("sequence"),
     );
+    state.sequences.insert(
+        "demo2".to_string(),
+        DNAsequence::from_sequence("TTTTCCCC").expect("sequence"),
+    );
+    state.container_state.containers.insert(
+        "container-1".to_string(),
+        Container {
+            container_id: "container-1".to_string(),
+            kind: ContainerKind::Singleton,
+            name: Some("Lane A".to_string()),
+            members: vec!["demo".to_string()],
+            declared_contents_exclusive: true,
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
+    state.container_state.containers.insert(
+        "container-2".to_string(),
+        Container {
+            container_id: "container-2".to_string(),
+            kind: ContainerKind::Singleton,
+            name: Some("Lane B".to_string()),
+            members: vec!["demo2".to_string()],
+            declared_contents_exclusive: true,
+            created_by_op: None,
+            created_at_unix_ms: 0,
+        },
+    );
     let mut engine = GentleEngine::from_state(state);
     let ready = parse_shell_line("introspect readiness render-svg --arg SEQ_ID=demo")
         .expect("parse ready render-svg readiness");
@@ -23878,16 +23906,6 @@ fn execute_introspect_readiness_checks_render_svg_sequence_input() {
         "PrepareCutRunDataset",
         "cutrun gene-set-regulatory-support",
         "AssessPrimerPairSpecificity",
-        "ExportPool",
-        "FilterByDesignConstraints",
-        "FilterByMolecularWeight",
-        "Ligation",
-        "MergeContainers",
-        "MergeContainersById",
-        "RenderPoolGelSvg",
-        "export-pool",
-        "render-pool-gel-svg",
-        "render_pool_gel_svg",
         "cutrun list-read-reports",
         "rna-reads list-reports",
         "ListSequencingConfirmationReports",
@@ -23947,6 +23965,99 @@ fn execute_introspect_readiness_checks_render_svg_sequence_input() {
             Some("ready")
         );
         assert_eq!(out.output["readiness"][0]["mode"].as_str(), Some("unbound"));
+    }
+
+    for capability_id in [
+        "ExportPool",
+        "FilterByDesignConstraints",
+        "FilterByMolecularWeight",
+        "Ligation",
+        "MergeContainers",
+        "export-pool",
+        "render_pool_gel_svg",
+    ] {
+        let cmd = parse_shell_line(&format!(
+            "introspect readiness {capability_id} --arg INPUTS=demo,demo2"
+        ))
+        .expect("parse list-bound readiness");
+        let out = execute_shell_command(&mut engine, &cmd).expect("execute list-bound readiness");
+        assert_eq!(
+            out.output["readiness"][0]["readiness"].as_str(),
+            Some("ready"),
+            "{capability_id} should be ready when every sequence input exists"
+        );
+
+        let cmd = parse_shell_line(&format!(
+            "introspect readiness {capability_id} --arg INPUTS=demo,missing"
+        ))
+        .expect("parse missing list-bound readiness");
+        let out =
+            execute_shell_command(&mut engine, &cmd).expect("execute missing list-bound readiness");
+        assert_eq!(
+            out.output["readiness"][0]["readiness"].as_str(),
+            Some("blocked"),
+            "{capability_id} should be blocked when one sequence input is missing"
+        );
+        assert!(
+            out.output["readiness"][0]["unmet_atoms"]
+                .as_array()
+                .expect("unmet atoms")
+                .iter()
+                .any(|atom| atom["subject"]["id"].as_str() == Some("missing")),
+            "{capability_id} should report the missing sequence id"
+        );
+    }
+
+    for capability_id in ["RenderPoolGelSvg", "render-pool-gel-svg"] {
+        let cmd = parse_shell_line(&format!(
+            "introspect readiness {capability_id} --arg INPUTS='[\"demo\",\"demo2\"]'"
+        ))
+        .expect("parse JSON-array list-bound readiness");
+        let out =
+            execute_shell_command(&mut engine, &cmd).expect("execute JSON-array list readiness");
+        assert_eq!(
+            out.output["readiness"][0]["readiness"].as_str(),
+            Some("ready"),
+            "{capability_id} should accept sequence INPUTS as a JSON array"
+        );
+    }
+
+    for capability_id in [
+        "MergeContainersById",
+        "RenderPoolGelSvg",
+        "render-pool-gel-svg",
+    ] {
+        let cmd = parse_shell_line(&format!(
+            "introspect readiness {capability_id} --arg CONTAINER_IDS=container-1,container-2"
+        ))
+        .expect("parse container-list readiness");
+        let out =
+            execute_shell_command(&mut engine, &cmd).expect("execute container-list readiness");
+        assert_eq!(
+            out.output["readiness"][0]["readiness"].as_str(),
+            Some("ready"),
+            "{capability_id} should be ready when every container input exists"
+        );
+
+        let cmd = parse_shell_line(&format!(
+            "introspect readiness {capability_id} --arg CONTAINER_IDS=container-1,missing"
+        ))
+        .expect("parse missing container-list readiness");
+        let out = execute_shell_command(&mut engine, &cmd)
+            .expect("execute missing container-list readiness");
+        assert_eq!(
+            out.output["readiness"][0]["readiness"].as_str(),
+            Some("blocked"),
+            "{capability_id} should be blocked when one container input is missing"
+        );
+        assert!(
+            out.output["readiness"][0]["unmet_atoms"]
+                .as_array()
+                .expect("unmet atoms")
+                .iter()
+                .any(|atom| atom["subject"]["id"].as_str() == Some("missing")),
+            "{capability_id} should report the missing container id"
+        );
     }
 
     let screenshot = parse_shell_line("introspect readiness screenshot-window")
@@ -25200,22 +25311,51 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
             .all(|descriptor| descriptor["annotation_status"].as_str() != Some("registry_only")),
         "all shared registry capabilities should have fact-aware introspection descriptors"
     );
-    for id in [
-        "ExportPool",
-        "export-pool",
-        "RenderPoolGelSvg",
-        "render-pool-gel-svg",
-        "render_pool_gel_svg",
-    ] {
+    for id in ["ExportPool", "export-pool", "render_pool_gel_svg"] {
         assert!(
             capabilities.iter().any(|descriptor| {
                 descriptor["id"].as_str() == Some(id)
                     && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"][0]["fact"].as_str() == Some("sequence.exists")
+                    && descriptor["reads"][0]["subject"]["foreach_arg"].as_str() == Some("INPUTS")
                     && descriptor["effects"][0]["fact"].as_str() == Some("artifact.written")
                     && descriptor["effects"][0]["subject"]["arg"].as_str() == Some("OUTPUT_PATH")
                     && descriptor["effects"][0]["effect_kind"].as_str() == Some("external_handoff")
             }),
-            "{id} should have a fact-annotated pool artifact descriptor"
+            "{id} should have a list-bound sequence pool artifact descriptor"
+        );
+    }
+    for id in ["RenderPoolGelSvg", "render-pool-gel-svg"] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"].as_array().is_some_and(|reads| {
+                        reads.iter().any(|read| {
+                            read["fact"].as_str() == Some("sequence.exists")
+                                && read["subject"]["foreach_arg"].as_str() == Some("INPUTS")
+                        })
+                    })
+                    && descriptor["reads"].as_array().is_some_and(|reads| {
+                        reads.iter().any(|read| {
+                            read["fact"].as_str() == Some("container.exists")
+                                && read["subject"]["foreach_arg"].as_str() == Some("CONTAINER_IDS")
+                        })
+                    })
+                    && descriptor["reads"].as_array().is_some_and(|reads| {
+                        reads.iter().any(|read| {
+                            read["fact"].as_str() == Some("arrangement.exists")
+                                && read["subject"]["arg"].as_str() == Some("ARRANGEMENT_ID")
+                        })
+                    })
+                    && descriptor["precondition_expr"]["any"]
+                        .as_array()
+                        .is_some_and(|items| items.len() == 3)
+                    && descriptor["effects"][0]["fact"].as_str() == Some("artifact.written")
+                    && descriptor["effects"][0]["subject"]["arg"].as_str() == Some("OUTPUT_PATH")
+                    && descriptor["effects"][0]["effect_kind"].as_str() == Some("external_handoff")
+            }),
+            "{id} should have a list-bound mixed-source gel artifact descriptor"
         );
     }
     for id in [
@@ -25223,21 +25363,37 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
         "FilterByMolecularWeight",
         "Ligation",
         "MergeContainers",
-        "MergeContainersById",
     ] {
         assert!(
             capabilities.iter().any(|descriptor| {
                 descriptor["id"].as_str() == Some(id)
                     && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"][0]["fact"].as_str() == Some("sequence.exists")
+                    && descriptor["reads"][0]["subject"]["foreach_arg"].as_str() == Some("INPUTS")
                     && descriptor["effects"][0]["fact"].as_str() == Some("sequence.exists")
                     && descriptor["effects"][0]["effect_kind"].as_str() == Some("may_on_success")
                     && descriptor["precondition_expr"]["all"]
                         .as_array()
-                        .is_some_and(|items| items.is_empty())
+                        .is_some_and(|items| items.len() == 1)
             }),
-            "{id} should have a fact-annotated conservative list-input transform descriptor"
+            "{id} should have a list-bound sequence-input transform descriptor"
         );
     }
+    assert!(
+        capabilities.iter().any(|descriptor| {
+            descriptor["id"].as_str() == Some("MergeContainersById")
+                && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                && descriptor["reads"][0]["fact"].as_str() == Some("container.exists")
+                && descriptor["reads"][0]["subject"]["foreach_arg"].as_str()
+                    == Some("CONTAINER_IDS")
+                && descriptor["effects"][0]["fact"].as_str() == Some("sequence.exists")
+                && descriptor["effects"][0]["effect_kind"].as_str() == Some("may_on_success")
+                && descriptor["precondition_expr"]["all"]
+                    .as_array()
+                    .is_some_and(|items| items.len() == 1)
+        }),
+        "MergeContainersById should have a list-bound container-input transform descriptor"
+    );
     assert!(capabilities.iter().any(|descriptor| {
         descriptor["id"].as_str() == Some("AssessPrimerPairSpecificity")
             && descriptor["annotation_status"].as_str() == Some("fact_annotated")

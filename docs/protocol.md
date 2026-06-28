@@ -4606,11 +4606,14 @@ restriction-site scan evidence:
   a single deterministic output binding.
 - List-valued pool/container rows (`MergeContainers`, `MergeContainersById`,
   `Ligation`, `FilterByMolecularWeight`, `FilterByDesignConstraints`,
-  `ExportPool`, `RenderPoolGelSvg`, and their shell/adapter aliases) are
-  fact-annotated but keep readiness conservative: each supplied sequence or
-  container id is validated during execution until the introspection schema
-  gains explicit list-bound/foreach fact atoms. Artifact-producing pool rows
-  still declare `artifact.written(OUTPUT_PATH)` external handoff effects.
+  `ExportPool`, `RenderPoolGelSvg`, and their shell/adapter aliases) use
+  descriptor-side `foreach_arg` atoms for bound readiness. Sequence-list rows
+  expand each supplied `INPUTS` id into `sequence.exists(id)` checks,
+  container-list rows expand each supplied `CONTAINER_IDS` id into
+  `container.exists(id)` checks, and mixed gel-render rows accept any one valid
+  source mode: sequence ids, container ids, or `ARRANGEMENT_ID`. Artifact-
+  producing pool rows still declare `artifact.written(OUTPUT_PATH)` external
+  handoff effects.
 - `screenshot-window` is represented in the catalog as a reserved host/view
   capability. It requires `ui.host_available == true` and a
   `host.tool_available(SCREENSHOT_CAPTURE) == true` fact, and remains blocked

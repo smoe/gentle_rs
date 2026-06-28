@@ -5,10 +5,10 @@ Last updated: 2026-06-28
 Status: implemented for `introspect facts`, `introspect capabilities`,
 `introspect readiness`, and `introspect all`. The capability route now projects
 the shared protocol capability registry with fact-aware annotations for every
-current catalog row. Some list-valued rows intentionally keep conservative
-readiness until list-bound fact atoms are added. Sections marked "Degrees of
-freedom" call out where later implementation should adjust shapes to validated
-code.
+current catalog row. List-valued pool/container rows use descriptor-side
+`foreach_arg` atoms so bound readiness can prove every supplied sequence or
+container id before execution. Sections marked "Degrees of freedom" call out
+where later implementation should adjust shapes to validated code.
 
 Revision note: incorporates the first Codex review (argument binding, fact
 domains, effect modality, subroutes, narrowed "lossless", explicit host fact).
@@ -973,11 +973,11 @@ on semantic glyphs.
 4. Add readiness tests proving the **same descriptor** resolves correctly in both
    a GUI-attached and a headless context (implemented through explicit
    `--ui-host true|false` projection).
-5. Complete current shared-registry fact annotation, with conservative
-   readiness for list-valued pool/container rows until list-bound atoms exist
+5. Complete current shared-registry fact annotation (implemented).
+6. Add list-bound/foreach readiness atoms for list-valued pool/container rows
    (implemented).
-6. Defer: glossary-as-projection inversion, list-bound/foreach readiness atoms,
-   and any visualization-interpretation work.
+7. Defer: glossary-as-projection inversion and any visualization-interpretation
+   work.
 
 ## 11. Resolved decisions
 
@@ -1001,7 +1001,5 @@ slice resolved them. The non-negotiables are promoted into `docs/decisions.md`.
 
 ## 12. Remaining implementation work
 
-- Add explicit list-bound/foreach fact atoms so list-valued pool/container rows
-  can prove every supplied sequence or container id before execution.
 - Migrate glossary/help generation toward projection from an engine/protocol-side
   descriptor once enough annotated rows prove the shape.

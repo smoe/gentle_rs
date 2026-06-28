@@ -16856,11 +16856,12 @@ fn sequence_list_transform_descriptor(
     description: &str,
     mut extra_args: Vec<Value>,
 ) -> Value {
+    let input_atom = json!({"fact": "sequence.exists", "subject": {"foreach_arg": "INPUTS", "kind": "sequence"}});
     let mut args = vec![json!({
         "name": "INPUTS",
         "required": true,
         "subject_kind": "sequence",
-        "detail": "one or more loaded sequence ids; each id is validated during execution"
+        "detail": "one or more loaded sequence ids; each id must satisfy sequence.exists"
     })];
     args.append(&mut extra_args);
     json!({
@@ -16869,7 +16870,7 @@ fn sequence_list_transform_descriptor(
         "mutating": "true",
         "requires_confirmation": false,
         "args": args,
-        "reads": [],
+        "reads": [input_atom.clone()],
         "effects": [
             {
                 "fact": "sequence.exists",
@@ -16877,7 +16878,7 @@ fn sequence_list_transform_descriptor(
                 "description": "May create derived product sequences; concrete ids are output-prefix/index-derived unless a valid single-product output id is supplied."
             }
         ],
-        "precondition_expr": {"all": []},
+        "precondition_expr": {"all": [input_atom]},
         "description": description,
         "annotation_status": "fact_annotated",
         "registry": registry_metadata_for_introspection(id)
@@ -16889,11 +16890,12 @@ fn container_list_transform_descriptor(
     description: &str,
     extra_args: Vec<Value>,
 ) -> Value {
+    let input_atom = json!({"fact": "container.exists", "subject": {"foreach_arg": "CONTAINER_IDS", "kind": "other"}});
     let mut args = vec![json!({
         "name": "CONTAINER_IDS",
         "required": true,
         "subject_kind": "other",
-        "detail": "one or more persisted container ids; each id is validated during execution"
+        "detail": "one or more persisted container ids; each id must satisfy container.exists"
     })];
     args.extend(extra_args);
     json!({
@@ -16902,7 +16904,7 @@ fn container_list_transform_descriptor(
         "mutating": "true",
         "requires_confirmation": false,
         "args": args,
-        "reads": [],
+        "reads": [input_atom.clone()],
         "effects": [
             {
                 "fact": "sequence.exists",
@@ -16910,21 +16912,43 @@ fn container_list_transform_descriptor(
                 "description": "May create derived product sequences or containers; concrete ids are execution-derived."
             }
         ],
-        "precondition_expr": {"all": []},
+        "precondition_expr": {"all": [input_atom]},
         "description": description,
         "annotation_status": "fact_annotated",
         "registry": registry_metadata_for_introspection(id)
     })
 }
 
+fn sequence_inputs_foreach_atom() -> Value {
+    json!({"fact": "sequence.exists", "subject": {"foreach_arg": "INPUTS", "kind": "sequence"}})
+}
+
+fn container_ids_foreach_atom() -> Value {
+    json!({"fact": "container.exists", "subject": {"foreach_arg": "CONTAINER_IDS", "kind": "other"}})
+}
+
+fn arrangement_id_atom() -> Value {
+    json!({"fact": "arrangement.exists", "subject": {"arg": "ARRANGEMENT_ID"}})
+}
+
 fn pool_artifact_descriptor(id: &str, description: &str, args: Vec<Value>) -> Value {
+    pool_artifact_descriptor_with_readiness(id, description, args, vec![], json!({"all": []}))
+}
+
+fn pool_artifact_descriptor_with_readiness(
+    id: &str,
+    description: &str,
+    args: Vec<Value>,
+    reads: Vec<Value>,
+    precondition_expr: Value,
+) -> Value {
     json!({
         "id": id,
         "kind": "operation",
         "mutating": "false",
         "requires_confirmation": false,
         "args": args,
-        "reads": [],
+        "reads": reads,
         "effects": [
             {
                 "fact": "artifact.written",
@@ -16932,7 +16956,7 @@ fn pool_artifact_descriptor(id: &str, description: &str, args: Vec<Value>) -> Va
                 "effect_kind": "external_handoff"
             }
         ],
-        "precondition_expr": {"all": []},
+        "precondition_expr": precondition_expr,
         "description": description,
         "annotation_status": "fact_annotated",
         "registry": registry_metadata_for_introspection(id)
@@ -17683,7 +17707,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "OUTPUT_PREFIX", "required": false, "subject_kind": "other", "detail": "optional retained-candidate id prefix"}),
             ],
         ),
-        pool_artifact_descriptor(
+        pool_artifact_descriptor_with_readiness(
             "export-pool",
             "Export one or more loaded sequences to an external GENtle pool JSON artifact.",
             vec![
@@ -17691,8 +17715,10 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external pool JSON output path"}),
                 json!({"name": "HUMAN_ID", "required": false, "subject_kind": "other", "detail": "optional human-readable pool label"}),
             ],
+            vec![sequence_inputs_foreach_atom()],
+            json!({"all": [sequence_inputs_foreach_atom()]}),
         ),
-        pool_artifact_descriptor(
+        pool_artifact_descriptor_with_readiness(
             "ExportPool",
             "Export one or more loaded sequences to an external GENtle pool JSON artifact through the shared engine operation.",
             vec![
@@ -17701,8 +17727,10 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "POOL_ID", "required": false, "subject_kind": "other", "detail": "optional machine-readable pool id carried by pool_id"}),
                 json!({"name": "HUMAN_ID", "required": false, "subject_kind": "other", "detail": "optional human-readable pool label carried by human_id"}),
             ],
+            vec![sequence_inputs_foreach_atom()],
+            json!({"all": [sequence_inputs_foreach_atom()]}),
         ),
-        pool_artifact_descriptor(
+        pool_artifact_descriptor_with_readiness(
             "render-pool-gel-svg",
             "Render sequence, container, or arrangement pool lanes to an external SVG gel artifact.",
             vec![
@@ -17711,8 +17739,18 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "ARRANGEMENT_ID", "required": false, "subject_kind": "other", "detail": "optional persisted arrangement id validated during execution"}),
                 json!({"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external SVG output path"}),
             ],
+            vec![
+                sequence_inputs_foreach_atom(),
+                container_ids_foreach_atom(),
+                arrangement_id_atom(),
+            ],
+            json!({"any": [
+                sequence_inputs_foreach_atom(),
+                container_ids_foreach_atom(),
+                arrangement_id_atom()
+            ]}),
         ),
-        pool_artifact_descriptor(
+        pool_artifact_descriptor_with_readiness(
             "render_pool_gel_svg",
             "Render sequence pool lanes to an external SVG gel artifact through JS/Lua helper adapters.",
             vec![
@@ -17720,8 +17758,10 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external SVG output path"}),
                 json!({"name": "LADDERS", "required": false, "subject_kind": "other", "detail": "optional ladder-name CSV/array"}),
             ],
+            vec![sequence_inputs_foreach_atom()],
+            json!({"all": [sequence_inputs_foreach_atom()]}),
         ),
-        pool_artifact_descriptor(
+        pool_artifact_descriptor_with_readiness(
             "RenderPoolGelSvg",
             "Render sequence, container, or arrangement pool lanes to an external SVG gel artifact through the shared engine operation.",
             vec![
@@ -17730,6 +17770,16 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "ARRANGEMENT_ID", "required": false, "subject_kind": "other", "detail": "optional persisted arrangement id carried by arrangement_id"}),
                 json!({"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external SVG output path carried by path"}),
             ],
+            vec![
+                sequence_inputs_foreach_atom(),
+                container_ids_foreach_atom(),
+                arrangement_id_atom(),
+            ],
+            json!({"any": [
+                sequence_inputs_foreach_atom(),
+                container_ids_foreach_atom(),
+                arrangement_id_atom()
+            ]}),
         ),
         pool_artifact_descriptor(
             "AssessPrimerPairSpecificity",
@@ -25572,6 +25622,71 @@ fn instantiate_introspection_atom(
     })
 }
 
+fn split_introspection_list_arg(raw: &str) -> Vec<String> {
+    if let Ok(Value::Array(items)) = serde_json::from_str::<Value>(raw) {
+        return items
+            .into_iter()
+            .filter_map(|item| match item {
+                Value::String(value) => Some(value),
+                Value::Number(value) => Some(value.to_string()),
+                Value::Bool(value) => Some(value.to_string()),
+                _ => None,
+            })
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect();
+    }
+    raw.split(',')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .collect()
+}
+
+fn introspection_subject_kind_from_subject_value(
+    subject_value: &Value,
+    arg_name: &str,
+) -> FactSubjectKind {
+    subject_value
+        .get("kind")
+        .and_then(Value::as_str)
+        .map(introspection_subject_kind_from_str)
+        .unwrap_or_else(|| subject_kind_for_arg(arg_name))
+}
+
+fn instantiate_introspection_atom_expression(
+    atom: &Value,
+    args: &BTreeMap<String, String>,
+) -> Result<FactExpression, String> {
+    if let Some(subject_value) = atom.get("subject")
+        && let Some(arg_name) = subject_value.get("foreach_arg").and_then(Value::as_str)
+    {
+        let Some(raw) = args.get(arg_name) else {
+            return Err(format!("unbound argument {arg_name}"));
+        };
+        let ids = split_introspection_list_arg(raw);
+        if ids.is_empty() {
+            return Err(format!("empty list argument {arg_name}"));
+        }
+        let kind = introspection_subject_kind_from_subject_value(subject_value, arg_name);
+        let mut expressions = Vec::with_capacity(ids.len());
+        for id in ids {
+            let mut grounded = atom.clone();
+            if let Some(grounded_object) = grounded.as_object_mut() {
+                grounded_object.insert(
+                    "subject".to_string(),
+                    json!({"kind": kind.as_str(), "id": id}),
+                );
+            }
+            expressions.push(FactExpression::Atom(instantiate_introspection_atom(
+                &grounded, args,
+            )?));
+        }
+        return Ok(FactExpression::All { all: expressions });
+    }
+    instantiate_introspection_atom(atom, args).map(FactExpression::Atom)
+}
+
 fn fact_atom_label(atom: &Value) -> Value {
     let mut labeled = atom.clone();
     if labeled.get("reason").is_none()
@@ -25624,8 +25739,8 @@ fn instantiate_introspection_expression(
         return instantiate_introspection_expression(child, args, unknown_atoms)
             .map(|not| FactExpression::Not { not: Box::new(not) });
     }
-    match instantiate_introspection_atom(value, args) {
-        Ok(atom) => Some(FactExpression::Atom(atom)),
+    match instantiate_introspection_atom_expression(value, args) {
+        Ok(expression) => Some(expression),
         Err(_) => {
             unknown_atoms.push(fact_atom_label(value));
             None
