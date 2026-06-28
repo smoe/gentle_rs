@@ -8438,6 +8438,10 @@ fn embedded_window_layer_id_for_root_tools_uses_hosted_window_ids() {
             )),
         ),
         (
+            GENtleApp::external_services_viewport_id(),
+            GENtleApp::hosted_external_services_window_id(),
+        ),
+        (
             GENtleApp::gibson_viewport_id(),
             egui::Id::new(("hosted_gibson_window", GENtleApp::gibson_viewport_id())),
         ),
@@ -8549,6 +8553,29 @@ fn embedded_root_tool_windows_render_as_sibling_hosted_windows() {
         mem.areas().is_visible(&egui::LayerId::new(
             egui::Order::Middle,
             egui::Id::new(GENtleApp::command_palette_viewport_id()),
+        ))
+    }));
+    let _ = ctx.end_pass();
+
+    let ctx = egui::Context::default();
+    ctx.set_embed_viewports(true);
+    let mut app = GENtleApp::default();
+    app.external_services_ui.show_panel = true;
+    ctx.begin_pass(egui::RawInput {
+        screen_rect: Some(screen_rect),
+        ..Default::default()
+    });
+    app.render_external_services_dialog(&ctx);
+    assert!(ctx.memory(|mem| {
+        mem.areas().is_visible(&egui::LayerId::new(
+            egui::Order::Middle,
+            GENtleApp::hosted_external_services_window_id(),
+        ))
+    }));
+    assert!(!ctx.memory(|mem| {
+        mem.areas().is_visible(&egui::LayerId::new(
+            egui::Order::Middle,
+            egui::Id::new(GENtleApp::external_services_viewport_id()),
         ))
     }));
     let _ = ctx.end_pass();

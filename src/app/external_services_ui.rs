@@ -1092,16 +1092,41 @@ impl GENtleApp {
         let viewport_id = Self::external_services_viewport_id();
         let spec = self.hosted_window_spec_for_viewport(
             "External Services",
-            egui::Id::new(("external_services_hosted_window", viewport_id)),
+            Self::hosted_external_services_window_id(),
             viewport_id,
             Vec2::new(920.0, 720.0),
             Vec2::new(620.0, 420.0),
         );
-        crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
-            self.render_external_services_contents(ui);
+        if ctx.embed_viewports() {
+            crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                self.render_external_services_contents(ui);
+            });
+            self.clear_viewport_foreground_request_after_render(viewport_id);
+            self.finalize_viewport_open_probe(viewport_id, "External Services");
+            self.external_services_ui.show_panel = open && self.external_services_ui.show_panel;
+            return;
+        }
+
+        let builder = crate::egui_compat::viewport_builder_for_hosted_window(&spec);
+        ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
+            self.note_viewport_focus_if_active(ctx, viewport_id);
+            if class == egui::ViewportClass::EmbeddedWindow {
+                crate::egui_compat::show_hosted_window(&mut *ctx, &spec, &mut open, |ui| {
+                    self.render_external_services_contents(ui);
+                });
+            } else {
+                crate::egui_compat::show_central_panel(
+                    &mut *ctx,
+                    egui::CentralPanel::default(),
+                    |ui| {
+                        self.render_external_services_contents(ui);
+                    },
+                );
+                if Self::viewport_close_requested_or_shortcut(ctx) {
+                    open = false;
+                }
+            }
         });
-        self.clear_viewport_foreground_request_after_render(viewport_id);
-        self.finalize_viewport_open_probe(viewport_id, "External Services");
         self.external_services_ui.show_panel = open && self.external_services_ui.show_panel;
     }
 }

@@ -186,6 +186,11 @@ impl GENtleApp {
         if viewport_id == Self::command_palette_viewport_id() {
             return Some(Self::embedded_window_layer_from_title("Command Palette"));
         }
+        if viewport_id == Self::external_services_viewport_id() {
+            return Some(Self::embedded_window_layer_from_window_id(
+                Self::hosted_external_services_window_id(),
+            ));
+        }
         if viewport_id == Self::history_viewport_id() {
             return Some(Self::embedded_window_layer_from_title("Operation History"));
         }

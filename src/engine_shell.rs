@@ -14653,6 +14653,33 @@ fn introspection_project_graph(
         value: Some(json!(ui_host_available)),
         ..ProjectFact::default()
     });
+    graph.facts.push(ProjectFact {
+        fact: "view.viewport".to_string(),
+        domain: ProjectFactDomain::View,
+        subject: FactSubject {
+            kind: FactSubjectKind::Ui,
+            id: "linear_sequence".to_string(),
+        },
+        value: Some(json!({
+            "start_bp": engine.state().display.linear_view_start_bp,
+            "span_bp": engine.state().display.linear_view_span_bp,
+        })),
+        ..ProjectFact::default()
+    });
+    graph.facts.push(ProjectFact {
+        fact: "view.visible_tracks".to_string(),
+        domain: ProjectFactDomain::View,
+        subject: FactSubject {
+            kind: FactSubjectKind::Ui,
+            id: "host".to_string(),
+        },
+        value: Some(json!({
+            "features": engine.state().display.show_features,
+            "tfbs": engine.state().display.show_tfbs,
+            "restriction_enzymes": engine.state().display.show_restriction_enzymes,
+        })),
+        ..ProjectFact::default()
+    });
     if let Ok((_catalog_path, catalog)) = load_agent_system_catalog(None) {
         for system in catalog.systems {
             let availability = agent_system_availability(&system);
@@ -14665,6 +14692,18 @@ fn introspection_project_graph(
             });
         }
     }
+    graph.facts.push(ProjectFact {
+        fact: "config.param".to_string(),
+        domain: ProjectFactDomain::Config,
+        subject: FactSubject {
+            kind: FactSubjectKind::Other,
+            id: "max_fragments_per_container".to_string(),
+        },
+        value: Some(json!(
+            engine.state().parameters.max_fragments_per_container
+        )),
+        ..ProjectFact::default()
+    });
     graph
 }
 
