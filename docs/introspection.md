@@ -721,6 +721,8 @@ on semantic glyphs.
    `PcrOverlapExtensionMutagenesis`,
    `ProjectGenomeInterval`, `TestCdnaPcr`, `TestCdnaQpcr`,
    `TestCdnaQpcrFasta`,
+   `primers test-cdna-pcr`, `primers test-cdna-qpcr`,
+   `primers test-cdna-qpcr-fasta`,
    `uniprot fetch`, `FetchUniprotSwissProt`,
    `uniprot import-swissprot`, `ImportUniprotSwissProt`,
    `uniprot list`, `uniprot show`,

@@ -53,6 +53,9 @@ Maintenance rule:
   projection and FASTA screening remain execution-time external-file reads,
   while transcript-derived cDNA assay tests require `sequence.exists(SEQ_ID)`
   and declare conservative optional-output effects.
+- Added matching fact-aware introspection for the shell cDNA assay-test routes:
+  `primers test-cdna-pcr`, `primers test-cdna-qpcr`, and
+  `primers test-cdna-qpcr-fasta`.
 
 ## 2026-06-27
 

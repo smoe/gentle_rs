@@ -4527,9 +4527,12 @@ restriction-site scan evidence:
 - Raw cDNA assay-test operation rows `TestCdnaPcr` and `TestCdnaQpcr` are
   fact-annotated over `sequence.exists(SEQ_ID)` and declare conservative
   `may_on_success` effects because JSON/SVG artifacts, materialized assay
-  products, and product-gel outputs depend on optional payload fields.
-  `TestCdnaQpcrFasta` has no project-state precondition because its transcript
-  catalogs are external FASTA/FASTA.gz paths validated during execution.
+  products, and product-gel outputs depend on optional payload fields. Shell
+  routes `primers test-cdna-pcr` and `primers test-cdna-qpcr` expose the same
+  readiness contract. `TestCdnaQpcrFasta` and
+  `primers test-cdna-qpcr-fasta` have no project-state precondition because
+  their transcript catalogs are external FASTA/FASTA.gz paths validated during
+  execution.
 - `ProjectGenomeInterval` is fact-annotated as a no-project-precondition
   coordinate-projection operation over an external interval-map file; it returns
   a projection report but does not declare durable project facts.

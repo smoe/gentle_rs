@@ -2518,7 +2518,9 @@ Shared shell command:
         `artifact.written(OUTPUT_PATH)` external handoff
       - raw cDNA assay-test rows `TestCdnaPcr` and `TestCdnaQpcr` are
         fact-annotated over `sequence.exists(SEQ_ID)` and advertise only
-        conservative optional-output effects; `TestCdnaQpcrFasta` and
+        conservative optional-output effects. The shell routes
+        `primers test-cdna-pcr` and `primers test-cdna-qpcr` expose the same
+        readiness. `TestCdnaQpcrFasta`, `primers test-cdna-qpcr-fasta`, and
         `ProjectGenomeInterval` have no project-state preconditions because
         their FASTA/projection-map paths are external files validated during
         execution

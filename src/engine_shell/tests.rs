@@ -21760,7 +21760,12 @@ fn execute_introspect_readiness_checks_qpcr_design_template_sequence() {
 #[test]
 fn execute_introspect_readiness_covers_raw_cdna_assay_tests() {
     let mut empty = GentleEngine::default();
-    for capability_id in ["TestCdnaPcr", "TestCdnaQpcr"] {
+    for capability_id in [
+        "primers test-cdna-pcr",
+        "primers test-cdna-qpcr",
+        "TestCdnaPcr",
+        "TestCdnaQpcr",
+    ] {
         let blocked = parse_shell_line(&format!(
             "introspect readiness {capability_id} --arg SEQ_ID=tpl"
         ))
@@ -21777,19 +21782,27 @@ fn execute_introspect_readiness_covers_raw_cdna_assay_tests() {
             Some("sequence.exists")
         );
     }
-    let fasta_ready = parse_shell_line(
-        "introspect readiness TestCdnaQpcrFasta --arg CDNA_FASTA_PATHS=transcripts.fa.gz",
-    )
-    .expect("parse FASTA cDNA assay readiness");
-    let fasta_ready =
-        execute_shell_command(&mut empty, &fasta_ready).expect("execute FASTA cDNA assay");
-    assert_eq!(
-        fasta_ready.output["readiness"][0]["readiness"].as_str(),
-        Some("ready")
-    );
+    for capability_id in ["primers test-cdna-qpcr-fasta", "TestCdnaQpcrFasta"] {
+        let fasta_ready = parse_shell_line(&format!(
+            "introspect readiness {capability_id} --arg CDNA_FASTA_PATHS=transcripts.fa.gz"
+        ))
+        .expect("parse FASTA cDNA assay readiness");
+        let fasta_ready =
+            execute_shell_command(&mut empty, &fasta_ready).expect("execute FASTA cDNA assay");
+        assert_eq!(
+            fasta_ready.output["readiness"][0]["readiness"].as_str(),
+            Some("ready"),
+            "{capability_id} should be ready because FASTA paths are validated at execution time"
+        );
+    }
 
     let (mut engine, _) = primer_design_demo_engine_and_request();
-    for capability_id in ["TestCdnaPcr", "TestCdnaQpcr"] {
+    for capability_id in [
+        "primers test-cdna-pcr",
+        "primers test-cdna-qpcr",
+        "TestCdnaPcr",
+        "TestCdnaQpcr",
+    ] {
         let ready = parse_shell_line(&format!(
             "introspect readiness {capability_id} --arg SEQ_ID=tpl"
         ))
@@ -21810,7 +21823,14 @@ fn execute_introspect_readiness_covers_raw_cdna_assay_tests() {
     let capabilities = capabilities.output["capabilities"]
         .as_array()
         .expect("capabilities array");
-    for capability_id in ["TestCdnaPcr", "TestCdnaQpcr", "TestCdnaQpcrFasta"] {
+    for capability_id in [
+        "primers test-cdna-pcr",
+        "primers test-cdna-qpcr",
+        "primers test-cdna-qpcr-fasta",
+        "TestCdnaPcr",
+        "TestCdnaQpcr",
+        "TestCdnaQpcrFasta",
+    ] {
         let descriptor = capabilities
             .iter()
             .find(|descriptor| descriptor["id"].as_str() == Some(capability_id))

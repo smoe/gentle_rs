@@ -19980,14 +19980,32 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             false,
         ),
         cdna_assay_test_descriptor(
+            "primers test-cdna-pcr",
+            "Test supplied PCR primers against transcript-derived cDNA templates for one loaded splicing group through the shell route.",
+            false,
+            false,
+        ),
+        cdna_assay_test_descriptor(
             "TestCdnaQpcr",
             "Test supplied qPCR primers and probe against transcript-derived cDNA templates for one loaded splicing group.",
             true,
             false,
         ),
         cdna_assay_test_descriptor(
+            "primers test-cdna-qpcr",
+            "Test supplied qPCR primers and probe against transcript-derived cDNA templates for one loaded splicing group through the shell route.",
+            true,
+            false,
+        ),
+        cdna_assay_test_descriptor(
             "TestCdnaQpcrFasta",
             "Screen supplied qPCR primers and probe across external cDNA/ncRNA FASTA or FASTA.gz transcript catalogs.",
+            true,
+            true,
+        ),
+        cdna_assay_test_descriptor(
+            "primers test-cdna-qpcr-fasta",
+            "Screen supplied qPCR primers and probe across external cDNA/ncRNA FASTA or FASTA.gz transcript catalogs through the shell route.",
             true,
             true,
         ),
@@ -23392,10 +23410,12 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         "primers design-qpcr" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "TEMPLATE_SEQ_ID"}}),
         ]),
-        "TestCdnaPcr" | "TestCdnaQpcr" => Some(vec![
-            json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
-        ]),
-        "TestCdnaQpcrFasta" => Some(vec![]),
+        "primers test-cdna-pcr" | "primers test-cdna-qpcr" | "TestCdnaPcr" | "TestCdnaQpcr" => {
+            Some(vec![
+                json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
+            ])
+        }
+        "primers test-cdna-qpcr-fasta" | "TestCdnaQpcrFasta" => Some(vec![]),
         "primers list-qpcr-reports" => Some(vec![]),
         "primers show-qpcr-report" => Some(vec![
             json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "qpcr_design"}),
