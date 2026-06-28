@@ -18388,6 +18388,31 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "registry": registry_metadata_for_introspection("inspect-feature-expert")
         }),
         json!({
+            "id": "restriction_site_detail",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "stored sequence id carried by seq_id"},
+                {"name": "CUT_POS_1BASED", "required": true, "subject_kind": "other", "detail": "one-based top-strand restriction cut position carried by cut_pos_1based"},
+                {"name": "ENZYME", "required": false, "subject_kind": "other", "detail": "optional enzyme-name disambiguator"},
+                {"name": "RECOGNITION_START_1BASED", "required": false, "subject_kind": "other", "detail": "optional one-based recognition-site start disambiguator"},
+                {"name": "RECOGNITION_END_1BASED", "required": false, "subject_kind": "other", "detail": "optional one-based recognition-site end disambiguator"}
+            ],
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+            ],
+            "effects": [],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
+                ]
+            },
+            "description": "Inspect one restriction-site expert detail record through the MCP wrapper over the shared feature-expert shell route.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("restriction_site_detail")
+        }),
+        json!({
             "id": "render-feature-expert-svg",
             "kind": "operation",
             "mutating": "false",
@@ -23310,7 +23335,7 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         "features export-bed" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
         ]),
-        "inspect-feature-expert" => Some(vec![
+        "inspect-feature-expert" | "restriction_site_detail" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
         ]),
         "render-feature-expert-svg" => Some(vec![

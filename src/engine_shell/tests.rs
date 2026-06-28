@@ -23735,7 +23735,11 @@ fn execute_introspect_readiness_checks_render_svg_sequence_input() {
         );
     }
 
-    for capability_id in ["inspect-feature-expert", "render-feature-expert-svg"] {
+    for capability_id in [
+        "inspect-feature-expert",
+        "restriction_site_detail",
+        "render-feature-expert-svg",
+    ] {
         let cmd = parse_shell_line(&format!(
             "introspect readiness {capability_id} --arg SEQ_ID=demo"
         ))
@@ -24137,6 +24141,14 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
         descriptor["id"].as_str() == Some("inspect-feature-expert")
             && descriptor["annotation_status"].as_str() == Some("fact_annotated")
             && descriptor["reads"][0]["fact"].as_str() == Some("sequence.exists")
+            && descriptor["effects"].as_array().map(Vec::len) == Some(0)
+    }));
+    assert!(capabilities.iter().any(|descriptor| {
+        descriptor["id"].as_str() == Some("restriction_site_detail")
+            && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+            && descriptor["registry"]["source"].as_str() == Some("mcp_tool")
+            && descriptor["reads"][0]["fact"].as_str() == Some("sequence.exists")
+            && descriptor["reads"][0]["subject"]["arg"].as_str() == Some("SEQ_ID")
             && descriptor["effects"].as_array().map(Vec::len) == Some(0)
     }));
     assert!(capabilities.iter().any(|descriptor| {

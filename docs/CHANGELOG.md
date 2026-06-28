@@ -224,6 +224,9 @@ Maintenance rule:
   `render-feature-expert-svg`; both require the inspected sequence to exist,
   and the SVG renderer models its output path as an `artifact.written`
   external handoff.
+- Added matching fact-aware introspection for the MCP `restriction_site_detail`
+  tool row, preserving the same sequence-readiness semantics as its shared
+  `inspect-feature-expert ... restriction` shell route.
 - Registered `view.selection` and `view.visible_tracks` fact vocabulary entries
   and added fact-aware catalog readiness for the `display` visibility command
   with a `view.visible_tracks` view-session effect.
