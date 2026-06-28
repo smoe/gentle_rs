@@ -227,6 +227,11 @@ Maintenance rule:
 - Added matching fact-aware introspection for the MCP `restriction_site_detail`
   tool row, preserving the same sequence-readiness semantics as its shared
   `inspect-feature-expert ... restriction` shell route.
+- Added fact-aware introspection for genome preparation/cache maintenance and
+  BLAST job-control routes (`genomes|helpers prepare`, install/remove,
+  synchronous BLAST, async BLAST start/cancel, `PrepareGenome`,
+  `prepare_genome`, and JS/Lua BLAST helpers). These rows intentionally model
+  catalog/cache/job effects as external local state rather than project facts.
 - Registered `view.selection` and `view.visible_tracks` fact vocabulary entries
   and added fact-aware catalog readiness for the `display` visibility command
   with a `view.visible_tracks` view-session effect.

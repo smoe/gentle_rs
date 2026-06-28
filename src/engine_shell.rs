@@ -14899,6 +14899,115 @@ fn genome_anchor_read_descriptor(id: &str, description: &str) -> Value {
     )
 }
 
+fn genome_prepare_descriptor(id: &str, genome_arg_name: &str, description: &str) -> Value {
+    local_state_may_change_descriptor(
+        id,
+        description,
+        "external",
+        vec![
+            json!({"name": genome_arg_name, "required": true, "subject_kind": "other", "detail": "reference/helper genome catalog id"}),
+            json!({"name": "CATALOG_PATH", "required": false, "subject_kind": "other", "detail": "optional genome/helper catalog path"}),
+            json!({"name": "CACHE_DIR", "required": false, "subject_kind": "other", "detail": "optional prepared-genome cache directory"}),
+            json!({"name": "TIMEOUT_SECONDS", "required": false, "subject_kind": "other", "detail": "optional preparation timeout in seconds"}),
+        ],
+    )
+}
+
+fn genome_install_ensembl_descriptor(id: &str, description: &str) -> Value {
+    local_state_may_change_descriptor(
+        id,
+        description,
+        "external",
+        vec![
+            json!({"name": "SPECIES_DIR", "required": true, "subject_kind": "other", "detail": "Ensembl species directory to resolve"}),
+            json!({"name": "COLLECTION", "required": false, "subject_kind": "other", "detail": "optional Ensembl collection such as vertebrates"}),
+            json!({"name": "CATALOG_PATH", "required": false, "subject_kind": "other", "detail": "optional input catalog path"}),
+            json!({"name": "OUTPUT_CATALOG_PATH", "required": false, "subject_kind": "other", "detail": "optional output catalog path"}),
+            json!({"name": "GENOME_ID", "required": false, "subject_kind": "other", "detail": "optional catalog id override for the installed genome"}),
+            json!({"name": "CACHE_DIR", "required": false, "subject_kind": "other", "detail": "optional prepared-genome cache directory"}),
+            json!({"name": "TIMEOUT_SECONDS", "required": false, "subject_kind": "other", "detail": "optional preparation timeout in seconds"}),
+        ],
+    )
+}
+
+fn genome_remove_prepared_descriptor(id: &str, genome_arg_name: &str, description: &str) -> Value {
+    local_state_may_change_descriptor(
+        id,
+        description,
+        "external",
+        vec![
+            json!({"name": genome_arg_name, "required": true, "subject_kind": "other", "detail": "reference/helper genome catalog id"}),
+            json!({"name": "CATALOG_PATH", "required": false, "subject_kind": "other", "detail": "optional genome/helper catalog path"}),
+            json!({"name": "CACHE_DIR", "required": false, "subject_kind": "other", "detail": "optional prepared-genome cache directory"}),
+        ],
+    )
+}
+
+fn genome_remove_catalog_entry_descriptor(
+    id: &str,
+    genome_arg_name: &str,
+    description: &str,
+) -> Value {
+    local_state_may_change_descriptor(
+        id,
+        description,
+        "external",
+        vec![
+            json!({"name": genome_arg_name, "required": true, "subject_kind": "other", "detail": "reference/helper genome catalog id"}),
+            json!({"name": "CATALOG_PATH", "required": false, "subject_kind": "other", "detail": "input genome/helper catalog path"}),
+            json!({"name": "OUTPUT_CATALOG_PATH", "required": false, "subject_kind": "other", "detail": "optional output catalog path; if omitted, execution may update the input catalog"}),
+        ],
+    )
+}
+
+fn genome_blast_descriptor(id: &str, genome_arg_name: &str, description: &str) -> Value {
+    no_project_inspection_operation_descriptor(
+        id,
+        description,
+        vec![
+            json!({"name": genome_arg_name, "required": true, "subject_kind": "other", "detail": "prepared reference/helper genome catalog id"}),
+            json!({"name": "QUERY_SEQUENCE", "required": true, "subject_kind": "other", "detail": "DNA query sequence"}),
+            json!({"name": "MAX_HITS", "required": false, "subject_kind": "other", "detail": "optional maximum BLAST hits"}),
+            json!({"name": "TASK", "required": false, "subject_kind": "other", "detail": "optional BLAST task such as blastn-short"}),
+            json!({"name": "OPTIONS_JSON", "required": false, "subject_kind": "other", "detail": "optional BLAST request options JSON"}),
+            json!({"name": "CATALOG_PATH", "required": false, "subject_kind": "other", "detail": "optional genome/helper catalog path"}),
+            json!({"name": "CACHE_DIR", "required": false, "subject_kind": "other", "detail": "optional prepared-genome cache directory"}),
+        ],
+    )
+}
+
+fn genome_blast_async_start_descriptor(
+    id: &str,
+    genome_arg_name: &str,
+    description: &str,
+) -> Value {
+    local_state_may_change_descriptor(
+        id,
+        description,
+        "external",
+        vec![
+            json!({"name": genome_arg_name, "required": true, "subject_kind": "other", "detail": "prepared reference/helper genome catalog id"}),
+            json!({"name": "QUERY_SEQUENCE", "required": true, "subject_kind": "other", "detail": "DNA query sequence"}),
+            json!({"name": "MAX_HITS", "required": false, "subject_kind": "other", "detail": "optional maximum BLAST hits"}),
+            json!({"name": "TASK", "required": false, "subject_kind": "other", "detail": "optional BLAST task such as blastn-short"}),
+            json!({"name": "OPTIONS_JSON", "required": false, "subject_kind": "other", "detail": "optional BLAST request options JSON"}),
+            json!({"name": "CATALOG_PATH", "required": false, "subject_kind": "other", "detail": "optional genome/helper catalog path"}),
+            json!({"name": "CACHE_DIR", "required": false, "subject_kind": "other", "detail": "optional prepared-genome cache directory"}),
+        ],
+    )
+}
+
+fn genome_blast_async_cancel_descriptor(id: &str, description: &str) -> Value {
+    local_state_may_change_descriptor(
+        id,
+        description,
+        "external",
+        vec![
+            json!({"name": "JOB_ID", "required": true, "subject_kind": "other", "detail": "async BLAST job id"}),
+        ],
+    )
+}
+
 fn sequence_derivation_operation_descriptor(
     id: &str,
     description: &str,
@@ -22539,6 +22648,101 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "helpers verify-anchor",
             "Verify the stored genome anchor for one loaded sequence against prepared helper cache metadata.",
         ),
+        genome_prepare_descriptor(
+            "genomes prepare",
+            "GENOME_ID",
+            "Prepare and index one reference genome in the local cache; catalog, cache, source, and BLAST-binary checks happen during execution.",
+        ),
+        genome_prepare_descriptor(
+            "helpers prepare",
+            "HELPER_ID",
+            "Prepare and index one helper genome in the local cache; catalog, cache, source, and BLAST-binary checks happen during execution.",
+        ),
+        genome_prepare_descriptor(
+            "PrepareGenome",
+            "GENOME_ID",
+            "Prepare and index one genome through the raw engine operation row; catalog, cache, source, and BLAST-binary checks happen during execution.",
+        ),
+        genome_prepare_descriptor(
+            "prepare_genome",
+            "GENOME_ID",
+            "Prepare and index one genome through the JS/Lua adapter alias; catalog, cache, source, and BLAST-binary checks happen during execution.",
+        ),
+        genome_install_ensembl_descriptor(
+            "genomes install-ensembl",
+            "Resolve one current Ensembl candidate into a reference-genome catalog row and prepare its local cache.",
+        ),
+        genome_install_ensembl_descriptor(
+            "helpers install-ensembl",
+            "Resolve one current Ensembl candidate into a helper-genome catalog row and prepare its local cache.",
+        ),
+        genome_remove_prepared_descriptor(
+            "genomes remove-prepared",
+            "GENOME_ID",
+            "Remove one prepared reference-genome cache install without editing the source catalog.",
+        ),
+        genome_remove_prepared_descriptor(
+            "helpers remove-prepared",
+            "HELPER_ID",
+            "Remove one prepared helper-genome cache install without editing the source catalog.",
+        ),
+        genome_remove_catalog_entry_descriptor(
+            "genomes remove-catalog-entry",
+            "GENOME_ID",
+            "Remove one reference-genome catalog row from a writable catalog JSON; prepared cache files are left untouched.",
+        ),
+        genome_remove_catalog_entry_descriptor(
+            "helpers remove-catalog-entry",
+            "HELPER_ID",
+            "Remove one helper-genome catalog row from a writable catalog JSON; prepared cache files are left untouched.",
+        ),
+        genome_blast_descriptor(
+            "genomes blast",
+            "GENOME_ID",
+            "Run one synchronous BLAST query against a prepared reference-genome cache; prepared-index validation happens during execution.",
+        ),
+        genome_blast_descriptor(
+            "helpers blast",
+            "HELPER_ID",
+            "Run one synchronous BLAST query against a prepared helper-genome cache; prepared-index validation happens during execution.",
+        ),
+        genome_blast_descriptor(
+            "blast_reference_genome",
+            "GENOME_ID",
+            "Run one synchronous BLAST query against a prepared reference genome through the JS/Lua adapter helper.",
+        ),
+        genome_blast_descriptor(
+            "blast_helper_genome",
+            "HELPER_ID",
+            "Run one synchronous BLAST query against a prepared helper genome through the JS/Lua adapter helper.",
+        ),
+        genome_blast_async_start_descriptor(
+            "genomes blast-start",
+            "GENOME_ID",
+            "Start one async BLAST query against a prepared reference-genome cache and persist job state.",
+        ),
+        genome_blast_async_start_descriptor(
+            "helpers blast-start",
+            "HELPER_ID",
+            "Start one async BLAST query against a prepared helper-genome cache and persist job state.",
+        ),
+        genome_blast_async_start_descriptor(
+            "blast_async_start",
+            "GENOME_ID",
+            "Start one async BLAST job through the MCP/tool route and persist job state.",
+        ),
+        genome_blast_async_cancel_descriptor(
+            "genomes blast-cancel",
+            "Request cooperative cancellation for one async reference-genome BLAST job.",
+        ),
+        genome_blast_async_cancel_descriptor(
+            "helpers blast-cancel",
+            "Request cooperative cancellation for one async helper-genome BLAST job.",
+        ),
+        genome_blast_async_cancel_descriptor(
+            "blast_async_cancel",
+            "Request cooperative cancellation for one async BLAST job through the MCP/tool route.",
+        ),
         json!({
             "id": "genomes blast-status",
             "kind": "operation",
@@ -23614,6 +23818,26 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "helpers status"
         | "genomes genes"
         | "helpers genes"
+        | "genomes prepare"
+        | "helpers prepare"
+        | "PrepareGenome"
+        | "prepare_genome"
+        | "genomes install-ensembl"
+        | "helpers install-ensembl"
+        | "genomes remove-prepared"
+        | "helpers remove-prepared"
+        | "genomes remove-catalog-entry"
+        | "helpers remove-catalog-entry"
+        | "genomes blast"
+        | "helpers blast"
+        | "blast_reference_genome"
+        | "blast_helper_genome"
+        | "genomes blast-start"
+        | "helpers blast-start"
+        | "blast_async_start"
+        | "genomes blast-cancel"
+        | "helpers blast-cancel"
+        | "blast_async_cancel"
         | "genomes ensembl-available"
         | "helpers ensembl-available"
         | "ensembl_installable_genomes"

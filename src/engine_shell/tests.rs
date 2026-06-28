@@ -23785,6 +23785,26 @@ fn execute_introspect_readiness_checks_render_svg_sequence_input() {
         "ResolveTfQueries",
         "ListReporterCatalog",
         "RecommendReporters",
+        "genomes prepare",
+        "helpers prepare",
+        "PrepareGenome",
+        "prepare_genome",
+        "genomes install-ensembl",
+        "helpers install-ensembl",
+        "genomes remove-prepared",
+        "helpers remove-prepared",
+        "genomes remove-catalog-entry",
+        "helpers remove-catalog-entry",
+        "genomes blast",
+        "helpers blast",
+        "blast_reference_genome",
+        "blast_helper_genome",
+        "genomes blast-start",
+        "helpers blast-start",
+        "blast_async_start",
+        "genomes blast-cancel",
+        "helpers blast-cancel",
+        "blast_async_cancel",
     ] {
         let cmd = parse_shell_line(&format!("introspect readiness {capability_id}"))
             .expect("parse list readiness");
@@ -25478,6 +25498,10 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
         "reference_catalog_entries",
         "is_reference_genome_prepared",
         "list_reference_genome_genes",
+        "genomes blast",
+        "helpers blast",
+        "blast_reference_genome",
+        "blast_helper_genome",
         "genomes blast-status",
         "helpers blast-status",
         "genomes blast-list",
@@ -25495,6 +25519,34 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
                     && descriptor["effects"].as_array().map(Vec::len) == Some(0)
             }),
             "{id} should have a fact-annotated local metadata catalog descriptor"
+        );
+    }
+    for id in [
+        "genomes prepare",
+        "helpers prepare",
+        "PrepareGenome",
+        "prepare_genome",
+        "genomes install-ensembl",
+        "helpers install-ensembl",
+        "genomes remove-prepared",
+        "helpers remove-prepared",
+        "genomes remove-catalog-entry",
+        "helpers remove-catalog-entry",
+        "genomes blast-start",
+        "helpers blast-start",
+        "blast_async_start",
+        "genomes blast-cancel",
+        "helpers blast-cancel",
+        "blast_async_cancel",
+    ] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"].as_array().map(Vec::len) == Some(0)
+                    && descriptor["effects"][0]["effect_kind"].as_str() == Some("may_on_success")
+            }),
+            "{id} should have a fact-annotated external/local-state mutation descriptor"
         );
     }
     for id in [
