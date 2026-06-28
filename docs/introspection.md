@@ -22,7 +22,9 @@ Related shared documents:
 - `docs/protocol.md`: `gentle.project_fact_graph.v1`, `gentle.fact_expression.v1`,
   `gentle.fact_evaluation.v1`, agent response schema.
 - `docs/agent_interface.md`: agent-facing routes.
-- `docs/glossary.json`: current source of truth for shell command semantics.
+- `docs/glossary.json`: current source of truth for shell command syntax.
+  JSON help rows now embed matching protocol capability descriptors, starting
+  the migration toward descriptor-backed help generation.
 
 ## 1. Why this exists
 
@@ -992,7 +994,8 @@ slice resolved them. The non-negotiables are promoted into `docs/decisions.md`.
   `introspect verify-effects` (section 4).
 - **Args source (long term):** an engine/protocol-side descriptor becomes the
   root truth and `docs/glossary.json` becomes a projection of it. Direction
-  accepted; the inversion is **deferred** past the first slice.
+  accepted; the inversion remains **deferred**, but JSON help now embeds the
+  matching protocol capability descriptor for glossary commands.
 - **Domain representation:** projected facts carry a per-fact `domain` field
   and `introspect facts` additionally groups rows by domain for client
   convenience.
@@ -1001,5 +1004,7 @@ slice resolved them. The non-negotiables are promoted into `docs/decisions.md`.
 
 ## 12. Remaining implementation work
 
-- Migrate glossary/help generation toward projection from an engine/protocol-side
-  descriptor once enough annotated rows prove the shape.
+- Continue migrating glossary/help generation toward projection from an
+  engine/protocol-side descriptor. The first bridge is implemented: JSON help
+  catalog/topic rows embed matching protocol capability descriptors, while the
+  glossary still owns syntax strings.

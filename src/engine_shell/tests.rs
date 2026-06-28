@@ -1709,7 +1709,7 @@ fn execute_help_topic_json() {
     let out = execute_shell_command(
         &mut engine,
         &ShellCommand::Help {
-            topic: vec!["candidates".to_string(), "score-distance".to_string()],
+            topic: vec!["introspect".to_string(), "capabilities".to_string()],
             format: HelpOutputFormat::Json,
             interface_filter: None,
         },
@@ -1718,7 +1718,15 @@ fn execute_help_topic_json() {
     assert!(!out.state_changed);
     assert_eq!(
         out.output["doc"]["path"].as_str(),
-        Some("candidates score-distance")
+        Some("introspect capabilities")
+    );
+    assert_eq!(
+        out.output["doc"]["capability"]["source"].as_str(),
+        Some("glossary_command")
+    );
+    assert_eq!(
+        out.output["doc"]["capability"]["name"].as_str(),
+        Some("introspect capabilities")
     );
 }
 

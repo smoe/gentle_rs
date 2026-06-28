@@ -1,5 +1,6 @@
 //! Generated/derived shell-help documentation helpers.
 
+use gentle_protocol::{CapabilitySource, capability_descriptor};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::sync::OnceLock;
@@ -147,14 +148,23 @@ fn docs_for_interface_from_glossary<'a>(
 }
 
 fn doc_record(doc: &ShellCommandDoc) -> Value {
-    json!({
+    let mut record = json!({
         "path": doc.path,
         "usage": doc.usage,
         "summary": doc.summary,
         "interfaces": doc.interfaces,
         "engine_operations": doc.engine_operations,
         "aliases": doc.aliases
-    })
+    });
+    if let Some(capability) = capability_descriptor(CapabilitySource::GlossaryCommand, &doc.path)
+        && let Some(record_object) = record.as_object_mut()
+    {
+        record_object.insert(
+            "capability".to_string(),
+            serde_json::to_value(capability).unwrap_or_else(|_| json!({})),
+        );
+    }
+    record
 }
 
 fn find_doc_for_topic<'a>(
@@ -364,6 +374,37 @@ mod tests {
                 .expect("engine operations")[0]
                 .as_str(),
             Some("RunRnaReadBatchMap")
+        );
+    }
+
+    #[test]
+    fn shell_help_json_projects_protocol_capability_descriptor() {
+        let topic = vec!["introspect".to_string(), "capabilities".to_string()];
+        let help =
+            shell_topic_help_json(&topic, Some("cli-shell")).expect("render capability help");
+        assert_eq!(
+            help["doc"]["capability"]["source"].as_str(),
+            Some("glossary_command")
+        );
+        assert_eq!(
+            help["doc"]["capability"]["name"].as_str(),
+            Some("introspect capabilities")
+        );
+        assert_eq!(
+            help["doc"]["capability"]["mutating"].as_str(),
+            Some("false")
+        );
+
+        let catalog = shell_help_json(Some("cli-shell")).expect("render help catalog");
+        let command = catalog["commands"]
+            .as_array()
+            .expect("commands")
+            .iter()
+            .find(|command| command["path"].as_str() == Some("introspect capabilities"))
+            .expect("introspect capabilities command");
+        assert_eq!(
+            command["capability"]["input_schema"]["properties"]["usage"]["const"].as_str(),
+            Some("introspect capabilities [--kind KIND]")
         );
     }
 }

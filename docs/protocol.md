@@ -3271,7 +3271,10 @@ external coding agent runtime, see:
 - `help [COMMAND ...] [--format text|json|markdown] [--interface ...]`
   - backed by structured glossary source `docs/glossary.json`
   - `--format text` renders human-readable help
-  - `--format json` renders machine-readable help catalog/topic payload
+  - `--format json` renders machine-readable help catalog/topic payload; each
+    command row includes the matching shared protocol `capability` descriptor
+    when one exists, so clients can read syntax plus mutation/surfacing/schema
+    metadata from one response
   - `--format markdown` renders documentation-ready markdown
   - `--interface` accepts:
     `all|cli-direct|cli-shell|gui-shell|gui-menu|js|lua|mcp`

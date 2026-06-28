@@ -14,6 +14,9 @@ Maintenance rule:
 
 ## 2026-06-28
 
+- Added a first glossary-to-protocol projection bridge for JSON help output:
+  `help --format json` and topic help rows now include the matching shared
+  protocol `capability` descriptor for glossary commands when available.
 - Completed fact-aware introspection coverage for the current shared
   capability registry. The last pool/container, primer-specificity, and
   reserved screenshot rows now have descriptors. List-valued pool/container
