@@ -1832,27 +1832,6 @@ impl ProjectFactWorld {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-/// High-level fact namespace used for introspection grouping.
-pub enum ProjectFactDomain {
-    Project,
-    View,
-    Host,
-    Config,
-}
-
-impl ProjectFactDomain {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Project => "project",
-            Self::View => "view",
-            Self::Host => "host",
-            Self::Config => "config",
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 /// Registry entry for one controlled project-fact vocabulary item.
 pub struct ProjectFactTypeSpec {
