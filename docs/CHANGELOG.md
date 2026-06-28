@@ -14,6 +14,9 @@ Maintenance rule:
 
 ## 2026-06-28
 
+- Added fact-aware introspection for adapter/file utility rows, including
+  run-bundle shell export, pool import helpers, RNA-read sample-sheet shell
+  export, GenBank writer helpers, and VCF display-filter configuration helpers.
 - Added fact-aware introspection for repeat/similarity evidence routes:
   repeat annotation queries, repeat overlap/materialization reports,
   repeat-window TFBS summaries, and raw TFBS hit scanning.

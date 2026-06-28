@@ -23763,6 +23763,10 @@ fn execute_introspect_readiness_checks_render_svg_sequence_input() {
         "state-summary",
         "state_summary",
         "history status",
+        "export-run-bundle",
+        "import-pool",
+        "import_pool",
+        "write_gb",
         "apply_operation",
         "apply_workflow",
         "op",
@@ -23781,6 +23785,7 @@ fn execute_introspect_readiness_checks_render_svg_sequence_input() {
         "ui_intents",
         "ui_prepared_genomes",
         "ui_latest_prepared",
+        "set_vcf_display_filter",
         "reverse-translate list-reports",
         "primers list-reports",
         "primers list-qpcr-reports",
@@ -23793,6 +23798,7 @@ fn execute_introspect_readiness_checks_render_svg_sequence_input() {
         "ExportProcessRunBundle",
         "ExportLabAssistantInstructions",
         "InspectJasparEntry",
+        "rna-reads export-sample-sheet",
         "ExportRnaReadSampleSheet",
         "SummarizeMultiGenePromoterTfbs",
         "RenderMultiGenePromoterTfbsSvg",
@@ -25101,6 +25107,9 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
         );
     }
     for id in [
+        "export-run-bundle",
+        "rna-reads export-sample-sheet",
+        "write_gb",
         "ExportProcessRunBundle",
         "ExportLabAssistantInstructions",
         "ExportRnaReadSampleSheet",
@@ -25118,6 +25127,25 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
             "{id} should have a fact-annotated required external-artifact descriptor"
         );
     }
+    for id in ["import-pool", "import_pool"] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"].as_array().map(Vec::len) == Some(0)
+                    && descriptor["effects"][0]["effect_kind"].as_str() == Some("may_on_success")
+            }),
+            "{id} should have a fact-annotated project-state import descriptor"
+        );
+    }
+    assert!(capabilities.iter().any(|descriptor| {
+        descriptor["id"].as_str() == Some("set_vcf_display_filter")
+            && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+            && descriptor["kind"].as_str() == Some("host_config")
+            && descriptor["reads"].as_array().map(Vec::len) == Some(0)
+            && descriptor["effects"][0]["fact"].as_str() == Some("config.param")
+            && descriptor["effects"][0]["effect_kind"].as_str() == Some("may_on_success")
+    }));
     for id in ["InspectJasparEntry", "SummarizeMultiGenePromoterTfbs"] {
         assert!(
             capabilities.iter().any(|descriptor| {

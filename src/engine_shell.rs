@@ -17756,6 +17756,14 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "Save the current project state through JS/Lua helper adapters to an external project-state JSON file.",
         ),
         external_artifact_catalog_operation_descriptor(
+            "export-run-bundle",
+            "external process-run bundle JSON output path",
+            "Export a deterministic operation/run bundle for reproducibility and audit; optional run-id filtering is validated during execution.",
+            vec![
+                json!({"name": "--run-id", "required": false, "subject_kind": "other", "detail": "optional operation-log run id filter"}),
+            ],
+        ),
+        external_artifact_catalog_operation_descriptor(
             "ExportProcessRunBundle",
             "external process-run bundle JSON output path carried by path",
             "Export a deterministic operation/run bundle for reproducibility and audit; optional run-id filtering is validated during execution.",
@@ -17772,6 +17780,32 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "TITLE", "required": false, "subject_kind": "other", "detail": "optional document title"}),
                 json!({"name": "AUDIENCE", "required": false, "subject_kind": "other", "detail": "optional audience label"}),
                 json!({"name": "FORMAT", "required": false, "subject_kind": "other", "detail": "optional markdown, odt, or docx output format"}),
+            ],
+        ),
+        project_state_may_change_descriptor(
+            "import-pool",
+            "Import pool artifact members as project sequences; imported ids and sequence facts depend on the external pool file and prefix.",
+            "true",
+            vec![
+                json!({"name": "INPUT_PATH", "required": true, "subject_kind": "other", "detail": "external pool JSON input path"}),
+                json!({"name": "PREFIX", "required": false, "subject_kind": "other", "detail": "optional imported sequence id prefix"}),
+            ],
+        ),
+        project_state_may_change_descriptor(
+            "import_pool",
+            "Import pool artifact members through JS/Lua helper adapters; imported ids and sequence facts depend on the external pool file and prefix.",
+            "true",
+            vec![
+                json!({"name": "INPUT_PATH", "required": true, "subject_kind": "other", "detail": "external pool JSON input path"}),
+                json!({"name": "PREFIX", "required": false, "subject_kind": "other", "detail": "optional imported sequence id prefix"}),
+            ],
+        ),
+        external_artifact_catalog_operation_descriptor(
+            "write_gb",
+            "external GenBank output file path",
+            "Write an adapter-supplied DNA sequence object to an external GenBank file.",
+            vec![
+                json!({"name": "SEQUENCE", "required": true, "subject_kind": "other", "detail": "adapter-supplied DNAsequence object"}),
             ],
         ),
         command_dependent_execution_descriptor(
@@ -21348,6 +21382,18 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "Export a dotplot-style alignment summary from one persisted RNA-read report through the shared engine operation.",
         ),
         external_artifact_catalog_operation_descriptor(
+            "rna-reads export-sample-sheet",
+            "external RNA-read sample-sheet TSV output path",
+            "Export an RNA-read interpretation sample sheet from optional sequence/report/gene filters; filter validation happens during execution.",
+            vec![
+                json!({"name": "--seq-id", "required": false, "subject_kind": "sequence", "detail": "optional loaded sequence id filter"}),
+                json!({"name": "--report-id", "required": false, "subject_kind": "other", "detail": "optional RNA-read report id filter; may be repeated"}),
+                json!({"name": "--gene", "required": false, "subject_kind": "other", "detail": "optional gene id filter; may be repeated"}),
+                json!({"name": "--complete-rule", "required": false, "subject_kind": "other", "detail": "gene-support completeness rule"}),
+                json!({"name": "--append", "required": false, "subject_kind": "other", "detail": "whether to append to an existing sample sheet"}),
+            ],
+        ),
+        external_artifact_catalog_operation_descriptor(
             "ExportRnaReadSampleSheet",
             "external RNA-read sample-sheet TSV output path carried by path",
             "Export an RNA-read interpretation sample sheet from optional sequence/report/gene filters; filter validation happens during execution.",
@@ -23726,6 +23772,27 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "registry": registry_metadata_for_introspection("set_parameter")
         }),
         json!({
+            "id": "set_vcf_display_filter",
+            "kind": "host_config",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "OPTIONS", "required": true, "subject_kind": "other", "detail": "adapter-supplied VCF display filter options object"}
+            ],
+            "reads": [],
+            "effects": [
+                {
+                    "fact": "config.param",
+                    "effect_kind": "may_on_success",
+                    "description": "The helper may update several VCF display-related configuration parameters depending on supplied option fields."
+                }
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Set VCF display criteria through a JS/Lua convenience helper backed by engine-owned parameters.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("set_vcf_display_filter")
+        }),
+        json!({
             "id": "agents preflight",
             "kind": "host_config",
             "mutating": "external",
@@ -23871,6 +23938,7 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         "state-summary" => Some(vec![]),
         "history status" | "history undo" | "history redo" | "load-project" | "load_project"
         | "save-project" | "save_project" | "load_dna" => Some(vec![]),
+        "export-run-bundle" | "import-pool" | "import_pool" | "write_gb" => Some(vec![]),
         "apply_operation" | "apply_workflow" | "op" | "workflow" | "macros run"
         | "candidates macro" => Some(vec![]),
         "facts graph" => Some(vec![]),
@@ -24161,6 +24229,7 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "ExportLabAssistantInstructions"
         | "InspectJasparEntry"
         | "ExportRnaReadSampleSheet"
+        | "rna-reads export-sample-sheet"
         | "SummarizeMultiGenePromoterTfbs"
         | "RenderMultiGenePromoterTfbsSvg" => Some(vec![]),
         "SummarizeAlternativePromoterComparison"
@@ -24382,7 +24451,7 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
             json!({"fact": "ui.host_available", "equals": true}),
             json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
         ]),
-        "set-param" | "SetParameter" | "set_parameter" => Some(vec![]),
+        "set-param" | "SetParameter" | "set_parameter" | "set_vcf_display_filter" => Some(vec![]),
         "agents execute-plan" | "agent_execute_plan" => Some(vec![]),
         "agents ask" | "ask_agent_system" | "agents plan" | "agent_plan" => Some(vec![
             json!({"fact": "host.tool_available", "subject": {"arg": "SYSTEM_ID"}, "equals": true}),
