@@ -14,6 +14,10 @@ Maintenance rule:
 
 ## 2026-06-28
 
+- Added fact-aware introspection for external resource/report routes, including
+  array probe-region conversion/planning, ortholog promoter reports, miRNA
+  target scans, RNA transcript-index export, service project-source routing,
+  and batch plan/run commands.
 - Added fact-aware introspection for explicit cloning/handoff rows, including
   Gibson preview/apply payload routes, protein-to-DNA construct-reasoning
   handoffs, reporter construct handoffs, and the raw restriction-cloning PCR

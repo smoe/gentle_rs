@@ -23845,6 +23845,8 @@ fn execute_introspect_readiness_checks_render_svg_sequence_input() {
         "gibson apply",
         "ApplyGibsonAssemblyPlan",
         "PlanReporterConstructHandoff",
+        "batch plan",
+        "batch run",
         "facts graph",
         "facts eval",
         "introspect facts",
@@ -23872,6 +23874,7 @@ fn execute_introspect_readiness_checks_render_svg_sequence_input() {
         "InspectJasparEntry",
         "rna-reads export-sample-sheet",
         "ExportRnaReadSampleSheet",
+        "rna-reads build-transcript-index",
         "SummarizeMultiGenePromoterTfbs",
         "RenderMultiGenePromoterTfbsSvg",
         "features repeat-query",
@@ -23879,12 +23882,18 @@ fn execute_introspect_readiness_checks_render_svg_sequence_input() {
         "features repeat-cohort",
         "BuildRepeatEnvironmentCohort",
         "features window-cohort-tfbs",
+        "arrays import-apt-probe-region-output",
+        "arrays probe-regions",
         "SummarizeJasparEntries",
         "BenchmarkJasparRegistry",
         "ListJasparCatalog",
         "ResolveTfQueries",
         "ListReporterCatalog",
         "RecommendReporters",
+        "services route-project-source",
+        "mirna scan-target",
+        "orthologs resolve-promoter-cohort",
+        "orthologs promoter-comparison",
         "genomes prepare",
         "helpers prepare",
         "PrepareGenome",
@@ -25948,6 +25957,10 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
         "gene-sets produce ontology-assignment",
         "gene-sets produce co-regulated",
         "gene-sets promoter-cohort",
+        "orthologs resolve-promoter-cohort",
+        "orthologs promoter-comparison",
+        "arrays import-apt-probe-region-output",
+        "arrays probe-regions",
     ] {
         assert!(
             capabilities.iter().any(|descriptor| {
@@ -25959,6 +25972,29 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
                     && descriptor["effects"][0]["effect_kind"].as_str() == Some("external_handoff")
             }),
             "{id} should have a fact-annotated gene-group optional-artifact descriptor"
+        );
+    }
+    assert!(capabilities.iter().any(|descriptor| {
+        descriptor["id"].as_str() == Some("batch plan")
+            && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+            && descriptor["reads"].as_array().map(Vec::len) == Some(0)
+            && descriptor["effects"][0]["fact"].as_str() == Some("artifact.written")
+            && descriptor["effects"][0]["subject"]["arg"].as_str() == Some("OUT_DIR")
+            && descriptor["effects"][0]["effect_kind"].as_str() == Some("external_handoff")
+    }));
+    for id in [
+        "batch run",
+        "services route-project-source",
+        "mirna scan-target",
+    ] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"].as_array().map(Vec::len) == Some(0)
+                    && descriptor["effects"].as_array().map(Vec::len) == Some(0)
+            }),
+            "{id} should have a fact-annotated external-input descriptor"
         );
     }
     assert!(capabilities.iter().any(|descriptor| {
@@ -26024,6 +26060,14 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
             && descriptor["annotation_status"].as_str() == Some("fact_annotated")
             && descriptor["reads"].as_array().map(Vec::len) == Some(0)
             && descriptor["effects"].as_array().map(Vec::len) == Some(0)
+    }));
+    assert!(capabilities.iter().any(|descriptor| {
+        descriptor["id"].as_str() == Some("rna-reads build-transcript-index")
+            && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+            && descriptor["reads"].as_array().map(Vec::len) == Some(0)
+            && descriptor["effects"][0]["fact"].as_str() == Some("artifact.written")
+            && descriptor["effects"][0]["subject"]["arg"].as_str() == Some("OUTPUT_PATH")
+            && descriptor["effects"][0]["effect_kind"].as_str() == Some("external_handoff")
     }));
     for id in ["rna-reads align-report", "AlignRnaReadReport"] {
         assert!(

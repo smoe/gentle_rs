@@ -21076,6 +21076,15 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("rna-reads list-reports")
         }),
+        external_artifact_catalog_operation_descriptor(
+            "rna-reads build-transcript-index",
+            "external RNA-read transcript index JSON output path",
+            "Build an RNA-read transcript k-mer index from one or more external transcript FASTA files without project-state preconditions.",
+            vec![
+                json!({"name": "--kmer-len", "required": false, "subject_kind": "other", "detail": "seed k-mer length"}),
+                json!({"name": "--transcript-fasta", "required": true, "subject_kind": "other", "detail": "transcript FASTA/FASTA.GZ input path; may be repeated"}),
+            ],
+        ),
         rna_read_report_mutation_descriptor(
             "rna-reads align-report",
             "Run the retained-hit alignment pass for one persisted RNA-read interpretation report.",
@@ -21647,6 +21656,15 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             ],
         ),
         no_project_inspection_operation_descriptor(
+            "services route-project-source",
+            "Translate an existing project source selector into an external-service source payload; referenced ids are validated during execution.",
+            vec![
+                json!({"name": "--kind", "required": true, "subject_kind": "other", "detail": "source kind: sequence, oligo-form, or primer-report-rows"}),
+                json!({"name": "--seq-id|--form-id|--report-id", "required": false, "subject_kind": "other", "detail": "source id selected by kind"}),
+                json!({"name": "--range|--as|--pair-rank", "required": false, "subject_kind": "other", "detail": "optional source slicing/formatting controls"}),
+            ],
+        ),
+        no_project_inspection_operation_descriptor(
             "services project-preflight",
             "Validate one provider-neutral external-service request without project-state preconditions.",
             vec![
@@ -22113,6 +22131,15 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "MIRNA", "required": true, "subject_kind": "other", "detail": "microRNA id or alias"}),
             ],
         ),
+        no_project_inspection_operation_descriptor(
+            "mirna scan-target",
+            "Scan one loaded or inline target sequence for microRNA seed-site support; target resolution and transcript filters are validated during execution.",
+            vec![
+                json!({"name": "MIRNA", "required": true, "subject_kind": "other", "detail": "microRNA id or alias"}),
+                json!({"name": "TARGET", "required": true, "subject_kind": "other", "detail": "loaded sequence id or inline target sequence"}),
+                json!({"name": "--mature-sequence|--transcript-filter|--regions|--seed-classes", "required": false, "subject_kind": "other", "detail": "optional scan controls"}),
+            ],
+        ),
         catalog_read_operation_descriptor(
             "ladders list",
             "Inspect built-in DNA/RNA ladder catalogs without project-state preconditions.",
@@ -22429,6 +22456,28 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             ],
         ),
         external_artifact_catalog_operation_descriptor(
+            "arrays import-apt-probe-region-output",
+            "external probe-region helper output directory",
+            "Convert APT probe-region summary/annotation files into GENtle's explicit probe-region helper output directory.",
+            vec![
+                json!({"name": "SUMMARY_TSV", "required": true, "subject_kind": "other", "detail": "APT probe-region summary TSV path"}),
+                json!({"name": "ANNOTATION_CSV", "required": true, "subject_kind": "other", "detail": "APT annotation CSV path"}),
+                json!({"name": "--metadata|--probe-intensity", "required": false, "subject_kind": "other", "detail": "optional sample/probe intensity metadata paths"}),
+                json!({"name": "--platform|--normalization|--coordinate-system|--genome-build", "required": false, "subject_kind": "other", "detail": "optional provenance metadata"}),
+            ],
+        ),
+        optional_artifact_resource_report_descriptor(
+            "arrays probe-regions",
+            "optional external probe-region analysis output directory",
+            "Plan or run probe-region helper analysis for CEL inputs/datasets and gene/locus selectors; backend/file validation happens during execution.",
+            vec![
+                json!({"name": "--cel|--dataset", "required": false, "subject_kind": "other", "detail": "CEL input paths or dataset selector"}),
+                json!({"name": "--gene|--genes|--locus|--loci", "required": false, "subject_kind": "other", "detail": "target gene/locus selectors"}),
+                json!({"name": "--annotation-library|--metadata", "required": false, "subject_kind": "other", "detail": "optional annotation library and sample metadata paths"}),
+                json!({"name": "--dry-run|--plot", "required": false, "subject_kind": "other", "detail": "optional planning/plot controls"}),
+            ],
+        ),
+        external_artifact_catalog_operation_descriptor(
             "arrays render-probe-region-output-svg",
             "external probe-region SVG output path",
             "Render completed probe-region helper output to an external SVG file without project-state preconditions; input directory validation happens during execution.",
@@ -22718,6 +22767,48 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "macros template-run",
             "Run one persisted workflow macro template with bindings.",
         ),
+        json!({
+            "id": "batch plan",
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "MANIFEST_PATH", "required": true, "subject_kind": "other", "detail": "batch manifest CSV/TSV path"},
+                {"name": "TEMPLATE_PATH", "required": true, "subject_kind": "other", "detail": "workflow template JSON path"},
+                {"name": "OUT_DIR", "required": true, "subject_kind": "other", "detail": "external batch output directory"},
+                {"name": "--state-template|--emit|--script-path", "required": false, "subject_kind": "other", "detail": "optional per-row state/script emission controls"}
+            ],
+            "reads": [],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUT_DIR"},
+                    "effect_kind": "external_handoff",
+                    "description": "Batch planning writes per-row workflow/state files, a script, and batch.plan.json under OUT_DIR."
+                }
+            ],
+            "precondition_expr": {"all": []},
+            "description": "Expand a manifest and workflow template into external per-row batch workflow files and a runner script.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("batch plan")
+        }),
+        json!({
+            "id": "batch run",
+            "kind": "operation",
+            "mutating": "true",
+            "requires_confirmation": false,
+            "args": [
+                {"name": "MANIFEST_PATH", "required": true, "subject_kind": "other", "detail": "batch manifest CSV/TSV path"},
+                {"name": "TEMPLATE_PATH", "required": true, "subject_kind": "other", "detail": "workflow template JSON path"},
+                {"name": "--offset|--limit", "required": false, "subject_kind": "other", "detail": "optional row selection controls"}
+            ],
+            "reads": [],
+            "effects": [],
+            "precondition_expr": {"all": []},
+            "description": "Expand and execute per-row workflows locally; concrete project effects are workflow-template dependent and are not statically enumerable.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("batch run")
+        }),
         optional_artifact_resource_report_descriptor(
             "gibson preview",
             "optional external Gibson assembly preview JSON output path",
@@ -23560,6 +23651,29 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "--group|--genes|--neighbors", "required": false, "subject_kind": "other", "detail": "gene-set or neighbor selector"}),
                 json!({"name": "--upstream-bp", "required": false, "subject_kind": "other", "detail": "promoter upstream window length"}),
                 json!({"name": "--downstream-bp", "required": false, "subject_kind": "other", "detail": "promoter downstream window length"}),
+            ],
+        ),
+        optional_artifact_resource_report_descriptor(
+            "orthologs resolve-promoter-cohort",
+            "optional external ortholog promoter-cohort JSON output path",
+            "Resolve promoter windows for orthologous genes across reference/helper genome catalogs; genome, ortholog-resource, and transcript selectors are validated during execution.",
+            vec![
+                json!({"name": "--anchor-species", "required": true, "subject_kind": "other", "detail": "anchor species label"}),
+                json!({"name": "--anchor-genome", "required": true, "subject_kind": "other", "detail": "anchor genome catalog id"}),
+                json!({"name": "--anchor-gene", "required": true, "subject_kind": "other", "detail": "anchor gene query"}),
+                json!({"name": "--orthologs", "required": true, "subject_kind": "other", "detail": "ortholog resource path"}),
+                json!({"name": "--target-species|--target-genome|--transcript", "required": false, "subject_kind": "other", "detail": "target species/genome/transcript selectors"}),
+            ],
+        ),
+        optional_artifact_resource_report_descriptor(
+            "orthologs promoter-comparison",
+            "optional external ortholog promoter-comparison JSON output path",
+            "Compare TFBS/promoter evidence over an ortholog promoter cohort; cohort, motif, expression, and CUT&RUN evidence inputs are validated during execution.",
+            vec![
+                json!({"name": "--cohort|--cohort-json", "required": true, "subject_kind": "other", "detail": "ortholog promoter cohort path or inline JSON"}),
+                json!({"name": "--motif|--motifs", "required": true, "subject_kind": "other", "detail": "motif query tokens"}),
+                json!({"name": "--score-kind|--relationship", "required": false, "subject_kind": "other", "detail": "comparison scoring controls"}),
+                json!({"name": "--expression-json|--cutrun-dataset-id|--cutrun-read-report-id", "required": false, "subject_kind": "other", "detail": "optional supporting evidence"}),
             ],
         ),
         optional_artifact_operation_descriptor(
@@ -24469,6 +24583,7 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "InspectJasparEntry"
         | "ExportRnaReadSampleSheet"
         | "rna-reads export-sample-sheet"
+        | "rna-reads build-transcript-index"
         | "SummarizeMultiGenePromoterTfbs"
         | "RenderMultiGenePromoterTfbsSvg" => Some(vec![]),
         "SummarizeAlternativePromoterComparison"
@@ -24494,6 +24609,7 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "services providers list"
         | "services providers doctor"
         | "services delivery-route"
+        | "services route-project-source"
         | "services project-preflight"
         | "services project-quote"
         | "services handoff"
@@ -24550,6 +24666,7 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "proteases show"
         | "mirna explain-seed"
         | "mirna catalog-show"
+        | "mirna scan-target"
         | "genomes list"
         | "helpers list"
         | "genomes status"
@@ -24624,6 +24741,8 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "ShowCutRunDatasetStatus"
         | "arrays inspect-microarray-track"
         | "arrays inspect-probe-region-output"
+        | "arrays import-apt-probe-region-output"
+        | "arrays probe-regions"
         | "arrays render-probe-region-output-svg"
         | "candidates list"
         | "candidates template-list"
@@ -24635,6 +24754,8 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "routines compare"
         | "construct-reasoning list-graphs"
         | "construct_reasoning_graphs"
+        | "batch plan"
+        | "batch run"
         | "gibson preview"
         | "gibson apply"
         | "ApplyGibsonAssemblyPlan"
@@ -24653,6 +24774,8 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "gene-sets produce ontology-assignment"
         | "gene-sets produce co-regulated"
         | "gene-sets promoter-cohort"
+        | "orthologs resolve-promoter-cohort"
+        | "orthologs promoter-comparison"
         | "ladders export"
         | "export_dna_ladders"
         | "export_rna_ladders"
