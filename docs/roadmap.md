@@ -300,3 +300,5 @@ wet-lab conclusions or unconfirmed mutations.
 - Browser/WebAssembly frontend portability after core/headless contracts settle.
 - GUI gene-set/collection operation lifting per
   [`gui_gene_set_collection_operations_plan.md`](gui_gene_set_collection_operations_plan.md).
+- Full glossary/help-generation inversion so `docs/glossary.json` becomes a
+  generated or validated projection of engine/protocol-side descriptors.

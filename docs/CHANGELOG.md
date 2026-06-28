@@ -25,6 +25,8 @@ Maintenance rule:
 - Promoted `docs/introspection.md` from proposal wording to an implemented
   contract summary, including the `introspect verify-effects` route and the
   actual headless `ui.host_available` fact shape.
+- Moved the full glossary/help-generation inversion out of the implemented
+  introspection contract and into the roadmap parking lot as deferred work.
 - Added a first glossary-to-protocol projection bridge for JSON help output:
   `help --format json` and topic help rows now include the matching shared
   protocol `capability` descriptor for glossary commands when available.

@@ -1009,13 +1009,14 @@ slice resolved them. The non-negotiables are promoted into `docs/decisions.md`.
 - **Bound readiness route:** bound readiness lives in `introspect readiness`.
   `introspect capabilities` remains catalog/descriptor discovery.
 
-## 12. Remaining implementation work
+## 12. Deferred follow-up
 
-- Continue migrating glossary/help generation toward projection from an
+- Continue the glossary/help-generation inversion toward projection from an
   engine/protocol-side descriptor. The current bridge is implemented in two
   layers: glossary command descriptors in the shared protocol registry carry
   syntax/interface/alias metadata, built-in help catalog/topic rendering reads
   those descriptors, and `introspect capabilities` exposes the same
   usage/interface/alias fields in each row's `registry` object.
-  `docs/glossary.json` still seeds those descriptors at compile time, so full
-  inversion of glossary/help generation remains future work.
+  `docs/glossary.json` still seeds those descriptors at compile time; full
+  inversion is tracked as deferred roadmap work, not part of the implemented
+  introspection contract.
