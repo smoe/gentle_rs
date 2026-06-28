@@ -4604,6 +4604,17 @@ restriction-site scan evidence:
   `container.exists(CONTAINER_ID)` and declare `may_on_success` product effects
   because concrete product ids are derived from execution parameters rather than
   a single deterministic output binding.
+- List-valued pool/container rows (`MergeContainers`, `MergeContainersById`,
+  `Ligation`, `FilterByMolecularWeight`, `FilterByDesignConstraints`,
+  `ExportPool`, `RenderPoolGelSvg`, and their shell/adapter aliases) are
+  fact-annotated but keep readiness conservative: each supplied sequence or
+  container id is validated during execution until the introspection schema
+  gains explicit list-bound/foreach fact atoms. Artifact-producing pool rows
+  still declare `artifact.written(OUTPUT_PATH)` external handoff effects.
+- `screenshot-window` is represented in the catalog as a reserved host/view
+  capability. It requires `ui.host_available == true` and a
+  `host.tool_available(SCREENSHOT_CAPTURE) == true` fact, and remains blocked
+  in normal builds/policies where screenshot capture is disabled.
 - Macro-template routes project closed-world
   `workflow_macro_template.exists(TEMPLATE_NAME)`,
   `candidate_macro_template.exists(TEMPLATE_NAME)`, and

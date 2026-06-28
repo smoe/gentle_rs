@@ -1,13 +1,14 @@
 # GENtle Introspection Contract (Proposal / Working Draft)
 
-Last updated: 2026-06-27
+Last updated: 2026-06-28
 
 Status: implemented for `introspect facts`, `introspect capabilities`,
 `introspect readiness`, and `introspect all`. The capability route now projects
-the shared protocol capability registry and overlays fact-aware annotations for
-the validated first slice. Full fact annotation for every catalog row remains a
-working design. Sections marked "Degrees of freedom" call out where later
-implementation should adjust shapes to validated code.
+the shared protocol capability registry with fact-aware annotations for every
+current catalog row. Some list-valued rows intentionally keep conservative
+readiness until list-bound fact atoms are added. Sections marked "Degrees of
+freedom" call out where later implementation should adjust shapes to validated
+code.
 
 Revision note: incorporates the first Codex review (argument binding, fact
 domains, effect modality, subroutes, narrowed "lossless", explicit host fact).
@@ -99,7 +100,7 @@ or subject `--seq-id`), because the catalog is large (hundreds of shell
 commands). A words-only client must be able to ask "what can I do with `insert`
 right now?" and get a short, ready-annotated list.
 
-Implemented scoping in the first slice:
+Implemented scoping:
 
 - `introspect facts --domain ... --seq-id ...`
 - `introspect capabilities --kind ...`
@@ -972,8 +973,11 @@ on semantic glyphs.
 4. Add readiness tests proving the **same descriptor** resolves correctly in both
    a GUI-attached and a headless context (implemented through explicit
    `--ui-host true|false` projection).
-5. Defer: full catalog fact annotation, glossary-as-projection inversion, and
-   any visualization-interpretation work.
+5. Complete current shared-registry fact annotation, with conservative
+   readiness for list-valued pool/container rows until list-bound atoms exist
+   (implemented).
+6. Defer: glossary-as-projection inversion, list-bound/foreach readiness atoms,
+   and any visualization-interpretation work.
 
 ## 11. Resolved decisions
 
@@ -997,6 +1001,7 @@ slice resolved them. The non-negotiables are promoted into `docs/decisions.md`.
 
 ## 12. Remaining implementation work
 
-- Add fact-aware annotations for more glossary/engine capability rows.
+- Add explicit list-bound/foreach fact atoms so list-valued pool/container rows
+  can prove every supplied sequence or container id before execution.
 - Migrate glossary/help generation toward projection from an engine/protocol-side
   descriptor once enough annotated rows prove the shape.

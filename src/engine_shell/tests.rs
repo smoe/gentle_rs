@@ -23877,6 +23877,17 @@ fn execute_introspect_readiness_checks_render_svg_sequence_input() {
         "cutrun prepare",
         "PrepareCutRunDataset",
         "cutrun gene-set-regulatory-support",
+        "AssessPrimerPairSpecificity",
+        "ExportPool",
+        "FilterByDesignConstraints",
+        "FilterByMolecularWeight",
+        "Ligation",
+        "MergeContainers",
+        "MergeContainersById",
+        "RenderPoolGelSvg",
+        "export-pool",
+        "render-pool-gel-svg",
+        "render_pool_gel_svg",
         "cutrun list-read-reports",
         "rna-reads list-reports",
         "ListSequencingConfirmationReports",
@@ -23937,6 +23948,23 @@ fn execute_introspect_readiness_checks_render_svg_sequence_input() {
         );
         assert_eq!(out.output["readiness"][0]["mode"].as_str(), Some("unbound"));
     }
+
+    let screenshot = parse_shell_line("introspect readiness screenshot-window")
+        .expect("parse screenshot readiness");
+    let screenshot =
+        execute_shell_command(&mut engine, &screenshot).expect("execute screenshot readiness");
+    assert_eq!(
+        screenshot.output["readiness"][0]["readiness"].as_str(),
+        Some("blocked")
+    );
+    assert!(
+        screenshot.output["readiness"][0]["unmet_atoms"]
+            .as_array()
+            .expect("unmet atoms")
+            .iter()
+            .any(|atom| atom["fact"].as_str() == Some("ui.host_available")
+                || atom["fact"].as_str() == Some("host.tool_available"))
+    );
 
     for capability_id in [
         "SummarizeAlternativePromoterComparison",
@@ -25166,6 +25194,64 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
             "{id} should have a fact-annotated sequencing-primer suggestion descriptor"
         );
     }
+    assert!(
+        capabilities
+            .iter()
+            .all(|descriptor| descriptor["annotation_status"].as_str() != Some("registry_only")),
+        "all shared registry capabilities should have fact-aware introspection descriptors"
+    );
+    for id in [
+        "ExportPool",
+        "export-pool",
+        "RenderPoolGelSvg",
+        "render-pool-gel-svg",
+        "render_pool_gel_svg",
+    ] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["effects"][0]["fact"].as_str() == Some("artifact.written")
+                    && descriptor["effects"][0]["subject"]["arg"].as_str() == Some("OUTPUT_PATH")
+                    && descriptor["effects"][0]["effect_kind"].as_str() == Some("external_handoff")
+            }),
+            "{id} should have a fact-annotated pool artifact descriptor"
+        );
+    }
+    for id in [
+        "FilterByDesignConstraints",
+        "FilterByMolecularWeight",
+        "Ligation",
+        "MergeContainers",
+        "MergeContainersById",
+    ] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["effects"][0]["fact"].as_str() == Some("sequence.exists")
+                    && descriptor["effects"][0]["effect_kind"].as_str() == Some("may_on_success")
+                    && descriptor["precondition_expr"]["all"]
+                        .as_array()
+                        .is_some_and(|items| items.is_empty())
+            }),
+            "{id} should have a fact-annotated conservative list-input transform descriptor"
+        );
+    }
+    assert!(capabilities.iter().any(|descriptor| {
+        descriptor["id"].as_str() == Some("AssessPrimerPairSpecificity")
+            && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+            && descriptor["effects"][0]["fact"].as_str() == Some("artifact.written")
+            && descriptor["effects"][0]["effect_kind"].as_str() == Some("external_handoff")
+    }));
+    assert!(capabilities.iter().any(|descriptor| {
+        descriptor["id"].as_str() == Some("screenshot-window")
+            && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+            && descriptor["requires_confirmation"].as_bool() == Some(true)
+            && descriptor["reads"][0]["fact"].as_str() == Some("ui.host_available")
+            && descriptor["reads"][1]["fact"].as_str() == Some("host.tool_available")
+            && descriptor["effects"][0]["fact"].as_str() == Some("artifact.written")
+    }));
     for id in ["cutrun prepare", "PrepareCutRunDataset"] {
         assert!(
             capabilities.iter().any(|descriptor| {

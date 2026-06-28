@@ -16851,6 +16851,94 @@ fn container_transform_descriptor(id: &str, description: &str) -> Value {
     })
 }
 
+fn sequence_list_transform_descriptor(
+    id: &str,
+    description: &str,
+    mut extra_args: Vec<Value>,
+) -> Value {
+    let mut args = vec![json!({
+        "name": "INPUTS",
+        "required": true,
+        "subject_kind": "sequence",
+        "detail": "one or more loaded sequence ids; each id is validated during execution"
+    })];
+    args.append(&mut extra_args);
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": false,
+        "args": args,
+        "reads": [],
+        "effects": [
+            {
+                "fact": "sequence.exists",
+                "effect_kind": "may_on_success",
+                "description": "May create derived product sequences; concrete ids are output-prefix/index-derived unless a valid single-product output id is supplied."
+            }
+        ],
+        "precondition_expr": {"all": []},
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn container_list_transform_descriptor(
+    id: &str,
+    description: &str,
+    extra_args: Vec<Value>,
+) -> Value {
+    let mut args = vec![json!({
+        "name": "CONTAINER_IDS",
+        "required": true,
+        "subject_kind": "other",
+        "detail": "one or more persisted container ids; each id is validated during execution"
+    })];
+    args.extend(extra_args);
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "true",
+        "requires_confirmation": false,
+        "args": args,
+        "reads": [],
+        "effects": [
+            {
+                "fact": "sequence.exists",
+                "effect_kind": "may_on_success",
+                "description": "May create derived product sequences or containers; concrete ids are execution-derived."
+            }
+        ],
+        "precondition_expr": {"all": []},
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
+fn pool_artifact_descriptor(id: &str, description: &str, args: Vec<Value>) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": "false",
+        "requires_confirmation": false,
+        "args": args,
+        "reads": [],
+        "effects": [
+            {
+                "fact": "artifact.written",
+                "subject": {"arg": "OUTPUT_PATH"},
+                "effect_kind": "external_handoff"
+            }
+        ],
+        "precondition_expr": {"all": []},
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
 fn uniprot_projection_read_descriptor(id: &str, description: &str) -> Value {
     json!({
         "id": id,
@@ -17549,6 +17637,110 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
         container_transform_descriptor(
             "FilterContainerByMolecularWeight",
             "Filter one persisted wet-lab container by molecular-weight or base-pair bounds.",
+        ),
+        sequence_list_transform_descriptor(
+            "MergeContainers",
+            "Copy one or more loaded sequences into a derived container-like sequence set using an output prefix.",
+            vec![
+                json!({"name": "OUTPUT_PREFIX", "required": false, "subject_kind": "other", "detail": "optional output prefix carried by output_prefix"}),
+            ],
+        ),
+        container_list_transform_descriptor(
+            "MergeContainersById",
+            "Merge one or more persisted wet-lab containers by id through the shared engine operation.",
+            vec![
+                json!({"name": "OUTPUT_PREFIX", "required": false, "subject_kind": "other", "detail": "optional output prefix carried by output_prefix"}),
+            ],
+        ),
+        sequence_list_transform_descriptor(
+            "Ligation",
+            "Ligate compatible loaded sequence molecules through the shared engine operation.",
+            vec![
+                json!({"name": "OUTPUT_ID", "required": false, "subject_kind": "sequence", "detail": "optional single-product output id; execution requires exactly one product"}),
+                json!({"name": "OUTPUT_PREFIX", "required": false, "subject_kind": "other", "detail": "optional product id prefix carried by output_prefix"}),
+                json!({"name": "PROTOCOL", "required": false, "subject_kind": "other", "detail": "ligation protocol, such as Sticky or Blunt"}),
+                json!({"name": "UNIQUE", "required": false, "subject_kind": "other", "detail": "whether execution requires exactly one accepted product"}),
+            ],
+        ),
+        sequence_list_transform_descriptor(
+            "FilterByMolecularWeight",
+            "Filter loaded sequence molecules by molecular-weight/base-pair bounds through the shared engine operation.",
+            vec![
+                json!({"name": "MIN_BP", "required": true, "subject_kind": "other", "detail": "minimum requested base-pair length"}),
+                json!({"name": "MAX_BP", "required": true, "subject_kind": "other", "detail": "maximum requested base-pair length"}),
+                json!({"name": "ERROR", "required": false, "subject_kind": "other", "detail": "relative length tolerance"}),
+                json!({"name": "OUTPUT_PREFIX", "required": false, "subject_kind": "other", "detail": "optional retained-candidate id prefix"}),
+            ],
+        ),
+        sequence_list_transform_descriptor(
+            "FilterByDesignConstraints",
+            "Filter loaded sequence molecules by GC, homopolymer, ambiguity, U6 terminator, and forbidden-motif constraints.",
+            vec![
+                json!({"name": "GC_MIN", "required": false, "subject_kind": "other", "detail": "minimum GC fraction"}),
+                json!({"name": "GC_MAX", "required": false, "subject_kind": "other", "detail": "maximum GC fraction"}),
+                json!({"name": "MAX_HOMOPOLYMER_RUN", "required": false, "subject_kind": "other", "detail": "maximum permitted homopolymer run length"}),
+                json!({"name": "FORBIDDEN_MOTIFS", "required": false, "subject_kind": "other", "detail": "forbidden IUPAC motifs"}),
+                json!({"name": "OUTPUT_PREFIX", "required": false, "subject_kind": "other", "detail": "optional retained-candidate id prefix"}),
+            ],
+        ),
+        pool_artifact_descriptor(
+            "export-pool",
+            "Export one or more loaded sequences to an external GENtle pool JSON artifact.",
+            vec![
+                json!({"name": "INPUTS", "required": true, "subject_kind": "sequence", "detail": "one or more loaded sequence ids; each id is validated during execution"}),
+                json!({"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external pool JSON output path"}),
+                json!({"name": "HUMAN_ID", "required": false, "subject_kind": "other", "detail": "optional human-readable pool label"}),
+            ],
+        ),
+        pool_artifact_descriptor(
+            "ExportPool",
+            "Export one or more loaded sequences to an external GENtle pool JSON artifact through the shared engine operation.",
+            vec![
+                json!({"name": "INPUTS", "required": true, "subject_kind": "sequence", "detail": "one or more loaded sequence ids carried by inputs; each id is validated during execution"}),
+                json!({"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external pool JSON output path carried by path"}),
+                json!({"name": "POOL_ID", "required": false, "subject_kind": "other", "detail": "optional machine-readable pool id carried by pool_id"}),
+                json!({"name": "HUMAN_ID", "required": false, "subject_kind": "other", "detail": "optional human-readable pool label carried by human_id"}),
+            ],
+        ),
+        pool_artifact_descriptor(
+            "render-pool-gel-svg",
+            "Render sequence, container, or arrangement pool lanes to an external SVG gel artifact.",
+            vec![
+                json!({"name": "INPUTS", "required": false, "subject_kind": "sequence", "detail": "optional sequence-id list; each id is validated during execution"}),
+                json!({"name": "CONTAINER_IDS", "required": false, "subject_kind": "other", "detail": "optional container-id list; each id is validated during execution"}),
+                json!({"name": "ARRANGEMENT_ID", "required": false, "subject_kind": "other", "detail": "optional persisted arrangement id validated during execution"}),
+                json!({"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external SVG output path"}),
+            ],
+        ),
+        pool_artifact_descriptor(
+            "render_pool_gel_svg",
+            "Render sequence pool lanes to an external SVG gel artifact through JS/Lua helper adapters.",
+            vec![
+                json!({"name": "INPUTS", "required": true, "subject_kind": "sequence", "detail": "sequence-id CSV/array; each id is validated during execution"}),
+                json!({"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external SVG output path"}),
+                json!({"name": "LADDERS", "required": false, "subject_kind": "other", "detail": "optional ladder-name CSV/array"}),
+            ],
+        ),
+        pool_artifact_descriptor(
+            "RenderPoolGelSvg",
+            "Render sequence, container, or arrangement pool lanes to an external SVG gel artifact through the shared engine operation.",
+            vec![
+                json!({"name": "INPUTS", "required": false, "subject_kind": "sequence", "detail": "optional sequence-id list carried by inputs; each id is validated during execution"}),
+                json!({"name": "CONTAINER_IDS", "required": false, "subject_kind": "other", "detail": "optional container-id list carried by container_ids; each id is validated during execution"}),
+                json!({"name": "ARRANGEMENT_ID", "required": false, "subject_kind": "other", "detail": "optional persisted arrangement id carried by arrangement_id"}),
+                json!({"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external SVG output path carried by path"}),
+            ],
+        ),
+        pool_artifact_descriptor(
+            "AssessPrimerPairSpecificity",
+            "Assess one primer pair against a prepared reference genome and optionally write the returned specificity report to JSON.",
+            vec![
+                json!({"name": "PRIMER_REPORT_ID", "required": false, "subject_kind": "report", "detail": "optional primer-design report id carried by primer_report_id"}),
+                json!({"name": "FORWARD_PRIMER", "required": false, "subject_kind": "other", "detail": "explicit forward primer sequence alternative"}),
+                json!({"name": "REVERSE_PRIMER", "required": false, "subject_kind": "other", "detail": "explicit reverse primer sequence alternative"}),
+                json!({"name": "TARGET_GENOME_ID", "required": true, "subject_kind": "other", "detail": "prepared reference genome id used for specificity search"}),
+                json!({"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external primer-specificity JSON output path carried by path"}),
+            ],
         ),
         arrangement_create_descriptor(
             "arrange-serial",
@@ -24385,6 +24577,36 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "registry": registry_metadata_for_introspection("ui selection")
         }),
         json!({
+            "id": "screenshot-window",
+            "kind": "host_config",
+            "mutating": "external",
+            "requires_confirmation": true,
+            "args": [
+                {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external PNG screenshot output path"}
+            ],
+            "reads": [
+                {"fact": "ui.host_available", "equals": true},
+                {"fact": "host.tool_available", "subject": {"arg": "SCREENSHOT_CAPTURE"}, "equals": true}
+            ],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_PATH"},
+                    "effect_kind": "external_handoff",
+                    "description": "Screenshot capture is disabled unless the build and shell execution policy explicitly allow it."
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "ui.host_available", "equals": true},
+                    {"fact": "host.tool_available", "subject": {"arg": "SCREENSHOT_CAPTURE"}, "equals": true}
+                ]
+            },
+            "description": "Reserved GUI screenshot capture command; normally blocked by security policy.",
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection("screenshot-window")
+        }),
+        json!({
             "id": "set-param",
             "kind": "host_config",
             "mutating": "true",
@@ -24700,6 +24922,17 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "features repeat-cohort"
         | "BuildRepeatEnvironmentCohort"
         | "features window-cohort-tfbs" => Some(vec![]),
+        "AssessPrimerPairSpecificity"
+        | "ExportPool"
+        | "FilterByDesignConstraints"
+        | "FilterByMolecularWeight"
+        | "Ligation"
+        | "MergeContainers"
+        | "MergeContainersById"
+        | "RenderPoolGelSvg"
+        | "export-pool"
+        | "render-pool-gel-svg"
+        | "render_pool_gel_svg" => Some(vec![]),
         "features query" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
         ]),
@@ -24736,6 +24969,10 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
             json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
         ]),
         "render-lineage-svg" => Some(vec![]),
+        "screenshot-window" => Some(vec![
+            json!({"fact": "ui.host_available", "equals": true}),
+            json!({"fact": "host.tool_available", "subject": {"arg": "SCREENSHOT_CAPTURE"}, "equals": true}),
+        ]),
         "RenderSequenceSvg" | "RenderFeatureExpertSvg" | "RenderRnaStructureSvg" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}),
         ]),
