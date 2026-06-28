@@ -1,8 +1,9 @@
 //! Generated/derived shell-help documentation helpers.
 
-use gentle_protocol::{CapabilitySource, capability_descriptor};
+use gentle_protocol::{CapabilityDescriptor, CapabilitySource, capability_registry};
 use serde::Deserialize;
 use serde_json::{Value, json};
+use std::collections::BTreeSet;
 use std::sync::OnceLock;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -55,7 +56,7 @@ struct ShellCommandDoc {
     aliases: Vec<String>,
 }
 
-static GLOSSARY: OnceLock<Result<ShellGlossary, String>> = OnceLock::new();
+static GLOSSARY: OnceLock<ShellGlossary> = OnceLock::new();
 
 fn parse_glossary(raw: &str) -> Result<ShellGlossary, String> {
     serde_json::from_str::<ShellGlossary>(raw)
@@ -63,13 +64,45 @@ fn parse_glossary(raw: &str) -> Result<ShellGlossary, String> {
 }
 
 fn glossary() -> Result<&'static ShellGlossary, String> {
-    match GLOSSARY.get_or_init(|| {
-        let raw = include_str!("../../../docs/glossary.json");
-        parse_glossary(raw)
-    }) {
-        Ok(glossary) => Ok(glossary),
-        Err(err) => Err(err.clone()),
+    Ok(GLOSSARY.get_or_init(glossary_from_capability_registry))
+}
+
+fn glossary_from_capability_registry() -> ShellGlossary {
+    let commands = capability_registry()
+        .iter()
+        .filter_map(command_doc_from_capability)
+        .collect::<Vec<_>>();
+    let mut interfaces = commands
+        .iter()
+        .flat_map(|doc| doc.interfaces.iter().cloned())
+        .collect::<BTreeSet<_>>();
+    interfaces.insert("mcp".to_string());
+    ShellGlossary {
+        schema: "gentle.protocol_capability_registry.v1".to_string(),
+        interfaces: interfaces.into_iter().collect(),
+        commands,
     }
+}
+
+fn command_doc_from_capability(descriptor: &CapabilityDescriptor) -> Option<ShellCommandDoc> {
+    if descriptor.source != CapabilitySource::GlossaryCommand {
+        return None;
+    }
+    let usage = descriptor.usage.clone().or_else(|| {
+        descriptor
+            .input_schema
+            .pointer("/properties/usage/const")
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned)
+    })?;
+    Some(ShellCommandDoc {
+        path: descriptor.name.clone(),
+        usage,
+        summary: descriptor.description.clone(),
+        interfaces: descriptor.interfaces.clone(),
+        engine_operations: descriptor.engine_operations.clone(),
+        aliases: descriptor.aliases.clone(),
+    })
 }
 
 fn normalize_interface_filter(raw: Option<&str>) -> Result<Option<String>, String> {
@@ -148,23 +181,21 @@ fn docs_for_interface_from_glossary<'a>(
 }
 
 fn doc_record(doc: &ShellCommandDoc) -> Value {
-    let mut record = json!({
+    let capability = capability_registry()
+        .iter()
+        .find(|descriptor| {
+            descriptor.source == CapabilitySource::GlossaryCommand && descriptor.name == doc.path
+        })
+        .cloned();
+    json!({
         "path": doc.path,
         "usage": doc.usage,
         "summary": doc.summary,
         "interfaces": doc.interfaces,
         "engine_operations": doc.engine_operations,
-        "aliases": doc.aliases
-    });
-    if let Some(capability) = capability_descriptor(CapabilitySource::GlossaryCommand, &doc.path)
-        && let Some(record_object) = record.as_object_mut()
-    {
-        record_object.insert(
-            "capability".to_string(),
-            serde_json::to_value(capability).unwrap_or_else(|_| json!({})),
-        );
-    }
-    record
+        "aliases": doc.aliases,
+        "capability": capability
+    })
 }
 
 fn find_doc_for_topic<'a>(
@@ -383,6 +414,10 @@ mod tests {
         let help =
             shell_topic_help_json(&topic, Some("cli-shell")).expect("render capability help");
         assert_eq!(
+            help["doc"]["usage"].as_str(),
+            Some("introspect capabilities [--kind KIND]")
+        );
+        assert_eq!(
             help["doc"]["capability"]["source"].as_str(),
             Some("glossary_command")
         );
@@ -394,8 +429,23 @@ mod tests {
             help["doc"]["capability"]["mutating"].as_str(),
             Some("false")
         );
+        assert_eq!(
+            help["doc"]["capability"]["usage"].as_str(),
+            Some("introspect capabilities [--kind KIND]")
+        );
+        assert!(
+            help["doc"]["capability"]["interfaces"]
+                .as_array()
+                .expect("interfaces")
+                .iter()
+                .any(|interface| interface.as_str() == Some("cli-shell"))
+        );
 
         let catalog = shell_help_json(Some("cli-shell")).expect("render help catalog");
+        assert_eq!(
+            catalog["source_schema"].as_str(),
+            Some("gentle.protocol_capability_registry.v1")
+        );
         let command = catalog["commands"]
             .as_array()
             .expect("commands")

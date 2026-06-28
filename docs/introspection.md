@@ -22,9 +22,11 @@ Related shared documents:
 - `docs/protocol.md`: `gentle.project_fact_graph.v1`, `gentle.fact_expression.v1`,
   `gentle.fact_evaluation.v1`, agent response schema.
 - `docs/agent_interface.md`: agent-facing routes.
-- `docs/glossary.json`: current source of truth for shell command syntax.
-  JSON help rows now embed matching protocol capability descriptors, starting
-  the migration toward descriptor-backed help generation.
+- `docs/glossary.json`: current compile-time seed for shell command syntax.
+  The built-in help catalog now renders from protocol capability descriptors,
+  which carry the glossary-derived usage, interfaces, aliases, mutation class,
+  and adapter surfacing metadata during the migration toward descriptor-backed
+  help generation.
 
 ## 1. Why this exists
 
@@ -1005,6 +1007,9 @@ slice resolved them. The non-negotiables are promoted into `docs/decisions.md`.
 ## 12. Remaining implementation work
 
 - Continue migrating glossary/help generation toward projection from an
-  engine/protocol-side descriptor. The first bridge is implemented: JSON help
-  catalog/topic rows embed matching protocol capability descriptors, while the
-  glossary still owns syntax strings.
+  engine/protocol-side descriptor. The current bridge is implemented in two
+  layers: glossary command descriptors in the shared protocol registry carry
+  syntax/interface/alias metadata, and built-in help catalog/topic rendering
+  reads those descriptors. `docs/glossary.json` still seeds those descriptors at
+  compile time, so full inversion of glossary/help generation remains future
+  work.

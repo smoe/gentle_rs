@@ -4791,6 +4791,12 @@ pub struct CapabilityDescriptor {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
     pub description: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub interfaces: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub aliases: Vec<String>,
     pub input_schema: Value,
     pub output_schema: Value,
     pub mutating: CapabilityMutation,
@@ -4881,6 +4887,8 @@ struct GlossaryRegistryCommand {
     summary: String,
     #[serde(default)]
     interfaces: Vec<String>,
+    #[serde(default)]
+    aliases: Vec<String>,
     #[serde(default)]
     engine_operations: Vec<String>,
     usage: String,
@@ -6044,6 +6052,9 @@ fn glossary_command_descriptor(
         name: command.path.clone(),
         title: Some(title_from_stable_name(&command.path)),
         description: command.summary.clone(),
+        usage: Some(command.usage.clone()),
+        interfaces: command.interfaces.clone(),
+        aliases: command.aliases.clone(),
         input_schema: json!({
             "type": "object",
             "description": "Command arguments are documented by the glossary usage string.",
@@ -6088,6 +6099,9 @@ fn engine_operation_descriptor(
         name: op_name.to_string(),
         title: Some(title_from_stable_name(op_name)),
         description: description.unwrap_or_else(|| format!("GENtle engine operation `{op_name}`.")),
+        usage: None,
+        interfaces: vec![],
+        aliases: vec![],
         input_schema: json!({
             "type": "object",
             "description": format!("Serialized Operation::{op_name} payload.")
@@ -6123,6 +6137,9 @@ fn mcp_tool_descriptor(
         name: name.to_string(),
         title: Some(title.to_string()),
         description: description.to_string(),
+        usage: None,
+        interfaces: vec![],
+        aliases: vec![],
         input_schema: json!({
             "type": "object",
             "description": "See the MCP `tools/list` inputSchema for field-level details."

@@ -22,11 +22,12 @@ shared shell parser/executor as `gentle_cli shell`.
 
 Structured command glossary:
 
-- `docs/glossary.json` is the machine-readable command glossary used for
-  per-command help rendering (`help ...`) and catalog export
-  (`help --format json|markdown`). JSON help rows include the matching shared
-  protocol `capability` descriptor when available, so automation can inspect
-  syntax, mutation class, adapter surfacing, and schema metadata together.
+- Built-in per-command help (`help ...`) and help catalog export
+  (`help --format json|markdown`) are rendered from the shared protocol
+  `capability_registry`. Glossary command descriptors carry the
+  glossary-derived usage, interface, alias, mutation-class, adapter-surfacing,
+  and schema metadata together. During the migration, `docs/glossary.json`
+  remains the compile-time seed for those command descriptors.
 - `gentle_cli capabilities` includes the shared protocol
   `capability_registry`, so CLI/MCP/JavaScript/Lua discovery rows use the same
   names, descriptions, mutation classes, and adapter projections.

@@ -3269,12 +3269,14 @@ external coding agent runtime, see:
 - `docs/tutorial/01-01_agent_interfaces.md`
 
 - `help [COMMAND ...] [--format text|json|markdown] [--interface ...]`
-  - backed by structured glossary source `docs/glossary.json`
+  - backed by the shared protocol `capability_registry` for built-in help
+    rendering; during the migration, `docs/glossary.json` remains the
+    compile-time seed for glossary command descriptors
   - `--format text` renders human-readable help
   - `--format json` renders machine-readable help catalog/topic payload; each
-    command row includes the matching shared protocol `capability` descriptor
-    when one exists, so clients can read syntax plus mutation/surfacing/schema
-    metadata from one response
+    command row includes the matching shared protocol `capability` descriptor,
+    so clients can read syntax plus mutation/surfacing/schema metadata from one
+    response
   - `--format markdown` renders documentation-ready markdown
   - `--interface` accepts:
     `all|cli-direct|cli-shell|gui-shell|gui-menu|js|lua|mcp`

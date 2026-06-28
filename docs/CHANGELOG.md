@@ -14,6 +14,11 @@ Maintenance rule:
 
 ## 2026-06-28
 
+- Projected built-in shell help from the shared protocol capability registry.
+  Glossary command capability descriptors now carry usage, interfaces, and
+  aliases, so `help --format json` and topic help expose one descriptor-backed
+  command surface while `docs/glossary.json` remains the transitional
+  compile-time seed.
 - Added a first glossary-to-protocol projection bridge for JSON help output:
   `help --format json` and topic help rows now include the matching shared
   protocol `capability` descriptor for glossary commands when available.
