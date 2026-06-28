@@ -4787,12 +4787,16 @@ Shared-shell routes:
   - Raw core sequence operation rows are fact-annotated where their state
     contracts are discrete. `SaveFile` requires `sequence.exists(SEQ_ID)` and
     models the output path as an `artifact.written` external handoff. `Digest`
-    requires `sequence.exists(INPUT_SEQ_ID)` but declares no hard effect because
-    fragment ids are prefix/index-derived. `Pcr`, `PcrAdvanced`, and
-    `PcrMutagenesis` require `sequence.exists(TEMPLATE_SEQ_ID)` and verify
-    `sequence.exists(OUTPUT_ID)` when execution used a deterministic product
-    id. `PcrOverlapExtensionMutagenesis` currently models template readiness
-    only because candidate ids are prefix/rank-derived.
+    and the glossary `digest` alias require
+    `sequence.exists(INPUT_SEQ_ID)` but declare no hard effect because fragment
+    ids are prefix/index-derived. `SelectCandidate` requires
+    `sequence.exists(INPUT_SEQ_ID)` and verifies `sequence.exists(OUTPUT_ID)`
+    when execution used a deterministic selected-candidate id. `Pcr`,
+    `PcrAdvanced`, and `PcrMutagenesis` require
+    `sequence.exists(TEMPLATE_SEQ_ID)` and verify `sequence.exists(OUTPUT_ID)`
+    when execution used a deterministic product id.
+    `PcrOverlapExtensionMutagenesis` currently models template readiness only
+    because candidate ids are prefix/rank-derived.
   - `SetTopology` is fact-annotated over raw operation payload fields. Its
     bound readiness requires `sequence.exists(SEQ_ID)`, and hard-effect
     verification checks the closed-world `sequence.circular(SEQ_ID)` fact

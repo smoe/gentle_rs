@@ -39,6 +39,10 @@ Maintenance rule:
   derivation, residue-coordinate lookup, exon-skip planning/materialization,
   and raw exon-skip operation rows now expose fact-aware readiness/effect
   descriptors.
+- Added fact-aware introspection for the glossary `digest` alias and raw
+  `SelectCandidate` operation row. Both require
+  `sequence.exists(INPUT_SEQ_ID)`; `SelectCandidate` can verify a deterministic
+  `sequence.exists(OUTPUT_ID)` result.
 
 ## 2026-06-27
 

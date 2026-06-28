@@ -17959,6 +17959,23 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "OUTPUT_PREFIX", "required": false, "subject_kind": "other", "detail": "fragment id prefix carried by output_prefix"}),
             ],
         ),
+        sequence_read_operation_descriptor(
+            "digest",
+            "INPUT_SEQ_ID",
+            "loaded sequence id carried by input",
+            "Glossary alias for digesting one loaded sequence with named restriction enzymes. Created fragment ids are prefix/index-derived and are not currently modeled as hard introspection effects.",
+            vec![
+                json!({"name": "ENZYMES", "required": true, "subject_kind": "other", "detail": "restriction enzyme names carried by enzymes"}),
+                json!({"name": "OUTPUT_PREFIX", "required": false, "subject_kind": "other", "detail": "fragment id prefix carried by output_prefix"}),
+            ],
+        ),
+        sequence_derivation_operation_descriptor(
+            "SelectCandidate",
+            "Copy one selected in-silico candidate sequence into a first-class project sequence for downstream operations.",
+            vec![
+                json!({"name": "CRITERION", "required": true, "subject_kind": "other", "detail": "selection criterion carried by criterion"}),
+            ],
+        ),
         pcr_sequence_create_descriptor(
             "Pcr",
             "Amplify one loaded linear template with exact forward/reverse primers through the shared engine operation.",
@@ -23036,6 +23053,9 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         "sequence create" => Some(vec![]),
         "DigestContainer" | "LigationContainer" | "FilterContainerByMolecularWeight" => Some(vec![
             json!({"fact": "container.exists", "subject": {"arg": "CONTAINER_ID"}}),
+        ]),
+        "Digest" | "digest" | "SelectCandidate" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "INPUT_SEQ_ID"}}),
         ]),
         "Reverse" | "Complement" | "ReverseComplement" | "Branch" | "ExtractRegion" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "INPUT_SEQ_ID"}}),

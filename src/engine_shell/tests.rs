@@ -19751,6 +19751,8 @@ fn execute_introspect_readiness_and_effects_cover_core_sequence_operations() {
     let capability_ids = [
         "SaveFile",
         "Digest",
+        "digest",
+        "SelectCandidate",
         "Pcr",
         "PcrAdvanced",
         "PcrMutagenesis",
@@ -19776,11 +19778,11 @@ fn execute_introspect_readiness_and_effects_cover_core_sequence_operations() {
             "{capability_id} should be fact annotated"
         );
     }
-    for capability_id in ["Pcr", "PcrAdvanced", "PcrMutagenesis"] {
+    for capability_id in ["SelectCandidate", "Pcr", "PcrAdvanced", "PcrMutagenesis"] {
         let descriptor = descriptors
             .iter()
             .find(|descriptor| descriptor["id"].as_str() == Some(capability_id))
-            .expect("PCR descriptor");
+            .expect("sequence-create descriptor");
         assert_eq!(
             descriptor["effects"][0]["fact"].as_str(),
             Some("sequence.exists")
@@ -19802,6 +19804,8 @@ fn execute_introspect_readiness_and_effects_cover_core_sequence_operations() {
     for command in [
         "introspect readiness SaveFile --arg SEQ_ID=tpl",
         "introspect readiness Digest --arg INPUT_SEQ_ID=tpl",
+        "introspect readiness digest --arg INPUT_SEQ_ID=tpl",
+        "introspect readiness SelectCandidate --arg INPUT_SEQ_ID=tpl",
         "introspect readiness Pcr --arg TEMPLATE_SEQ_ID=tpl",
         "introspect readiness PcrOverlapExtensionMutagenesis --arg TEMPLATE_SEQ_ID=tpl",
     ] {
@@ -19824,6 +19828,8 @@ fn execute_introspect_readiness_and_effects_cover_core_sequence_operations() {
     for command in [
         "introspect readiness SaveFile --arg SEQ_ID=tpl",
         "introspect readiness Digest --arg INPUT_SEQ_ID=tpl",
+        "introspect readiness digest --arg INPUT_SEQ_ID=tpl",
+        "introspect readiness SelectCandidate --arg INPUT_SEQ_ID=tpl",
         "introspect readiness Pcr --arg TEMPLATE_SEQ_ID=tpl",
         "introspect readiness PcrOverlapExtensionMutagenesis --arg TEMPLATE_SEQ_ID=tpl",
     ] {
@@ -19866,6 +19872,32 @@ fn execute_introspect_readiness_and_effects_cover_core_sequence_operations() {
     assert_eq!(after.output["verified"].as_bool(), Some(true));
     assert_eq!(after.output["status"].as_str(), Some("verified"));
     assert_eq!(after.output["truth"].as_str(), Some("satisfied"));
+
+    let before_selection = execute_shell_command(
+        &mut engine,
+        &parse_shell_line("introspect verify-effects SelectCandidate --arg OUTPUT_ID=chosen")
+            .expect("parse pre-selection verify"),
+    )
+    .expect("execute pre-selection verify");
+    assert_eq!(before_selection.output["verified"].as_bool(), Some(false));
+
+    engine
+        .apply(Operation::SelectCandidate {
+            input: "tpl".to_string(),
+            criterion: "manual".to_string(),
+            output_id: Some("chosen".to_string()),
+        })
+        .expect("selection should create deterministic candidate sequence");
+
+    let after_selection = execute_shell_command(
+        &mut engine,
+        &parse_shell_line("introspect verify-effects SelectCandidate --arg OUTPUT_ID=chosen")
+            .expect("parse post-selection verify"),
+    )
+    .expect("execute post-selection verify");
+    assert_eq!(after_selection.output["verified"].as_bool(), Some(true));
+    assert_eq!(after_selection.output["status"].as_str(), Some("verified"));
+    assert_eq!(after_selection.output["truth"].as_str(), Some("satisfied"));
 }
 
 #[test]

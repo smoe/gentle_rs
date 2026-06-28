@@ -2500,9 +2500,12 @@ Shared shell command:
       - raw core sequence operation rows are fact-annotated where the state
         contract is deterministic: `SaveFile` requires `sequence.exists(SEQ_ID)`
         and declares an `artifact.written(OUTPUT_PATH)` external handoff;
-        `Digest` requires `sequence.exists(INPUT_SEQ_ID)` but is
-        readiness-only because fragment ids are prefix/index-derived; `Pcr`,
-        `PcrAdvanced`, and `PcrMutagenesis` require
+        `Digest` and the glossary `digest` alias require
+        `sequence.exists(INPUT_SEQ_ID)` but are readiness-only because fragment
+        ids are prefix/index-derived; `SelectCandidate` also requires
+        `sequence.exists(INPUT_SEQ_ID)` and can verify
+        `sequence.exists(OUTPUT_ID)` when a deterministic selected-candidate id
+        was supplied; `Pcr`, `PcrAdvanced`, and `PcrMutagenesis` require
         `sequence.exists(TEMPLATE_SEQ_ID)` and can verify
         `sequence.exists(OUTPUT_ID)` for deterministic product ids; and
         `PcrOverlapExtensionMutagenesis` requires the template sequence but is
