@@ -232,6 +232,11 @@ Maintenance rule:
   synchronous BLAST, async BLAST start/cancel, `PrepareGenome`,
   `prepare_genome`, and JS/Lua BLAST helpers). These rows intentionally model
   catalog/cache/job effects as external local state rather than project facts.
+- Added fact-aware introspection for generic execution routes
+  (`apply_operation`, `apply_workflow`, MCP `op`/`workflow`, `macros run`, and
+  `candidates macro`) using command-dependent `may_on_success` effects instead
+  of pretending their concrete project effects are knowable before parsing the
+  supplied payload.
 - Registered `view.selection` and `view.visible_tracks` fact vocabulary entries
   and added fact-aware catalog readiness for the `display` visibility command
   with a `view.visible_tracks` view-session effect.

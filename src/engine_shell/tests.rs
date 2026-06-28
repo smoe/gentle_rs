@@ -23758,6 +23758,12 @@ fn execute_introspect_readiness_checks_render_svg_sequence_input() {
         "state-summary",
         "state_summary",
         "history status",
+        "apply_operation",
+        "apply_workflow",
+        "op",
+        "workflow",
+        "macros run",
+        "candidates macro",
         "facts graph",
         "facts eval",
         "introspect facts",
@@ -24554,6 +24560,25 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
             && descriptor["effects"][0]["fact"].as_str() == Some("artifact.written")
             && descriptor["effects"][0]["effect_kind"].as_str() == Some("external_handoff")
     }));
+    for (id, requires_confirmation) in [
+        ("apply_operation", false),
+        ("apply_workflow", false),
+        ("op", true),
+        ("workflow", true),
+        ("macros run", false),
+        ("candidates macro", true),
+    ] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["requires_confirmation"].as_bool() == Some(requires_confirmation)
+                    && descriptor["reads"].as_array().map(Vec::len) == Some(0)
+                    && descriptor["effects"][0]["effect_kind"].as_str() == Some("may_on_success")
+            }),
+            "{id} should have a fact-annotated command-dependent execution descriptor"
+        );
+    }
     assert!(capabilities.iter().any(|descriptor| {
         descriptor["id"].as_str() == Some("rna-info")
             && descriptor["annotation_status"].as_str() == Some("fact_annotated")

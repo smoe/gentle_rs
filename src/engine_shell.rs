@@ -15304,6 +15304,33 @@ fn project_state_save_descriptor(id: &str, description: &str) -> Value {
     })
 }
 
+fn command_dependent_execution_descriptor(
+    id: &str,
+    description: &str,
+    mutating: &str,
+    requires_confirmation: bool,
+    args: Vec<Value>,
+) -> Value {
+    json!({
+        "id": id,
+        "kind": "operation",
+        "mutating": mutating,
+        "requires_confirmation": requires_confirmation,
+        "args": args,
+        "reads": [],
+        "effects": [
+            {
+                "effect_kind": "may_on_success",
+                "description": "This generic execution route may change project state according to the supplied operation, workflow, or macro script; concrete reads/effects are command-dependent."
+            }
+        ],
+        "precondition_expr": {"all": []},
+        "description": description,
+        "annotation_status": "fact_annotated",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
 fn local_state_may_change_descriptor(
     id: &str,
     description: &str,
@@ -17659,6 +17686,64 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
         project_state_save_descriptor(
             "save_project",
             "Save the current project state through JS/Lua helper adapters to an external project-state JSON file.",
+        ),
+        command_dependent_execution_descriptor(
+            "apply_operation",
+            "Apply one supplied engine operation to an adapter-provided project state value.",
+            "true",
+            false,
+            vec![
+                json!({"name": "OPERATION", "required": true, "subject_kind": "other", "detail": "engine operation object or JSON string"}),
+            ],
+        ),
+        command_dependent_execution_descriptor(
+            "apply_workflow",
+            "Apply one supplied workflow to an adapter-provided project state value.",
+            "true",
+            false,
+            vec![
+                json!({"name": "WORKFLOW", "required": true, "subject_kind": "other", "detail": "workflow object or JSON string"}),
+            ],
+        ),
+        command_dependent_execution_descriptor(
+            "op",
+            "Apply one supplied engine operation through the MCP tool route and persist state when confirmed.",
+            "true",
+            true,
+            vec![
+                json!({"name": "OPERATION", "required": true, "subject_kind": "other", "detail": "engine operation payload"}),
+                json!({"name": "CONFIRM", "required": true, "subject_kind": "other", "detail": "explicit confirmation flag required by MCP execution"}),
+            ],
+        ),
+        command_dependent_execution_descriptor(
+            "workflow",
+            "Apply one supplied workflow through the MCP tool route and persist state when confirmed.",
+            "true",
+            true,
+            vec![
+                json!({"name": "WORKFLOW", "required": true, "subject_kind": "other", "detail": "workflow payload"}),
+                json!({"name": "CONFIRM", "required": true, "subject_kind": "other", "detail": "explicit confirmation flag required by MCP execution"}),
+            ],
+        ),
+        command_dependent_execution_descriptor(
+            "macros run",
+            "Execute a multi-statement workflow macro script through shared shell commands.",
+            "true",
+            false,
+            vec![
+                json!({"name": "SCRIPT_OR_FILE", "required": true, "subject_kind": "other", "detail": "inline macro script, @file reference, or --file path"}),
+                json!({"name": "--transactional", "required": false, "subject_kind": "other", "detail": "rollback project state if any macro statement fails"}),
+            ],
+        ),
+        command_dependent_execution_descriptor(
+            "candidates macro",
+            "Execute a multi-statement candidate macro script through shared candidate-set commands.",
+            "true",
+            true,
+            vec![
+                json!({"name": "SCRIPT_OR_FILE", "required": true, "subject_kind": "other", "detail": "inline candidate macro script, @file reference, or --file path"}),
+                json!({"name": "--transactional", "required": false, "subject_kind": "other", "detail": "rollback project state if any candidate macro statement fails"}),
+            ],
         ),
         json!({
             "id": "facts graph",
@@ -23466,6 +23551,8 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         "state-summary" => Some(vec![]),
         "history status" | "history undo" | "history redo" | "load-project" | "load_project"
         | "save-project" | "save_project" | "load_dna" => Some(vec![]),
+        "apply_operation" | "apply_workflow" | "op" | "workflow" | "macros run"
+        | "candidates macro" => Some(vec![]),
         "facts graph" => Some(vec![]),
         "facts eval" => Some(vec![]),
         "introspect facts"
