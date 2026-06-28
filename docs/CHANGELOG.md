@@ -22,6 +22,9 @@ Maintenance rule:
 - Extended `introspect capabilities` registry metadata so glossary-backed rows
   expose the same descriptor-backed `usage`, `interfaces`, and `aliases` fields
   used by built-in help.
+- Promoted `docs/introspection.md` from proposal wording to an implemented
+  contract summary, including the `introspect verify-effects` route and the
+  actual headless `ui.host_available` fact shape.
 - Added a first glossary-to-protocol projection bridge for JSON help output:
   `help --format json` and topic help rows now include the matching shared
   protocol `capability` descriptor for glossary commands when available.

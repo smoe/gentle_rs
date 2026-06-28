@@ -1,14 +1,13 @@
-# GENtle Introspection Contract (Proposal / Working Draft)
+# GENtle Introspection Contract
 
 Last updated: 2026-06-28
 
 Status: implemented for `introspect facts`, `introspect capabilities`,
-`introspect readiness`, and `introspect all`. The capability route now projects
-the shared protocol capability registry with fact-aware annotations for every
-current catalog row. List-valued pool/container rows use descriptor-side
-`foreach_arg` atoms so bound readiness can prove every supplied sequence or
-container id before execution. Sections marked "Degrees of freedom" call out
-where later implementation should adjust shapes to validated code.
+`introspect readiness`, `introspect verify-effects`, and `introspect all`. The
+capability route now projects the shared protocol capability registry with
+fact-aware annotations for every current catalog row. List-valued
+pool/container rows use descriptor-side `foreach_arg` atoms so bound readiness
+can prove every supplied sequence or container id before execution.
 
 Revision note: incorporates the first Codex review (argument binding, fact
 domains, effect modality, subroutes, narrowed "lossless", explicit host fact).
@@ -485,7 +484,9 @@ Implemented scoping:
   "schema": "gentle.introspection.v1",
   "facts": {
     "project": { "schema": "gentle.project_fact_graph.v1", "facts": [ "..." ] },
-    "view":    { "host_attached": true,  "facts": [ "..." ] },
+    "view":    { "facts": [ { "domain": "view", "fact": "ui.host_available",
+                              "subject": { "kind": "ui", "id": "host" },
+                              "value": false } ] },
     "host":    { "facts": [ "..." ] },
     "config":  { "facts": [ "..." ] }
   }
@@ -575,7 +576,7 @@ Domains:
 - `host` — local machine/tool availability.
 - `config` — GENtle parameters/configuration.
 
-Suggested additions:
+Implemented fact domains include:
 
 | fact | domain | world | requires_basis | notes |
 |---|---|---|---|---|
@@ -649,11 +650,12 @@ preconditions and a `must_on_success` effect:
 `config.param(PARAM_NAME) == PARAM_VALUE`, where `PARAM_VALUE` is parsed as
 JSON before verification.
 
-### Degrees of freedom
+### Current representation
 
-Whether `view.*` facts are projected lazily (only with a host attached) vs
-always with a marker, and whether `domain` is a field on each fact vs a wrapper
-per group.
+Projected facts carry a per-fact `domain` field, and `introspect facts` also
+groups rows by domain for client convenience. Headless contexts always project
+the `ui.host_available` marker as `value: false`; other `view.*` facts remain
+host/session projections.
 
 ## 6. Reachability and parity
 
@@ -996,8 +998,11 @@ slice resolved them. The non-negotiables are promoted into `docs/decisions.md`.
   `introspect verify-effects` (section 4).
 - **Args source (long term):** an engine/protocol-side descriptor becomes the
   root truth and `docs/glossary.json` becomes a projection of it. Direction
-  accepted; the inversion remains **deferred**, but JSON help now embeds the
-  matching protocol capability descriptor for glossary commands.
+  accepted; the inversion remains **deferred**, but glossary command
+  descriptors in the shared protocol registry now carry usage/interface/alias
+  metadata, built-in help renders from those descriptors, and
+  `introspect capabilities` exposes the same command-surface fields in each
+  row's `registry` object.
 - **Domain representation:** projected facts carry a per-fact `domain` field
   and `introspect facts` additionally groups rows by domain for client
   convenience.
