@@ -24370,6 +24370,28 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
             "{id} should have a fact-annotated introspection shell descriptor"
         );
     }
+    let introspect_capabilities = capabilities
+        .iter()
+        .find(|descriptor| descriptor["id"].as_str() == Some("introspect capabilities"))
+        .expect("introspect capabilities descriptor");
+    assert_eq!(
+        introspect_capabilities["registry"]["usage"].as_str(),
+        Some("introspect capabilities [--kind KIND]")
+    );
+    assert!(
+        introspect_capabilities["registry"]["interfaces"]
+            .as_array()
+            .expect("registry interfaces")
+            .iter()
+            .any(|interface| interface.as_str() == Some("cli-shell"))
+    );
+    assert_eq!(
+        introspect_capabilities["registry"]["aliases"]
+            .as_array()
+            .expect("registry aliases")
+            .len(),
+        0
+    );
     assert!(capabilities.iter().any(|descriptor| {
         descriptor["id"].as_str() == Some("help")
             && descriptor["annotation_status"].as_str() == Some("fact_annotated")

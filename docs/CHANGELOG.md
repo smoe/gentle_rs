@@ -19,6 +19,9 @@ Maintenance rule:
   aliases, so `help --format json` and topic help expose one descriptor-backed
   command surface while `docs/glossary.json` remains the transitional
   compile-time seed.
+- Extended `introspect capabilities` registry metadata so glossary-backed rows
+  expose the same descriptor-backed `usage`, `interfaces`, and `aliases` fields
+  used by built-in help.
 - Added a first glossary-to-protocol projection bridge for JSON help output:
   `help --format json` and topic help rows now include the matching shared
   protocol `capability` descriptor for glossary commands when available.

@@ -4764,6 +4764,9 @@ Shared-shell routes:
   - Projects the shared protocol capability registry so glossary commands,
     engine operations, and MCP tools are discoverable through the same
     words-only route.
+  - For glossary-backed command rows, each row's `registry` object carries the
+    descriptor-backed `usage`, `interfaces`, and `aliases` fields alongside the
+    lower-level input/output schema and adapter surfacing metadata.
   - Rows with validated fact preconditions/effects carry
     `annotation_status: "fact_annotated"`; registry-only rows remain visible as
     `annotation_status: "registry_only"` without invented readiness semantics.

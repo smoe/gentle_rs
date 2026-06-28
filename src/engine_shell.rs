@@ -14757,6 +14757,9 @@ fn introspection_registry_descriptor(descriptor: &CapabilityDescriptor) -> Value
         "registry": {
             "source": descriptor.source,
             "title": descriptor.title,
+            "usage": descriptor.usage.clone(),
+            "interfaces": descriptor.interfaces.clone(),
+            "aliases": descriptor.aliases.clone(),
             "input_schema": descriptor.input_schema,
             "output_schema": descriptor.output_schema,
             "surfacing": {

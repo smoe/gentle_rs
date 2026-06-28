@@ -1009,7 +1009,8 @@ slice resolved them. The non-negotiables are promoted into `docs/decisions.md`.
 - Continue migrating glossary/help generation toward projection from an
   engine/protocol-side descriptor. The current bridge is implemented in two
   layers: glossary command descriptors in the shared protocol registry carry
-  syntax/interface/alias metadata, and built-in help catalog/topic rendering
-  reads those descriptors. `docs/glossary.json` still seeds those descriptors at
-  compile time, so full inversion of glossary/help generation remains future
-  work.
+  syntax/interface/alias metadata, built-in help catalog/topic rendering reads
+  those descriptors, and `introspect capabilities` exposes the same
+  usage/interface/alias fields in each row's `registry` object.
+  `docs/glossary.json` still seeds those descriptors at compile time, so full
+  inversion of glossary/help generation remains future work.
