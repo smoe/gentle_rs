@@ -14,6 +14,10 @@ Maintenance rule:
 
 ## 2026-06-28
 
+- Added fact-aware introspection for report/export/resource/promoter summary
+  operations, including process/lab exports, JASPAR entry inspection, RNA-read
+  sample-sheet export, multi-gene promoter TFBS summary/render, and scalar
+  promoter evidence summaries.
 - Added fact-aware introspection for shell-level prepared-genome UI query
   routes (`ui prepared-genomes`, `ui latest-prepared`) and the lower-case
   `set_parameter` adapter alias.

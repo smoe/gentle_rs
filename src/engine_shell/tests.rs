@@ -23785,6 +23785,12 @@ fn execute_introspect_readiness_checks_render_svg_sequence_input() {
         "ListSequencingConfirmationReports",
         "ListCutRunReadReports",
         "ListRnaReadReports",
+        "ExportProcessRunBundle",
+        "ExportLabAssistantInstructions",
+        "InspectJasparEntry",
+        "ExportRnaReadSampleSheet",
+        "SummarizeMultiGenePromoterTfbs",
+        "RenderMultiGenePromoterTfbsSvg",
         "SummarizeJasparEntries",
         "BenchmarkJasparRegistry",
         "ListJasparCatalog",
@@ -23820,6 +23826,25 @@ fn execute_introspect_readiness_checks_render_svg_sequence_input() {
             Some("ready")
         );
         assert_eq!(out.output["readiness"][0]["mode"].as_str(), Some("unbound"));
+    }
+
+    for capability_id in [
+        "SummarizeAlternativePromoterComparison",
+        "SummarizePromoterEvidenceMatrix",
+        "SummarizeIsoformPromoterComparison",
+        "SummarizePromoterExpressionEvidence",
+        "ExportPromoterArtifactManifest",
+    ] {
+        let cmd = parse_shell_line(&format!(
+            "introspect readiness {capability_id} --arg INPUT_SEQ_ID=demo"
+        ))
+        .expect("parse promoter report readiness");
+        let out =
+            execute_shell_command(&mut engine, &cmd).expect("execute promoter report readiness");
+        assert_eq!(
+            out.output["readiness"][0]["readiness"].as_str(),
+            Some("ready")
+        );
     }
 }
 
@@ -25026,6 +25051,65 @@ fn execute_introspect_capabilities_projects_full_registry_not_only_first_slice()
             "{id} should have a fact-annotated RNA-read artifact-export descriptor"
         );
     }
+    for id in [
+        "ExportProcessRunBundle",
+        "ExportLabAssistantInstructions",
+        "ExportRnaReadSampleSheet",
+        "RenderMultiGenePromoterTfbsSvg",
+    ] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"].as_array().map(Vec::len) == Some(0)
+                    && descriptor["effects"][0]["fact"].as_str() == Some("artifact.written")
+                    && descriptor["effects"][0]["subject"]["arg"].as_str() == Some("OUTPUT_PATH")
+                    && descriptor["effects"][0]["effect_kind"].as_str() == Some("external_handoff")
+            }),
+            "{id} should have a fact-annotated required external-artifact descriptor"
+        );
+    }
+    for id in ["InspectJasparEntry", "SummarizeMultiGenePromoterTfbs"] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"].as_array().map(Vec::len) == Some(0)
+                    && descriptor["effects"][0]["fact"].as_str() == Some("artifact.written")
+                    && descriptor["effects"][0]["subject"]["arg"].as_str() == Some("OUTPUT_PATH")
+                    && descriptor["effects"][0]["effect_kind"].as_str() == Some("external_handoff")
+            }),
+            "{id} should have a fact-annotated optional external-artifact descriptor"
+        );
+    }
+    for id in [
+        "SummarizeAlternativePromoterComparison",
+        "SummarizePromoterEvidenceMatrix",
+        "SummarizeIsoformPromoterComparison",
+        "SummarizePromoterExpressionEvidence",
+    ] {
+        assert!(
+            capabilities.iter().any(|descriptor| {
+                descriptor["id"].as_str() == Some(id)
+                    && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+                    && descriptor["reads"][0]["fact"].as_str() == Some("sequence.exists")
+                    && descriptor["reads"][0]["subject"]["arg"].as_str() == Some("INPUT_SEQ_ID")
+                    && descriptor["effects"][0]["fact"].as_str() == Some("artifact.written")
+                    && descriptor["effects"][0]["subject"]["arg"].as_str() == Some("OUTPUT_PATH")
+                    && descriptor["effects"][0]["effect_kind"].as_str() == Some("external_handoff")
+            }),
+            "{id} should have a fact-annotated sequence-gated promoter report descriptor"
+        );
+    }
+    assert!(capabilities.iter().any(|descriptor| {
+        descriptor["id"].as_str() == Some("ExportPromoterArtifactManifest")
+            && descriptor["annotation_status"].as_str() == Some("fact_annotated")
+            && descriptor["reads"][0]["fact"].as_str() == Some("sequence.exists")
+            && descriptor["reads"][0]["subject"]["arg"].as_str() == Some("INPUT_SEQ_ID")
+            && descriptor["effects"][0]["fact"].as_str() == Some("artifact.written")
+            && descriptor["effects"][0]["subject"]["arg"].as_str() == Some("OUTPUT_PATH")
+            && descriptor["effects"][0]["effect_kind"].as_str() == Some("external_handoff")
+    }));
     for id in ["SummarizeRnaReadGeneSupport", "InspectRnaReadGeneSupport"] {
         assert!(
             capabilities.iter().any(|descriptor| {

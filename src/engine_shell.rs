@@ -15968,6 +15968,74 @@ fn external_artifact_catalog_operation_descriptor(
     })
 }
 
+fn optional_artifact_resource_report_descriptor(
+    id: &str,
+    output_detail: &str,
+    description: &str,
+    args: Vec<Value>,
+) -> Value {
+    optional_artifact_inspection_operation_descriptor(id, output_detail, description, args)
+}
+
+fn sequence_promoter_report_descriptor(
+    id: &str,
+    output_required: bool,
+    description: &str,
+    extra_args: Vec<Value>,
+) -> Value {
+    if output_required {
+        let mut args = vec![json!({
+            "name": "INPUT_SEQ_ID",
+            "required": true,
+            "subject_kind": "sequence",
+            "detail": "loaded promoter-context sequence id carried by input"
+        })];
+        args.extend(extra_args);
+        args.push(json!({
+            "name": "OUTPUT_PATH",
+            "required": true,
+            "subject_kind": "other",
+            "detail": "external promoter report/manifest output path"
+        }));
+        json!({
+            "id": id,
+            "kind": "operation",
+            "mutating": "false",
+            "requires_confirmation": false,
+            "args": args,
+            "reads": [
+                {"fact": "sequence.exists", "subject": {"arg": "INPUT_SEQ_ID"}}
+            ],
+            "effects": [
+                {
+                    "fact": "artifact.written",
+                    "subject": {"arg": "OUTPUT_PATH"},
+                    "effect_kind": "external_handoff"
+                }
+            ],
+            "precondition_expr": {
+                "all": [
+                    {"fact": "sequence.exists", "subject": {"arg": "INPUT_SEQ_ID"}}
+                ]
+            },
+            "description": description,
+            "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection(id)
+        })
+    } else {
+        sequence_optional_artifact_operation_descriptor(
+            id,
+            "false",
+            false,
+            "INPUT_SEQ_ID",
+            "loaded promoter-context sequence id carried by input",
+            "optional external promoter report output path carried by path",
+            description,
+            extra_args,
+        )
+    }
+}
+
 fn no_project_inspection_operation_descriptor(
     id: &str,
     description: &str,
@@ -17686,6 +17754,25 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
         project_state_save_descriptor(
             "save_project",
             "Save the current project state through JS/Lua helper adapters to an external project-state JSON file.",
+        ),
+        external_artifact_catalog_operation_descriptor(
+            "ExportProcessRunBundle",
+            "external process-run bundle JSON output path carried by path",
+            "Export a deterministic operation/run bundle for reproducibility and audit; optional run-id filtering is validated during execution.",
+            vec![
+                json!({"name": "RUN_ID", "required": false, "subject_kind": "other", "detail": "optional operation-log run id filter"}),
+            ],
+        ),
+        external_artifact_catalog_operation_descriptor(
+            "ExportLabAssistantInstructions",
+            "external lab-assistant handoff document path carried by path",
+            "Export deterministic bench handoff instructions from the operation journal and current project state; optional run-id filtering is validated during execution.",
+            vec![
+                json!({"name": "RUN_ID", "required": false, "subject_kind": "other", "detail": "optional operation-log run id filter"}),
+                json!({"name": "TITLE", "required": false, "subject_kind": "other", "detail": "optional document title"}),
+                json!({"name": "AUDIENCE", "required": false, "subject_kind": "other", "detail": "optional audience label"}),
+                json!({"name": "FORMAT", "required": false, "subject_kind": "other", "detail": "optional markdown, odt, or docx output format"}),
+            ],
         ),
         command_dependent_execution_descriptor(
             "apply_operation",
@@ -21133,6 +21220,18 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "external alignment-dotplot SVG output path carried by the operation payload",
             "Export a dotplot-style alignment summary from one persisted RNA-read report through the shared engine operation.",
         ),
+        external_artifact_catalog_operation_descriptor(
+            "ExportRnaReadSampleSheet",
+            "external RNA-read sample-sheet TSV output path carried by path",
+            "Export an RNA-read interpretation sample sheet from optional sequence/report/gene filters; filter validation happens during execution.",
+            vec![
+                json!({"name": "SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "optional loaded sequence id filter carried by seq_id"}),
+                json!({"name": "REPORT_IDS", "required": false, "subject_kind": "other", "detail": "optional RNA-read report id filters carried by report_ids"}),
+                json!({"name": "GENE_IDS", "required": false, "subject_kind": "other", "detail": "optional gene id filters carried by gene_ids"}),
+                json!({"name": "COMPLETE_RULE", "required": false, "subject_kind": "other", "detail": "gene-support completeness rule carried by complete_rule"}),
+                json!({"name": "APPEND", "required": false, "subject_kind": "other", "detail": "whether to append to an existing sample sheet"}),
+            ],
+        ),
         rna_read_report_mutation_descriptor(
             "MaterializeRnaReadHitSequences",
             "Materialize selected retained RNA-read hit sequences from one persisted report through the shared engine operation; created ids are selection-dependent and are not currently modeled as a hard introspection effect.",
@@ -21153,10 +21252,104 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "optional external JASPAR catalog JSON output path carried by path",
             "List local JASPAR catalog entries without project-state preconditions.",
         ),
+        optional_artifact_resource_report_descriptor(
+            "InspectJasparEntry",
+            "optional external JASPAR expert-view JSON output path carried by path",
+            "Inspect one local JASPAR motif entry without project-state preconditions; optional remote metadata is validated during execution.",
+            vec![
+                json!({"name": "MOTIF", "required": true, "subject_kind": "other", "detail": "JASPAR motif id, name, or alias"}),
+                json!({"name": "RANDOM_SEQUENCE_LENGTH_BP", "required": false, "subject_kind": "other", "detail": "optional random-background sequence length"}),
+                json!({"name": "RANDOM_SEED", "required": false, "subject_kind": "other", "detail": "optional deterministic random seed"}),
+                json!({"name": "INCLUDE_REMOTE_METADATA", "required": false, "subject_kind": "other", "detail": "whether to include cached/remote species metadata"}),
+            ],
+        ),
         optional_artifact_operation_descriptor(
             "ResolveTfQueries",
             "optional external TF-query resolution JSON output path carried by path",
             "Resolve transcription-factor query aliases without project-state preconditions.",
+        ),
+        optional_artifact_resource_report_descriptor(
+            "SummarizeMultiGenePromoterTfbs",
+            "optional external multi-gene promoter TFBS JSON output path carried by path",
+            "Summarize TFBS scores over promoter windows for a gene list or gene set; genome/catalog/gene-set validation happens during execution.",
+            vec![
+                json!({"name": "GENOME_ID", "required": true, "subject_kind": "other", "detail": "reference/helper genome catalog id carried by genome_id"}),
+                json!({"name": "GENES", "required": false, "subject_kind": "other", "detail": "gene query tokens carried by genes"}),
+                json!({"name": "GENE_SET", "required": false, "subject_kind": "other", "detail": "optional gene-set selector"}),
+                json!({"name": "MOTIFS", "required": true, "subject_kind": "other", "detail": "motif query tokens carried by motifs"}),
+                json!({"name": "UPSTREAM_BP", "required": false, "subject_kind": "other", "detail": "promoter upstream window length"}),
+                json!({"name": "DOWNSTREAM_BP", "required": false, "subject_kind": "other", "detail": "promoter downstream window length"}),
+            ],
+        ),
+        external_artifact_catalog_operation_descriptor(
+            "RenderMultiGenePromoterTfbsSvg",
+            "external multi-gene promoter TFBS SVG output path carried by path",
+            "Render TFBS score summaries over promoter windows for a gene list or gene set; genome/catalog/gene-set validation happens during execution.",
+            vec![
+                json!({"name": "GENOME_ID", "required": true, "subject_kind": "other", "detail": "reference/helper genome catalog id carried by genome_id"}),
+                json!({"name": "GENES", "required": false, "subject_kind": "other", "detail": "gene query tokens carried by genes"}),
+                json!({"name": "GENE_SET", "required": false, "subject_kind": "other", "detail": "optional gene-set selector"}),
+                json!({"name": "MOTIFS", "required": true, "subject_kind": "other", "detail": "motif query tokens carried by motifs"}),
+                json!({"name": "UPSTREAM_BP", "required": false, "subject_kind": "other", "detail": "promoter upstream window length"}),
+                json!({"name": "DOWNSTREAM_BP", "required": false, "subject_kind": "other", "detail": "promoter downstream window length"}),
+            ],
+        ),
+        sequence_promoter_report_descriptor(
+            "SummarizeAlternativePromoterComparison",
+            false,
+            "Summarize alternative promoter windows on one loaded promoter-context sequence.",
+            vec![
+                json!({"name": "GENE_LABEL", "required": false, "subject_kind": "other", "detail": "optional gene label filter carried by gene_label"}),
+                json!({"name": "TRANSCRIPT_ID", "required": false, "subject_kind": "other", "detail": "optional transcript id filter carried by transcript_id"}),
+                json!({"name": "PROMOTER_UPSTREAM_BP", "required": false, "subject_kind": "other", "detail": "promoter upstream window length"}),
+                json!({"name": "PROMOTER_DOWNSTREAM_BP", "required": false, "subject_kind": "other", "detail": "promoter downstream window length"}),
+            ],
+        ),
+        sequence_promoter_report_descriptor(
+            "SummarizePromoterEvidenceMatrix",
+            false,
+            "Summarize promoter evidence matrix rows on one loaded promoter-context sequence.",
+            vec![
+                json!({"name": "GENE_LABEL", "required": false, "subject_kind": "other", "detail": "optional gene label filter carried by gene_label"}),
+                json!({"name": "TRANSCRIPT_ID", "required": false, "subject_kind": "other", "detail": "optional transcript id filter carried by transcript_id"}),
+                json!({"name": "PROMOTER_UPSTREAM_BP", "required": false, "subject_kind": "other", "detail": "promoter upstream window length"}),
+                json!({"name": "PROMOTER_DOWNSTREAM_BP", "required": false, "subject_kind": "other", "detail": "promoter downstream window length"}),
+                json!({"name": "INCLUDE_FEATURE_OVERLAPS", "required": false, "subject_kind": "other", "detail": "whether to include feature-overlap evidence rows"}),
+            ],
+        ),
+        sequence_promoter_report_descriptor(
+            "SummarizeIsoformPromoterComparison",
+            false,
+            "Compare isoform promoter evidence on one loaded promoter-context sequence.",
+            vec![
+                json!({"name": "GENE_LABEL", "required": false, "subject_kind": "other", "detail": "optional gene label filter carried by gene_label"}),
+                json!({"name": "TRANSCRIPT_ID", "required": false, "subject_kind": "other", "detail": "optional transcript id filter carried by transcript_id"}),
+                json!({"name": "PROMOTER_UPSTREAM_BP", "required": false, "subject_kind": "other", "detail": "promoter upstream window length"}),
+                json!({"name": "PROMOTER_DOWNSTREAM_BP", "required": false, "subject_kind": "other", "detail": "promoter downstream window length"}),
+                json!({"name": "INCLUDE_FEATURE_OVERLAPS", "required": false, "subject_kind": "other", "detail": "whether to include feature-overlap evidence rows"}),
+            ],
+        ),
+        sequence_promoter_report_descriptor(
+            "SummarizePromoterExpressionEvidence",
+            false,
+            "Summarize promoter expression evidence on one loaded promoter-context sequence.",
+            vec![
+                json!({"name": "GENE_LABEL", "required": false, "subject_kind": "other", "detail": "optional gene label filter carried by gene_label"}),
+                json!({"name": "TRANSCRIPT_ID", "required": false, "subject_kind": "other", "detail": "optional transcript id filter carried by transcript_id"}),
+                json!({"name": "PROMOTER_UPSTREAM_BP", "required": false, "subject_kind": "other", "detail": "promoter upstream window length"}),
+                json!({"name": "PROMOTER_DOWNSTREAM_BP", "required": false, "subject_kind": "other", "detail": "promoter downstream window length"}),
+                json!({"name": "EXPRESSION_ROWS", "required": false, "subject_kind": "other", "detail": "inline expression evidence rows"}),
+                json!({"name": "EXPRESSION_SOURCE_LABEL", "required": false, "subject_kind": "other", "detail": "expression evidence source label"}),
+            ],
+        ),
+        sequence_promoter_report_descriptor(
+            "ExportPromoterArtifactManifest",
+            true,
+            "Export a promoter artifact manifest for one loaded promoter-context sequence.",
+            vec![
+                json!({"name": "GENE_LABEL", "required": false, "subject_kind": "other", "detail": "optional gene label carried by gene_label"}),
+                json!({"name": "ARTIFACTS", "required": true, "subject_kind": "other", "detail": "artifact records included in the manifest"}),
+            ],
         ),
         optional_artifact_operation_descriptor(
             "ListReporterCatalog",
@@ -23826,6 +24019,19 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "rna-reads export-isoform-triage-tsv"
         | "rna-reads export-alignment-dotplot-svg" => Some(vec![
             json!({"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "equals": "rna_read"}),
+        ]),
+        "ExportProcessRunBundle"
+        | "ExportLabAssistantInstructions"
+        | "InspectJasparEntry"
+        | "ExportRnaReadSampleSheet"
+        | "SummarizeMultiGenePromoterTfbs"
+        | "RenderMultiGenePromoterTfbsSvg" => Some(vec![]),
+        "SummarizeAlternativePromoterComparison"
+        | "SummarizePromoterEvidenceMatrix"
+        | "SummarizeIsoformPromoterComparison"
+        | "SummarizePromoterExpressionEvidence"
+        | "ExportPromoterArtifactManifest" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "INPUT_SEQ_ID"}}),
         ]),
         "ListRnaReadReports" => Some(vec![]),
         "SummarizeJasparEntries"
