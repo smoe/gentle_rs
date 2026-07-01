@@ -3087,6 +3087,12 @@ The `Help` menu now includes:
   absolute `logFC`; in the live GUI, the outline/darkness also indicates
   `adj.P.Val <= 0.05`. The linear-map legend and SVG export legend repeat this
   rule so screenshots and exported figures remain interpretable outside GENtle.
+- Junction array probes draw as two separated probe arms connected by a
+  purple bridge over the skipped interval. When `junction_start_edge` and
+  `junction_stop_edge` are available, the bridge is anchored to those
+  exon-boundary coordinates; otherwise a junction-typed array row falls back to
+  an equal split of its projected interval so it is still visually distinct
+  from an ordinary exon-overlap probe.
 - Selected-feature details and copied tooltip text include all projected values
   stored for a probeset via `gentle_array_value_summary`. The feature tree
   accepts scoped filters such as `source:array`, `track:Clariom`,

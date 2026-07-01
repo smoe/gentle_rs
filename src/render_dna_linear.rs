@@ -86,6 +86,7 @@ const MCS_INLINE_BADGE_PAD_Y: f32 = 3.0;
 const VARIATION_MIN_WIDTH_PX: f32 = 7.0;
 const VARIATION_MARKER_STROKE_WIDTH: f32 = 2.0;
 const VARIATION_MARKER_OVERSHOOT_PX: f32 = 5.0;
+const JUNCTION_ARRAY_PROBE_ARM_BP: usize = 25;
 const CONSTRUCT_REASONING_TRACK_HEIGHT: f32 = 6.0;
 const CONSTRUCT_REASONING_TRACK_MARGIN: f32 = 14.0;
 const CONSTRUCT_REASONING_TRACK_GAP: f32 = 10.0;
@@ -118,6 +119,7 @@ struct FeaturePosition {
     color: Color32,
     is_regulatory: bool,
     is_array_track: bool,
+    is_junction_array_probe: bool,
     array_stroke: Option<Stroke>,
     is_mcs: bool,
     is_variation: bool,
@@ -1001,6 +1003,147 @@ impl RenderDnaLinear {
         }
     }
 
+    fn feature_qualifier_text(feature: &Feature, key: &str) -> Option<String> {
+        feature
+            .qualifier_values(key)
+            .map(|value| value.split_whitespace().collect::<Vec<_>>().join(" "))
+            .map(|value| value.trim().to_string())
+            .find(|value| !value.is_empty() && value != "---")
+    }
+
+    fn feature_qualifier_usize(feature: &Feature, key: &str) -> Option<usize> {
+        Self::feature_qualifier_text(feature, key).and_then(|value| value.parse::<usize>().ok())
+    }
+
+    fn is_junction_array_probe_feature(feature: &Feature) -> bool {
+        if !RenderDna::is_array_track_feature(feature) {
+            return false;
+        }
+        let has_edges = Self::feature_qualifier_usize(feature, "junction_start_edge").is_some()
+            && Self::feature_qualifier_usize(feature, "junction_stop_edge").is_some();
+        let probe_type_is_junction =
+            Self::feature_qualifier_text(feature, "gentle_array_probe_type")
+                .or_else(|| Self::feature_qualifier_text(feature, "probe_type"))
+                .map(|value| value.to_ascii_lowercase().contains("junction"))
+                .unwrap_or(false);
+        has_edges || probe_type_is_junction
+    }
+
+    fn genomic_probe_edge_to_local_0based(
+        feature: &Feature,
+        genomic_1based: usize,
+        feature_from: usize,
+        sequence_len: usize,
+    ) -> Option<usize> {
+        if let (Some(anchor_start), Some(anchor_end)) = (
+            Self::feature_qualifier_usize(feature, "gentle_array_anchor_start_1based"),
+            Self::feature_qualifier_usize(feature, "gentle_array_anchor_end_1based"),
+        ) {
+            if genomic_1based < anchor_start || genomic_1based > anchor_end {
+                return None;
+            }
+            let anchor_strand = Self::feature_qualifier_text(feature, "gentle_array_anchor_strand")
+                .and_then(|value| value.chars().next())
+                .unwrap_or('+');
+            let local = if anchor_strand == '-' {
+                anchor_end.saturating_sub(genomic_1based)
+            } else {
+                genomic_1based.saturating_sub(anchor_start)
+            };
+            return (local < sequence_len).then_some(local);
+        }
+
+        if let Some(genomic_start) = Self::feature_qualifier_usize(feature, "genomic_start_1based")
+            .or_else(|| Self::feature_qualifier_usize(feature, "start_1based"))
+        {
+            let local = if genomic_1based >= genomic_start {
+                feature_from.saturating_add(genomic_1based - genomic_start)
+            } else {
+                feature_from.checked_sub(genomic_start - genomic_1based)?
+            };
+            return (local < sequence_len).then_some(local);
+        }
+
+        (genomic_1based > 0 && genomic_1based <= sequence_len).then_some(genomic_1based - 1)
+    }
+
+    fn junction_array_probe_edge_ranges(
+        feature: &Feature,
+        feature_from: usize,
+        sequence_len: usize,
+    ) -> Option<Vec<(usize, usize)>> {
+        let start_edge = Self::feature_qualifier_usize(feature, "junction_start_edge")?;
+        let stop_edge = Self::feature_qualifier_usize(feature, "junction_stop_edge")?;
+        let left_base = Self::genomic_probe_edge_to_local_0based(
+            feature,
+            start_edge,
+            feature_from,
+            sequence_len,
+        )?;
+        let right_base = Self::genomic_probe_edge_to_local_0based(
+            feature,
+            stop_edge,
+            feature_from,
+            sequence_len,
+        )?;
+        let (left_base, right_base) = if left_base <= right_base {
+            (left_base, right_base)
+        } else {
+            (right_base, left_base)
+        };
+        if right_base <= left_base.saturating_add(1) {
+            return None;
+        }
+
+        let left_end = left_base.saturating_add(1).min(sequence_len);
+        let left_start = left_end.saturating_sub(JUNCTION_ARRAY_PROBE_ARM_BP);
+        let right_start = right_base.min(sequence_len);
+        let right_end = right_start
+            .saturating_add(JUNCTION_ARRAY_PROBE_ARM_BP)
+            .min(sequence_len);
+        if left_start < left_end && right_start < right_end && left_end <= right_start {
+            Some(vec![(left_start, left_end), (right_start, right_end)])
+        } else {
+            None
+        }
+    }
+
+    fn junction_array_probe_fallback_ranges(
+        feature_from: usize,
+        feature_to: usize,
+    ) -> Vec<(usize, usize)> {
+        let len = feature_to.saturating_sub(feature_from);
+        if len < 6 {
+            return vec![(feature_from, feature_to)];
+        }
+        let gap = (len / 3).clamp(2, 20);
+        let arm_len = ((len - gap) / 2).max(1);
+        let left = (feature_from, feature_from + arm_len);
+        let right = (feature_to.saturating_sub(arm_len), feature_to);
+        if left.1 < right.0 {
+            vec![left, right]
+        } else {
+            vec![(feature_from, feature_to)]
+        }
+    }
+
+    fn junction_array_probe_visual_ranges(
+        feature: &Feature,
+        feature_from: usize,
+        feature_to: usize,
+        sequence_len: usize,
+    ) -> Option<Vec<(usize, usize)>> {
+        if !Self::is_junction_array_probe_feature(feature) {
+            return None;
+        }
+        Self::junction_array_probe_edge_ranges(feature, feature_from, sequence_len).or_else(|| {
+            Some(Self::junction_array_probe_fallback_ranges(
+                feature_from,
+                feature_to,
+            ))
+        })
+    }
+
     fn condensed_row_step(font_size: f32, _show_double_strand: bool) -> f32 {
         (font_size * CONDENSED_HELICAL_ROW_SPACING_SCALE).max(CONDENSED_HELICAL_SINGLE_ROW_MIN_STEP)
     }
@@ -1073,6 +1216,7 @@ impl RenderDnaLinear {
             is_reverse: bool,
             is_regulatory: bool,
             is_array_track: bool,
+            is_junction_array_probe: bool,
             array_stroke: Option<Stroke>,
             is_mcs: bool,
             is_variation: bool,
@@ -1196,12 +1340,25 @@ impl RenderDnaLinear {
             let is_mcs = RenderDna::is_mcs_feature(feature);
             let is_variation = RenderDna::is_variation_feature(feature);
             let show_exon_length_cues = RenderDna::is_exon_length_frame_cue_feature(feature);
+            let is_array_track = RenderDna::is_array_track_feature(feature);
+            let is_junction_array_probe = Self::is_junction_array_probe_feature(feature);
             let mut exon_ranges: Vec<(usize, usize)> = vec![];
             collect_location_ranges_usize(&feature.location, &mut exon_ranges);
+            if let Some(junction_ranges) =
+                Self::junction_array_probe_visual_ranges(feature, from, to, self.sequence_length)
+            {
+                exon_ranges = junction_ranges;
+            }
             if exon_ranges.is_empty() {
                 exon_ranges.push((from, to));
             }
             exon_ranges.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+            let visual_from = exon_ranges
+                .iter()
+                .map(|(start, _)| *start)
+                .min()
+                .unwrap_or(from);
+            let visual_to = exon_ranges.iter().map(|(_, end)| *end).max().unwrap_or(to);
 
             let mut exon_segments: Vec<(f32, f32)> = Vec::new();
             let mut exon_length_mod3_cues: Vec<Option<u8>> = Vec::new();
@@ -1308,7 +1465,6 @@ impl RenderDnaLinear {
                 x2 = expanded_right.max(expanded_left + 1.0);
             }
             let kind = feature.kind.to_string().to_ascii_uppercase();
-            let is_array_track = RenderDna::is_array_track_feature(feature);
             let is_high_priority_feature = is_mcs
                 || is_variation
                 || is_array_track
@@ -1319,8 +1475,8 @@ impl RenderDnaLinear {
 
             seeds.push(Seed {
                 feature_number,
-                from,
-                to,
+                from: visual_from,
+                to: visual_to,
                 exon_segments,
                 exon_length_mod3_cues,
                 connector_segments,
@@ -1333,6 +1489,7 @@ impl RenderDnaLinear {
                 is_reverse: feature_is_reverse(feature),
                 is_regulatory: RenderDna::is_regulatory_feature(feature) || is_array_track,
                 is_array_track,
+                is_junction_array_probe,
                 array_stroke: RenderDna::array_feature_confidence_stroke(feature),
                 is_mcs,
                 is_variation,
@@ -1573,8 +1730,9 @@ impl RenderDnaLinear {
                 LaneSide::RegulatoryNearBaseline => self.baseline_y() - side_style.margin,
             };
             let lane_is_bottom_side = matches!(item.lane_side, LaneSide::Bottom);
-            let suppress_introns =
-                seed.is_array_track || matches!(item.lane_side, LaneSide::RegulatoryNearBaseline);
+            let suppress_introns = !seed.is_junction_array_probe
+                && (seed.is_array_track
+                    || matches!(item.lane_side, LaneSide::RegulatoryNearBaseline));
             let exon_rects: Vec<Rect> = seed
                 .exon_segments
                 .iter()
@@ -1635,6 +1793,7 @@ impl RenderDnaLinear {
                 color: seed.color,
                 is_regulatory: seed.is_regulatory,
                 is_array_track: seed.is_array_track,
+                is_junction_array_probe: seed.is_junction_array_probe,
                 array_stroke: seed.array_stroke,
                 is_mcs: seed.is_mcs,
                 is_variation: seed.is_variation,
@@ -2846,15 +3005,14 @@ impl RenderDnaLinear {
                     Stroke::new(1.5_f32, feature.color),
                 );
             }
+            let connector_stroke = if feature.is_junction_array_probe {
+                Stroke::new(1.3_f32, Color32::from_rgb(124, 58, 237))
+            } else {
+                Stroke::new(1.0_f32, Color32::DARK_GRAY)
+            };
             for connector in &feature.intron_connectors {
-                painter.line_segment(
-                    [connector[0], connector[1]],
-                    Stroke::new(1.0_f32, Color32::DARK_GRAY),
-                );
-                painter.line_segment(
-                    [connector[1], connector[2]],
-                    Stroke::new(1.0_f32, Color32::DARK_GRAY),
-                );
+                painter.line_segment([connector[0], connector[1]], connector_stroke);
+                painter.line_segment([connector[1], connector[2]], connector_stroke);
             }
 
             if selected || hovered {
@@ -3307,6 +3465,34 @@ mod tests {
         }
     }
 
+    fn make_array_junction_feature(
+        location: Location,
+        extra_qualifiers: Vec<(&str, &str)>,
+    ) -> Feature {
+        let mut qualifiers = vec![
+            ("label".into(), Some("junction probe".to_string())),
+            ("gentle_track_source".into(), Some("Array".to_string())),
+            (
+                "gentle_generated".into(),
+                Some("microarray_track_projection".to_string()),
+            ),
+            (
+                "gentle_array_probe_type".into(),
+                Some("junction".to_string()),
+            ),
+        ];
+        qualifiers.extend(
+            extra_qualifiers
+                .into_iter()
+                .map(|(key, value)| (key.to_string().into(), Some(value.to_string()))),
+        );
+        Feature {
+            kind: "track".into(),
+            location,
+            qualifiers,
+        }
+    }
+
     fn test_renderer_with_feature(feature: Feature, sequence_len: usize) -> RenderDnaLinear {
         test_renderer_with_features(vec![feature], sequence_len)
     }
@@ -3722,6 +3908,60 @@ mod tests {
         assert_eq!(fp.intron_connectors.len(), 2);
         assert!(fp.exon_rects[0].width() > 0.0);
         assert!(fp.exon_rects[1].left() > fp.exon_rects[0].right());
+    }
+
+    #[test]
+    fn array_junction_probe_edges_create_split_arms_and_connector() {
+        let feature = make_array_junction_feature(
+            Location::simple_range(534, 610),
+            vec![
+                ("junction_start_edge", "3653049"),
+                ("junction_stop_edge", "3653126"),
+                ("gentle_array_anchor_start_1based", "3652516"),
+                ("gentle_array_anchor_end_1based", "3653515"),
+                ("gentle_array_anchor_strand", "+"),
+            ],
+        );
+        let mut renderer = test_renderer_with_feature(feature, 1000);
+        renderer.layout_features(LinearViewport {
+            start: 480,
+            end: 660,
+            span: 180,
+        });
+
+        assert_eq!(renderer.features.len(), 1);
+        let fp = &renderer.features[0];
+        assert!(fp.is_array_track);
+        assert!(fp.is_junction_array_probe);
+        assert_eq!(fp.exon_rects.len(), 2);
+        assert_eq!(fp.intron_connectors.len(), 1);
+        assert_eq!(fp.from, 509);
+        assert_eq!(fp.to, 635);
+        assert!(fp.exon_rects[0].right() < fp.exon_rects[1].left());
+        let connector = fp.intron_connectors[0];
+        assert!((connector[0].x - fp.exon_rects[0].right()).abs() < 0.01);
+        assert!((connector[2].x - fp.exon_rects[1].left()).abs() < 0.01);
+    }
+
+    #[test]
+    fn array_junction_probe_without_edges_uses_split_interval_fallback() {
+        let feature = make_array_junction_feature(Location::simple_range(200, 260), vec![]);
+        let mut renderer = test_renderer_with_feature(feature, 1000);
+        renderer.layout_features(LinearViewport {
+            start: 150,
+            end: 300,
+            span: 150,
+        });
+
+        assert_eq!(renderer.features.len(), 1);
+        let fp = &renderer.features[0];
+        assert!(fp.is_array_track);
+        assert!(fp.is_junction_array_probe);
+        assert_eq!(fp.exon_rects.len(), 2);
+        assert_eq!(fp.intron_connectors.len(), 1);
+        assert_eq!(fp.from, 200);
+        assert_eq!(fp.to, 260);
+        assert!(fp.exon_rects[0].right() < fp.exon_rects[1].left());
     }
 
     #[test]
