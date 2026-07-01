@@ -5235,6 +5235,7 @@ pub fn generate_workflow_example_docs(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::engine::{SequenceFeatureQualifierFilter, SequenceFeatureQuery};
     use std::path::Path;
     use std::sync::Mutex;
 
@@ -5524,6 +5525,7 @@ mod tests {
             Some("gentle.repeat_feature_materialization.v1")
         );
         assert_eq!(repeat_report["added_feature_count"].as_u64(), Some(3));
+        assert_eq!(repeat_report["matched_repeat_count"].as_u64(), Some(3));
 
         let engine = GentleEngine::from_state(state.clone());
         let anchor = engine
@@ -5533,6 +5535,79 @@ mod tests {
         assert_eq!(anchor.chromosome, "1");
         assert_eq!(anchor.start_1based, 3652516);
         assert_eq!(anchor.end_1based, 3736201);
+
+        let has_qualifier =
+            |row: &gentle_protocol::SequenceFeatureQueryRow, key: &str, expected: &str| {
+                row.qualifiers
+                    .get(key)
+                    .map(|values| values.iter().any(|value| value == expected))
+                    .unwrap_or(false)
+            };
+        let repeat_query = engine
+            .query_sequence_features(SequenceFeatureQuery {
+                seq_id: "tp73_evidence_viewer".to_string(),
+                include_qualifiers: true,
+                qualifier_filters: vec![SequenceFeatureQualifierFilter {
+                    key: "gentle_generated".to_string(),
+                    value_contains: Some("ucsc_rmsk".to_string()),
+                    ..SequenceFeatureQualifierFilter::default()
+                }],
+                limit: Some(10),
+                ..SequenceFeatureQuery::default()
+            })
+            .expect("agent-facing repeat feature query should execute");
+        assert_eq!(repeat_query.matched_count, 3);
+        assert!(repeat_query.rows.iter().any(|row| {
+            has_qualifier(row, "rmsk_class", "SINE")
+                && has_qualifier(row, "rmsk_family", "Alu")
+                && row.qualifiers.contains_key("score")
+                && row.qualifiers.contains_key("rmsk_divergence_percent")
+        }));
+        let array_query = engine
+            .query_sequence_features(SequenceFeatureQuery {
+                seq_id: "tp73_evidence_viewer".to_string(),
+                include_qualifiers: true,
+                qualifier_filters: vec![SequenceFeatureQualifierFilter {
+                    key: "gentle_track_source".to_string(),
+                    value_contains: Some("Array".to_string()),
+                    ..SequenceFeatureQualifierFilter::default()
+                }],
+                limit: Some(10),
+                ..SequenceFeatureQuery::default()
+            })
+            .expect("agent-facing array feature query should execute");
+        assert_eq!(array_query.matched_count, 4);
+        assert!(array_query.rows.iter().any(|row| {
+            has_qualifier(row, "gentle_array_contrast", "AdTAp73alpha-AdGFP")
+                && has_qualifier(row, "feature_id", "PSR_TP73_0001")
+                && row.qualifiers.contains_key("logFC")
+                && row.qualifiers.contains_key("adj_P_Val")
+                && row.qualifiers.contains_key("transcript_cluster_id")
+                && row.qualifiers.contains_key("exon_id")
+                && row
+                    .qualifiers
+                    .contains_key("gentle_array_projection_status")
+        }));
+        let bed_query = engine
+            .query_sequence_features(SequenceFeatureQuery {
+                seq_id: "tp73_evidence_viewer".to_string(),
+                include_qualifiers: true,
+                qualifier_filters: vec![SequenceFeatureQualifierFilter {
+                    key: "gentle_track_source".to_string(),
+                    value_contains: Some("BED".to_string()),
+                    ..SequenceFeatureQualifierFilter::default()
+                }],
+                limit: Some(10),
+                ..SequenceFeatureQuery::default()
+            })
+            .expect("agent-facing BED feature query should execute");
+        assert_eq!(bed_query.matched_count, 2);
+        assert!(bed_query.rows.iter().any(|row| {
+            has_qualifier(row, "gentle_track_name", "TP73 CUT&RUN proof BED")
+                && has_qualifier(row, "score", "650.000000")
+                && has_qualifier(row, "bed_strand", "+")
+                && row.qualifiers.contains_key("gentle_track_file")
+        }));
 
         let dna = state
             .sequences
@@ -5547,14 +5622,52 @@ mod tests {
             .count();
         assert_eq!(repeat_count, 3);
 
-        assert!(dna.features().iter().any(|feature| {
+        let array_features = dna
+            .features()
+            .iter()
+            .filter(|feature| {
+                first_qualifier(feature, "gentle_track_source").as_deref() == Some("Array")
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(array_features.len(), 4);
+        let array_contrasts = array_features
+            .iter()
+            .filter_map(|feature| first_qualifier(feature, "gentle_array_contrast"))
+            .collect::<HashSet<_>>();
+        assert_eq!(
+            array_contrasts,
+            HashSet::from([
+                "AdTAp73alpha-AdGFP".to_string(),
+                "AdTAp73beta-AdGFP".to_string(),
+            ])
+        );
+        assert!(array_features.iter().any(|feature| {
             first_qualifier(feature, "gentle_track_source").as_deref() == Some("Array")
                 && first_qualifier(feature, "gentle_array_dataset").as_deref()
                     == Some("E-MTAB-14704")
                 && first_qualifier(feature, "feature_id").as_deref() == Some("PSR_TP73_0001")
                 && first_qualifier(feature, "logFC").is_some()
         }));
-        assert!(dna.features().iter().any(|feature| {
+
+        let bed_features = dna
+            .features()
+            .iter()
+            .filter(|feature| {
+                first_qualifier(feature, "gentle_track_source").as_deref() == Some("BED")
+                    && first_qualifier(feature, "gentle_track_name").as_deref()
+                        == Some("TP73 CUT&RUN proof BED")
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(bed_features.len(), 2);
+        let bed_scores = bed_features
+            .iter()
+            .filter_map(|feature| first_qualifier(feature, "score"))
+            .collect::<HashSet<_>>();
+        assert_eq!(
+            bed_scores,
+            HashSet::from(["540.000000".to_string(), "650.000000".to_string()])
+        );
+        assert!(bed_features.iter().any(|feature| {
             first_qualifier(feature, "gentle_track_source").as_deref() == Some("BED")
                 && first_qualifier(feature, "gentle_track_name").as_deref()
                     == Some("TP73 CUT&RUN proof BED")
@@ -5564,6 +5677,93 @@ mod tests {
             feature.kind.to_string().eq_ignore_ascii_case("TFBS")
                 || first_qualifier(feature, "gentle_generated").as_deref() == Some("tfbs_scan")
         }));
+
+        let linear_svg = fs::read_to_string(
+            run_dir
+                .path()
+                .join("artifacts/tp73_evidence_viewer/tp73_evidence_viewer.linear.svg"),
+        )
+        .expect("read TP73 linear evidence SVG");
+        assert!(linear_svg.contains("data-gentle-role=\"linear-evidence-legend-panel\""));
+        assert!(linear_svg.contains("kinked arrow marks transcription start site"));
+        assert!(linear_svg.contains("TFBS motif hits: thin green blocks"));
+        assert!(linear_svg.contains("External evidence tracks: grey bars"));
+        assert!(linear_svg.contains("Array E-MTAB-14704 AdTAp73alpha-AdGFP"));
+        assert!(linear_svg.contains("BED TP73 CUT&amp;RUN proof BED"));
+        assert!(linear_svg.contains("Provenance: sequence NC_000001"));
+        assert!(linear_svg.contains("data-gentle-role=\"linear-transcription-start-halo\""));
+
+        let tfbs_report: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(run_dir.path().join(
+                "artifacts/tp73_evidence_viewer/tp73_evidence_viewer.tfbs_score_tracks.json",
+            ))
+            .expect("read TFBS score-track report"),
+        )
+        .expect("parse TFBS score-track report");
+        assert_eq!(
+            tfbs_report["schema"].as_str(),
+            Some("gentle.tfbs_score_tracks.v1")
+        );
+        assert_eq!(tfbs_report["seq_id"].as_str(), Some("tp73_evidence_viewer"));
+        assert_eq!(tfbs_report["target_kind"].as_str(), Some("seq_id"));
+        assert_eq!(
+            tfbs_report["target_label"].as_str(),
+            Some("tp73_evidence_viewer")
+        );
+        assert_eq!(tfbs_report["view_start_0based"].as_u64(), Some(0));
+        assert_eq!(
+            tfbs_report["view_end_0based_exclusive"].as_u64(),
+            Some(1200)
+        );
+        let motifs_requested = tfbs_report["motifs_requested"]
+            .as_array()
+            .expect("TFBS score-track report should list requested motifs")
+            .iter()
+            .filter_map(serde_json::Value::as_str)
+            .collect::<Vec<_>>();
+        assert_eq!(motifs_requested, vec!["TP73", "TP53", "TP63"]);
+        let tfbs_tracks = tfbs_report["tracks"]
+            .as_array()
+            .expect("TFBS score-track report should contain tracks");
+        assert_eq!(tfbs_tracks.len(), 3);
+        let tfbs_track_names = tfbs_tracks
+            .iter()
+            .filter_map(|track| track["tf_name"].as_str())
+            .collect::<HashSet<_>>();
+        assert_eq!(tfbs_track_names, HashSet::from(["TP73", "TP53", "TP63"]));
+        for track in tfbs_tracks {
+            let scored_window_count = track["scored_window_count"]
+                .as_u64()
+                .expect("TFBS track should expose scored_window_count");
+            assert!(scored_window_count > 0);
+            assert_eq!(track["track_start_0based"].as_u64(), Some(0));
+            assert_eq!(
+                track["forward_scores"].as_array().map(Vec::len),
+                Some(scored_window_count as usize)
+            );
+            assert_eq!(
+                track["reverse_scores"].as_array().map(Vec::len),
+                Some(scored_window_count as usize)
+            );
+            assert!(
+                track["top_peaks"]
+                    .as_array()
+                    .map(|peaks| !peaks.is_empty())
+                    .unwrap_or(false),
+                "TFBS score-track should expose at least one peak per motif"
+            );
+        }
+        let tfbs_svg = fs::read_to_string(
+            run_dir
+                .path()
+                .join("artifacts/tp73_evidence_viewer/tp73_evidence_viewer.tfbs_score_tracks.svg"),
+        )
+        .expect("read TFBS score-track SVG");
+        assert!(tfbs_svg.contains("target=tp73_evidence_viewer | span=0..1200"));
+        assert!(tfbs_svg.contains("data-gentle-role=\"tfbs-score-track-logo\""));
+        assert!(tfbs_svg.contains("TP73 (MA0861.2)"));
+        assert!(tfbs_svg.contains("TP53 (MA0106.3)"));
+        assert!(tfbs_svg.contains("TP63 (MA0525.2)"));
         assert!(state.display.show_repeat_features);
         assert!(state.display.show_array_features);
         assert!(state.display.show_tfbs);

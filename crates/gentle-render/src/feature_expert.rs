@@ -2,7 +2,7 @@
 
 use gentle_protocol::{
     FeatureExpertView, IsoformArchitectureExpertView, RestrictionSiteExpertView,
-    SplicingExonSummary, SplicingExpertView, TfbsExpertView,
+    SplicingExonSummary, SplicingExpertView, SplicingJunctionArc, TfbsExpertView,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use svg::Document;
@@ -212,6 +212,45 @@ pub fn compute_splicing_exon_transition_matrix(
         counts,
         transcript_feature_ids,
     }
+}
+
+fn splicing_legend_lines(
+    view: &SplicingExpertView,
+    unique_exon_total: usize,
+    rendered_junction_rows: &[SplicingJunctionArc],
+) -> Vec<String> {
+    let mut raw = vec![
+        "The top panel places transcript exon/intron models on one coordinate-true sequence axis; exon widths follow genomic length, while introns are shown as connecting lines.".to_string(),
+        "Orange/blue exon boxes distinguish alternative versus constitutive support; numbers on exons and arc labels are supporting transcript counts.".to_string(),
+        "Red donor ticks and teal acceptor ticks mark splice-boundary motif calls; CDS flank colors encode phase 0=blue, 1=amber, 2=rose where CDS ranges are available.".to_string(),
+        "Transcript-vs-exon cells show whether a transcript contains an exon; color intensity reports exon support frequency across the displayed transcript set.".to_string(),
+        "The exon-to-exon matrix reports transition counts between neighboring exon intervals; row/column E# colors show exon length modulo 3 as a frame-continuity cue.".to_string(),
+        format!(
+            "Provenance: seq_id={} | target_feature=n-{} | scope={} | group={} | strand={} | region={}..{} | transcripts={} | unique_exons={} | junctions_shown={}/{}.",
+            view.seq_id,
+            view.target_feature_id,
+            view.scope.as_str(),
+            view.group_label,
+            view.strand,
+            view.region_start_1based,
+            view.region_end_1based,
+            view.transcript_count,
+            unique_exon_total,
+            rendered_junction_rows.len(),
+            view.junctions.len()
+        ),
+        "Data source: current sequence annotation plus deterministic GENtle splicing analysis; no RNA-read evidence is implied unless separately imported and shown.".to_string(),
+    ];
+    if view.junctions.len() > rendered_junction_rows.len() {
+        raw.push(format!(
+            "The junction table is capped for legibility: {} of {} transitions are listed; arc widths and matrix cells still summarize all transitions.",
+            rendered_junction_rows.len(),
+            view.junctions.len()
+        ));
+    }
+    raw.into_iter()
+        .flat_map(|line| wrap_text(&line, 128))
+        .collect()
 }
 
 fn nuc_color(base_idx: usize) -> &'static str {
@@ -1744,8 +1783,8 @@ fn render_splicing(view: &SplicingExpertView) -> String {
     let exon_count = unique_exon_total.max(1);
     let transcript_total = view.transcript_count.max(1);
     let exon_transitions = compute_splicing_exon_transition_matrix(view);
-    let lane_height = 30.0_f32;
-    let lane_gap = 14.0_f32;
+    let lane_height = 36.0_f32;
+    let lane_gap = 22.0_f32;
     let chart_top = 126.0_f32;
     let chart_height =
         lane_count as f32 * lane_height + (lane_count.saturating_sub(1) as f32) * lane_gap;
@@ -1781,8 +1820,20 @@ fn render_splicing(view: &SplicingExpertView) -> String {
             base
         }
     };
-    let footer_top = junction_table_top + junction_h + 28.0;
-    let dyn_h = (footer_top + 126.0).max(H);
+    let event_top = junction_table_top + junction_h + 34.0;
+    let mut event_line_count = 1usize;
+    for event in &view.events {
+        event_line_count += 1 + event.details.iter().take(2).count();
+    }
+    let event_h = event_line_count as f32 * 13.0 + 10.0;
+    let legend_top = event_top + event_h + 20.0;
+    let legend_lines = splicing_legend_lines(view, unique_exon_total, &junction_rows_rendered);
+    let legend_line_h = 13.0_f32;
+    let legend_h = 22.0 + legend_lines.len() as f32 * legend_line_h;
+    let instruction_top = legend_top + legend_h + 20.0;
+    let instruction_lines = wrap_text(&view.instruction, 128);
+    let instruction_h = 8.0 + instruction_lines.len() as f32 * 14.0;
+    let dyn_h = (instruction_top + instruction_h + 34.0).max(H);
     let left = 240.0_f32;
     let right = W - 56.0_f32;
     let map_width = (right - left).max(1.0);
@@ -2478,7 +2529,7 @@ fn render_splicing(view: &SplicingExpertView) -> String {
         }
     }
 
-    let mut event_y = footer_top;
+    let mut event_y = event_top;
     doc = doc.add(
         Text::new("Event summary")
             .set("x", 88.0)
@@ -2511,11 +2562,44 @@ fn render_splicing(view: &SplicingExpertView) -> String {
         }
     }
 
-    for (line_idx, line) in wrap_text(&view.instruction, 140).into_iter().enumerate() {
+    let legend_x = 88.0_f32;
+    let legend_w = W - legend_x - 88.0;
+    doc = doc
+        .add(
+            Rectangle::new()
+                .set("x", legend_x - 10.0)
+                .set("y", legend_top - 16.0)
+                .set("width", legend_w + 20.0)
+                .set("height", legend_h)
+                .set("rx", 5)
+                .set("fill", "#f8fafc")
+                .set("stroke", "#cbd5e1")
+                .set("stroke-width", 0.8),
+        )
+        .add(
+            Text::new("Figure legend and data provenance")
+                .set("x", legend_x)
+                .set("y", legend_top)
+                .set("font-family", "monospace")
+                .set("font-size", 12)
+                .set("fill", "#111827"),
+        );
+    for (line_idx, line) in legend_lines.into_iter().enumerate() {
+        doc = doc.add(
+            Text::new(line)
+                .set("x", legend_x)
+                .set("y", legend_top + 16.0 + line_idx as f32 * legend_line_h)
+                .set("font-family", "monospace")
+                .set("font-size", 9)
+                .set("fill", "#475569"),
+        );
+    }
+
+    for (line_idx, line) in instruction_lines.into_iter().enumerate() {
         doc = doc.add(
             Text::new(line)
                 .set("x", 88)
-                .set("y", dyn_h - 64.0 + line_idx as f32 * 14.0)
+                .set("y", instruction_top + line_idx as f32 * 14.0)
                 .set("font-family", "monospace")
                 .set("font-size", 11)
                 .set("fill", "#374151"),
@@ -3454,7 +3538,9 @@ mod tests {
     use gentle_protocol::{
         IsoformArchitectureCdsAaSegment, IsoformArchitectureProteinDomain,
         IsoformArchitectureProteinLane, IsoformArchitectureTranscriptLane, IsoformExpressionMatrix,
-        IsoformExpressionRow, SplicingRange,
+        IsoformExpressionRow, SplicingBoundaryMarker, SplicingEventSummary, SplicingExpertView,
+        SplicingJunctionArc, SplicingMatrixRow, SplicingRange, SplicingScopePreset,
+        SplicingTranscriptLane,
     };
     use std::collections::{BTreeMap, BTreeSet};
 
@@ -3535,6 +3621,174 @@ mod tests {
             expression_matrix: None,
             warnings: vec![],
         }
+    }
+
+    fn splicing_test_view_with_long_footer() -> SplicingExpertView {
+        SplicingExpertView {
+            seq_id: "splicing_demo".to_string(),
+            target_feature_id: 7,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
+            group_label: "TP73".to_string(),
+            strand: "+".to_string(),
+            region_start_1based: 100,
+            region_end_1based: 260,
+            transcript_count: 2,
+            unique_exon_count: 3,
+            instruction: "Inspect exon geometry, splice-boundary motifs, transition support, and the provenance legend before treating this figure as evidence. This deliberately long instruction verifies that the renderer grows the SVG instead of writing text through the page boundary."
+                .to_string(),
+            transcripts: vec![
+                SplicingTranscriptLane {
+                    transcript_feature_id: 7,
+                    transcript_id: "NM_demo_1".to_string(),
+                    label: "demo 1".to_string(),
+                    strand: "+".to_string(),
+                    exons: vec![
+                        SplicingRange {
+                            start_1based: 110,
+                            end_1based: 130,
+                        },
+                        SplicingRange {
+                            start_1based: 150,
+                            end_1based: 176,
+                        },
+                    ],
+                    exon_cds_phases: vec![],
+                    introns: vec![SplicingRange {
+                        start_1based: 131,
+                        end_1based: 149,
+                    }],
+                    has_target_feature: true,
+                },
+                SplicingTranscriptLane {
+                    transcript_feature_id: 9,
+                    transcript_id: "NM_demo_2".to_string(),
+                    label: "demo 2".to_string(),
+                    strand: "+".to_string(),
+                    exons: vec![
+                        SplicingRange {
+                            start_1based: 110,
+                            end_1based: 130,
+                        },
+                        SplicingRange {
+                            start_1based: 198,
+                            end_1based: 230,
+                        },
+                    ],
+                    exon_cds_phases: vec![],
+                    introns: vec![SplicingRange {
+                        start_1based: 131,
+                        end_1based: 197,
+                    }],
+                    has_target_feature: false,
+                },
+            ],
+            unique_exons: vec![
+                SplicingExonSummary {
+                    start_1based: 110,
+                    end_1based: 130,
+                    support_transcript_count: 2,
+                    constitutive: true,
+                },
+                SplicingExonSummary {
+                    start_1based: 150,
+                    end_1based: 176,
+                    support_transcript_count: 1,
+                    constitutive: false,
+                },
+                SplicingExonSummary {
+                    start_1based: 198,
+                    end_1based: 230,
+                    support_transcript_count: 1,
+                    constitutive: false,
+                },
+            ],
+            matrix_rows: vec![
+                SplicingMatrixRow {
+                    transcript_feature_id: 7,
+                    transcript_id: "NM_demo_1".to_string(),
+                    label: "demo 1".to_string(),
+                    exon_presence: vec![true, true, false],
+                },
+                SplicingMatrixRow {
+                    transcript_feature_id: 9,
+                    transcript_id: "NM_demo_2".to_string(),
+                    label: "demo 2".to_string(),
+                    exon_presence: vec![true, false, true],
+                },
+            ],
+            boundaries: vec![
+                SplicingBoundaryMarker {
+                    transcript_feature_id: 7,
+                    transcript_id: "NM_demo_1".to_string(),
+                    side: "donor".to_string(),
+                    position_1based: 130,
+                    motif_2bp: "GT".to_string(),
+                    canonical: true,
+                    canonical_pair: true,
+                    partner_position_1based: 150,
+                    paired_motif_signature: "GT-AG".to_string(),
+                    motif_class: "canonical".to_string(),
+                    annotation: String::new(),
+                },
+                SplicingBoundaryMarker {
+                    transcript_feature_id: 7,
+                    transcript_id: "NM_demo_1".to_string(),
+                    side: "acceptor".to_string(),
+                    position_1based: 150,
+                    motif_2bp: "AG".to_string(),
+                    canonical: true,
+                    canonical_pair: true,
+                    partner_position_1based: 130,
+                    paired_motif_signature: "GT-AG".to_string(),
+                    motif_class: "canonical".to_string(),
+                    annotation: String::new(),
+                },
+            ],
+            intron_signals: vec![],
+            junctions: vec![
+                SplicingJunctionArc {
+                    donor_1based: 130,
+                    acceptor_1based: 150,
+                    support_transcript_count: 1,
+                    transcript_feature_ids: vec![7],
+                },
+                SplicingJunctionArc {
+                    donor_1based: 130,
+                    acceptor_1based: 198,
+                    support_transcript_count: 1,
+                    transcript_feature_ids: vec![9],
+                },
+            ],
+            events: vec![SplicingEventSummary {
+                event_type: "alternative_exon".to_string(),
+                count: 2,
+                details: vec![
+                    "150..176 support=1/2".to_string(),
+                    "198..230 support=1/2".to_string(),
+                    "additional detail intentionally omitted by renderer".to_string(),
+                ],
+            }],
+        }
+    }
+
+    fn extract_svg_root_height(svg: &str) -> Option<f32> {
+        let root = svg.split('>').next()?;
+        let start = root.find("height=\"")? + "height=\"".len();
+        let rest = &root[start..];
+        let end = rest.find('"')?;
+        rest[..end].parse::<f32>().ok()
+    }
+
+    fn extract_max_text_y(svg: &str) -> Option<f32> {
+        svg.split("<text")
+            .skip(1)
+            .filter_map(|part| {
+                let start = part.find(" y=\"")? + " y=\"".len();
+                let rest = &part[start..];
+                let end = rest.find('"')?;
+                rest[..end].parse::<f32>().ok()
+            })
+            .max_by(|left, right| left.partial_cmp(right).unwrap_or(std::cmp::Ordering::Equal))
     }
 
     fn extract_track_x_positions(svg: &str, track: &str) -> Vec<f32> {
@@ -3784,6 +4038,27 @@ mod tests {
         );
         assert!(svg.contains("data-expression-state=\"missing\""));
         assert!(svg.contains("fill=\"#e5e7eb\""));
+    }
+
+    #[test]
+    fn splicing_renderer_expands_footer_for_legend_provenance_and_instructions() {
+        let svg = render_feature_expert_svg(&FeatureExpertView::Splicing(
+            splicing_test_view_with_long_footer(),
+        ));
+        assert!(svg.contains("Figure legend and data provenance"));
+        assert!(svg.contains("Provenance: seq_id=splicing_demo"));
+        assert!(svg.contains("Data source: current sequence annotation"));
+        assert!(svg.contains("CDS flank colors"));
+        let height = extract_svg_root_height(&svg).expect("root svg height");
+        let max_text_y = extract_max_text_y(&svg).expect("max text y");
+        assert!(
+            height > H,
+            "expected splicing SVG to grow beyond fixed baseline height: height={height}"
+        );
+        assert!(
+            max_text_y < height - 8.0,
+            "expected all text to stay inside SVG canvas: max_text_y={max_text_y}, height={height}"
+        );
     }
 
     #[test]

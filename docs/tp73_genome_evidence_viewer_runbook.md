@@ -66,6 +66,37 @@ The workflow should preserve the TP73 genome anchor as `GRCh38.p14`, chromosome
 - two overlapping CUT&RUN-style BED track features,
 - TFBS features plus a TFBS score-track SVG over the first 1200 bp.
 
+## Headless/Agent Smoke Queries
+
+The inner Agent Assistant, MCP tools, or command-line shell can verify the same
+evidence fields without clicking the GUI by using `features query` with
+qualifiers included:
+
+```bash
+cargo run --quiet --bin gentle_cli -- --state /tmp/tp73_evidence_viewer.state.json \
+  shell 'features query tp73_evidence_viewer --qual-contains gentle_generated=ucsc_rmsk --include-qualifiers --limit 10'
+
+cargo run --quiet --bin gentle_cli -- --state /tmp/tp73_evidence_viewer.state.json \
+  shell 'features query tp73_evidence_viewer --qual-contains gentle_track_source=Array --include-qualifiers --limit 10'
+
+cargo run --quiet --bin gentle_cli -- --state /tmp/tp73_evidence_viewer.state.json \
+  shell 'features query tp73_evidence_viewer --qual-contains gentle_track_source=BED --include-qualifiers --limit 10'
+```
+
+Expected machine-readable checks:
+
+- repeat query: `matched_count=3`, with `rmsk_class`, `rmsk_family`, `score`,
+  `rmsk_divergence_percent`, and genomic coordinate qualifiers.
+- array query: `matched_count=4`, with `gentle_array_contrast`, `logFC`,
+  `adj_P_Val`, `feature_id`, `transcript_cluster_id`, `exon_id`, and
+  `gentle_array_projection_status`.
+- BED query: `matched_count=2`, with `gentle_track_name`,
+  `gentle_track_file`, `score`, `bed_strand`, and genomic interval qualifiers.
+
+The proof array fixture contains three TSV rows per contrast. One row per
+contrast is deliberately outside the anchored TP73 sequence, so the projected
+viewer contains four array interval features: two rows from each contrast.
+
 ## Manual GUI Smoke
 
 Open the generated state:

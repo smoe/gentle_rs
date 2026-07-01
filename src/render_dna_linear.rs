@@ -426,6 +426,40 @@ impl RenderDnaLinear {
         }
     }
 
+    pub fn feature_bounds_y(&self, feature_number: usize) -> Option<(f32, f32)> {
+        if !Self::is_rect_usable(self.area) {
+            return None;
+        }
+        let feature = self
+            .features
+            .iter()
+            .find(|feature| feature.feature_number == feature_number)?;
+        let mut min_y = f32::INFINITY;
+        let mut max_y = f32::NEG_INFINITY;
+        let mut include_span = |top: f32, bottom: f32| {
+            if top.is_finite() && bottom.is_finite() {
+                min_y = min_y.min(top);
+                max_y = max_y.max(bottom);
+            }
+        };
+
+        include_span(feature.rect.top(), feature.rect.bottom());
+        for exon_rect in &feature.exon_rects {
+            include_span(exon_rect.top(), exon_rect.bottom());
+        }
+        for connector in &feature.intron_connectors {
+            include_span(connector[0].y, connector[0].y);
+            include_span(connector[1].y, connector[1].y);
+            include_span(connector[2].y, connector[2].y);
+        }
+
+        if min_y.is_finite() && max_y.is_finite() && min_y <= max_y {
+            Some((min_y, max_y))
+        } else {
+            None
+        }
+    }
+
     fn is_rect_usable(rect: Rect) -> bool {
         rect.min.x.is_finite()
             && rect.min.y.is_finite()
@@ -3316,6 +3350,24 @@ mod tests {
         assert!(top < bottom);
         assert!(top.is_finite());
         assert!(bottom.is_finite());
+    }
+
+    #[test]
+    fn selected_feature_bounds_are_available_after_layout() {
+        let feature = make_test_feature(Location::simple_range(150, 280));
+        let mut renderer = test_renderer_with_feature(feature, 1000);
+        renderer.layout_features(LinearViewport {
+            start: 0,
+            end: 1000,
+            span: 1000,
+        });
+        let bounds = renderer.feature_bounds_y(0);
+        assert!(bounds.is_some());
+        let (top, bottom) = bounds.expect("feature bounds");
+        assert!(top < bottom);
+        assert!(top.is_finite());
+        assert!(bottom.is_finite());
+        assert!(renderer.feature_bounds_y(1).is_none());
     }
 
     #[test]

@@ -532,6 +532,14 @@ fn project_microarray_track_forward_anchor_materializes_array_features() {
         Some("coordinate_system_matches_anchor")
     );
     assert_eq!(
+        first_qualifier(feature, "gentle_array_projection_method").as_deref(),
+        Some("direct_anchor_overlap")
+    );
+    assert_eq!(
+        first_qualifier(feature, "gentle_array_projection_status").as_deref(),
+        Some("mapped_same_coordinate_system")
+    );
+    assert_eq!(
         first_qualifier(feature, "transcript_cluster_id").as_deref(),
         Some("TC0001")
     );
@@ -2336,6 +2344,14 @@ fn project_microarray_track_uses_vendor_subset_on_tp73_genbank_anchor() {
     assert_eq!(
         first_qualifier(first, "gentle_array_assembly_check").as_deref(),
         Some("supported_genome_id_alias_matches_anchor")
+    );
+    assert_eq!(
+        first_qualifier(first, "gentle_array_projection_method").as_deref(),
+        Some("direct_anchor_overlap")
+    );
+    assert_eq!(
+        first_qualifier(first, "gentle_array_projection_status").as_deref(),
+        Some("mapped_supported_genome_alias")
     );
     assert!(
         first_qualifier(first, "gentle_array_value_summary")

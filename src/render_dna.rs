@@ -311,6 +311,19 @@ impl RenderDna {
         Some((area.top(), area.bottom(), content_top, content_bottom))
     }
 
+    pub fn linear_feature_vertical_bounds(
+        &self,
+        feature_id: usize,
+    ) -> Option<(f32, f32, f32, f32)> {
+        let RenderDna::Linear(renderer) = self else {
+            return None;
+        };
+        let renderer = renderer.read().ok()?;
+        let (content_top, content_bottom) = renderer.feature_bounds_y(feature_id)?;
+        let area = renderer.area();
+        Some((area.top(), area.bottom(), content_top, content_bottom))
+    }
+
     fn render(&self, ui: &mut egui::Ui, area: Rect) {
         crate::gentle_gui_profile_scope!("RenderDna::render");
         let result = catch_unwind(AssertUnwindSafe(|| match self {
@@ -1024,6 +1037,15 @@ impl RenderDna {
         ] {
             Self::push_first_feature_detail_line(&mut lines, &mut seen, feature, label, keys);
         }
+        for line in [
+            "array_value_interpretation: logFC is the selected contrast effect size; adj.P.Val is the multiple-testing adjusted p-value",
+            "array_projection_note: visible array rows are imported/projection records, not all expression measurements for the source dataset",
+            "array_level_note: level describes array-row granularity, not expression magnitude",
+        ] {
+            if seen.insert(line.to_string()) {
+                lines.push(line.to_string());
+            }
+        }
         lines
     }
 
@@ -1651,6 +1673,88 @@ impl RenderDna {
         lines
     }
 
+    fn prioritized_detail_lines(
+        details: &[String],
+        prefixes: &[&str],
+        fallback_take: usize,
+        max_lines: usize,
+    ) -> Vec<String> {
+        let mut lines = Vec::new();
+        let mut seen = BTreeSet::new();
+        for prefix in prefixes {
+            if let Some(line) = details.iter().find(|line| line.starts_with(prefix))
+                && seen.insert(line.clone())
+            {
+                lines.push(line.clone());
+            }
+        }
+        for line in details.iter().take(fallback_take) {
+            if lines.len() >= max_lines {
+                break;
+            }
+            if seen.insert(line.clone()) {
+                lines.push(line.clone());
+            }
+        }
+        lines.truncate(max_lines);
+        lines
+    }
+
+    pub fn feature_tooltip_detail_lines(feature: &Feature) -> Vec<String> {
+        let details = Self::feature_detail_lines(feature);
+        if Self::is_array_track_feature(feature) {
+            return Self::prioritized_detail_lines(
+                &details,
+                &[
+                    "contrast:",
+                    "logFC:",
+                    "adj.P.Val:",
+                    "feature_id:",
+                    "transcript_cluster:",
+                    "exon_id:",
+                    "projection_status:",
+                    "genomic_interval:",
+                    "array_value_interpretation:",
+                ],
+                4,
+                9,
+            );
+        }
+        if Self::is_repeat_feature(feature) {
+            return Self::prioritized_detail_lines(
+                &details,
+                &[
+                    "repeat_name:",
+                    "repeat_class:",
+                    "repeat_family:",
+                    "score:",
+                    "divergence_percent:",
+                    "genomic_interval:",
+                ],
+                4,
+                8,
+            );
+        }
+        if Self::is_track_feature(feature) {
+            return Self::prioritized_detail_lines(
+                &details,
+                &[
+                    "track_source:",
+                    "track_name:",
+                    "track_file:",
+                    "genomic_interval:",
+                    "score:",
+                    "bed_strand:",
+                    "local_strand:",
+                    "note:",
+                ],
+                4,
+                8,
+            );
+        }
+        details.into_iter().take(4).collect()
+    }
+
     pub fn feature_max_view_span_bp(
         feature: &Feature,
         regulatory_max_view_span_bp: usize,
@@ -2102,6 +2206,10 @@ mod tests {
         );
         assert!(!details.iter().any(|line| line.starts_with("repName:")));
         assert!(!details.iter().any(|line| line.starts_with("rmsk_name:")));
+        let tooltip = RenderDna::feature_tooltip_detail_lines(&feature);
+        assert!(tooltip.contains(&"repeat_name: AluY".to_string()));
+        assert!(tooltip.contains(&"score: 1234".to_string()));
+        assert!(tooltip.contains(&"divergence_percent: 1.8".to_string()));
     }
 
     #[test]
@@ -2172,8 +2280,33 @@ mod tests {
         assert!(details.contains(&"transcript_cluster: TC0001".to_string()));
         assert!(details.contains(&"exon_id: EX0001".to_string()));
         assert!(details.iter().any(|line| {
+            line.starts_with("array_value_interpretation:")
+                && line.contains("logFC is the selected contrast effect size")
+        }));
+        assert!(
+            details
+                .iter()
+                .any(|line| line.starts_with("array_projection_note:"))
+        );
+        assert!(
+            details
+                .iter()
+                .any(|line| line.starts_with("array_level_note:"))
+        );
+        assert!(details.iter().any(|line| {
             line.starts_with("all_contrast_values:")
                 && line.contains("AdTAp73beta-AdGFP logFC=-0.750000")
+        }));
+        let tooltip = RenderDna::feature_tooltip_detail_lines(&feature);
+        assert!(tooltip.contains(&"contrast: AdTAp73alpha-AdGFP".to_string()));
+        assert!(tooltip.contains(&"logFC: 1.500000".to_string()));
+        assert!(tooltip.contains(&"adj.P.Val: 0.020000".to_string()));
+        assert!(tooltip.contains(&"feature_id: PSR0001".to_string()));
+        assert!(tooltip.contains(&"transcript_cluster: TC0001".to_string()));
+        assert!(tooltip.contains(&"exon_id: EX0001".to_string()));
+        assert!(tooltip.iter().any(|line| {
+            line.starts_with("array_value_interpretation:")
+                && line.contains("adj.P.Val is the multiple-testing adjusted p-value")
         }));
     }
 
@@ -2220,5 +2353,10 @@ mod tests {
                 .iter()
                 .any(|line| line.contains("TP73 CUT&RUN proof BED"))
         );
+        let tooltip = RenderDna::feature_tooltip_detail_lines(&feature);
+        assert!(tooltip.contains(&"track_source: BED".to_string()));
+        assert!(tooltip.contains(&"track_name: TP73 CUT&RUN proof BED".to_string()));
+        assert!(tooltip.contains(&"score: 650.000000".to_string()));
+        assert!(tooltip.contains(&"bed_strand: +".to_string()));
     }
 }

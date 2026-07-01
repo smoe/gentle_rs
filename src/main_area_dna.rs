@@ -1531,6 +1531,7 @@ pub struct MainAreaDna {
     feature_tree_panel_width: f32,
     feature_tree_split_fraction: f32,
     pending_feature_tree_scroll_to: Option<usize>,
+    pending_linear_vertical_fit_feature_id: Option<usize>,
     focused_feature_id: Option<usize>,
     multi_selected_feature_ids: BTreeSet<usize>,
     feature_tree_cache: Option<FeatureTreeCache>,
@@ -2257,6 +2258,7 @@ impl MainAreaDna {
             feature_tree_panel_width: FEATURE_TREE_DEFAULT_WIDTH_PX,
             feature_tree_split_fraction: FEATURE_TREE_DEFAULT_SPLIT_FRACTION,
             pending_feature_tree_scroll_to: None,
+            pending_linear_vertical_fit_feature_id: None,
             focused_feature_id: None,
             multi_selected_feature_ids: BTreeSet::new(),
             feature_tree_cache: None,
@@ -13312,6 +13314,29 @@ impl MainAreaDna {
         self.pan_linear_vertical_viewport(delta);
     }
 
+    fn fit_feature_vertically_in_linear_view(&self, feature_id: usize) -> bool {
+        if self.is_circular() {
+            return false;
+        }
+        let Some((area_top, area_bottom, content_top, content_bottom)) =
+            self.map_dna.linear_feature_vertical_bounds(feature_id)
+        else {
+            return false;
+        };
+        let delta = Self::linear_vertical_fit_delta(
+            area_top,
+            area_bottom,
+            content_top,
+            content_bottom,
+            24.0,
+        );
+        let delta = Self::clamp_linear_vertical_fit_delta(delta, area_top, area_bottom);
+        if delta.abs() > 0.5 {
+            self.pan_linear_vertical_viewport(delta);
+        }
+        true
+    }
+
     fn zoom_linear_viewport_around(&self, center_bp: usize, zoom_in: bool) {
         let (start, span, sequence_length) = self.current_linear_viewport();
         if sequence_length == 0 {
@@ -13385,6 +13410,7 @@ impl MainAreaDna {
         self.sync_linear_external_feature_labels();
         if next_focused.is_none() {
             self.pending_feature_tree_scroll_to = None;
+            self.pending_linear_vertical_fit_feature_id = None;
             self.dna_display
                 .write()
                 .expect("DNA display lock poisoned")
@@ -13432,6 +13458,7 @@ impl MainAreaDna {
         self.map_dna.select_feature(Some(feature_id));
         self.sync_linear_external_feature_labels();
         self.pending_feature_tree_scroll_to = Some(feature_id);
+        self.pending_linear_vertical_fit_feature_id = Some(feature_id);
         self.apply_feature_selection_range(feature_id, true);
     }
 
@@ -13449,6 +13476,7 @@ impl MainAreaDna {
             self.map_dna.select_feature(next_focused);
             if let Some(next_focused) = next_focused {
                 self.pending_feature_tree_scroll_to = Some(next_focused);
+                self.pending_linear_vertical_fit_feature_id = Some(next_focused);
                 self.apply_feature_selection_range(next_focused, false);
             }
             self.sync_linear_external_feature_labels();
@@ -13460,6 +13488,7 @@ impl MainAreaDna {
         self.map_dna.select_feature(Some(feature_id));
         self.sync_linear_external_feature_labels();
         self.pending_feature_tree_scroll_to = Some(feature_id);
+        self.pending_linear_vertical_fit_feature_id = Some(feature_id);
         self.apply_feature_selection_range(feature_id, false);
     }
 
@@ -13509,6 +13538,7 @@ impl MainAreaDna {
         self.map_dna.select_feature(Some(feature_id));
         self.sync_linear_external_feature_labels();
         self.pending_feature_tree_scroll_to = Some(feature_id);
+        self.pending_linear_vertical_fit_feature_id = Some(feature_id);
         self.apply_feature_selection_range(feature_id, true);
         self.op_status = format!(
             "Focused {} matching array feature(s) for '{}'",
@@ -13535,6 +13565,7 @@ impl MainAreaDna {
         self.map_dna.select_feature(Some(primary));
         self.sync_linear_external_feature_labels();
         self.pending_feature_tree_scroll_to = Some(primary);
+        self.pending_linear_vertical_fit_feature_id = Some(primary);
         self.apply_feature_selection_range(primary, false);
     }
 
@@ -13571,6 +13602,7 @@ impl MainAreaDna {
         self.map_dna.select_feature(None);
         self.sync_linear_external_feature_labels();
         self.pending_feature_tree_scroll_to = None;
+        self.pending_linear_vertical_fit_feature_id = None;
         self.dna_display
             .write()
             .expect("DNA display lock poisoned")
@@ -13582,6 +13614,7 @@ impl MainAreaDna {
         self.multi_selected_feature_ids.clear();
         self.sync_linear_external_feature_labels();
         self.pending_feature_tree_scroll_to = None;
+        self.pending_linear_vertical_fit_feature_id = None;
         self.dna_display
             .write()
             .expect("DNA display lock poisoned")
@@ -24395,6 +24428,32 @@ impl MainAreaDna {
                     }
                 });
             }
+            if let Some(feature_id) = description_copy_feature_id {
+                ui.horizontal_wrapped(|ui| {
+                    if ui
+                        .small_button("Copy id")
+                        .on_hover_text(FeatureCopyPayloadKind::Identifier.hover_text())
+                        .clicked()
+                    {
+                        self.copy_feature_payload_to_clipboard(
+                            ui.ctx(),
+                            feature_id,
+                            FeatureCopyPayloadKind::Identifier,
+                        );
+                    }
+                    if ui
+                        .small_button("Copy details")
+                        .on_hover_text(FeatureCopyPayloadKind::PopupText.hover_text())
+                        .clicked()
+                    {
+                        self.copy_feature_payload_to_clipboard(
+                            ui.ctx(),
+                            feature_id,
+                            FeatureCopyPayloadKind::PopupText,
+                        );
+                    }
+                });
+            }
             if let Some(range) = &self.description_cache_range {
                 ui.label(
                     egui::RichText::new(range)
@@ -25155,6 +25214,11 @@ impl MainAreaDna {
                 if response.rect.width().is_finite() && response.rect.width() > 0.0 {
                     self.last_linear_map_width_px = response.rect.width();
                 }
+                if let Some(feature_id) = self.pending_linear_vertical_fit_feature_id
+                    && self.fit_feature_vertically_in_linear_view(feature_id)
+                {
+                    self.pending_linear_vertical_fit_feature_id = None;
+                }
 
                 if response.hovered() {
                     let pointer_state: PointerState = ctx.input(|i| i.pointer.to_owned());
@@ -25180,7 +25244,7 @@ impl MainAreaDna {
                                     text
                                 }
                             };
-                            let details = RenderDna::feature_detail_lines(feature);
+                            let details = RenderDna::feature_tooltip_detail_lines(feature);
                             Some((name, feature.kind.to_string(), range, details))
                         });
                         if let Some((name, kind, range, details)) = hover_text {
@@ -25214,7 +25278,7 @@ impl MainAreaDna {
                                         .size(detail_font_size),
                                     );
                                 }
-                                for line in details.iter().take(4) {
+                                for line in &details {
                                     ui.label(
                                         egui::RichText::new(line)
                                             .monospace()
