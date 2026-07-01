@@ -27829,6 +27829,10 @@ impl GentleEngine {
                     | "tfbs_display_use_true_log_odds_bits"
                     | "tfbs_display_use_true_log_odds_quantile"
                     | "auto_hide_sequence_panel_when_linear_bases_visible"
+                    | "linear_show_sequence_bases"
+                    | "linear_show_sequence_letters"
+                    | "show_linear_sequence_bases"
+                    | "show_linear_sequence_letters"
                     | "linear_show_double_strand_bases"
                     | "linear_show_reverse_strand_bases"
                     | "show_linear_double_strand_bases"
@@ -27883,6 +27887,12 @@ impl GentleEngine {
                                 self.state
                                     .display
                                     .auto_hide_sequence_panel_when_linear_bases_visible = raw
+                            }
+                            "linear_show_sequence_bases"
+                            | "linear_show_sequence_letters"
+                            | "show_linear_sequence_bases"
+                            | "show_linear_sequence_letters" => {
+                                self.state.display.linear_show_sequence_bases = raw
                             }
                             "linear_show_double_strand_bases"
                             | "linear_show_reverse_strand_bases"

@@ -3081,8 +3081,10 @@ The `Help` menu now includes:
   qualifiers.
 - The linear DNA viewer has an `Array` layer toggle. Array intervals draw as
   contrast heat lanes near regulatory tracks: red for positive `logFC`, blue
-  for negative `logFC`, grey near zero, and confidence styling from
-  `adj.P.Val`.
+  for negative `logFC`, and grey near zero. Stronger colour means larger
+  absolute `logFC`; in the live GUI, the outline/darkness also indicates
+  `adj.P.Val <= 0.05`. The linear-map legend and SVG export legend repeat this
+  rule so screenshots and exported figures remain interpretable outside GENtle.
 - Selected-feature details and copied tooltip text include all projected values
   stored for a probeset via `gentle_array_value_summary`. The feature tree
   accepts scoped filters such as `source:array`, `track:Clariom`,
@@ -3358,6 +3360,9 @@ Current linear map conventions are:
 - Restriction enzyme labels are lane-packed to reduce overlap
 - Adaptive DNA-letter mode routing (linear map):
   - default mode is `Auto adaptive`
+  - `Show DNA letters on linear map` is the master visibility switch for the
+    base-letter layer; disabling it hides DNA letters regardless of the adaptive
+    or forced routing mode while keeping feature tracks and the backbone visible
   - explicit override modes are available:
     - `Force standard`
     - `Force helical`

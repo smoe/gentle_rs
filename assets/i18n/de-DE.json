@@ -290,6 +290,7 @@
   "sequence.map_presets": "Kartenvorgaben",
   "sequence.gc_bin_size": "GC-Bin-Größe",
   "sequence.linear_dna_letters": "Lineare DNA-Buchstaben",
+  "sequence.show_sequence_letters": "DNA-Buchstaben auf linearer Karte zeigen",
   "sequence.show_reverse_letters": "DNA-Buchstaben des Gegenstrangs auf linearer Karte zeigen",
   "sequence.hide_backbone_when_letters_visible": "DNA-Rückgratlinie ausblenden, wenn Buchstaben sichtbar sind",
   "sequence.keep_helical_parallel": "Helikale Stränge parallel halten (gleiche Schrägrichtung)",

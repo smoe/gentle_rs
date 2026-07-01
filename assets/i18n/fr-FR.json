@@ -193,6 +193,7 @@
   "sequence.map_presets": "Préréglages de carte",
   "sequence.gc_bin_size": "Taille des bins GC",
   "sequence.linear_dna_letters": "Lettres ADN linéaires",
+  "sequence.show_sequence_letters": "Afficher les lettres ADN sur la carte linéaire",
   "sequence.show_reverse_letters": "Afficher les lettres ADN du brin inverse sur la carte linéaire",
   "sequence.hide_backbone_when_letters_visible": "Masquer la ligne du squelette ADN quand les lettres sont visibles",
   "sequence.keep_helical_parallel": "Garder les brins hélicoïdaux parallèles (même inclinaison)",

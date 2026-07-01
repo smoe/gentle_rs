@@ -10878,6 +10878,12 @@ fn test_set_parameter_linear_helical_display_controls() {
     let mut engine = GentleEngine::new();
     engine
         .apply(Operation::SetParameter {
+            name: "linear_show_sequence_bases".to_string(),
+            value: serde_json::json!(false),
+        })
+        .unwrap();
+    engine
+        .apply(Operation::SetParameter {
             name: "linear_sequence_helical_letters_enabled".to_string(),
             value: serde_json::json!(true),
         })
@@ -10936,6 +10942,7 @@ fn test_set_parameter_linear_helical_display_controls() {
             .display
             .linear_sequence_helical_letters_enabled
     );
+    assert!(!engine.state().display.linear_show_sequence_bases);
     assert_eq!(
         engine
             .state()

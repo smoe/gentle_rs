@@ -193,6 +193,7 @@
   "sequence.map_presets": "Preset mappa",
   "sequence.gc_bin_size": "Dimensione bin GC",
   "sequence.linear_dna_letters": "Lettere DNA lineari",
+  "sequence.show_sequence_letters": "Mostra lettere DNA sulla mappa lineare",
   "sequence.show_reverse_letters": "Mostra lettere DNA del filamento inverso sulla mappa lineare",
   "sequence.hide_backbone_when_letters_visible": "Nascondi linea backbone DNA quando le lettere sono visibili",
   "sequence.keep_helical_parallel": "Mantieni paralleli i filamenti elicoidali (stessa inclinazione)",

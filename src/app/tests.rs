@@ -6887,6 +6887,7 @@ fn apply_graphics_settings_to_display_clamps_font_and_opacity_values() {
     let mut target = DisplaySettings::default();
 
     source.show_linear_sequence_panel = true;
+    source.linear_show_sequence_bases = false;
     source.feature_details_font_size = 250.0;
     source.sequence_panel_max_text_length_bp = 10_000_000;
     source.linear_external_feature_label_font_size = -50.0;
@@ -6903,6 +6904,7 @@ fn apply_graphics_settings_to_display_clamps_font_and_opacity_values() {
     GENtleApp::apply_graphics_settings_to_display(&source, &mut target);
 
     assert!(target.show_linear_sequence_panel);
+    assert!(!target.linear_show_sequence_bases);
     assert_eq!(target.feature_details_font_size, 24.0);
     assert_eq!(target.sequence_panel_max_text_length_bp, 5_000_000);
     assert_eq!(target.linear_external_feature_label_font_size, 8.0);

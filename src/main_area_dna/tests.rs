@@ -7661,6 +7661,30 @@ fn linear_base_status_and_auto_hide_follow_shared_adaptive_routing() {
 }
 
 #[test]
+fn linear_base_visibility_flag_prevents_auto_hide_sequence_panel() {
+    let dna = DNAsequence::from_sequence("A".repeat(5000).as_str()).expect("sequence");
+    let mut area = MainAreaDna::new(dna, None, None);
+    area.last_linear_map_width_px = 1000.0;
+    area.show_map = true;
+    area.show_sequence = true;
+    {
+        let mut display = area.dna_display.write().expect("display lock");
+        display.set_linear_viewport(0, 300);
+        display.set_linear_show_sequence_bases(false);
+        display.set_linear_sequence_helical_letters_enabled(true);
+        display
+            .set_linear_sequence_letter_layout_mode(LinearSequenceLetterLayoutMode::AutoAdaptive);
+        display.set_auto_hide_sequence_panel_when_linear_bases_visible(true);
+    }
+
+    let decision = area.linear_base_routing_decision();
+    assert_eq!(decision.active_mode, LinearBaseRenderMode::Off);
+    assert!(decision.decision_reason.contains("disabled"));
+    assert!(!area.linear_map_sequence_bases_visible());
+    assert!(!area.should_auto_hide_sequence_panel());
+}
+
+#[test]
 fn sequence_panel_layout_config_keeps_visible_panel_resizable() {
     let config = MainAreaDna::sequence_panel_layout_config(800.0, true);
     assert!(config.resizable);

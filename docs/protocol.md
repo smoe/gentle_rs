@@ -5426,6 +5426,14 @@ Current parameter support:
   - controls GC-content aggregation bin size for linear/circular rendering and
     SVG export
 - Linear DNA-letter routing parameters:
+  - `linear_show_sequence_bases` (default `true`)
+    - master visibility switch for DNA base letters in the linear map
+    - aliases accepted by `SetParameter`:
+      - `linear_show_sequence_letters`
+      - `show_linear_sequence_bases`
+      - `show_linear_sequence_letters`
+    - when `false`, adaptive/forced modes still report routing diagnostics, but
+      the active base-letter mode is `OFF`
   - `linear_sequence_letter_layout_mode` (default `AutoAdaptive`)
     - supported canonical modes:
       - `auto|adaptive|auto_adaptive`

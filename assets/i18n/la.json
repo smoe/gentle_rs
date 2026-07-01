@@ -193,6 +193,7 @@
   "sequence.map_presets": "Praedefinita chartae",
   "sequence.gc_bin_size": "Magnitudo arcae GC",
   "sequence.linear_dna_letters": "Litterae DNA lineares",
+  "sequence.show_sequence_letters": "Litteras DNA in charta lineari ostendere",
   "sequence.show_reverse_letters": "Litteras DNA catenae adversae in charta lineari ostendere",
   "sequence.hide_backbone_when_letters_visible": "Lineam dorsi DNA abscondere cum litterae apparent",
   "sequence.keep_helical_parallel": "Catenas helicas parallelas servare (eadem inclinatio)",

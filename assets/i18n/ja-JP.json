@@ -193,6 +193,7 @@
   "sequence.map_presets": "マッププリセット",
   "sequence.gc_bin_size": "GC ビンサイズ",
   "sequence.linear_dna_letters": "線形 DNA 文字",
+  "sequence.show_sequence_letters": "線形マップで DNA 文字を表示",
   "sequence.show_reverse_letters": "線形マップで逆鎖 DNA 文字を表示",
   "sequence.hide_backbone_when_letters_visible": "文字表示時に DNA バックボーン線を隠す",
   "sequence.keep_helical_parallel": "らせん鎖を平行に保つ（同じ傾き）",

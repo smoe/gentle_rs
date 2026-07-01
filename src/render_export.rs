@@ -70,7 +70,7 @@ struct FeatureVm {
     to: usize,
     label: String,
     legend_line: Option<String>,
-    color: &'static str,
+    color: String,
     kind_attr: String,
     kind_role: FeatureKindRole,
     is_gene: bool,
@@ -530,7 +530,10 @@ fn circular_title_text(dna: &DNAsequence) -> String {
     }
 }
 
-fn feature_color(feature: &Feature) -> &'static str {
+fn feature_color(feature: &Feature) -> String {
+    if is_array_track_feature(feature) {
+        return array_feature_color(feature);
+    }
     if is_vcf_track_feature(feature) {
         let class = vcf_variant_class(feature)
             .unwrap_or_else(|| "OTHER".to_string())
@@ -541,20 +544,21 @@ fn feature_color(feature: &Feature) -> &'static str {
             "DEL" => "#b42d2d",
             "SV" => "#5a5a1e",
             _ => "#5a5a5a",
-        };
+        }
+        .to_string();
     }
     if let Some(repeat) = repeat_feature_display(feature) {
-        return repeat.class.color_hex();
+        return repeat.class.color_hex().to_string();
     }
     if is_regulatory_feature(feature) {
         let regulatory_class = feature_qualifier_text(feature, "regulatory_class")
             .unwrap_or_default()
             .to_ascii_lowercase();
         if regulatory_class.contains("silencer") || regulatory_class.contains("repressor") {
-            return "#be3232";
+            return "#be3232".to_string();
         }
         if regulatory_class.contains("enhancer") || regulatory_class.contains("activator") {
-            return "#2d9641";
+            return "#2d9641".to_string();
         }
     }
     match feature.kind.to_string().to_ascii_uppercase().as_str() {
@@ -565,6 +569,32 @@ fn feature_color(feature: &Feature) -> &'static str {
         "VARIATION" => "#e17f0f",
         "TFBS" | "TF_BINDING_SITE" | "PROTEIN_BIND" => "#238023",
         _ => "#6e6e6e",
+    }
+    .to_string()
+}
+
+fn rgb_hex(r: u8, g: u8, b: u8) -> String {
+    format!("#{r:02x}{g:02x}{b:02x}")
+}
+
+fn array_feature_color(feature: &Feature) -> String {
+    let logfc = feature_qualifier_f64(feature, "logFC").unwrap_or(0.0);
+    let strength = (logfc.abs() / 3.0).clamp(0.0, 1.0);
+    let neutral = (1.0 - strength) * 158.0;
+    if logfc > 0.05 {
+        rgb_hex(
+            (neutral + strength * 220.0).round() as u8,
+            (neutral + strength * 38.0).round() as u8,
+            (neutral + strength * 38.0).round() as u8,
+        )
+    } else if logfc < -0.05 {
+        rgb_hex(
+            (neutral + strength * 37.0).round() as u8,
+            (neutral + strength * 99.0).round() as u8,
+            (neutral + strength * 235.0).round() as u8,
+        )
+    } else {
+        "#969696".to_string()
     }
 }
 
@@ -1025,7 +1055,7 @@ fn build_linear_svg_legend(
     }
     if !track_counts.is_empty() {
         lines.push(format!(
-            "External evidence tracks: grey bars for BED/array/other imported evidence; grouped provenance: {}.",
+            "External evidence tracks: BED/other imported evidence is grey; array projections use logFC color (red positive, blue negative, grey near zero; stronger color for larger absolute logFC). Grouped provenance: {}.",
             compact_count_summary(&track_counts, 8)
         ));
     }
@@ -1486,7 +1516,7 @@ fn linear_transcription_direction_glyph(
     let tick = Path::new()
         .set("d", shaft)
         .set("fill", "none")
-        .set("stroke", feature.color)
+        .set("stroke", feature.color.as_str())
         .set("stroke-width", 2)
         .set("stroke-linecap", "round")
         .set("stroke-linejoin", "round")
@@ -1510,7 +1540,7 @@ fn linear_transcription_direction_glyph(
         .close();
     let arrow = Path::new()
         .set("d", tri)
-        .set("fill", feature.color)
+        .set("fill", feature.color.as_str())
         .set("stroke", "#ffffff")
         .set("stroke-width", 1.2)
         .set("paint-order", "stroke")
@@ -1989,7 +2019,7 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
                         .set("y1", baseline - VARIATION_MARKER_OVERSHOOT_PX)
                         .set("x2", x)
                         .set("y2", baseline + VARIATION_MARKER_OVERSHOOT_PX)
-                        .set("stroke", f.color)
+                        .set("stroke", f.color.as_str())
                         .set("stroke-width", VARIATION_MARKER_STROKE_WIDTH)
                         .set("data-gentle-role", "variation-marker-line")
                         .set("data-gentle-feature-kind", f.kind_attr.as_str()),
@@ -2000,7 +2030,7 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
                         .set("cy", baseline)
                         .set("r", VARIATION_MARKER_RADIUS)
                         .set("fill", "#ffffff")
-                        .set("stroke", f.color)
+                        .set("stroke", f.color.as_str())
                         .set("stroke-width", 1.5)
                         .set("data-gentle-role", "variation-marker-dot")
                         .set("data-gentle-feature-kind", f.kind_attr.as_str()),
@@ -2057,7 +2087,7 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
                 .set("y", y - half_height)
                 .set("width", x2 - x1)
                 .set("height", block_height)
-                .set("fill", f.color)
+                .set("fill", f.color.as_str())
                 .set("data-gentle-role", "feature-block")
                 .set("data-gentle-feature-kind", f.kind_attr.as_str());
             if f.is_tfbs {
@@ -2085,7 +2115,7 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
                 doc = doc.add(
                     Path::new()
                         .set("d", data)
-                        .set("fill", f.color)
+                        .set("fill", f.color.as_str())
                         .set("data-gentle-role", "feature-direction-head")
                         .set("data-gentle-feature-kind", f.kind_attr.as_str()),
                 );
@@ -2800,7 +2830,7 @@ fn append_circular_narrative_legend(mut doc: Document, features: &[FeatureVm]) -
                 .set("y", y - 9.0)
                 .set("width", 10)
                 .set("height", 10)
-                .set("fill", feature.color),
+                .set("fill", feature.color.as_str()),
         );
         for (idx, chunk) in wrapped.iter().enumerate() {
             doc = doc.add(
@@ -2945,7 +2975,7 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
                         .set("y1", inner_y)
                         .set("x2", outer_x)
                         .set("y2", outer_y)
-                        .set("stroke", f.color)
+                        .set("stroke", f.color.as_str())
                         .set("stroke-width", CIRCULAR_VARIATION_MARKER_STROKE_WIDTH)
                         .set("data-gentle-role", "variation-marker-line")
                         .set("data-gentle-feature-kind", f.kind_attr.as_str()),
@@ -2956,7 +2986,7 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
                         .set("cy", outer_y)
                         .set("r", CIRCULAR_VARIATION_MARKER_RADIUS)
                         .set("fill", "#ffffff")
-                        .set("stroke", f.color)
+                        .set("stroke", f.color.as_str())
                         .set("stroke-width", 2)
                         .set("data-gentle-role", "variation-marker-dot")
                         .set("data-gentle-feature-kind", f.kind_attr.as_str()),
@@ -2981,7 +3011,7 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
                     Path::new()
                         .set("d", path_d)
                         .set("fill", "none")
-                        .set("stroke", f.color)
+                        .set("stroke", f.color.as_str())
                         .set("stroke-width", CIRCULAR_FEATURE_STROKE_WIDTH)
                         .set("data-gentle-role", "feature-block")
                         .set("data-gentle-feature-kind", f.kind_attr.as_str()),
@@ -3005,7 +3035,7 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
                     Path::new()
                         .set("d", shaft)
                         .set("fill", "none")
-                        .set("stroke", f.color)
+                        .set("stroke", f.color.as_str())
                         .set("stroke-width", 2)
                         .set("stroke-linecap", "round")
                         .set("stroke-linejoin", "round")
@@ -3030,7 +3060,7 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
                 doc = doc.add(
                     Path::new()
                         .set("d", tri)
-                        .set("fill", f.color)
+                        .set("fill", f.color.as_str())
                         .set("stroke", "none")
                         .set("data-gentle-role", "transcription-start-arrow")
                         .set("data-gentle-feature-kind", f.kind_attr.as_str()),
@@ -3052,7 +3082,7 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
                             .set("y1", leader_start_y)
                             .set("x2", leader_end_x)
                             .set("y2", leader_end_y)
-                            .set("stroke", f.color)
+                            .set("stroke", f.color.as_str())
                             .set("stroke-width", 2)
                             .set("data-gentle-role", "functional-annotation-leader")
                             .set("data-gentle-feature-kind", f.kind_attr.as_str()),
@@ -3587,6 +3617,8 @@ mod tests {
                     "gentle_array_contrast".into(),
                     Some("AdTAp73alpha-AdGFP".to_string()),
                 ),
+                ("logFC".into(), Some("1.5".to_string())),
+                ("adj_P_Val".into(), Some("0.02".to_string())),
             ],
         });
         push_tfbs_feature(&mut dna, "TP73", 95, 105, 2.0);
@@ -3604,7 +3636,8 @@ mod tests {
         assert!(svg.contains("kinked arrow marks transcription start site"));
         assert!(svg.contains("TFBS motif hits: thin green blocks"));
         assert!(svg.contains("TP73 x2"));
-        assert!(svg.contains("External evidence tracks: grey bars"));
+        assert!(svg.contains("array projections use logFC color"));
+        assert!(svg.contains("#bd6262"));
         assert!(svg.contains("Array E-MTAB-14704 AdTAp73alpha-AdGFP"));
         assert!(svg.contains("Provenance: sequence NC_000001; local view 1..240"));
         assert!(!svg.contains("AdTAp73alpha-AdGFP PSR_TP73_0001"));

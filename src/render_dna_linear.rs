@@ -14,7 +14,8 @@ use crate::{
     gc_contents::{DEFAULT_SECTION_SIZE_BP, GcContents},
     iupac_code::IupacCode,
     linear_base_routing::{
-        AUTO_HELICAL_MAX_DENSITY, AUTO_STANDARD_MAX_DENSITY, LinearBaseRoutingDecision,
+        AUTO_HELICAL_MAX_DENSITY, AUTO_STANDARD_MAX_DENSITY,
+        LinearBaseRenderMode as RoutingBaseRenderMode, LinearBaseRoutingDecision,
         LinearBaseRoutingInput, decide_linear_base_routing, mode_setting_label,
     },
     open_reading_frame::OpenReadingFrame,
@@ -72,7 +73,9 @@ const CONDENSED_HELICAL_ROW_SPACING_SCALE: f32 = 1.05;
 const CONDENSED_HELICAL_ROW_COUNT: usize = 10;
 const CONDENSED_HELICAL_SINGLE_ROW_MIN_STEP: f32 = 12.0;
 const CONDENSED_HELICAL_STRAND_GAP: f32 = 6.0;
-const CONDENSED_FEATURE_CLEARANCE_PADDING: f32 = 8.0;
+const SEQUENCE_BASE_FEATURE_CLEARANCE_PADDING: f32 = 8.0;
+#[cfg(test)]
+const CONDENSED_FEATURE_CLEARANCE_PADDING: f32 = SEQUENCE_BASE_FEATURE_CLEARANCE_PADDING;
 const FEATURE_INLINE_LABEL_FONT_SIZE: f32 = 10.0;
 const FEATURE_EXTERNAL_LABEL_FONT_SIZE: f32 = 11.0;
 const FEATURE_EXTERNAL_LABEL_HEIGHT: f32 = 16.0;
@@ -182,6 +185,7 @@ enum SequenceBaseRenderMode {
 struct SequenceBaseRenderStatus {
     active_mode: SequenceBaseRenderMode,
     mode_setting: LinearSequenceLetterLayoutMode,
+    sequence_bases_enabled: bool,
     helical_enabled: bool,
     helical_parallel_strands: bool,
     reverse_strand_opacity: f32,
@@ -280,6 +284,7 @@ impl RenderDnaLinear {
     fn sequence_base_render_status(&self, viewport: LinearViewport) -> SequenceBaseRenderStatus {
         let (
             mode_setting,
+            sequence_bases_enabled,
             helical_enabled,
             helical_parallel_strands,
             reverse_strand_opacity,
@@ -290,6 +295,7 @@ impl RenderDnaLinear {
             .map(|display| {
                 (
                     display.linear_sequence_letter_layout_mode(),
+                    display.linear_show_sequence_bases(),
                     display.linear_sequence_helical_letters_enabled(),
                     display.linear_helical_parallel_strands(),
                     display.reverse_strand_visual_opacity(),
@@ -300,10 +306,11 @@ impl RenderDnaLinear {
                 LinearSequenceLetterLayoutMode::AutoAdaptive,
                 true,
                 true,
+                true,
                 0.55,
                 false,
             ));
-        let routing = decide_linear_base_routing(LinearBaseRoutingInput {
+        let mut routing = decide_linear_base_routing(LinearBaseRoutingInput {
             span_bp: viewport.span,
             viewport_width_px: self.area.width(),
             compression_enabled: helical_enabled,
@@ -312,10 +319,16 @@ impl RenderDnaLinear {
             min_font_size_px: SEQUENCE_BASE_TEXT_MIN_FONT_SIZE,
             max_font_size_px: SEQUENCE_BASE_TEXT_MAX_FONT_SIZE,
         });
+        if !sequence_bases_enabled {
+            routing.active_mode = RoutingBaseRenderMode::Off;
+            routing.decision_reason =
+                "inactive: DNA sequence letters disabled by display setting".to_string();
+        }
         let active_mode = Self::render_mode_from_routing(routing.active_mode);
         SequenceBaseRenderStatus {
             active_mode,
             mode_setting,
+            sequence_bases_enabled,
             helical_enabled,
             helical_parallel_strands,
             reverse_strand_opacity,
@@ -992,9 +1005,9 @@ impl RenderDnaLinear {
         (font_size * CONDENSED_HELICAL_ROW_SPACING_SCALE).max(CONDENSED_HELICAL_SINGLE_ROW_MIN_STEP)
     }
 
-    fn condensed_helical_text_half_extent(&self, viewport: LinearViewport) -> Option<f32> {
+    fn sequence_base_text_half_extent(&self, viewport: LinearViewport) -> Option<f32> {
         let status = self.sequence_base_render_status(viewport);
-        if status.active_mode != SequenceBaseRenderMode::Condensed10Row {
+        if status.active_mode == SequenceBaseRenderMode::Off {
             return None;
         }
         let show_double_strand = self
@@ -1007,14 +1020,30 @@ impl RenderDnaLinear {
             SEQUENCE_BASE_TEXT_MIN_FONT_SIZE,
             SEQUENCE_BASE_TEXT_MAX_FONT_SIZE,
         );
-        let row_step = Self::condensed_row_step(font_size, show_double_strand);
-        let row_offset_max = row_step * CONDENSED_HELICAL_ROW_COUNT.saturating_sub(1) as f32;
         let strand_half_gap = if show_double_strand {
             CONDENSED_HELICAL_STRAND_GAP * 0.5
         } else {
             0.0
         };
-        Some(font_size + strand_half_gap + row_offset_max)
+        let mode_extra = match status.active_mode {
+            SequenceBaseRenderMode::Off => return None,
+            SequenceBaseRenderMode::StandardLinear => 0.0,
+            SequenceBaseRenderMode::ContinuousHelical => font_size,
+            SequenceBaseRenderMode::Condensed10Row => {
+                let row_step = Self::condensed_row_step(font_size, show_double_strand);
+                row_step * CONDENSED_HELICAL_ROW_COUNT.saturating_sub(1) as f32
+            }
+        };
+        Some(font_size + strand_half_gap + mode_extra)
+    }
+
+    #[cfg(test)]
+    fn condensed_helical_text_half_extent(&self, viewport: LinearViewport) -> Option<f32> {
+        let status = self.sequence_base_render_status(viewport);
+        if status.active_mode != SequenceBaseRenderMode::Condensed10Row {
+            return None;
+        }
+        self.sequence_base_text_half_extent(viewport)
     }
 
     fn layout_features(&mut self, viewport: LinearViewport) {
@@ -1412,17 +1441,17 @@ impl RenderDnaLinear {
         let bottom_natural_extent =
             Self::side_extent(bottom_lane_count, default_style).max(BASELINE_SIDE_MIN_EXTENT);
         let natural_total = (top_natural_extent + bottom_natural_extent).max(1.0);
-        let condensed_text_half_extent = self.condensed_helical_text_half_extent(viewport);
-        let condensed_band_total = condensed_text_half_extent.unwrap_or(0.0) * 2.0;
+        let sequence_text_half_extent = self.sequence_base_text_half_extent(viewport);
+        let sequence_text_band_total = sequence_text_half_extent.unwrap_or(0.0) * 2.0;
         let available_total = (self.area.height()
             - BASELINE_TOP_PADDING
             - BASELINE_BOTTOM_PADDING
-            - condensed_band_total)
+            - sequence_text_band_total)
             .max(40.0);
         let top_target_extent = available_total * (top_natural_extent / natural_total);
         let bottom_target_extent = available_total * (bottom_natural_extent / natural_total);
 
-        let reserved_half = condensed_text_half_extent.unwrap_or(0.0);
+        let reserved_half = sequence_text_half_extent.unwrap_or(0.0);
         let baseline = self.area.top() + BASELINE_TOP_PADDING + reserved_half + top_target_extent;
         let baseline_min = self.area.top() + BASELINE_TOP_PADDING + reserved_half;
         let baseline_max = self.area.bottom() - BASELINE_BOTTOM_PADDING - reserved_half;
@@ -1473,10 +1502,10 @@ impl RenderDnaLinear {
             MIN_REGULATORY_FEATURE_GAP,
             MIN_REGULATORY_FEATURE_HEIGHT,
         );
-        let condensed_feature_clearance = self
-            .condensed_helical_text_half_extent(viewport)
-            .map(|half_extent| half_extent + CONDENSED_FEATURE_CLEARANCE_PADDING);
-        if let Some(min_clearance) = condensed_feature_clearance {
+        let sequence_feature_clearance = self
+            .sequence_base_text_half_extent(viewport)
+            .map(|half_extent| half_extent + SEQUENCE_BASE_FEATURE_CLEARANCE_PADDING);
+        if let Some(min_clearance) = sequence_feature_clearance {
             top_style.margin = top_style.margin.max(min_clearance + top_style.height * 0.5);
             bottom_style.margin = bottom_style
                 .margin
@@ -1485,7 +1514,7 @@ impl RenderDnaLinear {
                 .margin
                 .max(min_clearance + regulatory_top_style.height * 0.5);
         }
-        let regulatory_near_baseline_margin = condensed_feature_clearance
+        let regulatory_near_baseline_margin = sequence_feature_clearance
             .map(|min_clearance| {
                 (min_clearance + REGULATORY_FEATURE_HEIGHT * 0.5).max(REGULATORY_BASELINE_MARGIN)
             })
@@ -1522,7 +1551,7 @@ impl RenderDnaLinear {
                         } else {
                             0.0
                         };
-                    if let Some(min_clearance) = condensed_feature_clearance {
+                    if let Some(min_clearance) = sequence_feature_clearance {
                         required_clearance =
                             required_clearance.max(min_clearance + side_style.height * 0.5);
                     }
@@ -2300,6 +2329,7 @@ impl RenderDnaLinear {
             },
             Color32::BLACK,
         );
+        self.draw_array_color_legend(painter);
         painter.text(
             Pos2::new(self.area.right() - 6.0, self.area.top() + 6.0),
             Align2::RIGHT_TOP,
@@ -2341,9 +2371,10 @@ impl RenderDnaLinear {
             Pos2::new(self.area.right() - 6.0, self.area.top() + 34.0),
             Align2::RIGHT_TOP,
             format!(
-                "route: {} | setting: {} | compressed={} | parallel={} | rev-alpha={:.2} | hide-pref={} | backbone={}",
+                "route: {} | setting: {} | letters={} | compressed={} | parallel={} | rev-alpha={:.2} | hide-pref={} | backbone={}",
                 status.route_policy_label(),
                 status.mode_setting_label(),
+                status.sequence_bases_enabled,
                 status.helical_enabled,
                 status.helical_parallel_strands,
                 status.reverse_strand_opacity,
@@ -2402,6 +2433,66 @@ impl RenderDnaLinear {
                 Color32::from_gray(110),
             );
         }
+    }
+
+    fn draw_array_color_legend(&self, painter: &egui::Painter) {
+        if !self.features.iter().any(|feature| feature.is_array_track) {
+            return;
+        }
+        let origin = Pos2::new(self.area.left() + 6.0, self.area.top() + 26.0);
+        let panel = Rect::from_min_size(origin, Vec2::new(422.0, 32.0));
+        painter.rect_filled(
+            panel,
+            4.0,
+            Color32::from_rgba_unmultiplied(255, 255, 255, 210),
+        );
+        painter.rect_stroke(
+            panel,
+            4.0,
+            Stroke::new(0.6_f32, Color32::from_rgba_unmultiplied(80, 80, 80, 70)),
+            StrokeKind::Outside,
+        );
+        painter.text(
+            origin + Vec2::new(7.0, 5.0),
+            Align2::LEFT_TOP,
+            "Array: logFC",
+            FontId {
+                size: 9.5,
+                family: FontFamily::Monospace,
+            },
+            Color32::from_gray(55),
+        );
+        let swatches = [
+            (Color32::from_rgb(220, 38, 38), "+"),
+            (Color32::from_rgb(150, 150, 150), "~0"),
+            (Color32::from_rgb(37, 99, 235), "-"),
+        ];
+        let mut x = origin.x + 92.0;
+        for (color, label) in swatches {
+            let rect = Rect::from_min_size(Pos2::new(x, origin.y + 7.0), Vec2::new(15.0, 10.0));
+            painter.rect_filled(rect, 1.5, color);
+            painter.text(
+                Pos2::new(x + 19.0, origin.y + 4.0),
+                Align2::LEFT_TOP,
+                label,
+                FontId {
+                    size: 9.0,
+                    family: FontFamily::Monospace,
+                },
+                Color32::from_gray(55),
+            );
+            x += if label == "~0" { 45.0 } else { 32.0 };
+        }
+        painter.text(
+            Pos2::new(origin.x + 218.0, origin.y + 5.0),
+            Align2::LEFT_TOP,
+            "darker/outlined = stronger or adj.P.Val<=0.05",
+            FontId {
+                size: 9.0,
+                family: FontFamily::Monospace,
+            },
+            Color32::from_gray(65),
+        );
     }
 
     fn orf_color(frame: i32) -> Option<Color32> {
@@ -3861,6 +3952,27 @@ mod tests {
     }
 
     #[test]
+    fn sequence_base_track_visibility_flag_overrides_forced_modes() {
+        let renderer = test_renderer(5000);
+        {
+            let mut display = renderer.display.write().expect("display");
+            display.set_linear_show_sequence_bases(false);
+            display.set_linear_sequence_letter_layout_mode(
+                LinearSequenceLetterLayoutMode::Condensed10Row,
+            );
+        }
+        let viewport = LinearViewport {
+            start: 0,
+            end: 5000,
+            span: 5000,
+        };
+        let status = renderer.sequence_base_render_status(viewport);
+        assert!(!status.bases_visible());
+        assert!(status.decision_reason_text().contains("disabled"));
+        assert!(renderer.should_draw_backbone(viewport));
+    }
+
+    #[test]
     fn sequence_base_status_exposes_adaptive_routing_metrics() {
         let renderer = test_renderer(2000);
         let status = renderer.sequence_base_render_status(LinearViewport {
@@ -4328,6 +4440,37 @@ mod tests {
         } else {
             assert!((baseline - renderer.area.center().y).abs() <= 0.5);
         }
+    }
+
+    #[test]
+    fn helical_base_letters_reserve_clearance_for_promoter_lane() {
+        let feature = make_test_feature_with_kind("promoter", Location::simple_range(120, 260));
+        let mut renderer = test_renderer_with_feature(feature, 5000);
+        let viewport = LinearViewport {
+            start: 0,
+            end: 1500,
+            span: 1500,
+        };
+        {
+            let mut display = renderer.display.write().expect("display");
+            display.set_linear_sequence_base_text_max_view_span_bp(500);
+            display.set_linear_sequence_helical_letters_enabled(true);
+            display.set_linear_sequence_helical_max_view_span_bp(2000);
+            display.set_linear_sequence_letter_layout_mode(
+                LinearSequenceLetterLayoutMode::ContinuousHelical,
+            );
+        }
+        renderer.layout_features(viewport);
+
+        assert_eq!(renderer.features.len(), 1);
+        let half_extent = renderer
+            .sequence_base_text_half_extent(viewport)
+            .expect("helical sequence base extent");
+        let clearance = renderer.baseline_y() - renderer.features[0].rect.bottom();
+        assert!(
+            clearance >= half_extent + SEQUENCE_BASE_FEATURE_CLEARANCE_PADDING - 0.5,
+            "feature clearance {clearance:.2} should reserve base-letter half extent {half_extent:.2}"
+        );
     }
 
     #[test]

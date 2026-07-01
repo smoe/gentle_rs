@@ -4262,6 +4262,8 @@ pub struct DisplaySettings {
     pub linear_view_start_bp: usize,
     pub linear_view_span_bp: usize,
     pub linear_view_vertical_offset_px: f32,
+    #[serde(default = "DisplaySettings::default_linear_show_sequence_bases")]
+    pub linear_show_sequence_bases: bool,
     pub linear_sequence_base_text_max_view_span_bp: usize,
     pub linear_sequence_helical_letters_enabled: bool,
     pub linear_sequence_helical_max_view_span_bp: usize,
@@ -4305,6 +4307,10 @@ impl DisplaySettings {
 
     pub const fn default_linear_sequence_condensed_max_view_span_bp() -> usize {
         1500
+    }
+
+    pub const fn default_linear_show_sequence_bases() -> bool {
+        true
     }
 
     pub const fn default_linear_helical_parallel_strands() -> bool {
@@ -4367,6 +4373,7 @@ impl Default for DisplaySettings {
             linear_view_start_bp: 0,
             linear_view_span_bp: 0,
             linear_view_vertical_offset_px: 0.0,
+            linear_show_sequence_bases: Self::default_linear_show_sequence_bases(),
             linear_sequence_base_text_max_view_span_bp: 500,
             linear_sequence_helical_letters_enabled: true,
             linear_sequence_helical_max_view_span_bp: 2000,

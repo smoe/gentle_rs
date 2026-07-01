@@ -5831,6 +5831,7 @@ Set adaptive linear DNA-letter routing parameters (shared GUI/runtime semantics)
 
 ```json
 {"SetParameter":{"name":"linear_sequence_letter_layout_mode","value":"auto"}}
+{"SetParameter":{"name":"linear_show_sequence_bases","value":true}}
 {"SetParameter":{"name":"linear_sequence_helical_letters_enabled","value":true}}
 {"SetParameter":{"name":"linear_sequence_helical_phase_offset_bp","value":3}}
 {"SetParameter":{"name":"linear_show_reverse_strand_bases","value":true}}
@@ -5847,6 +5848,12 @@ Supported `linear_sequence_letter_layout_mode` values:
 
 Compatibility notes:
 
+- `linear_show_sequence_bases` is the master visibility switch for DNA letters
+  in the linear map. Setting it to `false` hides base letters even when an
+  adaptive or forced letter mode would otherwise draw them; feature tracks and
+  the DNA backbone remain available. Aliases accepted by `SetParameter` are
+  `linear_show_sequence_letters`, `show_linear_sequence_bases`, and
+  `show_linear_sequence_letters`.
 - Legacy fixed-threshold parameters are still accepted for compatibility but are
   deprecated no-ops under adaptive routing:
   - `linear_sequence_base_text_max_view_span_bp`

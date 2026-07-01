@@ -12174,6 +12174,12 @@ impl ShellCommand {
                     "set compressed linear DNA letters '{}' (applies in auto mode)",
                     value_json
                 ),
+                "linear_show_sequence_bases"
+                | "linear_show_sequence_letters"
+                | "show_linear_sequence_bases"
+                | "show_linear_sequence_letters" => {
+                    format!("set linear-map DNA letter visibility to {}", value_json)
+                }
                 "linear_show_double_strand_bases"
                 | "show_linear_double_strand_bases"
                 | "linear_show_reverse_strand_bases"

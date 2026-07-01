@@ -290,6 +290,7 @@
   "sequence.map_presets": "Map presets",
   "sequence.gc_bin_size": "GC bin size",
   "sequence.linear_dna_letters": "Linear DNA letters",
+  "sequence.show_sequence_letters": "Show DNA letters on linear map",
   "sequence.show_reverse_letters": "Show reverse-strand DNA letters on linear map",
   "sequence.hide_backbone_when_letters_visible": "Hide DNA backbone line when letters are shown",
   "sequence.keep_helical_parallel": "Keep helical strands parallel (same slant direction)",

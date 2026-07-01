@@ -4422,6 +4422,7 @@ impl MainAreaDna {
                     ui.separator();
                     ui.label(Self::tr("sequence.linear_dna_letters"));
                     let (
+                        mut show_sequence_letters,
                         mut show_reverse_strand_letters,
                         mut helical_parallel_strands,
                         mut reverse_strand_opacity,
@@ -4439,6 +4440,7 @@ impl MainAreaDna {
                         .read()
                         .map(|display| {
                             (
+                                display.linear_show_sequence_bases(),
                                 display.linear_show_double_strand_bases(),
                                 display.linear_helical_parallel_strands(),
                                 display.reverse_strand_visual_opacity(),
@@ -4456,6 +4458,7 @@ impl MainAreaDna {
                         .unwrap_or((
                             true,
                             true,
+                            true,
                             0.55,
                             false,
                             true,
@@ -4467,6 +4470,22 @@ impl MainAreaDna {
                             11.0,
                             0.9,
                         ));
+                    if ui
+                        .checkbox(
+                            &mut show_sequence_letters,
+                            Self::tr("sequence.show_sequence_letters"),
+                        )
+                        .on_hover_text(
+                            "Hide or show DNA base letters in the linear map while keeping features, tracks, and the backbone visible.",
+                        )
+                        .changed()
+                    {
+                        self.dna_display
+                            .write()
+                            .expect("DNA display lock poisoned")
+                            .set_linear_show_sequence_bases(show_sequence_letters);
+                        self.sync_linear_sequence_base_visibility_to_engine(show_sequence_letters);
+                    }
                     if ui
                         .checkbox(
                             &mut show_reverse_strand_letters,
@@ -4706,9 +4725,10 @@ impl MainAreaDna {
                     let view_end_bp = view_start_bp.saturating_add(view_span_bp);
                     ui.colored_label(status_color, format!("Active render: {active_mode_label}"));
                     ui.monospace(format!(
-                        "route={} | setting={} | compressed={} | reverse={} | parallel={} | rev-opacity={:.2} | hide-backbone={} | backbone={} | span={} bp ({}..{} of {} bp) | map_w={:.0}px | density={:.2} | cols-fit={:.0} | glyph={:.2}px",
+                        "route={} | setting={} | letters={} | compressed={} | reverse={} | parallel={} | rev-opacity={:.2} | hide-backbone={} | backbone={} | span={} bp ({}..{} of {} bp) | map_w={:.0}px | density={:.2} | cols-fit={:.0} | glyph={:.2}px",
                         routing.route_policy.label(),
                         mode_setting_label(helical_layout_mode),
+                        show_sequence_letters,
                         helical_letters_enabled,
                         show_reverse_strand_letters,
                         helical_parallel_strands,
@@ -9994,6 +10014,14 @@ impl MainAreaDna {
         display.linear_sequence_helical_phase_offset_bp = phase_offset_bp % 10;
     }
 
+    fn sync_linear_sequence_base_visibility_to_engine(&self, visible: bool) {
+        let Some(engine) = &self.engine else {
+            return;
+        };
+        let mut guard = engine.write().expect("Engine lock poisoned");
+        guard.state_mut().display.linear_show_sequence_bases = visible;
+    }
+
     fn sync_linear_backbone_visibility_to_engine(&self, hide_when_bases_visible: bool) {
         let Some(engine) = &self.engine else {
             return;
@@ -10090,6 +10118,7 @@ impl MainAreaDna {
         display.set_linear_sequence_base_text_max_view_span_bp(
             settings.linear_sequence_base_text_max_view_span_bp,
         );
+        display.set_linear_show_sequence_bases(settings.linear_show_sequence_bases);
         display.set_linear_sequence_helical_letters_enabled(
             settings.linear_sequence_helical_letters_enabled,
         );
@@ -10159,23 +10188,24 @@ impl MainAreaDna {
 
     fn linear_base_routing_decision(&self) -> LinearBaseRoutingDecision {
         let (_, span, sequence_length) = self.current_linear_viewport();
-        let (compression_enabled, mode_setting) = self
+        let (sequence_bases_enabled, compression_enabled, mode_setting) = self
             .dna_display
             .read()
             .map(|display| {
                 (
+                    display.linear_show_sequence_bases(),
                     display.linear_sequence_helical_letters_enabled(),
                     display.linear_sequence_letter_layout_mode(),
                 )
             })
-            .unwrap_or((true, LinearSequenceLetterLayoutMode::AutoAdaptive));
+            .unwrap_or((true, true, LinearSequenceLetterLayoutMode::AutoAdaptive));
         let viewport_width_px =
             if self.last_linear_map_width_px.is_finite() && self.last_linear_map_width_px > 0.0 {
                 self.last_linear_map_width_px
             } else {
                 1200.0
             };
-        decide_linear_base_routing(LinearBaseRoutingInput {
+        let mut decision = decide_linear_base_routing(LinearBaseRoutingInput {
             span_bp: if sequence_length == 0 { 0 } else { span },
             viewport_width_px,
             compression_enabled,
@@ -10183,7 +10213,13 @@ impl MainAreaDna {
             font_scale: 0.85,
             min_font_size_px: 8.0,
             max_font_size_px: 14.0,
-        })
+        });
+        if !sequence_bases_enabled {
+            decision.active_mode = LinearBaseRenderMode::Off;
+            decision.decision_reason =
+                "inactive: DNA sequence letters disabled by display setting".to_string();
+        }
+        decision
     }
 
     fn linear_map_sequence_bases_visible(&self) -> bool {
@@ -21058,12 +21094,14 @@ impl MainAreaDna {
             y,
             Self::xml_escape(&header_left)
         ));
+        let sequence_letters_visible = display_guard.linear_show_sequence_bases();
         let status_right = format!(
-            "map={} | profile={} | show-map={} | show-sequence={}",
+            "map={} | profile={} | show-map={} | show-sequence={} | letters={}",
             map_mode_label,
             profile.label(),
             self.show_map,
-            self.show_sequence
+            self.show_sequence,
+            sequence_letters_visible
         );
         svg.push_str(&format!(
             "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"end\" font-family=\"monospace\" font-size=\"13\" fill=\"#444444\">{}</text>",

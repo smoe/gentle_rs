@@ -3177,6 +3177,7 @@ impl GENtleApp {
         target.linear_view_start_bp = source.linear_view_start_bp;
         target.linear_view_span_bp = source.linear_view_span_bp;
         target.linear_view_vertical_offset_px = source.linear_view_vertical_offset_px;
+        target.linear_show_sequence_bases = source.linear_show_sequence_bases;
         target.linear_sequence_base_text_max_view_span_bp =
             source.linear_sequence_base_text_max_view_span_bp;
         target.linear_sequence_helical_letters_enabled =
@@ -6607,6 +6608,7 @@ Error: `{err}`"
             .linear_view_vertical_offset_px
             .to_bits()
             .hash(&mut hasher);
+        display.linear_show_sequence_bases.hash(&mut hasher);
         display
             .linear_sequence_base_text_max_view_span_bp
             .hash(&mut hasher);
@@ -20155,6 +20157,8 @@ Error: `{err}`"
         self.configuration_graphics.linear_view_span_bp = defaults.linear_view_span_bp;
         self.configuration_graphics.linear_view_vertical_offset_px =
             defaults.linear_view_vertical_offset_px;
+        self.configuration_graphics.linear_show_sequence_bases =
+            defaults.linear_show_sequence_bases;
         self.configuration_graphics
             .linear_sequence_base_text_max_view_span_bp =
             defaults.linear_sequence_base_text_max_view_span_bp;
@@ -20736,6 +20740,15 @@ Error: `{err}`"
 
         ui.separator();
         ui.heading(self.tr("configuration.graphics.linear_dna_base_rendering"));
+        changed |= ui
+            .checkbox(
+                &mut self.configuration_graphics.linear_show_sequence_bases,
+                crate::i18n::tr("sequence.show_sequence_letters"),
+            )
+            .on_hover_text(
+                "Hide or show DNA base letters in the linear map while keeping feature tracks and the backbone visible.",
+            )
+            .changed();
         changed |= ui
             .checkbox(
                 &mut self.configuration_graphics.linear_show_double_strand_bases,

@@ -193,6 +193,7 @@
   "sequence.map_presets": "图谱预设",
   "sequence.gc_bin_size": "GC 分箱大小",
   "sequence.linear_dna_letters": "线性 DNA 字母",
+  "sequence.show_sequence_letters": "在线性图谱上显示 DNA 字母",
   "sequence.show_reverse_letters": "在线性图谱上显示反向链 DNA 字母",
   "sequence.hide_backbone_when_letters_visible": "显示字母时隐藏 DNA 骨架线",
   "sequence.keep_helical_parallel": "保持螺旋链平行（相同倾斜方向）",
